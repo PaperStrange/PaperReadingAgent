@@ -318,6 +318,7 @@ export default function App() {
   const pendingFnNodesRef = useRef([]);
   const revealTimerRef = useRef(null);
   const desiredFnEdgesRef = useRef([]);
+  const fnFlowRef = useRef(null);
 
   useEffect(() => {
     nodesRef.current = nodes;
@@ -406,6 +407,13 @@ export default function App() {
     applyFnEdgesUpdate(kept);
   }, [applyFnEdgesUpdate]);
 
+  // 节点渐进显示完成后，自动把整个函数子图画布居中（fitView）。
+  const fitFnView = useCallback(() => {
+    window.setTimeout(() => {
+      fnFlowRef.current?.fitView({ padding: 0.2, duration: 300 });
+    }, 120);
+  }, []);
+
   const startRevealTimer = useCallback(() => {
     if (revealTimerRef.current) {
       clearInterval(revealTimerRef.current);
@@ -414,6 +422,7 @@ export default function App() {
 
     if (!pendingFnNodesRef.current.length) {
       syncFnEdges();
+      fitFnView();
       return;
     }
 
@@ -421,6 +430,7 @@ export default function App() {
       if (!pendingFnNodesRef.current.length) {
         stopRevealTimer();
         syncFnEdges();
+        fitFnView();
         return;
       }
       const nextNode = pendingFnNodesRef.current.shift();
@@ -430,7 +440,7 @@ export default function App() {
       });
       syncFnEdges();
     }, 45);
-  }, [applyFnNodesUpdate, stopRevealTimer, syncFnEdges]);
+  }, [applyFnNodesUpdate, fitFnView, stopRevealTimer, syncFnEdges]);
 
   const refreshFunctionPanel = useCallback(() => {
     const stepNode = nodesRef.current.find((n) => n.id === activeStepIdRef.current);
@@ -898,6 +908,19 @@ export default function App() {
     logLine(`function panel refreshed: ${activeStepIdRef.current}`);
   }, [logLine, refreshFunctionPanel]);
 
+  // 当前步骤状态，用于函数子画布的加载/错误/空态反馈
+  const activeStepNode = nodes.find((n) => n.id === activeStepId);
+  const fnStepStatus = activeStepNode?.data?.status || "idle";
+  const fnTraceCount = (activeStepNode?.data?.lastSnapshot?.function_trace || []).length;
+  const fnIsRunning = fnStepStatus === "running";
+  const fnStatusText = fnIsRunning
+    ? `正在生成函数追踪图（已加载 ${fnNodes.length} 个调用）…`
+    : fnStepStatus === "failed"
+    ? "步骤执行失败"
+    : fnTraceCount
+    ? `已加载 ${fnTraceCount} 个函数调用`
+    : "暂无追踪数据";
+
   return (
     <div className="app-shell">
       <div className="topbar">
@@ -986,7 +1009,20 @@ export default function App() {
               ))}
             </div>
           </div>
-          <div className="pane-flow" style={{ minHeight: `${Math.min(760, fnCanvasMeta.height + 80)}px` }}>
+
+          <div className="fn-toolbar">
+            <span className={`fn-status fn-status-${fnIsRunning ? "running" : fnStepStatus}`}>
+              {fnIsRunning && <span className="fn-spinner" aria-hidden />}
+              {fnStatusText}
+            </span>
+            <span className="fn-toolbar-actions">
+              <button className="icon-btn" title="放大" aria-label="放大" onClick={() => fnFlowRef.current?.zoomIn({ duration: 200 })}>＋</button>
+              <button className="icon-btn" title="缩小" aria-label="缩小" onClick={() => fnFlowRef.current?.zoomOut({ duration: 200 })}>－</button>
+              <button className="icon-btn" title="适应画布 / 居中" aria-label="适应画布" onClick={() => fnFlowRef.current?.fitView({ padding: 0.2, duration: 300 })}>⤢</button>
+            </span>
+          </div>
+
+          <div className="pane-flow fn-pane-flow" style={{ minHeight: `${Math.min(760, fnCanvasMeta.height + 80)}px` }}>
             <ReactFlow
               key={`fn-${activeStepId}-${fnFlowRevision}`}
               nodes={fnNodes}
@@ -994,11 +1030,37 @@ export default function App() {
               nodeTypes={nodeTypes}
               onNodesChange={onFnNodesChange}
               onEdgesChange={onFnEdgesChange}
+              onInit={(inst) => {
+                fnFlowRef.current = inst;
+              }}
               fitView
             >
+              <MiniMap pannable zoomable />
               <Controls />
               <Background gap={16} />
             </ReactFlow>
+
+            {fnIsRunning && (
+              <div className="fn-loading-overlay">
+                <span className="fn-spinner" aria-hidden />
+                正在生成函数追踪图，请稍候…
+              </div>
+            )}
+            {!fnIsRunning && fnNodes.length === 0 && (
+              <div className="fn-empty-overlay">
+                {fnStepStatus === "failed" ? (
+                  <div className="fn-empty-msg fn-empty-error">
+                    步骤执行失败：{activeStepNode?.data?.error || "未知错误"}
+                  </div>
+                ) : (
+                  <div className="fn-empty-msg">
+                    该步骤暂无函数追踪数据
+                    <br />
+                    点击对应节点 "Run Node" 后自动生成
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

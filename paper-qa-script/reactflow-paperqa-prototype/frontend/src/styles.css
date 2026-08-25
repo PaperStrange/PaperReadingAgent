@@ -429,3 +429,118 @@ body,
   white-space: pre-wrap;
   font-size: 12px;
 }
+
+/* ---- Function Subcanvas 交互优化 ---- */
+
+/* fn-pane 顶部多了一行工具栏，调整网格行数 */
+.fn-pane {
+  grid-template-rows: auto auto 1fr;
+}
+
+.fn-pane-flow {
+  position: relative;
+}
+
+.fn-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+
+.fn-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.fn-status-running {
+  color: #b45309;
+}
+
+.fn-status-failed {
+  color: #b91c1c;
+}
+
+.fn-status-success {
+  color: #166534;
+}
+
+.fn-spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #cbd5e1;
+  border-top-color: #2563eb;
+  display: inline-block;
+  animation: fn-spin 0.8s linear infinite;
+}
+
+@keyframes fn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.fn-toolbar-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.icon-btn {
+  width: 26px;
+  height: 26px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #f8fafc;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  color: #1e293b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-btn:hover {
+  background: #eef2ff;
+  border-color: #93c5fd;
+}
+
+.fn-loading-overlay,
+.fn-empty-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #334155;
+  font-size: 13px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.fn-loading-overlay {
+  color: #1d4ed8;
+}
+
+.fn-empty-msg {
+  max-width: 80%;
+  line-height: 1.5;
+}
+
+.fn-empty-error {
+  color: #b91c1c;
+  max-height: 120px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

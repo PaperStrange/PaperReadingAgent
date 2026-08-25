@@ -23,7 +23,40 @@
 
 ---
 
-## 先决条件 Prerequisites
+## 文档目录
+
+本仓库中所有以 `.md` 结尾的文档（依赖包与 `.venv` 内的第三方文档除外）：
+
+### 本项目维护的文档
+
+| 文件 | 说明 |
+|---|---|
+| [`README.md`](README.md) | 项目入口：功能、部署、验证、故障排查 |
+| [`docs/1-WORKFLOW.MD`](docs/1-WORKFLOW.MD) | 项目工作流：开发规范、知识管理、项目管理、运行手册 |
+| [`docs/2-ARCHITECTURE.MD`](docs/2-ARCHITECTURE.MD) | 系统架构：架构图、模块职责、数据流、模型与存储约定 |
+| [`docs/3-LEARNED.MD`](docs/3-LEARNED.MD) | 开发经验教训：踩坑记录、验证记录、已知限制 |
+| [`verify/README.md`](verify/README.md) | 验收脚本（`verify_smoke/e2e/agent.py`）使用说明 |
+| [`paper-qa-script/reactflow-paperqa-prototype/README.md`](paper-qa-script/reactflow-paperqa-prototype/README.md) | ReactFlow 前端 + FastAPI 后端原型说明 |
+| [`paper-qa-script/paperqa_system_report.md`](paper-qa-script/paperqa_system_report.md) | paperqa 源码静态分析报告（371 个函数、入口签名、调用路径） |
+
+### vendored PaperQA2 上游文档
+
+| 文件 | 说明 |
+|---|---|
+| [`paper-qa/README.md`](paper-qa/README.md) | PaperQA2 上游主文档（Quickstart、算法、Settings 速查） |
+| [`paper-qa/CONTRIBUTING.md`](paper-qa/CONTRIBUTING.md) | 上游贡献指南 |
+| [`paper-qa/docs/tutorials/settings_tutorial.md`](paper-qa/docs/tutorials/settings_tutorial.md) | Settings 配置教程 |
+| [`paper-qa/docs/tutorials/where_do_I_get_papers.md`](paper-qa/docs/tutorials/where_do_I_get_papers.md) | 如何获取论文 |
+| [`paper-qa/docs/tutorials/running_on_lfrqa.md`](paper-qa/docs/tutorials/running_on_lfrqa.md) | 在 LFRQA 基准上运行 |
+| [`paper-qa/docs/tutorials/querying_with_clinical_trials.md`](paper-qa/docs/tutorials/querying_with_clinical_trials.md) | 临床试验数据查询 |
+| [`paper-qa/packages/paper-qa-pypdf/README.md`](paper-qa/packages/paper-qa-pypdf/README.md) | PyPDF reader 子包 |
+| [`paper-qa/packages/paper-qa-pymupdf/README.md`](paper-qa/packages/paper-qa-pymupdf/README.md) | PyMuPDF reader 子包 |
+| [`paper-qa/packages/paper-qa-docling/README.md`](paper-qa/packages/paper-qa-docling/README.md) | Docling reader 子包 |
+| [`paper-qa/packages/paper-qa-nemotron/README.md`](paper-qa/packages/paper-qa-nemotron/README.md) | Nemotron reader 子包 |
+
+---
+
+## 先决条件
 
 | 依赖 | 版本要求 | 检查命令 |
 |---|---|---|
@@ -47,7 +80,7 @@ npm --version
 
 ---
 
-## 本地部署（一步一步）
+## 本地部署
 
 ### 第 0 步：获取代码
 
@@ -177,7 +210,7 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 
 ---
 
-## 验证安装 Verify installation
+## 验证安装
 
 | 检查项 | 命令 | 期望结果 |
 |---|---|---|
@@ -189,7 +222,7 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 
 ---
 
-## 故障排查 Troubleshooting
+## 故障排查
 
 | 现象 | 处理 |
 |---|---|
