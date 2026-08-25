@@ -1,0 +1,25 @@
+# requirements-windows.txt
+# Windows 运行所需额外依赖。
+# 说明：paper-qa 本体及 reader 子包通过本地源码安装（见 README-Windows.md / scripts/setup-env.ps1）：
+#   pip install -e ./paper-qa
+#   pip install -e "./paper-qa/packages/paper-qa-pypdf[media]"
+#   pip install -e ./paper-qa/packages/paper-qa-pymupdf
+# 本文件负责其余运行/调试依赖。
+
+# --- GUI 后端 ---
+streamlit>=1.62
+fastapi>=0.115
+uvicorn>=0.30
+pydantic>=2.8
+
+# --- 本地向量化（DeepSeek 无 embedding API，使用 sentence-transformers）---
+sentence-transformers>=5.0
+pymupdf>=1.24
+
+# --- 可选：DOT/SVG/PNG 渲染（需要系统安装 Graphviz 并加入 PATH）---
+graphviz>=0.20
+
+# --- 测试 / 调试 ---
+pytest>=8
+pytest-asyncio
+python-dotenv

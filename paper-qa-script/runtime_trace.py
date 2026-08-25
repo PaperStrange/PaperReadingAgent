@@ -508,12 +508,29 @@ class RuntimeTracer(AbstractContextManager):
             key = (id(obj), attr)
             if key in self._installed_keys:
                 return
-            original = getattr(obj, attr)
+            # FIX(原文件 bug): staticmethod/classmethod 不能被替换成普通函数，
+            # 否则经实例调用时会多传 self/cls，导致 TypeError（例如 SearchIndex.filehash）。
+            # 用 inspect.getattr_static 拿到原始描述符，保持其绑定语义；还原时也还原描述符本身。
+            original_descriptor = inspect.getattr_static(obj, attr, None)
+            if isinstance(original_descriptor, staticmethod):
+                original = original_descriptor.__func__
+                restore = original_descriptor
+            elif isinstance(original_descriptor, classmethod):
+                original = original_descriptor.__func__
+                restore = original_descriptor
+            else:
+                original = getattr(obj, attr)
+                restore = original
             if not callable(original):
                 return
             wrapped = self._wrap(original, target)
-            setattr(obj, attr, wrapped)
-            self._patches.append(_Patch(obj=obj, attr=attr, original=original))
+            if isinstance(original_descriptor, staticmethod):
+                setattr(obj, attr, staticmethod(wrapped))
+            elif isinstance(original_descriptor, classmethod):
+                setattr(obj, attr, classmethod(wrapped))
+            else:
+                setattr(obj, attr, wrapped)
+            self._patches.append(_Patch(obj=obj, attr=attr, original=restore))
             self._installed_keys.add(key)
         except Exception:
             if required:

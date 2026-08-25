@@ -19,3 +19,4 @@ tmp.log
 # --- IDE ---
 .idea/
 .vscode/
+verify/*.log

@@ -15,13 +15,20 @@ for noisy_logger in ("litellm", "openai", "httpx", "asyncio"):
     logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 logging.getLogger("paperqa.agents.main.agent_callers").setLevel(logging.INFO)
   
-# 你的环境配置  
-QWEN_API_KEY = 'sk-***REDACTED***'  
-model = 'openai/qwen-omni-turbo'  #  qwen-max
-embedding_model = "openai/text-embedding-v4"  
-  
+# [macOS original] 你的环境配置（DashScope/阿里百炼）
+# QWEN_API_KEY = 'sk-***REDACTED***'
+# model = 'openai/qwen-omni-turbo'  #  qwen-max
+# embedding_model = "openai/text-embedding-v4"
+# 你的环境配置（Windows：DeepSeek API + 本地向量模型）
+QWEN_API_KEY = os.getenv(
+    "OPENAI_API_KEY", "sk-***REDACTED***"
+)
+model = 'openai/deepseek-v4-flash'  # 可选 deepseek-v4-pro
+embedding_model = "st-multi-qa-MiniLM-L6-cos-v1"  # 本地 sentence-transformers，无需 key
+API_BASE = "https://api.deepseek.com"  # [macOS original] https://dashscope.aliyuncs.com/compatible-mode/v1
+
 os.environ["OPENAI_API_KEY"] = QWEN_API_KEY  
-  
+
 llm_config = {  
     "name": model,
     "model_list": [
@@ -30,12 +37,15 @@ llm_config = {
             "litellm_params": {  
                 "model": model,
                 "temperature": 0.1,  
-                "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",  
-                "api_key": QWEN_API_KEY}  
+                "api_base": API_BASE,  
+                "api_key": QWEN_API_KEY,
+                # 关闭 DeepSeek 思考模式（多轮工具调用兼容；litellm 用 extra_body 透传）
+                "extra_body": {"thinking": {"type": "disabled"}},
+        }
         }
     ]  
 }  
-  
+
 embedding_config = { 
     "name": embedding_model, 
     "model_list": [
@@ -43,7 +53,7 @@ embedding_config = {
             "model_name": embedding_model,  
             "litellm_params": {  
                 "model": embedding_model,  
-                "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",  
+                "api_base": API_BASE,  
                 "api_key": QWEN_API_KEY}  
         }
     ],
@@ -54,7 +64,9 @@ async def debug_index_building():
     """完整的索引构建调试函数"""  
       
     # 1. 检查文件路径  
-    paper_dir = Path("/Volumes/Extreme SSD/vscode_projects/PaperReading/data/pdf")  
+    # [macOS original] paper_dir = Path("/Volumes/Extreme SSD/vscode_projects/PaperReading/data/pdf")
+    # Windows: 相对本脚本定位仓库内 data/pdf
+    paper_dir = Path(__file__).resolve().parent.parent / "data" / "pdf"
     print(f"📁 Paper directory: {paper_dir}")  
     print(f"📁 Directory exists: {paper_dir.exists()}")  
       
@@ -96,7 +108,9 @@ async def debug_index_building():
       
     try:  
         # 删除现有索引文件  
-        index_dir = Path("/Users/zhangheli/.pqa/indexes/debug_index")  
+        # [macOS original] index_dir = Path("/Users/zhangheli/.pqa/indexes/debug_index")
+        # Windows: ~/.pqa/indexes/debug_index（paperqa 默认索引目录，跨平台一致）
+        index_dir = Path.home() / ".pqa" / "indexes" / "debug_index"
         if index_dir.exists():  
             import shutil  
             shutil.rmtree(index_dir)  

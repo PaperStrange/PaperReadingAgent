@@ -178,6 +178,9 @@ def build_settings(
                     "temperature": temperature,
                     "api_base": api_base,
                     "api_key": api_key,
+                    # DeepSeek 默认"思考模式"会返回 reasoning_content；多轮工具调用时必须原样回传，
+                    # litellm 目前不保留该字段导致 400。用 extra_body 关闭思考模式以支持 agent 多轮调用。
+                    "extra_body": {"thinking": {"type": "disabled"}},
                 },
             }
         ],
@@ -200,8 +203,24 @@ def build_settings(
     return Settings(
         llm=model,
         llm_config=llm_config,
-        summary_llm=model,
-        summary_llm_config=llm_config,
+        # [macOS original] summary_llm=model, summary_llm_config=llm_config,
+        # Windows: 证据片段（context）可能携带论文图片；纯文本模型会报 "does not support image"，
+        # 因此证据摘要使用 DeepSeek 视觉模型。
+        summary_llm="openai/deepseek-v4-flash-vision-exp",
+        summary_llm_config={
+            "name": "openai/deepseek-v4-flash-vision-exp",
+            "model_list": [
+                {
+                    "model_name": "openai/deepseek-v4-flash-vision-exp",
+                    "litellm_params": {
+                        "model": "openai/deepseek-v4-flash-vision-exp",
+                        "api_base": api_base,
+                        "api_key": api_key,
+                        "extra_body": {"thinking": {"type": "disabled"}},
+                    },
+                }
+            ],
+        },
         agent=AgentSettings(
             agent_llm=model,
             agent_llm_config=llm_config,
@@ -213,11 +232,30 @@ def build_settings(
             ),
         ),
         embedding=embedding_model,
-        embedding_config=embedding_config,
+        # local "st-*" SentenceTransformer embeddings don't use the API model_list config
+        embedding_config=(
+            {"batch_size": embedding_batch_size}
+            if embedding_model.startswith("st-")
+            else embedding_config
+        ),
         parsing=ParsingSettings(
             use_doc_details=use_doc_details,
-            enrichment_llm=model,
-            enrichment_llm_config=llm_config,
+            # [macOS original] enrichment_llm=model, enrichment_llm_config=llm_config,
+            # Windows: DeepSeek vision model enriches images/figures inside papers
+            enrichment_llm="openai/deepseek-v4-flash-vision-exp",
+            enrichment_llm_config={
+                "name": "openai/deepseek-v4-flash-vision-exp",
+                "model_list": [
+                    {
+                        "model_name": "openai/deepseek-v4-flash-vision-exp",
+                        "litellm_params": {
+                            "model": "openai/deepseek-v4-flash-vision-exp",
+                            "api_base": api_base,
+                            "api_key": api_key,
+                        },
+                    }
+                ],
+            },
         ),
     )
 
@@ -616,9 +654,13 @@ def main() -> None:
         log_level = st.selectbox("日志级别", ["INFO", "DEBUG"], index=0)
         setup_logging(log_level)
 
+        # [macOS original] 默认目录固定在 mac 路径上；Windows 副本默认使用仓库内 data/pdf
+        _default_paper_dir = str(
+            (Path(__file__).resolve().parent.parent / "data" / "pdf")
+        )
         paper_dir = st.text_input(
             "论文目录",
-            "/Volumes/Extreme SSD/vscode_projects/PaperReading/data/pdf",
+            _default_paper_dir,
         )
         index_name = st.text_input("索引名", "debug_index")
         api_key = st.text_input(
@@ -626,12 +668,15 @@ def main() -> None:
             value=os.getenv("OPENAI_API_KEY", ""),
             type="password",
         )
-        api_base = st.text_input(
-            "API Base",
-            "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        # [macOS original] api_base 默认 dashscope
+        api_base = st.text_input("API Base", "https://api.deepseek.com")
+        # [macOS original] model 默认 openai/qwen-omni-turbo
+        model = st.text_input("LLM 模型", "openai/deepseek-v4-flash")
+        # [macOS original] embedding 默认 openai/text-embedding-v4（API 向量化）
+        # Windows: DeepSeek 无 embedding API -> 本地 sentence-transformers
+        embedding_model = st.text_input(
+            "Embedding 模型", "st-multi-qa-MiniLM-L6-cos-v1"
         )
-        model = st.text_input("LLM 模型", "openai/qwen-omni-turbo")
-        embedding_model = st.text_input("Embedding 模型", "openai/text-embedding-v4")
         qa_mode = st.selectbox(
             "问答执行模式",
             ["透明流程（推荐）", "Agent流程（Tool Calling）"],

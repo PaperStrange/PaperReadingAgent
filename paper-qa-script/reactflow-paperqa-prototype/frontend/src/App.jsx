@@ -63,10 +63,16 @@ function mergeFunctionTrace(prevTrace, nextTrace) {
 const initialNodesRaw = [
   makeNode("n1", "1) Config", "config", 20, 40, {
     api_key: "",
-    api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    model: "openai/qwen-omni-turbo",
-    embedding_model: "openai/text-embedding-v4",
-    paper_directory: "/Volumes/Extreme SSD/vscode_projects/PaperReading/data/pdf",
+    // [macOS original] api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    api_base: "https://api.deepseek.com",
+    // [macOS original] model: "openai/qwen-omni-turbo",
+    model: "openai/deepseek-v4-flash",
+    // [macOS original] embedding_model: "openai/text-embedding-v4",
+    // DeepSeek has no embedding API -> local SentenceTransformer embedding
+    embedding_model: "st-multi-qa-MiniLM-L6-cos-v1",
+    // [macOS original] paper_directory: "/Volumes/Extreme SSD/vscode_projects/PaperReading/data/pdf",
+    // relative to the backend process cwd (start backend from the repo root)
+    paper_directory: "data/pdf",
     index_name: "debug_index",
     embedding_batch_size: 10,
     chunk_chars: 5000,
