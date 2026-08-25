@@ -1,0 +1,14 @@
+{
+    "paper_id": "acl:2024.acl-long.123",
+    "venue": "ACL",
+    "track": "main",
+    "year": 2024,
+    "title": "...",
+    "authors": ["..."],
+    "keywords": ["..."], 
+    "abstract": "...",
+    "pdf_url": "...",
+    "source_url": "...",
+    "intro_text": "..."   // 从 PDF 抽取的 introduction 片段（可空）
+  }
+  

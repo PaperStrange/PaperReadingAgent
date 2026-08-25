@@ -1,0 +1,39 @@
+# 下面用于设置各种API KEY
+source ~/.secrets/paperqa.env
+
+# 删除 /Volumes/Extreme SSD/vscode_projects/PaperReading 路径下所有macos拉的屎._*文件
+find ./ -type f -name '._*' -delete
+
+# 重新运行测试:
+uv run pytest -n auto
+
+# 激活这个repo需要的环境
+source "/Volumes/Extreme SSD/vscode_projects/PaperReading/paper-qa/.venv/bin/activate"
+
+# 安装pip
+source "/Volumes/Extreme SSD/vscode_projects/PaperReading/paper-qa/.venv/bin/activate"
+python -m ensurepip --upgrade
+python -m pip --version
+python -m pip install xxx
+
+# 启动后端
+cd "/Volumes/Extreme SSD/vscode_projects/PaperReading"
+source "/Volumes/Extreme SSD/vscode_projects/PaperReading/paper-qa/.venv/bin/activate"
+pip install -r "/Volumes/Extreme SSD/vscode_projects/PaperReading/paper-qa-script/reactflow-paperqa-prototype/backend/requirements.txt"
+python "/Volumes/Extreme SSD/vscode_projects/PaperReading/paper-qa-script/reactflow-paperqa-prototype/backend/main.py"
+
+# 启动前端
+cd "/Volumes/Extreme SSD/vscode_projects/PaperReading/paper-qa-script/reactflow-paperqa-prototype/frontend"
+npm install
+npm run dev
+
+
+# 输出信息到日志文件里
+"/Volumes/Extreme SSD/vscode_projects/PaperReading/paper-qa/.venv/bin/python" \
+"/Volumes/Extreme SSD/vscode_projects/PaperReading/paper-qa-script/manual_index_paper.py" \
+2>&1 | tee tmp.log
+
+# 你的环境配置  
+QWEN_API_KEY = 'sk-***REDACTED***'  
+model = 'openai/qwen-omni-turbo'  #  qwen-max
+embedding_model = "openai/text-embedding-v4" 
