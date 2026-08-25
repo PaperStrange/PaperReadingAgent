@@ -1,4 +1,4 @@
-# start-frontend.ps1 — 启动 ReactFlow 前端开发服务器（Vite，http://127.0.0.1:5173）
+﻿# start-frontend.ps1 — 启动 ReactFlow 前端开发服务器（Vite，http://127.0.0.1:5173）
 # 用法：powershell -ExecutionPolicy Bypass -File .\scripts\start-frontend.ps1
 $Root = Split-Path -Parent $PSScriptRoot
 $Frontend = Join-Path $Root "paper-qa-script\reactflow-paperqa-prototype\frontend"

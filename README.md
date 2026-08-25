@@ -1,37 +1,216 @@
 # PaperReading（Windows 移植版）
 
-> 由 macOS 原版（分支 `mac`）移植而来的论文问答可视化原型，基于 **PaperQA2**。
-> 完整文档见 `docs/`，入口如下。
+> 基于 **PaperQA2** 的论文问答可视化原型：把论文 PDF 放入目录，在浏览器 GUI 里按
+> 6 节点流水线完成**索引 → 检索 → 解析/分块/向量化 → 证据摘要 → 带引用的上下文回答**，
+> 并提供函数级运行时追踪与 PDF 页码预览。由 macOS 原版（分支 `mac`）移植而来。
 
-## 这是什么
+---
 
-把论文 PDF 放入 `data/pdf/`，在浏览器 GUI 中按 6 节点流水线
-（config → load_index → retrieve → parse_chunk_embed → evidence → answer）
-完成索引、检索、证据摘要与带引用的上下文回答（文字 + 图片内容），并提供函数级运行时追踪与 PDF 页码预览。
+## 功能一览
 
-## 文档（知识管理）
-
-| 文档 | 内容 |
+| 功能 | 说明 |
 |---|---|
-| [`docs/1-WORKFLOW.MD`](docs/1-WORKFLOW.MD) | 项目工作流：开发规范、知识管理、项目管理、**运行手册** |
-| [`docs/2-ARCHITECTURE.MD`](docs/2-ARCHITECTURE.MD) | 系统架构：架构图、模块职责、数据流、模型与存储约定 |
-| [`docs/3-LEARNED.MD`](docs/3-LEARNED.MD) | 开发经验教训：踩坑记录、验证记录、已知限制 |
+| 📄 论文入库 | 把 PDF/TXT/MD/HTML 放入 `data/pdf/`，自动解析文本、图片、公式/表格媒体 |
+| 🔍 全文 + 向量索引 | Tantivy 全文索引 + 本地向量化（`~/.pqa/indexes`），检索候选论文 |
+| 🧩 可视化流水线 | ReactFlow 画布 6 节点：`config → load_index → retrieve → parse_chunk_embed → evidence → answer`，可单步 / 一键串行 |
+| 📊 函数级追踪 | 每一步展示 paperqa 内部函数调用图（调用树、耗时、参数/返回值、PDF 页码预览） |
+| 🌐 上下文问答 | 基于整篇论文（文字 + 图片内容）生成答案，附引用与来源页码 |
+| 🖥️ 双界面 | ReactFlow 前端（5173）+ Streamlit 调试 UI（8501）+ FastAPI 后端（8787） |
+| ⌨️ CLI | `manual_index_paper.py` 建索引 + 交互问答；`manual_test_internet_connection.py` 连通性测试 |
 
-## 快速开始
+> 说明：代码中**没有**"PDF 上传 + 摘要 + 浏览器内句子划线高亮"界面；"句子级"信息以
+> chunk 文本 + 追踪卡片中的页码预览图 + 中文翻译呈现（详见 `docs/2-ARCHITECTURE.MD`）。
+
+---
+
+## 先决条件 Prerequisites
+
+| 依赖 | 版本要求 | 检查命令 |
+|---|---|---|
+| 操作系统 | Windows 10/11 x64 | — |
+| Python | `>= 3.11`（本机验证 3.13） | `python --version` |
+| Node.js | `>= 18`（本机验证 23） | `node --version` |
+| npm | `>= 9`（本机验证 10.9） | `npm --version` |
+| DeepSeek API Key | 一个可用 key | 见下方"配置 API Key" |
+
+- 首次运行会**联网下载**：Python 依赖（pip）、前端依赖（npm）、本地向量模型
+  `multi-qa-MiniLM-L6-cos-v1`（约 90MB，HuggingFace）。
+- 可选：系统 Graphviz 二进制（`winget install Graphviz.Graphviz`），仅影响 SVG/PNG 下载按钮。
+
+先确认运行时：
 
 ```powershell
-# 1) Python 虚拟环境 + 全部依赖
-powershell -ExecutionPolicy Bypass -File .\scripts\setup-env.ps1
-.\.venv\Scripts\python.exe -m pip install "fhlmi==0.42.1" "litellm==1.76.1"
-cd paper-qa-script\reactflow-paperqa-prototype\frontend; npm ci; cd ..\..\..
-
-# 2) 启动（三终端）
-.\scripts\start-backend.ps1     # FastAPI 127.0.0.1:8787
-.\scripts\start-frontend.ps1    # 前端 127.0.0.1:5173
-.\scripts\start-streamlit.ps1   # 可选 Streamlit 127.0.0.1:8501
+python --version
+node --version
+npm --version
 ```
 
-浏览器打开 http://127.0.0.1:5173 → 在 Config 节点填 DeepSeek Key（`.env` 已含默认值）→ 依次/一键执行 6 个节点。
+---
+
+## 本地部署（一步一步）
+
+### 第 0 步：获取代码
+
+```powershell
+git clone -b windows https://github.com/PaperStrange/PaperReadingAgent.git
+cd PaperReadingAgent          # 进入仓库根目录，后文用 <ROOT> 表示
+```
+
+> 若已在本机 `D:\All-Downloads\PaperReading\PaperReading-Windows`，直接把该目录当作 `<ROOT>` 即可。
+
+### 第 1 步：安装 Python 依赖
+
+在仓库根目录执行（自动创建 `.venv`、安装 paper-qa 源码包 + 后端 + 本地向量化依赖，
+并把 `fhlmi/litellm` 锁定到与 macOS 一致的版本）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-env.ps1
+```
+
+<details>
+<summary>等效的手动安装命令（可选）</summary>
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+$env:SETUPTOOLS_SCM_PRETEND_VERSION = "2026.1.6.dev10+g36348d0ca"
+.\.venv\Scripts\python.exe -m pip install "fhlmi==0.42.1" "litellm==1.76.1"
+.\.venv\Scripts\python.exe -m pip install -e .\paper-qa
+.\.venv\Scripts\python.exe -m pip install -e ".\paper-qa\packages\paper-qa-pypdf[media]"
+.\.venv\Scripts\python.exe -m pip install -e .\paper-qa\packages\paper-qa-pymupdf
+.\.venv\Scripts\python.exe -m pip install -r .\requirements-windows.txt
+```
+
+</details>
+
+### 第 2 步：安装前端依赖
+
+```powershell
+cd paper-qa-script\reactflow-paperqa-prototype\frontend
+npm ci          # 按 package-lock.json 精确安装（首次约 1–2 分钟）
+cd ..\..\..     # 回到 <ROOT>
+```
+
+### 第 3 步：配置 API Key
+
+Key 已写入 `paper-qa-script\.env`（默认 DeepSeek）。确认或替换：
+
+```powershell
+notepad paper-qa-script\.env
+```
+
+内容形如（`export KEY=value` 格式，启动脚本会自动导入）：
+
+```text
+export OPENAI_API_KEY=sk-你的DeepSeek密钥
+```
+
+> 不修改 `.env` 也可以：在网页 Config 节点的 `api_key` 栏直接填写。读取顺序：
+> config 节点 `params.api_key` → 环境变量 `OPENAI_API_KEY`。
+
+### 第 4 步：启动后端并验证
+
+**新开一个终端**，在仓库根目录：
+
+```powershell
+.\scripts\start-backend.ps1
+```
+
+看到 `Uvicorn running on http://127.0.0.1:8787` 即成功。另开终端验证：
+
+```powershell
+curl.exe http://127.0.0.1:8787/api/health
+# 期望输出： {"status":"ok"}
+```
+
+### 第 5 步：启动前端并验证
+
+**再开一个终端**，在仓库根目录：
+
+```powershell
+.\scripts\start-frontend.ps1
+```
+
+看到 `VITE v5.x ready` 后，浏览器打开 **http://127.0.0.1:5173** 应出现
+"PaperQA ReactFlow Prototype" 画布（6 个节点）。
+
+### 第 6 步（可选）：启动 Streamlit 调试 UI
+
+**第三个终端**：
+
+```powershell
+.\scripts\start-streamlit.ps1
+```
+
+浏览器打开 **http://127.0.0.1:8501**。
+
+### 第 7 步：跑通第一个问答
+
+1. 浏览器打开 http://127.0.0.1:5173 。
+2. 点击左侧 **1) Config** 节点，确认参数：
+   - `api_key`（留空则用 `.env`）、`paper_directory`（默认 `data/pdf`，相对后端工作目录）、
+   - `model=openai/deepseek-v4-flash`、`embedding_model=st-multi-qa-MiniLM-L6-cos-v1`。
+3. 点击 **2) Load Index**（首次约 1–2 分钟：解析 PDF + 本地向量化 + 写索引）。
+4. 依次点击 **3) Retrieve → 4) Parse Chunk Embed → 5) Gather Evidence → 6) Generate Answer**
+   （或顶栏 `Run All (Left-to-Right)` 一键执行）。
+5. 在 **6) Generate Answer** 节点查看 `output.answer`（带引用）与 `references`；
+   点击任一节点后，右侧"函数子画布"展示该步骤的函数调用图。
+
+### 第 8 步：验证安装（自动化）
+
+```powershell
+$env:OPENAI_API_KEY = "sk-你的DeepSeek密钥"      # 若 .env 已配置可跳过
+$env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
+.\.venv\Scripts\python.exe .\verify\verify_smoke.py   # 8 项冒烟（离线）
+.\.venv\Scripts\python.exe .\verify\verify_e2e.py     # 全链路（真实 API）
+.\.venv\Scripts\python.exe .\verify\verify_agent.py   # Agent 流程 + 翻译
+```
+
+`verify_e2e.py` 期望输出（节选）：
+
+```text
+[ok] backend healthy
+[ok] load_index ...   [ok] retrieve ...   [ok] parse_chunk_embed ...
+[ok] evidence contexts: 9   [ok] answer chars: 1681
+[written] ...verify_e2e_result.json   (exit code 0)
+```
+
+---
+
+## 验证安装 Verify installation
+
+| 检查项 | 命令 | 期望结果 |
+|---|---|---|
+| 后端存活 | `curl.exe http://127.0.0.1:8787/api/health` | `{"status":"ok"}` |
+| 前端页面 | 浏览器 http://127.0.0.1:5173 | 6 节点画布 |
+| Streamlit | 浏览器 http://127.0.0.1:8501 | 配置侧边栏 |
+| 依赖版本 | `.\.venv\Scripts\python.exe -m pip show fhlmi litellm` | `0.42.1` / `1.76.1` |
+| 全链路 | `.\.venv\Scripts\python.exe .\verify\verify_e2e.py` | 最终 `answer chars` 且 exit 0 |
+
+---
+
+## 故障排查 Troubleshooting
+
+| 现象 | 处理 |
+|---|---|
+| `python` 不是内部或外部命令 | 安装 Python 3.11+ 并勾选 "Add to PATH" |
+| `npm` 找不到 | 安装 Node.js LTS（自带 npm） |
+| 后端 8787 端口被占用 | 结束占用进程或改用 `uvicorn` 的 `--port`；前端 `--port 5173` 同理 |
+| 首次问答很久 / 下载模型 | 本地向量模型首次需从 HuggingFace 下载 ~90MB，请等待 |
+| 中文在控制台乱码 | 启动前设 `$env:PYTHONUTF8 = "1"` |
+| 提问返回空/失败 | 确认 DeepSeek key 有效、账户有额度；换 `fake` Agent 或透明流程 |
+| SVG/PNG 下载按钮报 `ExecutableNotFound` | 未装 Graphviz 二进制：`winget install Graphviz.Graphviz`（可选） |
+| 更多踩坑 | 见 `docs/3-LEARNED.MD` |
+
+---
+
+## 下一步
+
+- 开发规范 / 项目管理 / 更完整运行手册：`docs/1-WORKFLOW.MD`
+- 系统架构与文件职责：`docs/2-ARCHITECTURE.MD`
+- 踩坑记录与验证记录：`docs/3-LEARNED.MD`
+
+---
 
 ## 默认模型
 
@@ -40,15 +219,6 @@ cd paper-qa-script\reactflow-paperqa-prototype\frontend; npm ci; cd ..\..\..
 | LLM（答案/引用） | `openai/deepseek-v4-flash` @ `https://api.deepseek.com` |
 | 证据摘要 / 图片增强 | `openai/deepseek-v4-flash-vision-exp` |
 | 向量化 | `st-multi-qa-MiniLM-L6-cos-v1`（本地，首次自动下载） |
-
-## 验证
-
-```powershell
-.\.venv\Scripts\python.exe .\verify\verify_e2e.py    # 全链路（需 DeepSeek key）
-.\.venv\Scripts\python.exe .\verify\verify_smoke.py  # 冒烟
-```
-
-最近一次全链路验证：**通过**（10 条上下文、1656 字符带引用答案），详见 `docs/3-LEARNED.MD` §2。
 
 ## 版本控制
 

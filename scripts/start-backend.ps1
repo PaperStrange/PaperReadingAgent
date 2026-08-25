@@ -1,4 +1,4 @@
-# start-backend.ps1 — 启动 FastAPI 后端（http://127.0.0.1:8787）
+﻿# start-backend.ps1 — 启动 FastAPI 后端（http://127.0.0.1:8787）
 # 用法：powershell -ExecutionPolicy Bypass -File .\scripts\start-backend.ps1
 $ErrorActionPreference = "Continue"
 $Root = Split-Path -Parent $PSScriptRoot
