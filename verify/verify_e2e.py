@@ -1,14 +1,14 @@
-﻿"""End-to-end verification of the ORIGINAL (pre-port) codebase on Windows.
+"""End-to-end verification of the ported codebase on Windows.
 
-Drives the real FastAPI backend (backend/main.py, unchanged original) through the
-full 6-step pipeline with real DashScope API calls:
+Drives the real FastAPI backend (backend/main.py) through the full 6-step pipeline
+with a real DeepSeek API (chat + vision) and local SentenceTransformer embeddings:
   config -> load_index -> retrieve -> parse_chunk_embed -> evidence -> answer
 
 Prereqs:
-  - .venv with paper-qa + fastapi/uvicorn (see docs)
-  - OPENAI_API_KEY env var set to the DashScope key (or pass --api-key)
+  - .venv with paper-qa + fastapi/uvicorn + sentence-transformers (see docs/1-WORKFLOW.MD)
+  - OPENAI_API_KEY env var set to the DeepSeek key
 Run:
-  .venv\\Scripts\\python.exe verify_e2e.py [--keep-server]
+  .venv\\Scripts\\python.exe verify\\verify_e2e.py [--keep-server]
 """
 from __future__ import annotations
 
@@ -25,12 +25,14 @@ ROOT = Path(__file__).resolve().parent.parent
 BACKEND = ROOT / "paper-qa-script" / "reactflow-paperqa-prototype" / "backend" / "main.py"
 PAPER_DIR = ROOT / "data" / "pdf"
 OUT = ROOT / "verify" / "verify_e2e_result.json"
+SERVER_LOG = ROOT / "verify" / "verify_e2e_server.log"
 PORT = 8787
 
 DASH_KEY = os.getenv("OPENAI_API_KEY", "")
-# [macOS] 鍘熼獙璇佷娇鐢?DashScope锛欰PI_BASE=dashscope compatible-mode, MODEL=openai/qwen-omni-turbo,
-#         EMB=openai/text-embedding-v4锛堣处鎴锋瑺璐瑰悗涓嶅彲鐢級
-# Windows 楠岃瘉锛欴eepSeek LLM + 鏈湴 sentence-transformers 鍚戦噺鍖?API_BASE = "https://api.deepseek.com"
+# [macOS] 原验证使用 DashScope：API_BASE=dashscope compatible-mode, MODEL=openai/qwen-omni-turbo,
+#         EMB=openai/text-embedding-v4（账户欠费后不可用）
+# Windows 验证：DeepSeek LLM + 本地 sentence-transformers 向量化
+API_BASE = "https://api.deepseek.com"
 MODEL = "openai/deepseek-v4-flash"
 EMB = "st-multi-qa-MiniLM-L6-cos-v1"
 QUESTION = "What is PaperQA2 and what are its main components?"
@@ -48,11 +50,8 @@ async def main() -> int:
     server = subprocess.Popen(
         [sys.executable, str(BACKEND)],
         cwd=str(ROOT),
-        stdout=open(ROOT / "verify" / "verify_e2e_server.log", "w", encoding="utf-8"),
+        stdout=open(SERVER_LOG, "w", encoding="utf-8"),
         stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
         env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
     )
     # wait for health
@@ -68,7 +67,8 @@ async def main() -> int:
             time.sleep(1)
     else:
         print("ERR: backend did not become healthy")
-        print((server.stdout.read() if server.stdout else "")[-4000:])
+        if SERVER_LOG.exists():
+            print(SERVER_LOG.read_text(encoding="utf-8", errors="replace")[-4000:])
         server.kill()
         return 3
     print("[ok] backend healthy")
@@ -152,11 +152,9 @@ async def main() -> int:
     except Exception as exc:  # noqa: BLE001
         results["status"] = f"FAIL: {type(exc).__name__}: {exc}"
         print(f"\n[FAIL] {results['status']}")
-        log_text = (ROOT / "verify" / "verify_e2e_server.log").read_text(
-            encoding="utf-8", errors="replace"
-        )
-        print("\n===== backend server log (tail) =====")
-        print(log_text[-6000:])
+        if SERVER_LOG.exists():
+            print("\n===== backend server log (tail) =====")
+            print(SERVER_LOG.read_text(encoding="utf-8", errors="replace")[-6000:])
     finally:
         if not args.keep_server:
             server.terminate()

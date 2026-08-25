@@ -11,5 +11,5 @@ if (-not (Test-Path (Join-Path $Frontend "node_modules"))) {
 }
 
 Set-Location $Frontend
-# 直接调用 vite（npm run dev -- 传参在 Windows 上不可靠；--host 显式绑定 IPv4）
-& "$Frontend\node_modules\.bin\vite.cmd" --host 127.0.0.1 --port 5173 --strictPort
+# 直接调用 vite 的 node 入口（.cmd 经 `powershell -File` 调用时不会保持前台运行）
+& node "$Frontend\node_modules\vite\bin\vite.js" --host 127.0.0.1 --port 5173 --strictPort

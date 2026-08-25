@@ -1,7 +1,7 @@
 {
-  "session_id": "4af29423-4be6-4300-a2f2-759322086325",
+  "session_id": "83984b3d-b5dc-4b0f-8123-9438b5ccc840",
   "config": {
-    "duration_s": 0.12,
+    "duration_s": 0.06,
     "ok": true,
     "output": {
       "paper_directory": "D:\\All-Downloads\\PaperReading\\PaperReading-Windows\\data\\pdf",
@@ -13,7 +13,7 @@
     "function_trace_count": 0
   },
   "load_index": {
-    "duration_s": 0.02,
+    "duration_s": 0.01,
     "ok": true,
     "output": {
       "index_name": "verify_e2e_index",
@@ -26,7 +26,7 @@
     "function_trace_count": 5
   },
   "retrieve": {
-    "duration_s": 0.02,
+    "duration_s": 0.01,
     "ok": true,
     "output": {
       "query": "What is PaperQA2 and what are its main components?",
@@ -39,7 +39,7 @@
     "function_trace_count": 4
   },
   "parse_chunk_embed": {
-    "duration_s": 49.91,
+    "duration_s": 47.38,
     "ok": true,
     "output": {
       "docs_count": 1,
@@ -49,7 +49,7 @@
           "file": "PaperQA2.pdf",
           "docname": "Skarlinski2024",
           "added_chunks": 23,
-          "duration_s": 49.888
+          "duration_s": 47.371
         }
       ],
       "sample_texts": [
@@ -99,39 +99,37 @@
     "function_trace_count": 60
   },
   "evidence": {
-    "duration_s": 15.64,
+    "duration_s": 15.21,
     "ok": true,
     "output": {
       "question": "What is PaperQA2 and what are its main components?",
-      "contexts_count": 10,
+      "contexts_count": 9,
       "context_ids": [
-        "pqac-1c83ae83",
-        "pqac-3a7dea76",
-        "pqac-ef418c11",
-        "pqac-d1682421",
-        "pqac-1eea09e4",
-        "pqac-4118c995",
-        "pqac-18366295",
-        "pqac-8a06e666",
-        "pqac-e05743d8",
-        "pqac-73aa8066"
+        "pqac-8f1e645b",
+        "pqac-a58afcda",
+        "pqac-0cd71616",
+        "pqac-584d15e3",
+        "pqac-9f8c4870",
+        "pqac-3920535e",
+        "pqac-b118bbc6",
+        "pqac-c2bf1c3d",
+        "pqac-7cc6ba36"
       ]
     },
     "error": null,
     "function_trace_count": 21
   },
   "answer": {
-    "duration_s": 13.77,
+    "duration_s": 12.03,
     "ok": true,
     "output": {
-      "answer": "PaperQA2 is a frontier language model agent optimized for improved factuality, designed to perform real-world literature research tasks such as information retrieval, summarization, and contradiction detection (Skarlinski2024 pages 1-2). It is a retrieval-augmented generation (RAG) agent that treats retrieval and response generation as a multi-step agent task rather than a direct procedure (Skarlinski2024 pages 2-3). The system has demonstrated performance matching or exceeding subject matter experts on question answering, cited article summarization, and contradiction detection (Skarlinski2024 pages 1-2).\n\nIts main components include a 'Paper Search' tool, which transforms user requests into keyword searches to identify candidate papers from sources like Semantic Scholar, followed by parsing with Grobid or PyMuPDF and chunking (Skarlinski2024 pages 2-3, Skarlinski2024 pages 13-14). A 'Gather Evidence' tool performs top-k dense vector retrieval with cosine similarity, then applies a reranking and contextual summarization (RCS) step using an LLM to summarize each top-k chunk (Skarlinski2024 pages 13-14). The system also includes a 'Generate Answer' tool that uses the top-ranked evidence summaries in a prompt for the final response (Skarlinski2024 pages 2-3). Additional tools include 'Citation Traversal' and 'Rank Contexts' (Skarlinski2024 pages 3-5). Configuration objects specify parameters such as query, LLM choices, prompts, max_sources, and parsing settings (Skarlinski2024 pages 12-13). The agentic nature allows dynamic searches based on observed results, improving accuracy over non-agentic versions (Skarlinski2024 pages 3-5).",
-      "references": "1. (Skarlinski2024 pages 1-2): Skarlinski, Michael D., et al. “Language Agents Achieve Superhuman Synthesis of Scientific Knowledge.” *arXiv*, 26 Sep. 2024, arXiv:2409.13740v2.\n\n2. (Skarlinski2024 pages 2-3): Skarlinski, Michael D., et al. “Language Agents Achieve Superhuman Synthesis of Scientific Knowledge.” *arXiv*, 26 Sep. 2024, arXiv:2409.13740v2.\n\n3. (Skarlinski2024 pages 13-14): Skarlinski, Michael D., et al. “Language Agents Achieve Superhuman Synthesis of Scientific Knowledge.” *arXiv*, 26 Sep. 2024, arXiv:2409.13740v2.\n\n4. (Skarlinski2024 pages 3-5): Skarlinski, Michael D., et al. “Language Agents Achieve Superhuman Synthesis of Scientific Knowledge.” *arXiv*, 26 Sep. 2024, arXiv:2409.13740v2.\n\n5. (Skarlinski2024 pages 12-13): Skarlinski, Michael D., et al. “Language Agents Achieve Superhuman Synthesis of Scientific Knowledge.” *arXiv*, 26 Sep. 2024, arXiv:2409.13740v2.",
+      "answer": "PaperQA2 is a frontier language model agent optimized for improved factuality in scientific literature research, matching or exceeding subject matter expert performance on realistic tasks such as information retrieval, summarization into cited Wikipedia-style articles, and contradiction detection (Skarlinski2024 pages 1-2). It is a RAG agent that treats retrieval and response generation as a multi-step agent task, decomposing RAG into tools that allow iterative revision of search parameters and examination of candidate answers before producing a final response (Skarlinski2024 pages 2-3).\n\nIts main components include a 'Paper Search' tool that transforms user requests into keyword searches (via services like Semantic Scholar) to identify candidate papers, followed by text extraction and embedding using hybrid dense-sparse models (Skarlinski2024 pages 13-14, Skarlinski2024 pages 2-3). A 'Gather Evidence' tool performs top-k dense vector retrieval followed by LLM reranking and contextual summarization (RCS), which maps LLM completions across chunks to provide summaries (Skarlinski2024 pages 2-3, Skarlinski2024 pages 13-14). A 'Generate Answer' tool uses the top-ranked evidence summaries to craft a final response (Skarlinski2024 pages 2-3). Additionally, a 'Citation Traversal' tool enables hierarchical indexing via citers/citees, improving DOI recall (Skarlinski2024 pages 5-5). The system also includes a WikiCrow system that combines PaperQA2 calls for summarization tasks (Skarlinski2024 pages 5-5). Ablations show that RCS, deep ranking (top-k > 10), and high-performing LLMs (e.g., GPT-4-Turbo) are critical for retrieval accuracy (Skarlinski2024 pages 5-5).",
+      "references": "1. (Skarlinski2024 pages 1-2): Skarlinski, Michael D., et al. “Language Agents Achieve Superhuman Synthesis of Scientific Knowledge.” *arXiv*, 26 Sep. 2024, arXiv:2409.13740v2.\n\n2. (Skarlinski2024 pages 2-3): Skarlinski, Michael D., et al. “Language Agents Achieve Superhuman Synthesis of Scientific Knowledge.” *arXiv*, 26 Sep. 2024, arXiv:2409.13740v2.\n\n3. (Skarlinski2024 pages 13-14): Skarlinski, Michael D., et al. “Language Agents Achieve Superhuman Synthesis of Scientific Knowledge.” *arXiv*, 26 Sep. 2024, arXiv:2409.13740v2.\n\n4. (Skarlinski2024 pages 5-5): Skarlinski, Michael D., et al. “Language Agents Achieve Superhuman Synthesis of Scientific Knowledge.” *arXiv*, 26 Sep. 2024, arXiv:2409.13740v2.",
       "used_contexts": [
-        "pqac-18366295",
-        "pqac-1c83ae83",
-        "pqac-d1682421",
-        "pqac-e05743d8",
-        "pqac-ef418c11"
+        "pqac-8f1e645b",
+        "pqac-a58afcda",
+        "pqac-b118bbc6",
+        "pqac-c2bf1c3d"
       ],
       "answer_available_fields": [
         "answer",

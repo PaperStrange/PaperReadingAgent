@@ -1,21 +1,21 @@
-# PaperReading 代码库架构总览与文件说明（Windows 移植版）
+# 2-ARCHITECTURE —— 项目架构
 
-> 本仓库由 macOS 原版（`PaperReading-MAC`，分支 `mac`）移植而来，分支 `windows`。
-> 移植原则：**保留全部原代码结构与注释，仅在被处添加 Windows/DeepSeek 适配**（原代码块以 `[macOS original]` 注释保留）。
-> 除一处原文件缺陷修复（`runtime_trace.py`，见 docs/03）外，所有改动不破坏 macOS 版可运行性。
+> 适用于 `PaperReading-Windows`。运行/规范见 `1-WORKFLOW.MD`，经验教训见 `3-LEARNED.MD`。
+> 本文件回答：系统由哪些部分组成、各文件职责、数据如何流转、模型与存储如何配置。
+
+---
 
 ## 1. 项目是什么
 
-基于 **PaperQA2**（vendored，`2026.1.6.dev10+g36348d0ca`）的**论文问答可视化原型**：
+基于 **PaperQA2**（FutureHouse，vendored 源码 `2026.1.6.dev10+g36348d0ca`）的**论文问答可视化原型**：
 
-- 论文 PDF 放入 `data/pdf/`，GUI 建立**全文+向量索引**（Tantivy）；
+- 论文 PDF 放入 `data/pdf/`，GUI 建立**全文 + 向量索引**（Tantivy）；
 - ReactFlow 前端按 6 节点流水线可视化执行：`config → load_index → retrieve → parse_chunk_embed → evidence → answer`；
 - 每个节点可单步执行、查看输入/输出快照、查看**函数级运行时追踪图**（调用树 + 耗时 + 参数/返回值 + PDF 页码预览）；
-- Streamlit 调试 UI（索引/透明流程/Agent 流程/追踪图/日志）；
-- CLI 脚本（manual_index_paper.py 等）；`src/` 语料采集脚本（ACL/ICLR/NeurIPS，独立工具链）。
+- 另有 Streamlit 调试 UI 与 CLI 脚本；`src/` 为学术语料采集（ACL/ICLR/NeurIPS，独立工具链）。
 
-**功能边界（以实际代码为准）**：没有"PDF 上传+摘要+浏览器内句子划线高亮"界面；内容展示为
-chunk 文本 + 函数追踪卡片里的完整文本/中文翻译/页码预览图（PyMuPDF 渲染）。
+**功能边界（以实际代码为准）**：没有"PDF 上传 + 摘要 + 浏览器内句子划线高亮"界面；"句子级"内容以
+chunk 文本 + 函数追踪卡片中的完整文本/中文翻译/页码预览图（PyMuPDF 渲染）呈现。
 
 ## 2. 总体架构（Mermaid）
 
@@ -67,7 +67,7 @@ graph TD
     EMB --> MODELS
 ```
 
-### 一次完整问答（透明流水线，Windows 实际验证通过）
+### 一次完整问答（透明流水线，已实测通过）
 
 ```mermaid
 sequenceDiagram
@@ -75,11 +75,11 @@ sequenceDiagram
     participant BE as FastAPI
     participant PQ as paperqa
     participant DS as DeepSeek
-    participant ST as 本地ST模型
+    participant STM as 本地ST模型
     UI->>BE: config（api_key/api_base/model/embedding/paper_directory…）
     BE->>PQ: Settings（DeepSeek + st- 本地向量 + vision enrichment）
     UI->>BE: load_index{build:true}
-    PQ->>ST: 分块文本 embed（每批 10，384 维）
+    PQ->>STM: 分块文本 embed（每批 10，384 维）
     PQ->>PQ: Tantivy 写入 ~/.pqa/indexes/debug_index
     BE-->>UI: indexed_files + function_trace(74 个事件)
     UI->>BE: retrieve{query,top_n}
@@ -89,14 +89,14 @@ sequenceDiagram
     PQ->>DS: vision 增强每张图（flash-vision-exp）
     BE-->>UI: texts_count + sample_texts
     UI->>BE: evidence{question}
-    PQ->>DS: summary_llm=vison：证据片段（含图片）摘要
+    PQ->>DS: summary_llm=vision：证据片段（含图片）摘要
     BE-->>UI: context_ids(10 条)
     UI->>BE: answer
     PQ->>DS: llm=flash：基于证据+图片上下文生成答案+引用
     BE-->>UI: answer(≈1600 字符) + references + used_contexts
 ```
 
-## 3. Windows 目录结构
+## 3. 目录结构
 
 ```
 PaperReading-Windows/
@@ -119,36 +119,37 @@ PaperReading-Windows/
 │       └── frontend/                  # React+Vite（App.jsx 默认参数已适配）
 ├── src/                       # ACL/ICLR/NeurIPS 语料采集
 ├── data/pdf/PaperQA2.pdf      # 示例论文
-├── scripts/                   # 新增：setup-env.ps1 / start-backend.ps1 / start-frontend.ps1 / start-streamlit.ps1
-├── verify/                    # 新增：验收脚本（smoke/e2e/agent）+ e2e 结果
-├── requirements-windows.txt   # 新增：Windows 依赖清单
+├── scripts/                   # setup-env.ps1 / start-backend.ps1 / start-frontend.ps1 / start-streamlit.ps1
+├── verify/                    # 验收脚本（smoke/e2e/agent）+ e2e 结果
+├── requirements-windows.txt   # Windows 依赖清单
 ├── requirements.txt           # 原语料采集依赖（未动）
-└── docs/                      # 本文档目录
+├── docs/                      # 1-WORKFLOW / 2-ARCHITECTURE / 3-LEARNED
+└── README.md                  # 入口
 ```
 
-## 4. 默认模型与密钥（Windows）
+## 4. 文件级职责
+
+- **backend/main.py**（529+ 行）：全部 API 路由；`build_settings()` 是**模型配置唯一真源**（前端 config 节点参数直接映射）；6 步执行逻辑；`RunEventBroker`/SSE；`RuntimeTracer(on_event=…)` 实时推送。
+- **App.jsx**（1000+ 行）：节点状态机（idle/running/success/failed/stale）；`runSingleNode`（EventSource 收流 + POST）；上下游拓扑（`getUpstreamIds/getDownstreamIds`）；`buildFunctionSubgraphForStep`（调用树布局：深度分组、列宽 340、软碰撞避让、最多 140 调用）；`runAllSequential`。
+- **FlowNode.jsx / FunctionTraceNode.jsx / JsonTree.jsx**：步骤节点卡片（参数 JSON 编辑、Run/Run Upstream/Run From Here、快照、trace 列表）；函数节点卡片（文本全文/中文翻译按钮/图片预览）；JSON 树渲染。
+- **runtime_trace.py**：`RuntimeTracer`（19 个显式 TARGETS + 8 个 MODULE_TARGETS 全量函数 + 可选 lmi embed）；上下文栈基于 contextvars；`_make_chunk` 的 result 载荷含 text_full/text_preview/media 信息/页码预览（fitz 渲染，0.45 缩放，≤400KB）。
+- **streamlit_paperqa_app.py**：`SessionLogHandler`、`_reset_litellm_logging_worker`（修复跨 event loop 队列问题）、`run_coro`、透明流水线（5 节点计时）、DOT 生成与 graphviz 渲染/下载。
+
+## 5. 默认模型与密钥（Windows）
 
 | 用途 | macOS 原版 | Windows 移植版 |
 |---|---|---|
-| 主 LLM（答案生成/引用） | `openai/qwen-omni-turbo` | `openai/deepseek-v4-flash` |
+| 主 LLM（答案/引用） | `openai/qwen-omni-turbo` | `openai/deepseek-v4-flash` |
 | 证据摘要 summary_llm | 同上（支持图片） | `openai/deepseek-v4-flash-vision-exp`（证据上下文可能含图片，文本模型会报 `does not support image`） |
 | 图片/图表增强 enrichment_llm | 同上 | `openai/deepseek-v4-flash-vision-exp` |
 | 向量化 | `openai/text-embedding-v4`（API） | `st-multi-qa-MiniLM-L6-cos-v1`（本地，首次自动下载 ~90MB） |
 | API Base | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `https://api.deepseek.com` |
-| 思考模式 | 不适用 | 通过 `extra_body={"thinking":{"type":"disabled"}}` 关闭（litellm 不保留 reasoning_content，多轮工具调用会 400） |
+| 思考模式 | 不适用 | `extra_body={"thinking":{"type":"disabled"}}` 关闭（详见 3-LEARNED） |
 
 密钥读取顺序：config 节点 `params.api_key` 或环境变量 `OPENAI_API_KEY`（`.env` 由 ps1 启动脚本导入）。
-
-## 5. 文件级职责（与 mac 版相同的部分不再重复）
-
-- **backend/main.py**（529+ 行）：全部 API 路由、`build_settings`（全部模型配置的唯一真源，前端 config 节点参数直接映射到这里）、6 步执行逻辑、`RunEventBroker`/SSE、`RuntimeTracer(on_event=…)` 实时推送。
-- **App.jsx**（1000+ 行）：节点状态机（idle/running/success/failed/stale）、`runSingleNode`（EventSource 收流 + POST）、上游/下游拓扑（`getUpstreamIds/getDownstreamIds`）、`buildFunctionSubgraphForStep`（调用树布局：深度分组、列宽 340、软碰撞避让、最多 140 个调用）、`runAllSequential`。
-- **FlowNode.jsx / FunctionTraceNode.jsx / JsonTree.jsx**：见上表；FunctionTraceNode 支持"Translate to 中文"（调 `/api/translate_preview`）与图片展示。
-- **runtime_trace.py**：`RuntimeTracer`（19 个显式 TARGETS + 8 个 MODULE_TARGETS 全量函数、OPTIONAL lmi embed）；上下文栈基于 contextvars；`_make_chunk` 的 result 载荷含 text_full/text_preview/media 信息/页码预览（fitz 渲染，0.45 缩放，≤400KB）。
-- **streamlit_paperqa_app.py**：`SessionLogHandler`、`_reset_litellm_logging_worker`（修复跨 event loop 队列问题）、`run_coro`、透明流水线（5 节点计时）、DOT 生成与 graphviz 渲染/下载。
 
 ## 6. 数据与存储约定
 
 - 索引目录：`%USERPROFILE%\.pqa\indexes\<name>\`（`PQA_HOME` 可覆盖）；mac 版为 `~/.pqa/indexes`（同一代码路径）。
-- 前端只读后端返回的 JSON 快照；会话与索引均在后端/磁盘，重启后端后会话丢失但索引保留（`load_index{build:false}` 可复用）。
+- 前端只读后端返回的 JSON 快照；会话/索引在后端与磁盘；重启后端会话丢失、索引保留（`load_index{build:false}` 复用）。
 - `data/parsed/*.jsonl`（97MB 语料）不入库；`data/pdf/PaperQA2.pdf` 入库用于演示。

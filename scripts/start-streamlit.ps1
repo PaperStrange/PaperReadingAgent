@@ -16,4 +16,4 @@ if (Test-Path $envFile) {
 }
 $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 
-& "$Root\.venv\Scripts\python.exe" -m streamlit run "$Root\paper-qa-script\streamlit_paperqa_app.py"
+& "$Root\.venv\Scripts\python.exe" -m streamlit run "$Root\paper-qa-script\streamlit_paperqa_app.py" --server.headless true --browser.gatherUsageStats false
