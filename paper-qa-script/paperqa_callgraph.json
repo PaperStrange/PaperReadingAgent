@@ -1,0 +1,1361 @@
+{
+  "nodes": [
+    "agents.__init__:is_running_under_cli",
+    "agents.__init__:set_up_rich_handler",
+    "agents.__init__:configure_log_verbosity",
+    "agents.__init__:configure_cli_logging",
+    "agents.__init__:ask",
+    "agents.__init__:search_query",
+    "agents.__init__:build_index",
+    "agents.__init__:save_settings",
+    "agents.__init__:main",
+    "agents.env:settings_to_tools",
+    "agents.env:settings_to_tools.make_tool",
+    "agents.env:make_clinical_trial_status",
+    "agents.env:clinical_trial_status",
+    "agents.env:PaperQAEnvironment.__init__",
+    "agents.env:PaperQAEnvironment.from_task",
+    "agents.env:PaperQAEnvironment.make_tools",
+    "agents.env:PaperQAEnvironment._reset_docs",
+    "agents.env:PaperQAEnvironment.make_initial_state",
+    "agents.env:PaperQAEnvironment.reset",
+    "agents.env:PaperQAEnvironment.export_frame",
+    "agents.env:PaperQAEnvironment._has_excess_answer_failures",
+    "agents.env:PaperQAEnvironment.step",
+    "agents.env:PaperQAEnvironment.get_id",
+    "agents.env:PaperQAEnvironment.__deepcopy__",
+    "agents.helpers:get_year",
+    "agents.helpers:litellm_get_search_query",
+    "agents.helpers:table_formatter",
+    "agents.main:agent_query",
+    "agents.main:run_agent",
+    "agents.main:_run_with_timeout_failure",
+    "agents.main:run_fake_agent",
+    "agents.main:run_fake_agent.step",
+    "agents.main:run_fake_agent.rollout",
+    "agents.main:run_aviary_agent",
+    "agents.main:run_aviary_agent.rollout",
+    "agents.main:LDPRolloutCallback.__init__",
+    "agents.main:LDPRolloutCallback.after_agent_get_asv",
+    "agents.main:LDPRolloutCallback.after_env_reset",
+    "agents.main:LDPRolloutCallback.after_env_step",
+    "agents.main:LDPAdjustToolsForAgentCallback.__init__",
+    "agents.main:LDPAdjustToolsForAgentCallback.after_env_reset",
+    "agents.main:run_ldp_agent",
+    "agents.main:run_ldp_agent.rollout",
+    "agents.main:index_search",
+    "agents.models:SupportsPickle.__reduce__",
+    "agents.models:SupportsPickle.__getstate__",
+    "agents.models:SupportsPickle.__setstate__",
+    "agents.models:AnswerResponse.strip_answer",
+    "agents.models:AnswerResponse.get_summary",
+    "agents.models:SimpleProfiler.timer",
+    "agents.models:SimpleProfiler.start",
+    "agents.models:SimpleProfiler.stop",
+    "agents.models:SimpleProfiler.results",
+    "agents.search:SearchDocumentStorage.extension",
+    "agents.search:SearchDocumentStorage.write_to_string",
+    "agents.search:SearchDocumentStorage.read_from_string",
+    "agents.search:reap_opened_index_cache",
+    "agents.search:SearchIndex.__init__",
+    "agents.search:SearchIndex.index_directory",
+    "agents.search:SearchIndex.index_filename",
+    "agents.search:SearchIndex.docs_index_directory",
+    "agents.search:SearchIndex.file_index_filename",
+    "agents.search:SearchIndex.schema",
+    "agents.search:SearchIndex.index",
+    "agents.search:SearchIndex.__del__",
+    "agents.search:SearchIndex.searcher",
+    "agents.search:SearchIndex.writer",
+    "agents.search:SearchIndex.count",
+    "agents.search:SearchIndex.index_files",
+    "agents.search:SearchIndex.filehash",
+    "agents.search:SearchIndex.filecheck",
+    "agents.search:SearchIndex.mark_failed_document",
+    "agents.search:SearchIndex.add_document",
+    "agents.search:SearchIndex.add_document._add_document",
+    "agents.search:SearchIndex.delete_document",
+    "agents.search:SearchIndex.remove_from_index",
+    "agents.search:SearchIndex.save_index",
+    "agents.search:SearchIndex.get_saved_object",
+    "agents.search:SearchIndex.query",
+    "agents.search:fetch_kwargs_from_manifest",
+    "agents.search:maybe_get_manifest",
+    "agents.search:process_file",
+    "agents.search:_make_progress_bar_update",
+    "agents.search:_make_progress_bar_update.progress_bar_update",
+    "agents.search:get_directory_index",
+    "agents.tools:make_status",
+    "agents.tools:default_status",
+    "agents.tools:EnvironmentState.status",
+    "agents.tools:EnvironmentState.get_relevant_contexts",
+    "agents.tools:EnvironmentState.record_action",
+    "agents.tools:EnvironmentState.query_tool_history",
+    "agents.tools:PaperSearch.paper_search",
+    "agents.tools:PaperSearch.paper_search.clean",
+    "agents.tools:GatherEvidence.gather_evidence",
+    "agents.tools:GenerateAnswer.gen_answer",
+    "agents.tools:GenerateAnswer.extract_answer_from_message",
+    "agents.tools:Reset.reset",
+    "agents.tools:Complete.complete",
+    "agents.tools:ClinicalTrialsSearch.clinical_trials_search",
+    "clients.__init__:DocMetadataTask.provider_queries",
+    "clients.__init__:DocMetadataTask.processor_queries",
+    "clients.__init__:DocMetadataTask.__repr__",
+    "clients.__init__:DocMetadataClient.__init__",
+    "clients.__init__:DocMetadataClient.query",
+    "clients.__init__:DocMetadataClient.bulk_query",
+    "clients.__init__:DocMetadataClient.upgrade_doc_to_doc_details",
+    "clients.client_models:TitleAuthorQuery.ensure_fields_are_present",
+    "clients.client_models:TitleAuthorQuery.zero_and_one",
+    "clients.client_models:DOIQuery.add_doi_to_fields_and_validate",
+    "clients.client_models:MetadataProvider.query",
+    "clients.client_models:MetadataProvider._query",
+    "clients.client_models:MetadataProvider.query_factory",
+    "clients.client_models:DOIOrTitleBasedProvider.query",
+    "clients.client_models:DOIOrTitleBasedProvider._query",
+    "clients.client_models:DOIOrTitleBasedProvider.query_factory",
+    "clients.client_models:MetadataPostProcessor.process",
+    "clients.client_models:MetadataPostProcessor._process",
+    "clients.client_models:MetadataPostProcessor.query_creator",
+    "clients.crossref:crossref_headers",
+    "clients.crossref:get_crossref_mailto",
+    "clients.crossref:doi_to_bibtex",
+    "clients.crossref:parse_crossref_to_doc_details",
+    "clients.crossref:get_doc_details_from_crossref",
+    "clients.crossref:download_retracted_dataset",
+    "clients.crossref:CrossrefProvider._query",
+    "clients.exceptions:DOINotFoundError.__init__",
+    "clients.exceptions:make_flaky_ssl_error_predicate",
+    "clients.exceptions:make_flaky_ssl_error_predicate.predicate",
+    "clients.journal_quality:JournalQualityPostProcessor.__init__",
+    "clients.journal_quality:JournalQualityPostProcessor.load_data",
+    "clients.journal_quality:JournalQualityPostProcessor._process",
+    "clients.journal_quality:JournalQualityPostProcessor.query_creator",
+    "clients.journal_quality:download_file",
+    "clients.journal_quality:download_file.download",
+    "clients.journal_quality:process_csv",
+    "clients.journal_quality:main",
+    "clients.openalex:reformat_name",
+    "clients.openalex:get_openalex_mailto",
+    "clients.openalex:get_openalex_api_key",
+    "clients.openalex:get_doc_details_from_openalex",
+    "clients.openalex:parse_openalex_to_doc_details",
+    "clients.openalex:OpenAlexProvider.get_doc_details",
+    "clients.openalex:OpenAlexProvider.search_by_title",
+    "clients.openalex:OpenAlexProvider._query",
+    "clients.retractions:RetractionDataPostProcessor.__init__",
+    "clients.retractions:RetractionDataPostProcessor._has_cache_expired",
+    "clients.retractions:RetractionDataPostProcessor._is_csv_cached",
+    "clients.retractions:RetractionDataPostProcessor._filter_dois",
+    "clients.retractions:RetractionDataPostProcessor.load_data",
+    "clients.retractions:RetractionDataPostProcessor._process",
+    "clients.retractions:RetractionDataPostProcessor.query_creator",
+    "clients.semantic_scholar:SemanticScholarSearchType.make_url_params",
+    "clients.semantic_scholar:_s2_get_with_retrying",
+    "clients.semantic_scholar:s2_authors_match",
+    "clients.semantic_scholar:parse_s2_to_doc_details",
+    "clients.semantic_scholar:semantic_scholar_headers",
+    "clients.semantic_scholar:s2_title_search",
+    "clients.semantic_scholar:get_s2_doc_details_from_doi",
+    "clients.semantic_scholar:get_s2_doc_details_from_title",
+    "clients.semantic_scholar:SemanticScholarProvider._query",
+    "clients.unpaywall:UnpaywallProvider.get_doc_details",
+    "clients.unpaywall:UnpaywallProvider.search_by_title",
+    "clients.unpaywall:UnpaywallProvider._create_doc_details",
+    "clients.unpaywall:UnpaywallProvider._query",
+    "contrib.openreview_paper_helper:OpenReviewPaperHelper.__init__",
+    "contrib.openreview_paper_helper:OpenReviewPaperHelper.get_venues",
+    "contrib.openreview_paper_helper:OpenReviewPaperHelper.get_submissions",
+    "contrib.openreview_paper_helper:OpenReviewPaperHelper.create_submission_string",
+    "contrib.openreview_paper_helper:OpenReviewPaperHelper.fetch_relevant_papers",
+    "contrib.openreview_paper_helper:OpenReviewPaperHelper._get_relevant_papers_chunk",
+    "contrib.openreview_paper_helper:OpenReviewPaperHelper.download_papers",
+    "contrib.openreview_paper_helper:OpenReviewPaperHelper._download_pdf",
+    "contrib.openreview_paper_helper:OpenReviewPaperHelper.aadd_docs",
+    "contrib.zotero:ZoteroPaper.__str__",
+    "contrib.zotero:ZoteroDB.__init__",
+    "contrib.zotero:ZoteroDB.get_pdf",
+    "contrib.zotero:ZoteroDB.iterate",
+    "contrib.zotero:ZoteroDB._sliced_collection_items",
+    "contrib.zotero:ZoteroDB._get_collection_id",
+    "contrib.zotero:_get_citation_key",
+    "contrib.zotero:_extract_pdf_key",
+    "core:llm_parse_json",
+    "core:llm_parse_json.escape_newlines",
+    "core:llm_parse_json.fraction_replacer",
+    "core:LLMContextError.__init__",
+    "core:_map_fxn_summary",
+    "core:map_fxn_summary",
+    "docs:Docs.__eq__",
+    "docs:Docs.clear_docs",
+    "docs:Docs._get_unique_name",
+    "docs:Docs.aadd_file",
+    "docs:Docs.aadd_url",
+    "docs:Docs.aadd",
+    "docs:Docs.aadd_texts",
+    "docs:Docs.delete",
+    "docs:Docs._build_texts_index",
+    "docs:Docs.retrieve_texts",
+    "docs:Docs.aget_evidence",
+    "docs:Docs.aquery",
+    "llms:cosine_similarity",
+    "llms:VectorStore.__contains__",
+    "llms:VectorStore.__len__",
+    "llms:VectorStore.add_texts_and_embeddings",
+    "llms:VectorStore.similarity_search",
+    "llms:VectorStore.clear",
+    "llms:VectorStore.partitioned_similarity_search",
+    "llms:VectorStore.max_marginal_relevance_search",
+    "llms:NumpyVectorStore.__eq__",
+    "llms:NumpyVectorStore.clear",
+    "llms:NumpyVectorStore.add_texts_and_embeddings",
+    "llms:NumpyVectorStore.partitioned_similarity_search",
+    "llms:NumpyVectorStore.similarity_search",
+    "llms:QdrantVectorStore.__del__",
+    "llms:QdrantVectorStore.aclose",
+    "llms:QdrantVectorStore.__eq__",
+    "llms:QdrantVectorStore.validate_client",
+    "llms:QdrantVectorStore._collection_exists",
+    "llms:QdrantVectorStore.clear",
+    "llms:QdrantVectorStore.clear.run_async",
+    "llms:QdrantVectorStore.aclear",
+    "llms:QdrantVectorStore.add_texts_and_embeddings",
+    "llms:QdrantVectorStore.similarity_search",
+    "llms:QdrantVectorStore.load_docs",
+    "llms:QdrantVectorStore.load_docs.fetch_batch_with_semaphore",
+    "llms:embedding_model_factory",
+    "readers:SyncPDFParserFn.__call__",
+    "readers:AsyncPDFParserFn.__call__",
+    "readers:parse_image",
+    "readers:_make_chunk",
+    "readers:chunk_pdf",
+    "readers:parse_text",
+    "readers:parse_office_doc",
+    "readers:chunk_text",
+    "readers:chunk_code_text",
+    "readers:read_doc",
+    "readers:read_doc",
+    "readers:read_doc",
+    "readers:read_doc",
+    "readers:read_doc",
+    "readers:read_doc",
+    "settings:AsyncContextSerializer.__call__",
+    "settings:get_default_pdf_parser",
+    "settings:default_pdf_parser_configurator",
+    "settings:MultimodalOptions.from_value",
+    "settings:MultimodalOptions.should_parse_and_enrich_media",
+    "settings:ParsingSettings._resolve_parse_pdf",
+    "settings:ParsingSettings._custom_serializer",
+    "settings:ParsingSettings.should_parse_and_enrich_media",
+    "settings:_FormatDict.__init__",
+    "settings:_FormatDict.__missing__",
+    "settings:get_formatted_variables",
+    "settings:PromptSettings.check_summary",
+    "settings:PromptSettings.check_qa",
+    "settings:PromptSettings.check_select",
+    "settings:PromptSettings.check_post",
+    "settings:PromptSettings.check_context_outer",
+    "settings:PromptSettings.check_context_inner",
+    "settings:IndexSettings.get_named_index_directory",
+    "settings:IndexSettings.finalize_manifest_file",
+    "settings:make_default_litellm_model_list_settings",
+    "settings:Settings._update_temperature",
+    "settings:Settings.md5",
+    "settings:Settings.get_index_name",
+    "settings:Settings.from_name",
+    "settings:Settings.get_llm",
+    "settings:Settings.get_summary_llm",
+    "settings:Settings.get_agent_llm",
+    "settings:Settings.get_embedding_model",
+    "settings:Settings.get_enrichment_llm",
+    "settings:Settings.make_aviary_tool_selector",
+    "settings:Settings.make_ldp_agent",
+    "settings:Settings.make_media_enricher",
+    "settings:Settings.make_media_enricher.enrich_media_with_llm",
+    "settings:Settings.make_media_enricher.enrich_media_with_llm.enrich_single_media",
+    "settings:Settings.adjust_tools_for_agent_llm",
+    "settings:Settings.context_serializer",
+    "settings:get_settings",
+    "sources.clinical_trials:api_search_clinical_trials",
+    "sources.clinical_trials:api_get_clinical_trial",
+    "sources.clinical_trials:search_retrieve_clinical_trials",
+    "sources.clinical_trials:format_to_doc_details",
+    "sources.clinical_trials:parse_clinical_trial",
+    "sources.clinical_trials:add_clinical_trials_to_docs",
+    "sources.clinical_trials:partition_clinical_trials_by_source",
+    "types:Doc.remove_computed_fields",
+    "types:Doc.__hash__",
+    "types:Doc.formatted_citation",
+    "types:Doc.matches_filter_criteria",
+    "types:Doc.to_csv",
+    "types:Text.__eq__",
+    "types:Text.__hash__",
+    "types:Text.get_embeddable_text",
+    "types:Context.__str__",
+    "types:Context.__hash__",
+    "types:Context.populate_id",
+    "types:PQASession.__str__",
+    "types:PQASession.remove_computed",
+    "types:PQASession.used_contexts",
+    "types:PQASession.get_citation",
+    "types:PQASession.add_tokens",
+    "types:PQASession.get_unique_docs_from_contexts",
+    "types:PQASession.filter_content_for_user",
+    "types:PQASession.populate_formatted_answers_and_bib_from_raw_answer",
+    "types:ParsedMedia._get_info_hashable",
+    "types:ParsedMedia.__hash__",
+    "types:ParsedMedia.to_id",
+    "types:ParsedMedia.__eq__",
+    "types:ParsedMedia.to_image_url",
+    "types:ParsedMedia.save",
+    "types:ParsedText.encode_content",
+    "types:ParsedText.reduce_content",
+    "types:BibTeXSource.update_other",
+    "types:DocDetails.clean_key",
+    "types:DocDetails.add_tzinfo",
+    "types:DocDetails.lowercase_doi_and_populate_doc_id",
+    "types:DocDetails.is_bibtex_complete",
+    "types:DocDetails.merge_bibtex_entries",
+    "types:DocDetails.misc_string_cleaning",
+    "types:DocDetails.inject_clean_doi_url_into_data",
+    "types:DocDetails.add_preprint_journal_from_doi_if_missing",
+    "types:DocDetails.remove_invalid_authors",
+    "types:DocDetails.overwrite_docname_dockey_for_compatibility_w_doc",
+    "types:DocDetails.populate_bibtex_key_citation",
+    "types:DocDetails.populate_content_hash",
+    "types:DocDetails.validate_all_fields",
+    "types:DocDetails.__getitem__",
+    "types:DocDetails.make_filename",
+    "types:DocDetails.formatted_citation",
+    "types:DocDetails.source_quality_message",
+    "types:DocDetails.is_hydration_needed",
+    "types:DocDetails.__add__",
+    "types:DocDetails.__radd__",
+    "types:DocDetails.__iadd__",
+    "utils:clean_invalid_unicode",
+    "utils:name_in_text",
+    "utils:maybe_is_text",
+    "utils:maybe_is_pdf",
+    "utils:maybe_is_html",
+    "utils:strings_similarity",
+    "utils:hexdigest",
+    "utils:md5sum",
+    "utils:strip_citations",
+    "utils:extract_score",
+    "utils:get_parenthetical_substrings",
+    "utils:get_citation_ids",
+    "utils:extract_doi",
+    "utils:batch_iter",
+    "utils:get_loop",
+    "utils:run_or_ensure",
+    "utils:encode_id",
+    "utils:compute_unique_doc_id",
+    "utils:get_year",
+    "utils:clean_upbibtex",
+    "utils:format_bibtex",
+    "utils:remove_substrings",
+    "utils:mutate_acute_accents",
+    "utils:mutate_acute_accents.replace_acute",
+    "utils:bibtex_field_extract",
+    "utils:create_bibtex_key",
+    "utils:is_retryable",
+    "utils:_get_with_retrying",
+    "utils:union_collections_to_ordered_list",
+    "utils:pqa_directory",
+    "utils:setup_default_logs",
+    "utils:extract_thought",
+    "utils:logging_filters",
+    "utils:citation_to_docname",
+    "utils:maybe_get_date",
+    "utils:clean_possessives",
+    "utils:parse_enrichment_irrelevance",
+    "utils:get_stable_str"
+  ],
+  "edges": [
+    {
+      "source": "agents.__init__:configure_cli_logging",
+      "target": "agents.__init__:configure_log_verbosity"
+    },
+    {
+      "source": "agents.__init__:configure_cli_logging",
+      "target": "agents.__init__:set_up_rich_handler"
+    },
+    {
+      "source": "agents.__init__:configure_cli_logging",
+      "target": "utils:setup_default_logs"
+    },
+    {
+      "source": "agents.__init__:ask",
+      "target": "agents.__init__:configure_cli_logging"
+    },
+    {
+      "source": "agents.__init__:ask",
+      "target": "agents.main:agent_query"
+    },
+    {
+      "source": "agents.__init__:ask",
+      "target": "utils:run_or_ensure"
+    },
+    {
+      "source": "agents.__init__:search_query",
+      "target": "agents.__init__:configure_cli_logging"
+    },
+    {
+      "source": "agents.__init__:search_query",
+      "target": "agents.main:index_search"
+    },
+    {
+      "source": "agents.__init__:search_query",
+      "target": "utils:run_or_ensure"
+    },
+    {
+      "source": "agents.__init__:build_index",
+      "target": "agents.__init__:configure_cli_logging"
+    },
+    {
+      "source": "agents.__init__:build_index",
+      "target": "agents.search:get_directory_index"
+    },
+    {
+      "source": "agents.__init__:build_index",
+      "target": "settings:get_settings"
+    },
+    {
+      "source": "agents.__init__:build_index",
+      "target": "utils:run_or_ensure"
+    },
+    {
+      "source": "agents.__init__:save_settings",
+      "target": "agents.__init__:configure_cli_logging"
+    },
+    {
+      "source": "agents.__init__:save_settings",
+      "target": "utils:pqa_directory"
+    },
+    {
+      "source": "agents.__init__:main",
+      "target": "agents.__init__:ask"
+    },
+    {
+      "source": "agents.__init__:main",
+      "target": "agents.__init__:build_index"
+    },
+    {
+      "source": "agents.__init__:main",
+      "target": "agents.__init__:configure_cli_logging"
+    },
+    {
+      "source": "agents.__init__:main",
+      "target": "agents.__init__:save_settings"
+    },
+    {
+      "source": "agents.__init__:main",
+      "target": "agents.__init__:search_query"
+    },
+    {
+      "source": "agents.env:settings_to_tools",
+      "target": "agents.env:settings_to_tools.make_tool"
+    },
+    {
+      "source": "agents.env:clinical_trial_status",
+      "target": "agents.env:make_clinical_trial_status"
+    },
+    {
+      "source": "agents.env:PaperQAEnvironment.make_tools",
+      "target": "agents.env:settings_to_tools"
+    },
+    {
+      "source": "agents.env:PaperQAEnvironment.make_initial_state",
+      "target": "agents.env:PaperQAEnvironment._reset_docs"
+    },
+    {
+      "source": "agents.env:PaperQAEnvironment.reset",
+      "target": "agents.env:PaperQAEnvironment.make_initial_state"
+    },
+    {
+      "source": "agents.env:PaperQAEnvironment.reset",
+      "target": "agents.env:PaperQAEnvironment.make_tools"
+    },
+    {
+      "source": "agents.env:PaperQAEnvironment.step",
+      "target": "agents.env:PaperQAEnvironment._has_excess_answer_failures"
+    },
+    {
+      "source": "agents.helpers:litellm_get_search_query",
+      "target": "agents.helpers:get_year"
+    },
+    {
+      "source": "agents.main:agent_query",
+      "target": "agents.main:run_agent"
+    },
+    {
+      "source": "agents.main:run_agent",
+      "target": "agents.main:run_aviary_agent"
+    },
+    {
+      "source": "agents.main:run_agent",
+      "target": "agents.main:run_fake_agent"
+    },
+    {
+      "source": "agents.main:run_agent",
+      "target": "agents.main:run_ldp_agent"
+    },
+    {
+      "source": "agents.main:run_agent",
+      "target": "agents.search:get_directory_index"
+    },
+    {
+      "source": "agents.main:run_fake_agent",
+      "target": "agents.helpers:litellm_get_search_query"
+    },
+    {
+      "source": "agents.main:run_fake_agent",
+      "target": "agents.main:_run_with_timeout_failure"
+    },
+    {
+      "source": "agents.main:run_fake_agent.rollout",
+      "target": "agents.helpers:litellm_get_search_query"
+    },
+    {
+      "source": "agents.main:run_aviary_agent",
+      "target": "agents.main:_run_with_timeout_failure"
+    },
+    {
+      "source": "agents.main:run_ldp_agent",
+      "target": "agents.main:_run_with_timeout_failure"
+    },
+    {
+      "source": "agents.main:index_search",
+      "target": "agents.helpers:table_formatter"
+    },
+    {
+      "source": "agents.search:SearchIndex.filehash",
+      "target": "utils:hexdigest"
+    },
+    {
+      "source": "agents.search:SearchIndex.add_document",
+      "target": "agents.search:SearchIndex.add_document._add_document"
+    },
+    {
+      "source": "agents.search:SearchIndex.add_document",
+      "target": "agents.search:SearchIndex.filecheck"
+    },
+    {
+      "source": "agents.search:SearchIndex.add_document",
+      "target": "agents.search:SearchIndex.filehash"
+    },
+    {
+      "source": "agents.search:SearchIndex.add_document",
+      "target": "agents.search:SearchIndex.writer"
+    },
+    {
+      "source": "agents.search:SearchIndex.delete_document",
+      "target": "agents.search:SearchIndex.save_index"
+    },
+    {
+      "source": "agents.search:SearchIndex.delete_document",
+      "target": "agents.search:SearchIndex.writer"
+    },
+    {
+      "source": "agents.search:SearchIndex.remove_from_index",
+      "target": "agents.search:SearchIndex.delete_document"
+    },
+    {
+      "source": "agents.search:SearchIndex.save_index",
+      "target": "agents.search:SearchIndex.writer"
+    },
+    {
+      "source": "agents.search:SearchIndex.query",
+      "target": "agents.search:SearchIndex.get_saved_object"
+    },
+    {
+      "source": "agents.search:SearchIndex.query",
+      "target": "utils:clean_possessives"
+    },
+    {
+      "source": "agents.search:process_file",
+      "target": "agents.search:_make_progress_bar_update.progress_bar_update"
+    },
+    {
+      "source": "agents.search:process_file",
+      "target": "agents.search:fetch_kwargs_from_manifest"
+    },
+    {
+      "source": "agents.search:_make_progress_bar_update",
+      "target": "agents.__init__:is_running_under_cli"
+    },
+    {
+      "source": "agents.search:get_directory_index",
+      "target": "agents.search:_make_progress_bar_update"
+    },
+    {
+      "source": "agents.search:get_directory_index",
+      "target": "agents.search:maybe_get_manifest"
+    },
+    {
+      "source": "agents.search:get_directory_index",
+      "target": "settings:get_settings"
+    },
+    {
+      "source": "agents.tools:default_status",
+      "target": "agents.tools:make_status"
+    },
+    {
+      "source": "agents.tools:EnvironmentState.status",
+      "target": "agents.tools:default_status"
+    },
+    {
+      "source": "agents.tools:PaperSearch.paper_search",
+      "target": "agents.search:get_directory_index"
+    },
+    {
+      "source": "agents.tools:PaperSearch.paper_search",
+      "target": "agents.tools:PaperSearch.paper_search.clean"
+    },
+    {
+      "source": "agents.tools:ClinicalTrialsSearch.clinical_trials_search",
+      "target": "sources.clinical_trials:add_clinical_trials_to_docs"
+    },
+    {
+      "source": "clients.__init__:DocMetadataClient.bulk_query",
+      "target": "clients.__init__:DocMetadataClient.query"
+    },
+    {
+      "source": "clients.__init__:DocMetadataClient.upgrade_doc_to_doc_details",
+      "target": "clients.__init__:DocMetadataClient.query"
+    },
+    {
+      "source": "clients.client_models:MetadataProvider.query",
+      "target": "clients.client_models:MetadataProvider._query"
+    },
+    {
+      "source": "clients.client_models:MetadataProvider.query",
+      "target": "clients.client_models:MetadataProvider.query_factory"
+    },
+    {
+      "source": "clients.client_models:DOIOrTitleBasedProvider.query",
+      "target": "clients.client_models:DOIOrTitleBasedProvider._query"
+    },
+    {
+      "source": "clients.client_models:DOIOrTitleBasedProvider.query",
+      "target": "clients.client_models:DOIOrTitleBasedProvider.query_factory"
+    },
+    {
+      "source": "clients.client_models:MetadataPostProcessor.process",
+      "target": "clients.client_models:MetadataPostProcessor._process"
+    },
+    {
+      "source": "clients.client_models:MetadataPostProcessor.process",
+      "target": "clients.client_models:MetadataPostProcessor.query_creator"
+    },
+    {
+      "source": "clients.crossref:doi_to_bibtex",
+      "target": "clients.crossref:crossref_headers"
+    },
+    {
+      "source": "clients.crossref:doi_to_bibtex",
+      "target": "clients.exceptions:make_flaky_ssl_error_predicate"
+    },
+    {
+      "source": "clients.crossref:doi_to_bibtex",
+      "target": "utils:bibtex_field_extract"
+    },
+    {
+      "source": "clients.crossref:doi_to_bibtex",
+      "target": "utils:create_bibtex_key"
+    },
+    {
+      "source": "clients.crossref:doi_to_bibtex",
+      "target": "utils:remove_substrings"
+    },
+    {
+      "source": "clients.crossref:parse_crossref_to_doc_details",
+      "target": "clients.crossref:doi_to_bibtex"
+    },
+    {
+      "source": "clients.crossref:get_doc_details_from_crossref",
+      "target": "clients.crossref:crossref_headers"
+    },
+    {
+      "source": "clients.crossref:get_doc_details_from_crossref",
+      "target": "clients.crossref:get_crossref_mailto"
+    },
+    {
+      "source": "clients.crossref:get_doc_details_from_crossref",
+      "target": "clients.crossref:parse_crossref_to_doc_details"
+    },
+    {
+      "source": "clients.crossref:get_doc_details_from_crossref",
+      "target": "clients.exceptions:make_flaky_ssl_error_predicate"
+    },
+    {
+      "source": "clients.crossref:get_doc_details_from_crossref",
+      "target": "utils:strings_similarity"
+    },
+    {
+      "source": "clients.crossref:get_doc_details_from_crossref",
+      "target": "utils:union_collections_to_ordered_list"
+    },
+    {
+      "source": "clients.crossref:download_retracted_dataset",
+      "target": "clients.crossref:get_crossref_mailto"
+    },
+    {
+      "source": "clients.crossref:CrossrefProvider._query",
+      "target": "clients.crossref:get_doc_details_from_crossref"
+    },
+    {
+      "source": "clients.journal_quality:JournalQualityPostProcessor._process",
+      "target": "clients.journal_quality:JournalQualityPostProcessor.load_data"
+    },
+    {
+      "source": "clients.journal_quality:download_file",
+      "target": "clients.journal_quality:download_file.download"
+    },
+    {
+      "source": "clients.journal_quality:main",
+      "target": "clients.journal_quality:download_file"
+    },
+    {
+      "source": "clients.journal_quality:main",
+      "target": "clients.journal_quality:process_csv"
+    },
+    {
+      "source": "clients.openalex:get_doc_details_from_openalex",
+      "target": "clients.openalex:get_openalex_api_key"
+    },
+    {
+      "source": "clients.openalex:get_doc_details_from_openalex",
+      "target": "clients.openalex:get_openalex_mailto"
+    },
+    {
+      "source": "clients.openalex:get_doc_details_from_openalex",
+      "target": "clients.openalex:parse_openalex_to_doc_details"
+    },
+    {
+      "source": "clients.openalex:get_doc_details_from_openalex",
+      "target": "utils:strings_similarity"
+    },
+    {
+      "source": "clients.openalex:parse_openalex_to_doc_details",
+      "target": "clients.openalex:reformat_name"
+    },
+    {
+      "source": "clients.openalex:parse_openalex_to_doc_details",
+      "target": "utils:mutate_acute_accents"
+    },
+    {
+      "source": "clients.openalex:OpenAlexProvider.get_doc_details",
+      "target": "clients.openalex:get_doc_details_from_openalex"
+    },
+    {
+      "source": "clients.openalex:OpenAlexProvider.search_by_title",
+      "target": "clients.openalex:get_doc_details_from_openalex"
+    },
+    {
+      "source": "clients.openalex:OpenAlexProvider._query",
+      "target": "clients.openalex:OpenAlexProvider.get_doc_details"
+    },
+    {
+      "source": "clients.openalex:OpenAlexProvider._query",
+      "target": "clients.openalex:OpenAlexProvider.search_by_title"
+    },
+    {
+      "source": "clients.retractions:RetractionDataPostProcessor.load_data",
+      "target": "clients.crossref:download_retracted_dataset"
+    },
+    {
+      "source": "clients.retractions:RetractionDataPostProcessor.load_data",
+      "target": "clients.retractions:RetractionDataPostProcessor._filter_dois"
+    },
+    {
+      "source": "clients.retractions:RetractionDataPostProcessor.load_data",
+      "target": "clients.retractions:RetractionDataPostProcessor._has_cache_expired"
+    },
+    {
+      "source": "clients.retractions:RetractionDataPostProcessor.load_data",
+      "target": "clients.retractions:RetractionDataPostProcessor._is_csv_cached"
+    },
+    {
+      "source": "clients.retractions:RetractionDataPostProcessor._process",
+      "target": "clients.retractions:RetractionDataPostProcessor.load_data"
+    },
+    {
+      "source": "clients.semantic_scholar:_s2_get_with_retrying",
+      "target": "clients.exceptions:make_flaky_ssl_error_predicate"
+    },
+    {
+      "source": "clients.semantic_scholar:_s2_get_with_retrying",
+      "target": "clients.semantic_scholar:semantic_scholar_headers"
+    },
+    {
+      "source": "clients.semantic_scholar:_s2_get_with_retrying",
+      "target": "utils:_get_with_retrying"
+    },
+    {
+      "source": "clients.semantic_scholar:parse_s2_to_doc_details",
+      "target": "clients.crossref:doi_to_bibtex"
+    },
+    {
+      "source": "clients.semantic_scholar:parse_s2_to_doc_details",
+      "target": "utils:clean_upbibtex"
+    },
+    {
+      "source": "clients.semantic_scholar:s2_title_search",
+      "target": "clients.semantic_scholar:_s2_get_with_retrying"
+    },
+    {
+      "source": "clients.semantic_scholar:s2_title_search",
+      "target": "clients.semantic_scholar:parse_s2_to_doc_details"
+    },
+    {
+      "source": "clients.semantic_scholar:s2_title_search",
+      "target": "clients.semantic_scholar:s2_authors_match"
+    },
+    {
+      "source": "clients.semantic_scholar:s2_title_search",
+      "target": "utils:strings_similarity"
+    },
+    {
+      "source": "clients.semantic_scholar:get_s2_doc_details_from_doi",
+      "target": "clients.exceptions:make_flaky_ssl_error_predicate"
+    },
+    {
+      "source": "clients.semantic_scholar:get_s2_doc_details_from_doi",
+      "target": "clients.semantic_scholar:_s2_get_with_retrying"
+    },
+    {
+      "source": "clients.semantic_scholar:get_s2_doc_details_from_doi",
+      "target": "clients.semantic_scholar:parse_s2_to_doc_details"
+    },
+    {
+      "source": "clients.semantic_scholar:get_s2_doc_details_from_doi",
+      "target": "utils:union_collections_to_ordered_list"
+    },
+    {
+      "source": "clients.semantic_scholar:get_s2_doc_details_from_title",
+      "target": "clients.semantic_scholar:s2_title_search"
+    },
+    {
+      "source": "clients.semantic_scholar:get_s2_doc_details_from_title",
+      "target": "utils:union_collections_to_ordered_list"
+    },
+    {
+      "source": "clients.semantic_scholar:SemanticScholarProvider._query",
+      "target": "clients.semantic_scholar:get_s2_doc_details_from_doi"
+    },
+    {
+      "source": "clients.semantic_scholar:SemanticScholarProvider._query",
+      "target": "clients.semantic_scholar:get_s2_doc_details_from_title"
+    },
+    {
+      "source": "clients.unpaywall:UnpaywallProvider.get_doc_details",
+      "target": "clients.unpaywall:UnpaywallProvider._create_doc_details"
+    },
+    {
+      "source": "clients.unpaywall:UnpaywallProvider.get_doc_details",
+      "target": "utils:_get_with_retrying"
+    },
+    {
+      "source": "clients.unpaywall:UnpaywallProvider.search_by_title",
+      "target": "clients.unpaywall:UnpaywallProvider._create_doc_details"
+    },
+    {
+      "source": "clients.unpaywall:UnpaywallProvider.search_by_title",
+      "target": "utils:_get_with_retrying"
+    },
+    {
+      "source": "clients.unpaywall:UnpaywallProvider.search_by_title",
+      "target": "utils:strings_similarity"
+    },
+    {
+      "source": "clients.unpaywall:UnpaywallProvider._query",
+      "target": "clients.unpaywall:UnpaywallProvider.get_doc_details"
+    },
+    {
+      "source": "clients.unpaywall:UnpaywallProvider._query",
+      "target": "clients.unpaywall:UnpaywallProvider.search_by_title"
+    },
+    {
+      "source": "contrib.openreview_paper_helper:OpenReviewPaperHelper.fetch_relevant_papers",
+      "target": "contrib.openreview_paper_helper:OpenReviewPaperHelper._get_relevant_papers_chunk"
+    },
+    {
+      "source": "contrib.openreview_paper_helper:OpenReviewPaperHelper.fetch_relevant_papers",
+      "target": "contrib.openreview_paper_helper:OpenReviewPaperHelper.create_submission_string"
+    },
+    {
+      "source": "contrib.openreview_paper_helper:OpenReviewPaperHelper.fetch_relevant_papers",
+      "target": "contrib.openreview_paper_helper:OpenReviewPaperHelper.download_papers"
+    },
+    {
+      "source": "contrib.openreview_paper_helper:OpenReviewPaperHelper.fetch_relevant_papers",
+      "target": "contrib.openreview_paper_helper:OpenReviewPaperHelper.get_submissions"
+    },
+    {
+      "source": "contrib.openreview_paper_helper:OpenReviewPaperHelper.download_papers",
+      "target": "contrib.openreview_paper_helper:OpenReviewPaperHelper._download_pdf"
+    },
+    {
+      "source": "contrib.zotero:ZoteroDB.get_pdf",
+      "target": "contrib.zotero:_extract_pdf_key"
+    },
+    {
+      "source": "contrib.zotero:ZoteroDB.get_pdf",
+      "target": "contrib.zotero:_get_citation_key"
+    },
+    {
+      "source": "contrib.zotero:ZoteroDB.iterate",
+      "target": "contrib.zotero:ZoteroDB._get_collection_id"
+    },
+    {
+      "source": "contrib.zotero:ZoteroDB.iterate",
+      "target": "contrib.zotero:ZoteroDB._sliced_collection_items"
+    },
+    {
+      "source": "contrib.zotero:ZoteroDB.iterate",
+      "target": "contrib.zotero:ZoteroDB.get_pdf"
+    },
+    {
+      "source": "contrib.zotero:ZoteroDB.iterate",
+      "target": "contrib.zotero:_get_citation_key"
+    },
+    {
+      "source": "core:_map_fxn_summary",
+      "target": "utils:extract_score"
+    },
+    {
+      "source": "core:_map_fxn_summary",
+      "target": "utils:strip_citations"
+    },
+    {
+      "source": "core:map_fxn_summary",
+      "target": "core:_map_fxn_summary"
+    },
+    {
+      "source": "docs:Docs.aadd_file",
+      "target": "docs:Docs.aadd"
+    },
+    {
+      "source": "docs:Docs.aadd_file",
+      "target": "utils:maybe_is_html"
+    },
+    {
+      "source": "docs:Docs.aadd_file",
+      "target": "utils:maybe_is_pdf"
+    },
+    {
+      "source": "docs:Docs.aadd_url",
+      "target": "docs:Docs.aadd_file"
+    },
+    {
+      "source": "docs:Docs.aadd",
+      "target": "docs:Docs._get_unique_name"
+    },
+    {
+      "source": "docs:Docs.aadd",
+      "target": "docs:Docs.aadd_texts"
+    },
+    {
+      "source": "docs:Docs.aadd",
+      "target": "settings:get_settings"
+    },
+    {
+      "source": "docs:Docs.aadd",
+      "target": "utils:citation_to_docname"
+    },
+    {
+      "source": "docs:Docs.aadd",
+      "target": "utils:maybe_is_text"
+    },
+    {
+      "source": "docs:Docs.aadd",
+      "target": "utils:md5sum"
+    },
+    {
+      "source": "docs:Docs.aadd_texts",
+      "target": "docs:Docs._get_unique_name"
+    },
+    {
+      "source": "docs:Docs.aadd_texts",
+      "target": "settings:get_settings"
+    },
+    {
+      "source": "docs:Docs.retrieve_texts",
+      "target": "docs:Docs._build_texts_index"
+    },
+    {
+      "source": "docs:Docs.retrieve_texts",
+      "target": "settings:get_settings"
+    },
+    {
+      "source": "docs:Docs.aget_evidence",
+      "target": "core:map_fxn_summary"
+    },
+    {
+      "source": "docs:Docs.aget_evidence",
+      "target": "docs:Docs.retrieve_texts"
+    },
+    {
+      "source": "docs:Docs.aget_evidence",
+      "target": "settings:get_settings"
+    },
+    {
+      "source": "docs:Docs.aquery",
+      "target": "docs:Docs.aget_evidence"
+    },
+    {
+      "source": "docs:Docs.aquery",
+      "target": "settings:get_settings"
+    },
+    {
+      "source": "llms:VectorStore.max_marginal_relevance_search",
+      "target": "llms:VectorStore.partitioned_similarity_search"
+    },
+    {
+      "source": "llms:VectorStore.max_marginal_relevance_search",
+      "target": "llms:VectorStore.similarity_search"
+    },
+    {
+      "source": "llms:VectorStore.max_marginal_relevance_search",
+      "target": "llms:cosine_similarity"
+    },
+    {
+      "source": "llms:NumpyVectorStore.partitioned_similarity_search",
+      "target": "llms:NumpyVectorStore.similarity_search"
+    },
+    {
+      "source": "llms:NumpyVectorStore.similarity_search",
+      "target": "llms:cosine_similarity"
+    },
+    {
+      "source": "llms:QdrantVectorStore.__del__",
+      "target": "llms:QdrantVectorStore.aclose"
+    },
+    {
+      "source": "llms:QdrantVectorStore.clear",
+      "target": "llms:QdrantVectorStore.aclear"
+    },
+    {
+      "source": "llms:QdrantVectorStore.aclear",
+      "target": "llms:QdrantVectorStore._collection_exists"
+    },
+    {
+      "source": "llms:QdrantVectorStore.add_texts_and_embeddings",
+      "target": "llms:QdrantVectorStore._collection_exists"
+    },
+    {
+      "source": "llms:QdrantVectorStore.similarity_search",
+      "target": "llms:QdrantVectorStore._collection_exists"
+    },
+    {
+      "source": "llms:QdrantVectorStore.load_docs",
+      "target": "llms:QdrantVectorStore.load_docs.fetch_batch_with_semaphore"
+    },
+    {
+      "source": "llms:embedding_model_factory",
+      "target": "llms:embedding_model_factory"
+    },
+    {
+      "source": "readers:chunk_pdf",
+      "target": "readers:_make_chunk"
+    },
+    {
+      "source": "readers:read_doc",
+      "target": "readers:chunk_code_text"
+    },
+    {
+      "source": "readers:read_doc",
+      "target": "readers:chunk_pdf"
+    },
+    {
+      "source": "readers:read_doc",
+      "target": "readers:chunk_text"
+    },
+    {
+      "source": "readers:read_doc",
+      "target": "readers:parse_image"
+    },
+    {
+      "source": "settings:ParsingSettings._custom_serializer",
+      "target": "utils:get_stable_str"
+    },
+    {
+      "source": "settings:PromptSettings.check_summary",
+      "target": "settings:get_formatted_variables"
+    },
+    {
+      "source": "settings:PromptSettings.check_qa",
+      "target": "settings:get_formatted_variables"
+    },
+    {
+      "source": "settings:PromptSettings.check_select",
+      "target": "settings:get_formatted_variables"
+    },
+    {
+      "source": "settings:PromptSettings.check_post",
+      "target": "settings:get_formatted_variables"
+    },
+    {
+      "source": "settings:PromptSettings.check_context_outer",
+      "target": "settings:get_formatted_variables"
+    },
+    {
+      "source": "settings:PromptSettings.check_context_inner",
+      "target": "settings:get_formatted_variables"
+    },
+    {
+      "source": "settings:Settings.md5",
+      "target": "utils:hexdigest"
+    },
+    {
+      "source": "settings:Settings.get_index_name",
+      "target": "utils:get_stable_str"
+    },
+    {
+      "source": "settings:Settings.get_index_name",
+      "target": "utils:hexdigest"
+    },
+    {
+      "source": "settings:Settings.from_name",
+      "target": "utils:pqa_directory"
+    },
+    {
+      "source": "settings:Settings.get_llm",
+      "target": "settings:make_default_litellm_model_list_settings"
+    },
+    {
+      "source": "settings:Settings.get_summary_llm",
+      "target": "settings:make_default_litellm_model_list_settings"
+    },
+    {
+      "source": "settings:Settings.get_agent_llm",
+      "target": "settings:make_default_litellm_model_list_settings"
+    },
+    {
+      "source": "settings:Settings.get_embedding_model",
+      "target": "llms:embedding_model_factory"
+    },
+    {
+      "source": "settings:Settings.get_enrichment_llm",
+      "target": "settings:make_default_litellm_model_list_settings"
+    },
+    {
+      "source": "settings:Settings.make_aviary_tool_selector",
+      "target": "settings:Settings.get_agent_llm"
+    },
+    {
+      "source": "settings:Settings.make_media_enricher",
+      "target": "settings:Settings.get_enrichment_llm"
+    },
+    {
+      "source": "settings:Settings.make_media_enricher",
+      "target": "utils:parse_enrichment_irrelevance"
+    },
+    {
+      "source": "settings:Settings.make_media_enricher.enrich_media_with_llm",
+      "target": "utils:parse_enrichment_irrelevance"
+    },
+    {
+      "source": "settings:Settings.make_media_enricher.enrich_media_with_llm.enrich_single_media",
+      "target": "utils:parse_enrichment_irrelevance"
+    },
+    {
+      "source": "sources.clinical_trials:search_retrieve_clinical_trials",
+      "target": "sources.clinical_trials:api_get_clinical_trial"
+    },
+    {
+      "source": "sources.clinical_trials:search_retrieve_clinical_trials",
+      "target": "sources.clinical_trials:api_search_clinical_trials"
+    },
+    {
+      "source": "sources.clinical_trials:add_clinical_trials_to_docs",
+      "target": "sources.clinical_trials:format_to_doc_details"
+    },
+    {
+      "source": "sources.clinical_trials:add_clinical_trials_to_docs",
+      "target": "sources.clinical_trials:parse_clinical_trial"
+    },
+    {
+      "source": "sources.clinical_trials:add_clinical_trials_to_docs",
+      "target": "sources.clinical_trials:search_retrieve_clinical_trials"
+    },
+    {
+      "source": "types:Context.populate_id",
+      "target": "utils:encode_id"
+    },
+    {
+      "source": "types:PQASession.populate_formatted_answers_and_bib_from_raw_answer",
+      "target": "utils:get_citation_ids"
+    },
+    {
+      "source": "types:PQASession.populate_formatted_answers_and_bib_from_raw_answer",
+      "target": "utils:get_parenthetical_substrings"
+    },
+    {
+      "source": "types:ParsedMedia.__hash__",
+      "target": "types:ParsedMedia._get_info_hashable"
+    },
+    {
+      "source": "types:ParsedMedia.__eq__",
+      "target": "types:ParsedMedia._get_info_hashable"
+    },
+    {
+      "source": "types:DocDetails.lowercase_doi_and_populate_doc_id",
+      "target": "utils:compute_unique_doc_id"
+    },
+    {
+      "source": "types:DocDetails.populate_bibtex_key_citation",
+      "target": "utils:create_bibtex_key"
+    },
+    {
+      "source": "types:DocDetails.populate_bibtex_key_citation",
+      "target": "utils:format_bibtex"
+    },
+    {
+      "source": "types:DocDetails.populate_bibtex_key_citation",
+      "target": "utils:maybe_get_date"
+    },
+    {
+      "source": "types:DocDetails.populate_content_hash",
+      "target": "utils:md5sum"
+    },
+    {
+      "source": "types:DocDetails.__add__",
+      "target": "utils:compute_unique_doc_id"
+    },
+    {
+      "source": "types:DocDetails.__radd__",
+      "target": "types:DocDetails.__add__"
+    },
+    {
+      "source": "types:DocDetails.__iadd__",
+      "target": "types:DocDetails.__add__"
+    },
+    {
+      "source": "utils:md5sum",
+      "target": "utils:hexdigest"
+    },
+    {
+      "source": "utils:run_or_ensure",
+      "target": "utils:get_loop"
+    },
+    {
+      "source": "utils:compute_unique_doc_id",
+      "target": "utils:encode_id"
+    },
+    {
+      "source": "utils:format_bibtex",
+      "target": "utils:clean_upbibtex"
+    },
+    {
+      "source": "utils:create_bibtex_key",
+      "target": "utils:mutate_acute_accents"
+    },
+    {
+      "source": "utils:create_bibtex_key",
+      "target": "utils:remove_substrings"
+    }
+  ],
+  "entry_paths": {
+    "agents.main:agent_query": [
+      [
+        "agents.main:agent_query",
+        "agents.main:run_agent",
+        "agents.main:run_aviary_agent",
+        "agents.main:_run_with_timeout_failure"
+      ],
+      [
+        "agents.main:agent_query",
+        "agents.main:run_agent",
+        "agents.main:run_fake_agent",
+        "agents.helpers:litellm_get_search_query",
+        "agents.helpers:get_year"
+      ],
+      [
+        "agents.main:agent_query",
+        "agents.main:run_agent",
+        "agents.main:run_fake_agent",
+        "agents.main:_run_with_timeout_failure"
+      ],
+      [
+        "agents.main:agent_query",
+        "agents.main:run_agent",
+        "agents.main:run_ldp_agent",
+        "agents.main:_run_with_timeout_failure"
+      ],
+      [
+        "agents.main:agent_query",
+        "agents.main:run_agent",
+        "agents.search:get_directory_index",
+        "agents.search:_make_progress_bar_update",
+        "agents.__init__:is_running_under_cli"
+      ],
+      [
+        "agents.main:agent_query",
+        "agents.main:run_agent",
+        "agents.search:get_directory_index",
+        "agents.search:maybe_get_manifest"
+      ],
+      [
+        "agents.main:agent_query",
+        "agents.main:run_agent",
+        "agents.search:get_directory_index",
+        "settings:get_settings"
+      ]
+    ],
+    "agents.search:get_directory_index": [
+      [
+        "agents.search:get_directory_index",
+        "agents.search:_make_progress_bar_update",
+        "agents.__init__:is_running_under_cli"
+      ],
+      [
+        "agents.search:get_directory_index",
+        "agents.search:maybe_get_manifest"
+      ],
+      [
+        "agents.search:get_directory_index",
+        "settings:get_settings"
+      ]
+    ],
+    "docs:Docs.aquery": [
+      [
+        "docs:Docs.aquery",
+        "docs:Docs.aget_evidence",
+        "core:map_fxn_summary",
+        "core:_map_fxn_summary",
+        "utils:extract_score"
+      ],
+      [
+        "docs:Docs.aquery",
+        "docs:Docs.aget_evidence",
+        "core:map_fxn_summary",
+        "core:_map_fxn_summary",
+        "utils:strip_citations"
+      ],
+      [
+        "docs:Docs.aquery",
+        "docs:Docs.aget_evidence",
+        "docs:Docs.retrieve_texts",
+        "docs:Docs._build_texts_index"
+      ],
+      [
+        "docs:Docs.aquery",
+        "docs:Docs.aget_evidence",
+        "docs:Docs.retrieve_texts",
+        "settings:get_settings"
+      ],
+      [
+        "docs:Docs.aquery",
+        "docs:Docs.aget_evidence",
+        "settings:get_settings"
+      ],
+      [
+        "docs:Docs.aquery",
+        "settings:get_settings"
+      ]
+    ]
+  }
+}
