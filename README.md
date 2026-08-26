@@ -273,6 +273,38 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 
 密钥按顺序读取：服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → 本地 `paper-qa-script/.env`。显式传入的 `api_base/model/embedding_model` 参数优先级最高。
 
+### 如何提供其他服务商的 Key
+
+| 服务商 | 环境变量 | Key 获取入口 |
+|---|---|---|
+| DeepSeek | `DEEPSEEK_API_KEY` | https://platform.deepseek.com → API Keys |
+| DashScope（阿里百炼） | `DASHSCOPE_API_KEY` | https://bailian.console.aliyun.com → API-KEY 管理 |
+| OpenAI | `OPENAI_API_KEY` | https://platform.openai.com/api-keys |
+
+填入 `paper-qa-script/.env`（或直接设环境变量）即可，例如切换 DashScope：
+
+```text
+export PAPERQA_PROVIDER=dashscope
+export DASHSCOPE_API_KEY=sk-你的DashScope密钥
+```
+
+### 如何测试切换是否生效
+
+```powershell
+# 1) 纯配置/路由验证（无需有效 key，会打印三服务商的解析结果与端点路由）
+.\.venv\Scripts\python.exe .\verify\verify_provider_switch.py
+
+# 2) 端到端问答（用某个服务商的真实 key）
+$env:PAPERQA_PROVIDER = "dashscope"
+$env:DASHSCOPE_API_KEY = "sk-你的DashScope密钥"
+.\.venv\Scripts\python.exe .\paper-qa-script\manual_test_internet_connection.py   # 快速连通性
+.\.venv\Scripts\python.exe .\verify\verify_e2e.py                                # 全链路问答
+```
+
+> 判定标准：`verify_provider_switch.py` 中 deepseek 应为 `SUCCESS`；
+> dashscope/openai 用无效 key 时，错误信息应来自**各自端点**（aliyun / platform.openai.com），
+> 这证明路由正确——换成有效 key 后即可成功。
+
 ## 版本控制
 
 - 远程：`https://github.com/PaperStrange/PaperReadingAgent.git`
