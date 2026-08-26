@@ -1,8 +1,9 @@
-# PaperReading（Windows 移植版）
+# PaperReading（跨平台融合版）
 
 > 基于 **PaperQA2** 的论文问答可视化原型：把论文 PDF 放入目录，在浏览器 GUI 里按
 > 6 节点流水线完成**索引 → 检索 → 解析/分块/向量化 → 证据摘要 → 带引用的上下文回答**，
-> 并提供函数级运行时追踪与 PDF 页码预览。由 macOS 原版（分支 `mac`）移植而来。
+> 并提供函数级运行时追踪与 PDF 页码预览。
+> 本分支为 `main`，是 `windows` 与 `mac` 两个平台分支的**融合版本**，Windows / macOS / Linux 均可运行。
 
 ---
 
@@ -11,11 +12,12 @@
 | 功能 | 说明 |
 |---|---|
 | 📄 论文入库 | 把 PDF/TXT/MD/HTML 放入 `data/pdf/`，自动解析文本、图片、公式/表格媒体 |
-| 🔍 全文 + 向量索引 | Tantivy 全文索引 + 本地向量化（`~/.pqa/indexes`），检索候选论文 |
+| 🔍 全文 + 向量索引 | Tantivy 全文索引 + 向量化（本地或 API，随服务商切换，`~/.pqa/indexes`） |
 | 🧩 可视化流水线 | ReactFlow 画布 6 节点：`config → load_index → retrieve → parse_chunk_embed → evidence → answer`，可单步 / 一键串行 |
 | 📊 函数级追踪 | 每一步展示 paperqa 内部函数调用图（调用树、耗时、参数/返回值、PDF 页码预览） |
 | 🌐 上下文问答 | 基于整篇论文（文字 + 图片内容）生成答案，附引用与来源页码 |
 | 🖥️ 双界面 | ReactFlow 前端（5173）+ Streamlit 调试 UI（8501）+ FastAPI 后端（8787） |
+| 🔀 服务商切换 | `PAPERQA_PROVIDER=deepseek|dashscope|openai` 统一切换模型与密钥 |
 | ⌨️ CLI | `manual_index_paper.py` 建索引 + 交互问答；`manual_test_internet_connection.py` 连通性测试 |
 
 > 说明：代码中**没有**"PDF 上传 + 摘要 + 浏览器内句子划线高亮"界面；"句子级"信息以
@@ -25,58 +27,30 @@
 
 ## 文档目录
 
-本仓库中所有以 `.md` 结尾的文档（依赖包与 `.venv` 内的第三方文档除外）：
-
-### 本项目维护的文档
-
 | 文件 | 说明 |
 |---|---|
 | [`README.md`](README.md) | 项目入口：功能、部署、验证、故障排查 |
-| [`docs/1-WORKFLOW.MD`](docs/1-WORKFLOW.MD) | 项目工作流：开发规范、知识管理、项目管理、运行手册 |
+| [`docs/1-WORKFLOW.MD`](docs/1-WORKFLOW.MD) | 项目工作流：开发规范、知识管理、项目管理、运行手册、分支协作 |
 | [`docs/2-ARCHITECTURE.MD`](docs/2-ARCHITECTURE.MD) | 系统架构：架构图、模块职责、数据流、模型与存储约定 |
 | [`docs/3-LEARNED.MD`](docs/3-LEARNED.MD) | 开发经验教训：踩坑记录、验证记录、已知限制 |
 | [`verify/README.md`](verify/README.md) | 验收脚本（`verify_smoke/e2e/agent.py`）使用说明 |
 | [`paper-qa-script/reactflow-paperqa-prototype/README.md`](paper-qa-script/reactflow-paperqa-prototype/README.md) | ReactFlow 前端 + FastAPI 后端原型说明 |
-| [`paper-qa-script/paperqa_system_report.md`](paper-qa-script/paperqa_system_report.md) | paperqa 源码静态分析报告（371 个函数、入口签名、调用路径） |
-
-### vendored PaperQA2 上游文档
-
-| 文件 | 说明 |
-|---|---|
-| [`paper-qa/README.md`](paper-qa/README.md) | PaperQA2 上游主文档（Quickstart、算法、Settings 速查） |
-| [`paper-qa/CONTRIBUTING.md`](paper-qa/CONTRIBUTING.md) | 上游贡献指南 |
-| [`paper-qa/docs/tutorials/settings_tutorial.md`](paper-qa/docs/tutorials/settings_tutorial.md) | Settings 配置教程 |
-| [`paper-qa/docs/tutorials/where_do_I_get_papers.md`](paper-qa/docs/tutorials/where_do_I_get_papers.md) | 如何获取论文 |
-| [`paper-qa/docs/tutorials/running_on_lfrqa.md`](paper-qa/docs/tutorials/running_on_lfrqa.md) | 在 LFRQA 基准上运行 |
-| [`paper-qa/docs/tutorials/querying_with_clinical_trials.md`](paper-qa/docs/tutorials/querying_with_clinical_trials.md) | 临床试验数据查询 |
-| [`paper-qa/packages/paper-qa-pypdf/README.md`](paper-qa/packages/paper-qa-pypdf/README.md) | PyPDF reader 子包 |
-| [`paper-qa/packages/paper-qa-pymupdf/README.md`](paper-qa/packages/paper-qa-pymupdf/README.md) | PyMuPDF reader 子包 |
-| [`paper-qa/packages/paper-qa-docling/README.md`](paper-qa/packages/paper-qa-docling/README.md) | Docling reader 子包 |
-| [`paper-qa/packages/paper-qa-nemotron/README.md`](paper-qa/packages/paper-qa-nemotron/README.md) | Nemotron reader 子包 |
+| [`paper-qa-script/paperqa_system_report.md`](paper-qa-script/paperqa_system_report.md) | paperqa 源码静态分析报告（371 个函数） |
+| [`paper-qa/README.md`](paper-qa/README.md) 等 | vendored PaperQA2 上游文档（README/CONTRIBUTING/tutorials/packages） |
 
 ---
 
 ## 先决条件
 
-| 依赖 | 版本要求 | 检查命令 |
+| 依赖 | 要求 | 检查命令 |
 |---|---|---|
-| 操作系统 | Windows 10/11 x64 | — |
-| Python | `>= 3.11`（本机验证 3.13） | `python --version` |
-| Node.js | `>= 18`（本机验证 23） | `node --version` |
-| npm | `>= 9`（本机验证 10.9） | `npm --version` |
+| 操作系统 | Windows 10/11 x64 或 macOS（Apple Silicon/Intel） | — |
+| Python | `>= 3.11`（验证 3.13） | `python --version` |
+| Node.js / npm | `>= 18` / `>= 9` | `node --version && npm --version` |
 | API Key | DeepSeek / DashScope / OpenAI 任选其一 | 见"第 3 步" |
 
-- 首次运行会**联网下载**：Python 依赖（pip）、前端依赖（npm）、本地向量模型
-  `multi-qa-MiniLM-L6-cos-v1`（约 90MB，HuggingFace）。
-- 可选：系统 Graphviz 二进制（`winget install Graphviz.Graphviz`），仅影响 SVG/PNG 下载按钮。
-
-先确认运行时：
-
-```powershell
-python --version
-node --version
-npm --version
-```
+- 首次运行会**联网下载**：Python 依赖、前端依赖、本地向量模型 `multi-qa-MiniLM-L6-cos-v1`（约 90MB）。
+- 可选：系统 Graphviz 二进制，仅影响 SVG/PNG 下载按钮（代码会自动发现常见安装目录）。
 
 ---
 
@@ -84,56 +58,48 @@ npm --version
 
 ### 第 0 步：获取代码
 
-```powershell
-git clone -b windows https://github.com/PaperStrange/PaperReadingAgent.git
-cd PaperReadingAgent          # 进入仓库根目录，后文用 <ROOT> 表示
+```bash
+git clone https://github.com/PaperStrange/PaperReadingAgent.git
+cd PaperReadingAgent
 ```
-
-> 若已在本机 `D:\All-Downloads\PaperReading\PaperReading-Windows`，直接把该目录当作 `<ROOT>` 即可。
 
 ### 第 1 步：安装 Python 依赖
 
-在仓库根目录执行（自动创建 `.venv`、安装 paper-qa 源码包 + 后端 + 本地向量化依赖，
-并把 `fhlmi/litellm` 锁定到与 macOS 一致的版本）：
+**Windows（PowerShell）**：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\setup-env.ps1
 ```
 
-<details>
-<summary>等效的手动安装命令（可选）</summary>
+**macOS / Linux**：
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-$env:SETUPTOOLS_SCM_PRETEND_VERSION = "2026.1.6.dev10+g36348d0ca"
-.\.venv\Scripts\python.exe -m pip install "fhlmi==0.42.1" "litellm==1.76.1"
-.\.venv\Scripts\python.exe -m pip install -e .\paper-qa
-.\.venv\Scripts\python.exe -m pip install -e ".\paper-qa\packages\paper-qa-pypdf[media]"
-.\.venv\Scripts\python.exe -m pip install -e .\paper-qa\packages\paper-qa-pymupdf
-.\.venv\Scripts\python.exe -m pip install -r .\requirements-windows.txt
+```bash
+bash scripts/setup-env.sh
 ```
 
-</details>
+（脚本会创建 `.venv`、安装 paper-qa 源码包、并把 `fhlmi/litellm` 锁定到与 `paper-qa/uv.lock` 一致的版本。）
 
 ### 第 2 步：安装前端依赖
 
-```powershell
-cd paper-qa-script\reactflow-paperqa-prototype\frontend
-npm ci          # 按 package-lock.json 精确安装（首次约 1–2 分钟）
-cd ..\..\..     # 回到 <ROOT>
+```bash
+cd paper-qa-script/reactflow-paperqa-prototype/frontend
+npm ci          # Windows / macOS / Linux 通用；按 package-lock.json 精确安装
+cd ../../..     # 回到仓库根目录
 ```
 
 ### 第 3 步：配置 API Key 与服务商
 
 复制模板为 `.env` 并填入密钥（`.env` 已被 `.gitignore` 忽略，不会入库）：
 
-```powershell
+```bash
+# Windows
 Copy-Item paper-qa-script\.env.example paper-qa-script\.env
-notepad paper-qa-script\.env
+
+# macOS / Linux
+cp paper-qa-script/.env.example paper-qa-script/.env
 ```
 
-内容示例（`PAPERQA_PROVIDER` 选择服务商，按需填对应 key）：
+编辑 `paper-qa-script/.env`：
 
 ```text
 export PAPERQA_PROVIDER=deepseek          # deepseek | dashscope | openai
@@ -142,122 +108,50 @@ export DEEPSEEK_API_KEY=sk-你的DeepSeek密钥
 # export OPENAI_API_KEY=sk-你的OpenAI密钥
 ```
 
-> - 也可不写 `.env`：直接设环境变量，或在网页 Config 节点填写 `api_key` / `provider`。
-> - 密钥读取顺序：服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → `.env`。
-> - 各服务商默认模型/向量化映射见文末「模型服务商切换」。
+> 也可不写 `.env`：直接设环境变量，或在网页 Config 节点填写 `api_key` / `provider`。
+> 密钥读取顺序：服务商专属环境变量 → 通用 `OPENAI_API_KEY` → `.env`。
+> 各服务商默认模型/向量化映射见文末「模型服务商切换」。
 
 ### 第 4 步：启动后端并验证
 
-**新开一个终端**，在仓库根目录：
-
-```powershell
-.\scripts\start-backend.ps1
-```
+**Windows**：`.\scripts\start-backend.ps1`　**macOS/Linux**：`bash scripts/start-backend.sh`
 
 看到 `Uvicorn running on http://127.0.0.1:8787` 即成功。另开终端验证：
 
-```powershell
-curl.exe http://127.0.0.1:8787/api/health
-# 期望输出： {"status":"ok"}
+```bash
+curl http://127.0.0.1:8787/api/health     # 期望 {"status":"ok"}
 ```
 
 ### 第 5 步：启动前端并验证
 
-**再开一个终端**，在仓库根目录：
+**Windows**：`.\scripts\start-frontend.ps1`　**macOS/Linux**：`bash scripts/start-frontend.sh`
 
-```powershell
-.\scripts\start-frontend.ps1
-```
-
-看到 `VITE v5.x ready` 后，浏览器打开 **http://127.0.0.1:5173** 应出现
-"PaperQA ReactFlow Prototype" 画布（6 个节点）。
+浏览器打开 **http://127.0.0.1:5173** 应出现 6 节点画布。
 
 ### 第 6 步（可选）：启动 Streamlit 调试 UI
 
-**第三个终端**：
-
-```powershell
-.\scripts\start-streamlit.ps1
-```
+**Windows**：`.\scripts\start-streamlit.ps1`　**macOS/Linux**：`bash scripts/start-streamlit.sh`
 
 浏览器打开 **http://127.0.0.1:8501**。
 
 ### 第 7 步：跑通第一个问答
 
 1. 浏览器打开 http://127.0.0.1:5173 。
-2. 点击左侧 **1) Config** 节点，确认参数：
-   - `api_key`（留空则用 `.env`）、`provider`（deepseek/dashscope/openai）、
-     `paper_directory`（默认 `data/pdf`，相对后端工作目录）、
-   - `model` / `embedding_model`（默认随 provider 自动填充，见文末「模型服务商切换」）。
-3. 点击 **2) Load Index**（首次约 1–2 分钟：解析 PDF + 本地向量化 + 写索引）。
-4. 依次点击 **3) Retrieve → 4) Parse Chunk Embed → 5) Gather Evidence → 6) Generate Answer**
-   （或顶栏 `Run All (Left-to-Right)` 一键执行）。
-5. 在 **6) Generate Answer** 节点查看 `output.answer`（带引用）与 `references`；
-   点击任一节点后，右侧"函数子画布"展示该步骤的函数调用图。
+2. 点击左侧 **1) Config** 节点，确认 `provider` / `api_key` / `paper_directory`（默认 `data/pdf`，相对后端工作目录）。
+3. 点击 **2) Load Index**（首次约 1–2 分钟）。
+4. 依次或 `Run All` 执行 **Retrieve → Parse Chunk Embed → Gather Evidence → Generate Answer**。
 
 ### 第 8 步：验证安装（自动化）
 
-```powershell
-$env:PAPERQA_PROVIDER = "deepseek"               # 与 .env 一致即可
-$env:DEEPSEEK_API_KEY = "sk-你的DeepSeek密钥"      # 若 .env 已配置可跳过
-$env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
-.\.venv\Scripts\python.exe .\verify\verify_smoke.py   # 8 项冒烟（离线）
-.\.venv\Scripts\python.exe .\verify\verify_e2e.py     # 全链路（真实 API）
-.\.venv\Scripts\python.exe .\verify\verify_agent.py   # Agent 流程 + 翻译
+```bash
+# Windows
+.\.venv\Scripts\python.exe .\verify\verify_smoke.py     # 8 项冒烟（离线）
+.\.venv\Scripts\python.exe .\verify\verify_e2e.py       # 全链路（真实 API）
+
+# macOS / Linux
+.venv/bin/python verify/verify_smoke.py
+.venv/bin/python verify/verify_e2e.py
 ```
-
-`verify_e2e.py` 期望输出（节选）：
-
-```text
-[ok] backend healthy
-[ok] load_index ...   [ok] retrieve ...   [ok] parse_chunk_embed ...
-[ok] evidence contexts: 9   [ok] answer chars: 1681
-[written] ...verify_e2e_result.json   (exit code 0)
-```
-
----
-
-## 验证安装
-
-| 检查项 | 命令 | 期望结果 |
-|---|---|---|
-| 后端存活 | `curl.exe http://127.0.0.1:8787/api/health` | `{"status":"ok"}` |
-| 前端页面 | 浏览器 http://127.0.0.1:5173 | 6 节点画布 |
-| Streamlit | 浏览器 http://127.0.0.1:8501 | 配置侧边栏 |
-| 依赖版本 | `.\.venv\Scripts\python.exe -m pip show fhlmi litellm` | `0.42.1` / `1.76.1` |
-| 全链路 | `.\.venv\Scripts\python.exe .\verify\verify_e2e.py` | 最终 `answer chars` 且 exit 0 |
-
----
-
-## 故障排查
-
-| 现象 | 处理 |
-|---|---|
-| `python` 不是内部或外部命令 | 安装 Python 3.11+ 并勾选 "Add to PATH" |
-| `npm` 找不到 | 安装 Node.js LTS（自带 npm） |
-| 后端 8787 端口被占用 | 结束占用进程或改用 `uvicorn` 的 `--port`；前端 `--port 5173` 同理 |
-| 首次问答很久 / 下载模型 | 本地向量模型首次需从 HuggingFace 下载 ~90MB，请等待 |
-| 中文在控制台乱码 | 启动前设 `$env:PYTHONUTF8 = "1"` |
-| 提问返回空/失败 | 确认所选服务商的 key 有效、账户有额度（`.env` 里 `PAPERQA_PROVIDER` 与 key 对应）；换 `fake` Agent 或透明流程 |
-| SVG/PNG 下载按钮报 `ExecutableNotFound` | 代码会自动发现常见 Graphviz 安装目录；仍失败则手动装 `winget install Graphviz.Graphviz` 并确认 `dot` 在 PATH（可选） |
-| 更多踩坑 | 见 `docs/3-LEARNED.MD` |
-
----
-
-## 安全说明
-
-- **密钥不落库**：API Key 一律通过环境变量或本地 `paper-qa-script/.env` 提供（以 `paper-qa-script/.env.example` 为模板，`.env` 已被 `.gitignore` 忽略）；服务商由 `PAPERQA_PROVIDER` 切换，代码中不再硬编码任何密钥。
-- **后端仅监听本机**：FastAPI 绑定 `127.0.0.1:8787`，不对公网暴露；CORS 仅允许 `http://localhost:5173` / `http://127.0.0.1:5173`。
-- **前端渲染安全**：React 默认转义后端返回文本；Streamlit 的 DOT→SVG 图渲染已做特殊字符转义，避免注入。
-- **⚠ 请轮换密钥**：历史提交中曾包含真实密钥（已用 `git filter-repo` 从全部历史清除并强推）。为彻底安全，请到服务商控制台**撤销并重新生成**曾暴露的 DeepSeek / DashScope / OpenAI Key。
-
----
-
-## 下一步
-
-- 开发规范 / 项目管理 / 更完整运行手册：`docs/1-WORKFLOW.MD`
-- 系统架构与文件职责：`docs/2-ARCHITECTURE.MD`
-- 踩坑记录与验证记录：`docs/3-LEARNED.MD`
 
 ---
 
@@ -273,7 +167,36 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 
 密钥按顺序读取：服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → 本地 `paper-qa-script/.env`。显式传入的 `api_base/model/embedding_model` 参数优先级最高。
 
-## 版本控制
+---
+
+## 故障排查
+
+| 现象 | 处理 |
+|---|---|
+| `python` / `node` / `npm` 找不到 | 安装对应运行时并加入 PATH |
+| 后端 8787 端口被占用 | 结束占用进程或改用 `--port`；前端 `--port 5173` 同理 |
+| 首次问答很久 / 下载模型 | 本地向量模型首次需联网下载 ~90MB，请等待 |
+| 中文在 Windows 控制台乱码 | 启动前设 `$env:PYTHONUTF8 = "1"`（macOS 无此问题） |
+| 提问返回空/失败 | 确认所选服务商 key 有效、账户有额度（`PAPERQA_PROVIDER` 与 key 对应） |
+| SVG/PNG 下载按钮报 `ExecutableNotFound` | 代码会自动发现 Graphviz 目录；仍失败则手动安装并确认 `dot` 在 PATH |
+| 更多踩坑 | 见 `docs/3-LEARNED.MD` |
+
+---
+
+## 安全说明
+
+- **密钥不落库**：API Key 一律通过环境变量或本地 `paper-qa-script/.env` 提供（以 `.env.example` 为模板，`.env` 已被 `.gitignore` 忽略）；服务商由 `PAPERQA_PROVIDER` 切换，代码不硬编码任何密钥。
+- **后端仅监听本机**：FastAPI 绑定 `127.0.0.1:8787`；CORS 仅允许本地前端来源。
+- **前端渲染安全**：React 默认转义后端文本；Streamlit DOT→SVG 已做特殊字符转义。
+- **⚠ 请轮换密钥**：历史提交中曾包含真实密钥（已用 `git filter-repo` 清除并强推），请到服务商控制台**撤销并重新生成**曾暴露的 Key。
+
+---
+
+## 分支协作
 
 - 远程：`https://github.com/PaperStrange/PaperReadingAgent.git`
-- 分支：`mac`（macOS 原版）｜`windows`（本仓库）
+- `main`：**本分支，Windows/macOS/Linux 跨平台融合版**（集成分支）
+- `windows`：Windows 移植版（独立维护）
+- `mac`：macOS 原版（独立维护）
+
+> 协作约定：`windows` / `mac` 分支各自改动后，通过 **Pull Request 合并到 `main`**。

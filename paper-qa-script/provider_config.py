@@ -43,7 +43,7 @@ PROVIDERS: dict[str, dict] = {
     },
 }
 
-# Windows 仓库默认 deepseek；macOS 仓库默认 dashscope（各自保持一致行为）
+# 跨平台融合版默认 deepseek；macOS 用户可设 PAPERQA_PROVIDER=dashscope 切换
 DEFAULT_PROVIDER = os.getenv("PAPERQA_PROVIDER", "deepseek").lower()
 
 

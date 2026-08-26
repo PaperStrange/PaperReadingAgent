@@ -37,8 +37,8 @@
 ## 3. 项目管理（分支与远程）
 
 - 远程：`https://github.com/PaperStrange/PaperReadingAgent.git`
-- 分支：`mac`（macOS 原版）｜`windows`（本仓库 Windows 移植版）
-- 约定：每类工作一个提交；提交信息用 `type: 说明`（如 `fix:` / `docs:` / `feat:`）。
+- 分支：`main`（跨平台融合/集成分支）｜`mac`（macOS 原版）｜`windows`（Windows 移植版）
+- 约定：`windows` / `mac` 各自改动后，通过 **Pull Request 合并到 `main`**；每类工作一个提交，提交信息用 `type: 说明`（如 `fix:` / `docs:` / `feat:`）。
 
 ## 4. 运行手册（Windows）
 
