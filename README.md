@@ -64,7 +64,7 @@
 | Python | `>= 3.11`（本机验证 3.13） | `python --version` |
 | Node.js | `>= 18`（本机验证 23） | `node --version` |
 | npm | `>= 9`（本机验证 10.9） | `npm --version` |
-| DeepSeek API Key | 一个可用 key | 见下方"配置 API Key" |
+| API Key | DeepSeek / DashScope / OpenAI 任选其一 | 见"第 3 步" |
 
 - 首次运行会**联网下载**：Python 依赖（pip）、前端依赖（npm）、本地向量模型
   `multi-qa-MiniLM-L6-cos-v1`（约 90MB，HuggingFace）。
@@ -124,22 +124,27 @@ npm ci          # 按 package-lock.json 精确安装（首次约 1–2 分钟）
 cd ..\..\..     # 回到 <ROOT>
 ```
 
-### 第 3 步：配置 API Key
+### 第 3 步：配置 API Key 与服务商
 
-Key 已写入 `paper-qa-script\.env`（默认 DeepSeek）。确认或替换：
+复制模板为 `.env` 并填入密钥（`.env` 已被 `.gitignore` 忽略，不会入库）：
 
 ```powershell
+Copy-Item paper-qa-script\.env.example paper-qa-script\.env
 notepad paper-qa-script\.env
 ```
 
-内容形如（`export KEY=value` 格式，启动脚本会自动导入）：
+内容示例（`PAPERQA_PROVIDER` 选择服务商，按需填对应 key）：
 
 ```text
-export OPENAI_API_KEY=sk-你的DeepSeek密钥
+export PAPERQA_PROVIDER=deepseek          # deepseek | dashscope | openai
+export DEEPSEEK_API_KEY=sk-你的DeepSeek密钥
+# export DASHSCOPE_API_KEY=sk-你的DashScope密钥
+# export OPENAI_API_KEY=sk-你的OpenAI密钥
 ```
 
-> 不修改 `.env` 也可以：在网页 Config 节点的 `api_key` 栏直接填写。读取顺序：
-> config 节点 `params.api_key` → 环境变量 `OPENAI_API_KEY`。
+> - 也可不写 `.env`：直接设环境变量，或在网页 Config 节点填写 `api_key` / `provider`。
+> - 密钥读取顺序：服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → `.env`。
+> - 各服务商默认模型/向量化映射见文末「模型服务商切换」。
 
 ### 第 4 步：启动后端并验证
 
@@ -181,8 +186,9 @@ curl.exe http://127.0.0.1:8787/api/health
 
 1. 浏览器打开 http://127.0.0.1:5173 。
 2. 点击左侧 **1) Config** 节点，确认参数：
-   - `api_key`（留空则用 `.env`）、`paper_directory`（默认 `data/pdf`，相对后端工作目录）、
-   - `model=openai/deepseek-v4-flash`、`embedding_model=st-multi-qa-MiniLM-L6-cos-v1`。
+   - `api_key`（留空则用 `.env`）、`provider`（deepseek/dashscope/openai）、
+     `paper_directory`（默认 `data/pdf`，相对后端工作目录）、
+   - `model` / `embedding_model`（默认随 provider 自动填充，见文末「模型服务商切换」）。
 3. 点击 **2) Load Index**（首次约 1–2 分钟：解析 PDF + 本地向量化 + 写索引）。
 4. 依次点击 **3) Retrieve → 4) Parse Chunk Embed → 5) Gather Evidence → 6) Generate Answer**
    （或顶栏 `Run All (Left-to-Right)` 一键执行）。
@@ -192,7 +198,8 @@ curl.exe http://127.0.0.1:8787/api/health
 ### 第 8 步：验证安装（自动化）
 
 ```powershell
-$env:OPENAI_API_KEY = "sk-你的DeepSeek密钥"      # 若 .env 已配置可跳过
+$env:PAPERQA_PROVIDER = "deepseek"               # 与 .env 一致即可
+$env:DEEPSEEK_API_KEY = "sk-你的DeepSeek密钥"      # 若 .env 已配置可跳过
 $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 .\.venv\Scripts\python.exe .\verify\verify_smoke.py   # 8 项冒烟（离线）
 .\.venv\Scripts\python.exe .\verify\verify_e2e.py     # 全链路（真实 API）
@@ -231,7 +238,7 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 | 后端 8787 端口被占用 | 结束占用进程或改用 `uvicorn` 的 `--port`；前端 `--port 5173` 同理 |
 | 首次问答很久 / 下载模型 | 本地向量模型首次需从 HuggingFace 下载 ~90MB，请等待 |
 | 中文在控制台乱码 | 启动前设 `$env:PYTHONUTF8 = "1"` |
-| 提问返回空/失败 | 确认 DeepSeek key 有效、账户有额度；换 `fake` Agent 或透明流程 |
+| 提问返回空/失败 | 确认所选服务商的 key 有效、账户有额度（`.env` 里 `PAPERQA_PROVIDER` 与 key 对应）；换 `fake` Agent 或透明流程 |
 | SVG/PNG 下载按钮报 `ExecutableNotFound` | 代码会自动发现常见 Graphviz 安装目录；仍失败则手动装 `winget install Graphviz.Graphviz` 并确认 `dot` 在 PATH（可选） |
 | 更多踩坑 | 见 `docs/3-LEARNED.MD` |
 
@@ -239,7 +246,7 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 
 ## 安全说明
 
-- **密钥不落库**：API Key 一律通过环境变量 `OPENAI_API_KEY` 或本地 `paper-qa-script/.env` 提供（以 `paper-qa-script/.env.example` 为模板，`.env` 已被 `.gitignore` 忽略）；代码中不再硬编码任何密钥。
+- **密钥不落库**：API Key 一律通过环境变量或本地 `paper-qa-script/.env` 提供（以 `paper-qa-script/.env.example` 为模板，`.env` 已被 `.gitignore` 忽略）；服务商由 `PAPERQA_PROVIDER` 切换，代码中不再硬编码任何密钥。
 - **后端仅监听本机**：FastAPI 绑定 `127.0.0.1:8787`，不对公网暴露；CORS 仅允许 `http://localhost:5173` / `http://127.0.0.1:5173`。
 - **前端渲染安全**：React 默认转义后端返回文本；Streamlit 的 DOT→SVG 图渲染已做特殊字符转义，避免注入。
 - **⚠ 请轮换密钥**：历史提交中曾包含真实密钥（已用 `git filter-repo` 从全部历史清除并强推）。为彻底安全，请到服务商控制台**撤销并重新生成**曾暴露的 DeepSeek / DashScope / OpenAI Key。
