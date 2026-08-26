@@ -273,6 +273,30 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 
 密钥按顺序读取：服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → 本地 `paper-qa-script/.env`。显式传入的 `api_base/model/embedding_model` 参数优先级最高。
 
+### 配置多个 Key 会不会冲突？—— 不会（重要参数配置说明）
+
+key 与服务商**一一对应**，同时配置多家 key 互相独立、不会串用：
+
+| 你配置的 key | `PAPERQA_PROVIDER` | 实际使用 |
+|---|---|---|
+| `DEEPSEEK_API_KEY` + `DASHSCOPE_API_KEY` + `OPENAI_API_KEY` 都填 | `deepseek` | ✅ 只取 `DEEPSEEK_API_KEY`，其余闲置 |
+| 同上 | `dashscope` | ✅ 只取 `DASHSCOPE_API_KEY` |
+| 同上 | `openai` | ✅ 只取 `OPENAI_API_KEY` |
+| 只填通用 `OPENAI_API_KEY` | `deepseek` / `dashscope` | ⚠️ 会用它**兜底**（见下） |
+
+**解析优先级**：服务商专属 key（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → `.env`。
+
+**⚠ 唯一要注意的一点**：若某服务商**没配专属 key**，会回退用通用 `OPENAI_API_KEY`。此时若 `PAPERQA_PROVIDER=deepseek`（或 `dashscope`）而 `OPENAI_API_KEY` 是另一家的 key，就会拿错 key 去调对应端点，导致鉴权失败。
+
+**推荐做法**：三家 key 要么都填各自正确的，要么只填当前要用的那一家，并保证 `PAPERQA_PROVIDER` 与所填 key 一致。例如只用 DeepSeek：
+
+```text
+export PAPERQA_PROVIDER=deepseek
+export DEEPSEEK_API_KEY=sk-你的DeepSeek密钥
+# export DASHSCOPE_API_KEY=...     # 闲置，仅当切到 dashscope 才用
+# export OPENAI_API_KEY=...        # 仅当切到 openai 或用它兜底
+```
+
 ### 如何提供其他服务商的 Key
 
 | 服务商 | 环境变量 | Key 获取入口 |
