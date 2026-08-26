@@ -305,6 +305,8 @@ export default function App() {
   const [activeStepId, setActiveStepId] = useState("n1");
   const [fnCanvasMeta, setFnCanvasMeta] = useState({ width: 820, height: 420 });
   const [fnFlowRevision, setFnFlowRevision] = useState(0);
+  const [splitPct, setSplitPct] = useState(55); // 主画布宽度占比（%）
+  const [fnFullscreen, setFnFullscreen] = useState(false);
 
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
@@ -713,11 +715,15 @@ export default function App() {
       );
 
       try {
+        const params =
+          opts.embedMode != null
+            ? { ...(currentNode.data.params || {}), embed_mode: opts.embedMode }
+            : currentNode.data.params || {};
         const resp = await runStep(apiBase, {
           session_id: sid,
           run_id: activeRunId,
           step: currentNode.data.step,
-          params: currentNode.data.params || {},
+          params,
           upstream,
         });
 
@@ -865,6 +871,7 @@ export default function App() {
         onRun: (id) => runSingleNode(id, { markDependents: true }),
         onRunUpstream: (id) => runUpstreamOnly(id),
         onRunFromHere: (id) => runFromHere(id),
+        onLoadEmbedding: (id, mode) => runSingleNode(id, { markDependents: true, embedMode: mode }),
       },
     }),
     [applyNodesUpdate, markDownstreamStale, runFromHere, runSingleNode, runUpstreamOnly]
@@ -909,6 +916,40 @@ export default function App() {
     refreshFunctionPanel();
     logLine(`function panel refreshed: ${activeStepIdRef.current}`);
   }, [logLine, refreshFunctionPanel]);
+
+  // 拖拽分隔条：调整主画布 / 函数子画布宽度，另一侧自适应
+  const startDividerDrag = useCallback((e) => {
+    e.preventDefault();
+    const onMove = (ev) => {
+      const total = window.innerWidth - 20; // canvas-split 左右 padding 10*2
+      const pct = Math.min(80, Math.max(20, ((ev.clientX - 10) / total) * 100));
+      setSplitPct(pct);
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "col-resize";
+  }, []);
+
+  // 进入全屏后等布局稳定再居中；Esc 退出全屏
+  useEffect(() => {
+    if (fnFullscreen) {
+      const t = setTimeout(() => fnFlowRef.current?.fitView({ padding: 0.15, duration: 300 }), 80);
+      return () => clearTimeout(t);
+    }
+  }, [fnFullscreen, fnNodes.length]);
+  useEffect(() => {
+    if (!fnFullscreen) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setFnFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fnFullscreen]);
 
   // 当前步骤状态，用于函数子画布的加载/错误/空态反馈
   const activeStepNode = nodes.find((n) => n.id === activeStepId);
@@ -971,7 +1012,10 @@ export default function App() {
         </div>
       </div>
 
-      <div className="canvas-split">
+      <div
+        className="canvas-split"
+        style={{ gridTemplateColumns: `${splitPct}% 8px ${100 - splitPct}%` }}
+      >
         <div className="canvas-pane">
           <div className="pane-title">Main Pipeline Canvas</div>
           <div className="pane-flow">
@@ -996,7 +1040,15 @@ export default function App() {
           </div>
         </div>
 
-        <div className="canvas-pane fn-pane">
+        <div
+          className="split-divider"
+          onMouseDown={startDividerDrag}
+          role="separator"
+          aria-orientation="vertical"
+          title="拖拽调整宽度"
+        />
+
+        <div className={`canvas-pane fn-pane ${fnFullscreen ? "fn-fullscreen" : ""}`}>
           <div className="pane-title-row">
             <div className="pane-title">Function Subcanvas (by step)</div>
             <div className="step-switch-row">
@@ -1021,10 +1073,11 @@ export default function App() {
               <button className="icon-btn" title="放大" aria-label="放大" onClick={() => fnFlowRef.current?.zoomIn({ duration: 200 })}>＋</button>
               <button className="icon-btn" title="缩小" aria-label="缩小" onClick={() => fnFlowRef.current?.zoomOut({ duration: 200 })}>－</button>
               <button className="icon-btn" title="适应画布 / 居中" aria-label="适应画布" onClick={() => fnFlowRef.current?.fitView({ padding: 0.2, duration: 300 })}>⤢</button>
+              <button className="icon-btn" title={fnFullscreen ? "退出全屏 (Esc)" : "全屏"} aria-label="全屏" onClick={() => setFnFullscreen((v) => !v)}>⛶</button>
             </span>
           </div>
 
-          <div className="pane-flow fn-pane-flow" style={{ minHeight: `${Math.min(760, fnCanvasMeta.height + 80)}px` }}>
+          <div className="pane-flow fn-pane-flow" style={{ minHeight: fnFullscreen ? 0 : `${Math.min(760, fnCanvasMeta.height + 80)}px` }}>
             <ReactFlow
               key={`fn-${activeStepId}-${fnFlowRevision}`}
               nodes={fnNodes}
@@ -1035,6 +1088,7 @@ export default function App() {
               onInit={(inst) => {
                 fnFlowRef.current = inst;
               }}
+              defaultEdgeOptions={{ type: "smoothstep" }}
               fitView
             >
               <MiniMap pannable zoomable />

@@ -18,10 +18,12 @@
 | 🌐 上下文问答 | 基于整篇论文（文字 + 图片内容）生成答案，附引用与来源页码 |
 | 🖥️ 双界面 | ReactFlow 前端（5173）+ Streamlit 调试 UI（8501）+ FastAPI 后端（8787） |
 | 🔀 服务商切换 | `PAPERQA_PROVIDER=deepseek|dashscope|openai` 统一切换模型与密钥 |
+| 🧲 Embedding 复用 | `parse_chunk_embed` 支持「载入 Embedding」/「重新生成」+ 本地缓存 |
+| 🗂️ 面板缩放 | Main 画布与 Function 子画布可拖拽分栏；Function 子画布支持全屏查看 |
 | ⌨️ CLI | `manual_index_paper.py` 建索引 + 交互问答；`manual_test_internet_connection.py` 连通性测试 |
 
 > 说明：代码中**没有**"PDF 上传 + 摘要 + 浏览器内句子划线高亮"界面；"句子级"信息以
-> chunk 文本 + 追踪卡片中的页码预览图 + 中文翻译呈现（详见 `docs/2-ARCHITECTURE.MD`）。
+> chunk 文本 + 追踪卡片中的页码预览图（可放大）+ 中文翻译呈现（详见 `docs/2-ARCHITECTURE.MD`）。
 
 ---
 
@@ -33,7 +35,9 @@
 | [`docs/1-WORKFLOW.MD`](docs/1-WORKFLOW.MD) | 项目工作流：开发规范、知识管理、项目管理、运行手册、分支协作 |
 | [`docs/2-ARCHITECTURE.MD`](docs/2-ARCHITECTURE.MD) | 系统架构：架构图、模块职责、数据流、模型与存储约定 |
 | [`docs/3-LEARNED.MD`](docs/3-LEARNED.MD) | 开发经验教训：踩坑记录、验证记录、已知限制 |
-| [`verify/README.md`](verify/README.md) | 验收脚本（`verify_smoke/e2e/agent.py`）使用说明 |
+| [`docs/iteration/sprint/2026-08-26-sprint-1.md`](docs/iteration/sprint/2026-08-26-sprint-1.md) | 敏捷迭代 Sprint 1：目标/Backlog/执行/Retro |
+| [`docs/iteration/embed-optimization.MD`](docs/iteration/embed-optimization.MD) | parse_chunk_embed 提速分析（预分割加速探索） |
+| [`verify/README.md`](verify/README.md) | 验收脚本（`verify_smoke/e2e/agent/embed_load/provider_switch.py`）使用说明 |
 | [`paper-qa-script/reactflow-paperqa-prototype/README.md`](paper-qa-script/reactflow-paperqa-prototype/README.md) | ReactFlow 前端 + FastAPI 后端原型说明 |
 | [`paper-qa-script/paperqa_system_report.md`](paper-qa-script/paperqa_system_report.md) | paperqa 源码静态分析报告（371 个函数） |
 | [`paper-qa/README.md`](paper-qa/README.md) 等 | vendored PaperQA2 上游文档（README/CONTRIBUTING/tutorials/packages） |
@@ -108,9 +112,9 @@ export DEEPSEEK_API_KEY=sk-你的DeepSeek密钥
 # export OPENAI_API_KEY=sk-你的OpenAI密钥
 ```
 
-> 也可不写 `.env`：直接设环境变量，或在网页 Config 节点填写 `api_key` / `provider`。
-> 密钥读取顺序：服务商专属环境变量 → 通用 `OPENAI_API_KEY` → `.env`。
-> 各服务商默认模型/向量化映射见文末「模型服务商切换」。
+> - 也可不写 `.env`：直接设环境变量，或在网页 Config 节点填写 `api_key` / `provider`。
+> - 密钥读取顺序：服务商专属环境变量 → 通用 `OPENAI_API_KEY` → `.env`。
+> - 各服务商默认模型/向量化映射见文末「模型服务商切换」。
 
 > **脚本启动方式（Windows）**：`.ps1` 默认关联记事本，双击或在 cmd 运行都会打开记事本。
 > 请改用 **`scripts\start-*.bat`（可双击）**，或在 PowerShell 执行 `powershell -ExecutionPolicy Bypass -File .\scripts\start-*.ps1`。
@@ -143,6 +147,7 @@ curl http://127.0.0.1:8787/api/health     # 期望 {"status":"ok"}
 2. 点击左侧 **1) Config** 节点，确认 `provider` / `api_key` / `paper_directory`（默认 `data/pdf`，相对后端工作目录）。
 3. 点击 **2) Load Index**（首次约 1–2 分钟）。
 4. 依次或 `Run All` 执行 **Retrieve → Parse Chunk Embed → Gather Evidence → Generate Answer**。
+   - `parse_chunk_embed` 卡片可点「**载入 Embedding**」（复用最近一次结果/缓存，秒级）或「**重新生成**」（强制重跑）。
 
 ### 第 8 步：验证安装（自动化）
 
@@ -155,6 +160,29 @@ curl http://127.0.0.1:8787/api/health     # 期望 {"status":"ok"}
 .venv/bin/python verify/verify_smoke.py
 .venv/bin/python verify/verify_e2e.py
 ```
+
+`verify_e2e.py` 期望输出（节选）：
+
+```text
+[ok] backend healthy
+[ok] load_index ...   [ok] retrieve ...   [ok] parse_chunk_embed ...
+[ok] evidence contexts: 9   [ok] answer chars: 1681
+[written] ...verify_e2e_result.json   (exit code 0)
+```
+
+---
+
+## 验证安装
+
+| 检查项 | 命令 | 期望结果 |
+|---|---|---|
+| 后端存活 | `curl http://127.0.0.1:8787/api/health` | `{"status":"ok"}` |
+| 前端页面 | 浏览器 http://127.0.0.1:5173 | 6 节点画布 |
+| Streamlit | 浏览器 http://127.0.0.1:8501 | 配置侧边栏 |
+| 依赖版本 | `.\.venv\Scripts\python.exe -m pip show fhlmi litellm` | `0.42.1` / `1.76.1` |
+| 全链路 | `.\.venv\Scripts\python.exe .\verify\verify_e2e.py` | 最终 `answer chars` 且 exit 0 |
+| Embedding 复用 | `.\.venv\Scripts\python.exe .\verify\verify_embed_load.py` | `load` 秒级、`run` 显著更慢 |
+| 服务商切换 | `.\.venv\Scripts\python.exe .\verify\verify_provider_switch.py` | 三服务商解析/路由正确 |
 
 ---
 
@@ -172,7 +200,14 @@ curl http://127.0.0.1:8787/api/health     # 期望 {"status":"ok"}
 
 ### 配置多个 Key 会不会冲突？—— 不会（重要参数配置说明）
 
-key 与服务商**一一对应**，同时配置多家 key 互相独立、不会串用：`PAPERQA_PROVIDER=deepseek` 只取 `DEEPSEEK_API_KEY`、`dashscope` 只取 `DASHSCOPE_API_KEY`、`openai` 只取 `OPENAI_API_KEY`，其余 key 只是闲置。
+key 与服务商**一一对应**，同时配置多家 key 互相独立、不会串用：
+
+| 你配置的 key | `PAPERQA_PROVIDER` | 实际使用 |
+|---|---|---|
+| `DEEPSEEK_API_KEY` + `DASHSCOPE_API_KEY` + `OPENAI_API_KEY` 都填 | `deepseek` | ✅ 只取 `DEEPSEEK_API_KEY`，其余闲置 |
+| 同上 | `dashscope` | ✅ 只取 `DASHSCOPE_API_KEY` |
+| 同上 | `openai` | ✅ 只取 `OPENAI_API_KEY` |
+| 只填通用 `OPENAI_API_KEY` | `deepseek` / `dashscope` | ⚠️ 会用它**兜底**（见下） |
 
 **解析优先级**：服务商专属 key（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → `.env`。
 
@@ -187,6 +222,38 @@ export DEEPSEEK_API_KEY=sk-你的DeepSeek密钥
 # export OPENAI_API_KEY=...
 ```
 
+### 如何提供其他服务商的 Key
+
+| 服务商 | 环境变量 | Key 获取入口 |
+|---|---|---|
+| DeepSeek | `DEEPSEEK_API_KEY` | https://platform.deepseek.com → API Keys |
+| DashScope（阿里百炼） | `DASHSCOPE_API_KEY` | https://bailian.console.aliyun.com → API-KEY 管理 |
+| OpenAI | `OPENAI_API_KEY` | https://platform.openai.com/api-keys |
+
+填入 `paper-qa-script/.env`（或直接设环境变量）即可，例如切换 DashScope：
+
+```text
+export PAPERQA_PROVIDER=dashscope
+export DASHSCOPE_API_KEY=sk-你的DashScope密钥
+```
+
+### 如何测试切换是否生效
+
+```powershell
+# 1) 纯配置/路由验证（无需有效 key，会打印三服务商的解析结果与端点路由）
+.\.venv\Scripts\python.exe .\verify\verify_provider_switch.py
+
+# 2) 端到端问答（用某个服务商的真实 key）
+$env:PAPERQA_PROVIDER = "dashscope"
+$env:DASHSCOPE_API_KEY = "sk-你的DashScope密钥"
+.\.venv\Scripts\python.exe .\paper-qa-script\manual_test_internet_connection.py   # 快速连通性
+.\.venv\Scripts\python.exe .\verify\verify_e2e.py                                # 全链路问答
+```
+
+> 判定标准：`verify_provider_switch.py` 中 deepseek 应为 `SUCCESS`；
+> dashscope/openai 用无效 key 时，错误信息应来自**各自端点**（aliyun / platform.openai.com），
+> 这证明路由正确——换成有效 key 后即可成功。
+
 ---
 
 ## 故障排查
@@ -194,6 +261,7 @@ export DEEPSEEK_API_KEY=sk-你的DeepSeek密钥
 | 现象 | 处理 |
 |---|---|
 | `python` / `node` / `npm` 找不到 | 安装对应运行时并加入 PATH |
+| 双击/运行 `.ps1` 打开**记事本** | Windows 默认用记事本打开 `.ps1`。改用 `.bat`（`scripts\start-*.bat`）或 `powershell -ExecutionPolicy Bypass -File .\scripts\start-*.ps1` |
 | 后端 8787 端口被占用 | 结束占用进程或改用 `--port`；前端 `--port 5173` 同理 |
 | 首次问答很久 / 下载模型 | 本地向量模型首次需联网下载 ~90MB，请等待 |
 | 中文在 Windows 控制台乱码 | 启动前设 `$env:PYTHONUTF8 = "1"`（macOS 无此问题） |

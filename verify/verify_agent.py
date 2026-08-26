@@ -7,8 +7,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "paper-qa-script"))
-# 密钥从环境变量读取（不硬编码）；也可从 paper-qa-script/.env 加载
-os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "")
+from provider_config import get_provider_config  # noqa: E402
+
+# 密钥由 provider_config 解析（专属 key 优先，回退通用 OPENAI_API_KEY / .env）
+os.environ["OPENAI_API_KEY"] = get_provider_config()["api_key"]
 
 
 async def main() -> None:

@@ -544,3 +544,79 @@ body,
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ---- 分栏拖拽分隔条 ---- */
+.canvas-split {
+  grid-template-columns: 55% 8px 45%;
+}
+.canvas-split .split-divider {
+  width: 8px;
+  cursor: col-resize;
+  background: #e2e8f0;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.canvas-split .split-divider:hover {
+  background: #93c5fd;
+}
+
+/* ---- Function Subcanvas 全屏 ---- */
+.fn-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  border-radius: 0;
+  height: 100vh;
+  background: #ffffff;
+}
+.fn-fullscreen .fn-pane-flow {
+  min-height: 0 !important;
+  height: 100%;
+}
+
+/* ---- 函数节点图片放大（lightbox）---- */
+.fn-media-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fn-media {
+  cursor: zoom-in;
+}
+.fn-zoom-btn {
+  align-self: flex-start;
+}
+.fn-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(2, 6, 23, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.fn-lightbox-inner {
+  position: relative;
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 12px;
+  max-width: 92vw;
+  max-height: 92vh;
+  overflow: auto;
+}
+.fn-lightbox-img {
+  display: block;
+  max-width: 90vw;
+  max-height: 84vh;
+  object-fit: contain;
+}
+.fn-lightbox-close {
+  display: block;
+  margin: 8px auto 0;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
