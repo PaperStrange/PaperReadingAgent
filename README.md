@@ -11,7 +11,7 @@
 | 功能 | 说明 |
 |---|---|
 | 📄 论文入库 | PDF/TXT/MD/HTML 放入 `data/pdf/`，自动解析文本与图片媒体 |
-| 🔍 全文 + 向量索引 | Tantivy 全文索引 + DashScope 向量化（`~/.pqa/indexes`） |
+| 🔍 全文 + 向量索引 | Tantivy 全文索引 + 向量化（本地或 API，随服务商切换，`~/.pqa/indexes`） |
 | 🧩 可视化流水线 | ReactFlow 6 节点：`config → load_index → retrieve → parse_chunk_embed → evidence → answer` |
 | 📊 函数级追踪 | 每步展示 paperqa 内部函数调用图（调用树、耗时、PDF 页码预览） |
 | 🌐 上下文问答 | 基于整篇论文（文字 + 图片）生成答案，附引用与来源页码 |
@@ -58,10 +58,10 @@
 | macOS | 任意（原始环境为 Apple Silicon） | — |
 | Python | `>= 3.11`（原始环境 3.13） | `python --version` |
 | Node.js / npm | `>= 18` / `>= 9` | `node --version && npm --version` |
-| DashScope API Key | 一个可用 key（阿里百炼） | `source ~/.secrets/paperqa.env` |
+| API Key | DeepSeek / DashScope / OpenAI 任选其一 | 见"第 3 步" |
 
-> 原仓库密钥使用 `openai/qwen-omni-turbo` + `openai/text-embedding-v4`（DashScope OpenAI 兼容端点）；
-> 当前旧 key 已失效（账户问题），需换成可用 key。
+> 支持 `PAPERQA_PROVIDER=deepseek|dashscope|openai` 统一切换服务商（默认 `dashscope`），
+> 各服务商默认模型/向量化映射见文末「模型服务商切换」。
 
 ---
 
@@ -95,11 +95,27 @@ cd paper-qa-script/reactflow-paperqa-prototype/frontend
 npm install
 ```
 
-### 第 3 步：配置 API Key
+### 第 3 步：配置 API Key 与服务商
+
+复制模板为 `.env` 并填入密钥（`.env` 已被 `.gitignore` 忽略，不会入库）：
 
 ```bash
-source ~/.secrets/paperqa.env    # 或 export OPENAI_API_KEY=sk-...
+cp paper-qa-script/.env.example paper-qa-script/.env
+# 编辑 paper-qa-script/.env，按需设置 PAPERQA_PROVIDER 与对应 key
 ```
+
+内容示例：
+
+```text
+export PAPERQA_PROVIDER=dashscope          # deepseek | dashscope | openai
+export DASHSCOPE_API_KEY=sk-你的DashScope密钥
+# export DEEPSEEK_API_KEY=sk-你的DeepSeek密钥
+# export OPENAI_API_KEY=sk-你的OpenAI密钥
+```
+
+> 也可不写 `.env`：直接 `export PAPERQA_PROVIDER=... DASHSCOPE_API_KEY=...`，
+> 或在网页 Config 节点填写 `api_key` / `provider`。密钥读取顺序：
+> 服务商专属环境变量 → 通用 `OPENAI_API_KEY` → `.env`。
 
 ### 第 4 步：启动后端并验证
 
@@ -142,7 +158,7 @@ streamlit run paper-qa-script/streamlit_paperqa_app.py
 
 ## 安全说明
 
-- **密钥不落库**：API Key 一律通过环境变量 `OPENAI_API_KEY` 或本地 `paper-qa-script/.env` 提供（以 `paper-qa-script/.env.example` 为模板，`.env` 已被 `.gitignore` 忽略）；代码中不再硬编码任何密钥。
+- **密钥不落库**：API Key 一律通过环境变量或本地 `paper-qa-script/.env` 提供（以 `paper-qa-script/.env.example` 为模板，`.env` 已被 `.gitignore` 忽略）；服务商由 `PAPERQA_PROVIDER` 切换，代码中不再硬编码任何密钥。
 - **后端仅监听本机**：FastAPI 绑定 `127.0.0.1:8787`，不对公网暴露；CORS 仅允许 `http://localhost:5173` / `http://127.0.0.1:5173`。
 - **前端渲染安全**：React 默认转义后端返回文本；Streamlit 的 DOT→SVG 图渲染已做特殊字符转义，避免注入。
 - **⚠ 请轮换密钥**：历史提交中曾包含真实密钥（已用 `git filter-repo` 从全部历史清除并强推）。为彻底安全，请到服务商控制台**撤销并重新生成**曾暴露的 DashScope / OpenAI Key。
