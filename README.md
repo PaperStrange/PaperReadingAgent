@@ -185,6 +185,23 @@ streamlit run paper-qa-script/streamlit_paperqa_app.py
 
 密钥按顺序读取：服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → 本地 `paper-qa-script/.env`。显式传入的 `api_base/model/embedding_model` 参数优先级最高。
 
+### 配置多个 Key 会不会冲突？—— 不会（重要参数配置说明）
+
+key 与服务商**一一对应**，同时配置多家 key 互相独立、不会串用：`PAPERQA_PROVIDER=deepseek` 只取 `DEEPSEEK_API_KEY`、`dashscope` 只取 `DASHSCOPE_API_KEY`、`openai` 只取 `OPENAI_API_KEY`，其余 key 只是闲置。
+
+**解析优先级**：服务商专属 key（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → `.env`。
+
+**⚠ 唯一要注意的一点**：若某服务商**没配专属 key**，会回退用通用 `OPENAI_API_KEY`。此时若 `PAPERQA_PROVIDER` 指向该服务商而 `OPENAI_API_KEY` 是另一家的 key，会拿错 key 去调对应端点，导致鉴权失败。
+
+**推荐做法**：只填当前要用的那一家 key，并保证 `PAPERQA_PROVIDER` 与所填 key 一致；其余 key 注释掉。例如只用 DashScope：
+
+```text
+export PAPERQA_PROVIDER=dashscope
+export DASHSCOPE_API_KEY=sk-你的DashScope密钥
+# export DEEPSEEK_API_KEY=...
+# export OPENAI_API_KEY=...
+```
+
 ## 版本控制
 
 - 远程：`https://github.com/PaperStrange/PaperReadingAgent.git`
