@@ -148,10 +148,15 @@ export DEEPSEEK_API_KEY=sk-你的DeepSeek密钥
 
 ### 第 4 步：启动后端并验证
 
-**新开一个终端**，在仓库根目录：
+> **脚本启动方式（重要）**：`.ps1` 文件在 Windows 上默认关联记事本，**双击或在 cmd 里运行都会打开记事本**。
+> 两种正确启动方式任选其一：
+> - **双击 `scripts\start-backend.bat`**（或任意终端运行 `scripts\start-backend.bat`）——自动以跳过执行策略的方式启动；
+> - 在 **PowerShell** 里执行 `powershell -ExecutionPolicy Bypass -File .\scripts\start-backend.ps1`。
+
+新开一个终端，在仓库根目录：
 
 ```powershell
-.\scripts\start-backend.ps1
+.\scripts\start-backend.bat
 ```
 
 看到 `Uvicorn running on http://127.0.0.1:8787` 即成功。另开终端验证：
@@ -166,7 +171,7 @@ curl.exe http://127.0.0.1:8787/api/health
 **再开一个终端**，在仓库根目录：
 
 ```powershell
-.\scripts\start-frontend.ps1
+.\scripts\start-frontend.bat
 ```
 
 看到 `VITE v5.x ready` 后，浏览器打开 **http://127.0.0.1:5173** 应出现
@@ -177,7 +182,7 @@ curl.exe http://127.0.0.1:8787/api/health
 **第三个终端**：
 
 ```powershell
-.\scripts\start-streamlit.ps1
+.\scripts\start-streamlit.bat
 ```
 
 浏览器打开 **http://127.0.0.1:8501**。
@@ -235,6 +240,7 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 |---|---|
 | `python` 不是内部或外部命令 | 安装 Python 3.11+ 并勾选 "Add to PATH" |
 | `npm` 找不到 | 安装 Node.js LTS（自带 npm） |
+| 双击/运行 `.ps1` 却打开**记事本** | Windows 默认用记事本打开 `.ps1`。改用 `.bat`（`scripts\start-*.bat`，可双击）或 `powershell -ExecutionPolicy Bypass -File .\scripts\start-*.ps1` |
 | 后端 8787 端口被占用 | 结束占用进程或改用 `uvicorn` 的 `--port`；前端 `--port 5173` 同理 |
 | 首次问答很久 / 下载模型 | 本地向量模型首次需从 HuggingFace 下载 ~90MB，请等待 |
 | 中文在控制台乱码 | 启动前设 `$env:PYTHONUTF8 = "1"` |
