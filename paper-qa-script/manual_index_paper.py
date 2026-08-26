@@ -20,18 +20,7 @@ for noisy_logger in ("litellm", "openai", "httpx", "asyncio"):
     logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 logging.getLogger("paperqa.agents.main.agent_callers").setLevel(logging.INFO)
   
-# 从 paper-qa-script/.env 读取 OPENAI_API_KEY（若存在且未设置），避免在代码中硬编码密钥
-if not os.getenv("OPENAI_API_KEY"):
-    _ENV_FILE = os.path.join(os.path.dirname(__file__), ".env")
-    if os.path.exists(_ENV_FILE):
-        with open(_ENV_FILE, encoding="utf-8") as _f:
-            for _line in _f:
-                _line = _line.strip()
-                if _line.startswith("export "):
-                    _line = _line[7:].strip()
-                if _line.startswith("OPENAI_API_KEY="):
-                    os.environ["OPENAI_API_KEY"] = _line.split("=", 1)[1].strip()
-                    break
+# 密钥由 provider_config 统一解析（含 .env 加载，支持专属 key 命名）
 
 # 你的环境配置（Windows：DeepSeek API + 本地向量模型）；密钥一律从环境变量 / `.env` 读取
 # （macOS 原版在此处硬编码 DashScope 密钥，现已移除）

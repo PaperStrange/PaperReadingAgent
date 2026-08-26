@@ -28,7 +28,10 @@ OUT = ROOT / "verify" / "verify_e2e_result.json"
 SERVER_LOG = ROOT / "verify" / "verify_e2e_server.log"
 PORT = 8787
 
-DASH_KEY = os.getenv("OPENAI_API_KEY", "")
+sys.path.insert(0, str(ROOT / "paper-qa-script"))
+from provider_config import get_provider_config  # noqa: E402
+
+DASH_KEY = get_provider_config()["api_key"]
 # [macOS] 原验证使用 DashScope：API_BASE=dashscope compatible-mode, MODEL=openai/qwen-omni-turbo,
 #         EMB=openai/text-embedding-v4（账户欠费后不可用）
 # Windows 验证：DeepSeek LLM + 本地 sentence-transformers 向量化
