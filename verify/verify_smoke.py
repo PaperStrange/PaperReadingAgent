@@ -1,4 +1,4 @@
-﻿"""Smoke verification for the original (pre-port) codebase on Windows.
+"""Smoke verification for the original (pre-port) codebase on Windows.
 
 Checks: paperqa package imports, backend main.py loads its FastAPI app,
 frontend static assets exist, PDF can be rendered to a page preview via PyMuPDF
@@ -83,6 +83,26 @@ def t_fitz() -> str:
 
 
 def t_graphviz() -> str:
+    import os
+    import shutil
+
+    # dot 若不在 PATH（如 winget 安装的 Graphviz），自动补充常见安装目录
+    if not shutil.which("dot"):
+        for _d in (
+            r"C:\Program Files\Graphviz\bin",
+            r"C:\Program Files (x86)\Graphviz\bin",
+            r"C:\ProgramData\chocolatey\bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+        ):
+            if os.path.isdir(_d) and (
+                os.path.isfile(os.path.join(_d, "dot"))
+                or os.path.isfile(os.path.join(_d, "dot.exe"))
+            ):
+                os.environ["PATH"] = _d + os.pathsep + os.environ.get("PATH", "")
+                break
+
     import graphviz as gv
 
     dot = "digraph G { a -> b; }"

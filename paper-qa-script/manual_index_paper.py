@@ -35,10 +35,14 @@ if not os.getenv("OPENAI_API_KEY"):
 
 # 你的环境配置（Windows：DeepSeek API + 本地向量模型）；密钥一律从环境变量 / `.env` 读取
 # （macOS 原版在此处硬编码 DashScope 密钥，现已移除）
-QWEN_API_KEY = os.getenv("OPENAI_API_KEY", "")
-model = 'openai/deepseek-v4-flash'  # 可选 deepseek-v4-pro
-embedding_model = "st-multi-qa-MiniLM-L6-cos-v1"  # 本地 sentence-transformers，无需 key
-API_BASE = "https://api.deepseek.com"  # macOS 原版为 dashscope OpenAI 兼容端点
+from provider_config import get_provider_config
+
+# 服务商切换：PAPERQA_PROVIDER=deepseek|dashscope|openai（默认 deepseek）
+_PCFG = get_provider_config()
+QWEN_API_KEY = _PCFG["api_key"] or os.getenv("OPENAI_API_KEY", "")
+model = _PCFG["model"]
+embedding_model = _PCFG["embedding"]  # deepseek 用本地向量；dashscope/openai 用 API 向量
+API_BASE = _PCFG["api_base"] or ""
 
 os.environ["OPENAI_API_KEY"] = QWEN_API_KEY  
 

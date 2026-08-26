@@ -232,7 +232,7 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 | 首次问答很久 / 下载模型 | 本地向量模型首次需从 HuggingFace 下载 ~90MB，请等待 |
 | 中文在控制台乱码 | 启动前设 `$env:PYTHONUTF8 = "1"` |
 | 提问返回空/失败 | 确认 DeepSeek key 有效、账户有额度；换 `fake` Agent 或透明流程 |
-| SVG/PNG 下载按钮报 `ExecutableNotFound` | 未装 Graphviz 二进制：`winget install Graphviz.Graphviz`（可选） |
+| SVG/PNG 下载按钮报 `ExecutableNotFound` | 代码会自动发现常见 Graphviz 安装目录；仍失败则手动装 `winget install Graphviz.Graphviz` 并确认 `dot` 在 PATH（可选） |
 | 更多踩坑 | 见 `docs/3-LEARNED.MD` |
 
 ---
@@ -254,13 +254,17 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 
 ---
 
-## 默认模型
+## 模型服务商切换
 
-| 用途 | 默认值 |
-|---|---|
-| LLM（答案/引用） | `openai/deepseek-v4-flash` @ `https://api.deepseek.com` |
-| 证据摘要 / 图片增强 | `openai/deepseek-v4-flash-vision-exp` |
-| 向量化 | `st-multi-qa-MiniLM-L6-cos-v1`（本地，首次自动下载） |
+统一通过环境变量 `PAPERQA_PROVIDER`（或 Streamlit 侧边栏"模型服务商"下拉框）在三个服务商间切换：
+
+| 服务商 | LLM / 视觉模型 | 向量化 | API Base |
+|---|---|---|---|
+| `deepseek`（默认） | `openai/deepseek-v4-flash` / `openai/deepseek-v4-flash-vision-exp` | `st-multi-qa-MiniLM-L6-cos-v1`（本地） | `https://api.deepseek.com` |
+| `dashscope` | `openai/qwen-omni-turbo` | `openai/text-embedding-v4`（API） | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `openai` | `gpt-4o-mini` | `text-embedding-3-small`（API） | OpenAI 官方默认 |
+
+密钥按顺序读取：服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → 本地 `paper-qa-script/.env`。显式传入的 `api_base/model/embedding_model` 参数优先级最高。
 
 ## 版本控制
 

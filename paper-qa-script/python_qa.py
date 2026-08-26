@@ -47,15 +47,14 @@ if not os.getenv("OPENAI_API_KEY"):
                     os.environ["OPENAI_API_KEY"] = _line.split("=", 1)[1].strip()
                     break
 
-# （macOS 原版在此处硬编码 DashScope 密钥，现已移除）
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+# （macOS 原版在此处硬编码 DashScope 密钥，现已移除；改用服务商配置统一切换）
+from provider_config import get_provider_config
 
-# [macOS original] model = 'openai/qwen3-max'
-model = 'openai/deepseek-v4-flash'  # 可选 deepseek-v4-pro
-# [macOS original] embedding_model = "openai/text-embedding-v4"
-embedding_model = "st-multi-qa-MiniLM-L6-cos-v1"  # 本地 sentence-transformers
-# [macOS original] api_base 为 dashscope
-API_BASE = "https://api.deepseek.com"
+_PCFG = get_provider_config()
+OPENAI_API_KEY = _PCFG["api_key"] or os.getenv("OPENAI_API_KEY", "")
+model = _PCFG["model"]
+embedding_model = _PCFG["embedding"]
+API_BASE = _PCFG["api_base"] or ""
 
 os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 

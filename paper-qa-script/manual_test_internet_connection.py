@@ -20,12 +20,14 @@ if not os.getenv("OPENAI_API_KEY"):
                     os.environ["OPENAI_API_KEY"] = _line.split("=", 1)[1].strip()
                     break
 
-# 你的环境配置（Windows: DeepSeek API）；密钥一律从环境变量 / `.env` 读取
-# （macOS 原版在此处硬编码 DashScope 密钥，现已移除）
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-model = 'openai/deepseek-v4-flash'  # 可选 deepseek-v4-pro
-embedding_model = "st-multi-qa-MiniLM-L6-cos-v1"  # 本地 sentence-transformers
-API_BASE = "https://api.deepseek.com"  # macOS 原版为 dashscope OpenAI 兼容端点
+# 你的环境配置（服务商切换：PAPERQA_PROVIDER=deepseek|dashscope|openai，默认 deepseek）
+from provider_config import get_provider_config
+
+_PCFG = get_provider_config()
+OPENAI_API_KEY = _PCFG["api_key"] or os.getenv("OPENAI_API_KEY", "")
+model = _PCFG["model"]
+embedding_model = _PCFG["embedding"]
+API_BASE = _PCFG["api_base"] or ""
 
 os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 
@@ -58,7 +60,7 @@ async def test_api():
         return
     try:
         response = await acompletion(
-            model="openai/deepseek-v4-flash",
+            model=model,
             messages=[{"role": "user", "content": "Hello"}],
             api_base=API_BASE,
             api_key=OPENAI_API_KEY

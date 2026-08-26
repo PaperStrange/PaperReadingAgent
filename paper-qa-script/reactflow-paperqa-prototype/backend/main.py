@@ -23,6 +23,8 @@ _ROOT_SCRIPT_DIR = _SCRIPT_DIR.parent.parent
 if str(_ROOT_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_ROOT_SCRIPT_DIR))
 
+from provider_config import get_provider_config  # noqa: E402
+
 try:
     from runtime_trace import RuntimeTracer
 except Exception:
@@ -127,16 +129,15 @@ def get_or_create_session(session_id: str | None) -> SessionState:
 
 
 def build_settings(params: dict[str, Any]) -> Settings:
-    api_key = params.get("api_key") or os.getenv("OPENAI_API_KEY", "")
-    # [macOS original] api_base = params.get("api_base", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-    api_base = params.get("api_base", "https://api.deepseek.com")
-    # [macOS original] model = params.get("model", "openai/qwen-omni-turbo")  #  qwen-max
-    model = params.get("model", "openai/deepseek-v4-flash")
-    # [macOS original] embedding_model = params.get("embedding_model", "openai/text-embedding-v4")
-    # DeepSeek platform exposes no embedding API -> local SentenceTransformer embedding (no key needed)
-    embedding_model = params.get(
-        "embedding_model", "st-multi-qa-MiniLM-L6-cos-v1"
-    )
+    # 统一服务商切换：provider 参数 / PAPERQA_PROVIDER 环境变量；显式参数仍可覆盖
+    provider_cfg = get_provider_config(params.get("provider"))
+
+    api_key = params.get("api_key") or os.getenv("OPENAI_API_KEY") or provider_cfg["api_key"]
+    api_base = params.get("api_base") or provider_cfg["api_base"]
+    model = params.get("model") or provider_cfg["model"]
+    vision_model = provider_cfg["vision_model"]
+    embedding_model = params.get("embedding_model") or provider_cfg["embedding"]
+    embedding_local = bool(provider_cfg["embedding_local"]) and embedding_model.startswith("st-")
     temperature = float(params.get("temperature", 0.1))
     paper_dir = str(Path(params.get("paper_directory", "./data/pdf")).expanduser())
     index_name = params.get("index_name", "debug_index")
@@ -145,40 +146,37 @@ def build_settings(params: dict[str, Any]) -> Settings:
     chunk_overlap = int(params.get("chunk_overlap", 250))
 
     if not api_key:
-        raise ValueError("api_key is required")
+        raise ValueError("api_key is required（请在 .env 或环境变量设置对应服务商的 Key）")
 
     os.environ["OPENAI_API_KEY"] = api_key
+
+    def _litellm_params(model_name: str, temp: float | None = None) -> dict[str, Any]:
+        p: dict[str, Any] = {"model": model_name, "api_key": api_key}
+        if api_base:
+            p["api_base"] = api_base
+        if temp is not None:
+            p["temperature"] = temp
+        if provider_cfg.get("thinking_disabled"):
+            # DeepSeek 思考模式需关闭以支持多轮工具调用（litellm 用 extra_body 透传）
+            p["extra_body"] = {"thinking": {"type": "disabled"}}
+        return p
 
     llm_config = {
         "name": model,
         "model_list": [
-            {
-                "model_name": model,
-                "litellm_params": {
-                    "model": model,
-                    "temperature": temperature,
-                    "api_base": api_base,
-                    "api_key": api_key,
-                    # DeepSeek 默认"思考模式"会返回 reasoning_content；多轮工具调用时必须原样回传，
-                    # litellm 目前不保留该字段导致 400。用 extra_body 关闭思考模式以支持 agent 多轮调用。
-                    "extra_body": {"thinking": {"type": "disabled"}},
-                },
-            }
+            {"model_name": model, "litellm_params": _litellm_params(model, temperature)}
         ],
     }
-    # API embedding config (used when embedding_model is a litellm model name, e.g.
-    # "openai/text-embedding-v4"). For local "st-*" SentenceTransformer embeddings only batch_size applies.
+    vision_config = {
+        "name": vision_model,
+        "model_list": [
+            {"model_name": vision_model, "litellm_params": _litellm_params(vision_model)}
+        ],
+    }
     embedding_config = {
         "name": embedding_model,
         "model_list": [
-            {
-                "model_name": embedding_model,
-                "litellm_params": {
-                    "model": embedding_model,
-                    "api_base": api_base,
-                    "api_key": api_key,
-                },
-            }
+            {"model_name": embedding_model, "litellm_params": _litellm_params(embedding_model)}
         ],
         "batch_size": embedding_batch_size,
     }
@@ -186,29 +184,11 @@ def build_settings(params: dict[str, Any]) -> Settings:
     return Settings(
         llm=model,
         llm_config=llm_config,
-        # [macOS original] summary_llm=model, summary_llm_config=llm_config,
-        # Windows: 证据片段（context）可能携带论文中的图片；纯文本模型会报 "does not support image"，
-        # 因此证据摘要使用 DeepSeek 视觉模型。
-        summary_llm="openai/deepseek-v4-flash-vision-exp",
-        summary_llm_config={
-            "name": "openai/deepseek-v4-flash-vision-exp",
-            "model_list": [
-                {
-                    "model_name": "openai/deepseek-v4-flash-vision-exp",
-                    "litellm_params": {
-                        "model": "openai/deepseek-v4-flash-vision-exp",
-                        "api_base": api_base,
-                        "api_key": api_key,
-                        "extra_body": {"thinking": {"type": "disabled"}},
-                    },
-                }
-            ],
-        },
+        summary_llm=vision_model,
+        summary_llm_config=vision_config,
         embedding=embedding_model,
         embedding_config=(
-            {"batch_size": embedding_batch_size}
-            if embedding_model.startswith("st-")
-            else embedding_config
+            {"batch_size": embedding_batch_size} if embedding_local else embedding_config
         ),
         parsing=ParsingSettings(
             use_doc_details=bool(params.get("use_doc_details", False)),
@@ -216,22 +196,8 @@ def build_settings(params: dict[str, Any]) -> Settings:
                 "chunk_chars": max(200, chunk_chars),
                 "overlap": max(0, chunk_overlap),
             },
-            # [macOS original] enrichment_llm=model, enrichment_llm_config=llm_config,
-            # Windows: DeepSeek vision model enriches images/figures inside papers
-            enrichment_llm="openai/deepseek-v4-flash-vision-exp",
-            enrichment_llm_config={
-                "name": "openai/deepseek-v4-flash-vision-exp",
-                "model_list": [
-                    {
-                        "model_name": "openai/deepseek-v4-flash-vision-exp",
-                        "litellm_params": {
-                            "model": "openai/deepseek-v4-flash-vision-exp",
-                            "api_base": api_base,
-                            "api_key": api_key,
-                        },
-                    }
-                ],
-            },
+            enrichment_llm=vision_model,
+            enrichment_llm_config=vision_config,
         ),
         agent=AgentSettings(
             rebuild_index=False,

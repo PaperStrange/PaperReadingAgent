@@ -22,6 +22,31 @@ try:
 except Exception:
     gv = None
 
+
+def _ensure_graphviz_on_path() -> None:
+    """把常见 Graphviz 安装目录加入 PATH（当 dot 不在 PATH 时），使 graphviz 包可渲染。"""
+    import shutil
+
+    if shutil.which("dot"):
+        return
+    for _d in (
+        r"C:\Program Files\Graphviz\bin",
+        r"C:\Program Files (x86)\Graphviz\bin",
+        r"C:\ProgramData\chocolatey\bin",
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/usr/bin",
+    ):
+        if os.path.isdir(_d) and (
+            os.path.isfile(os.path.join(_d, "dot"))
+            or os.path.isfile(os.path.join(_d, "dot.exe"))
+        ):
+            os.environ["PATH"] = _d + os.pathsep + os.environ.get("PATH", "")
+            return
+
+
+_ensure_graphviz_on_path()
+
 class _NoopRuntimeTracer:
     def __init__(self) -> None:
         self.events = []
@@ -51,6 +76,9 @@ except Exception:
             RuntimeTracer = _mod.RuntimeTracer
     except Exception:
         RuntimeTracer = _NoopRuntimeTracer
+
+
+from provider_config import get_provider_config, PROVIDERS, DEFAULT_PROVIDER  # noqa: E402
 
 
 class SessionLogHandler(logging.Handler):
@@ -165,62 +193,49 @@ def build_settings(
     embedding_batch_size: int,
     use_doc_details: bool,
     rebuild_index: bool,
+    provider: str = "",
 ) -> Settings:
+    provider_cfg = get_provider_config(provider or None)
     os.environ["OPENAI_API_KEY"] = api_key
 
+    def _litellm_params(model_name: str, temp: float | None = None) -> dict:
+        p: dict = {"model": model_name, "api_key": api_key}
+        if api_base:
+            p["api_base"] = api_base
+        if temp is not None:
+            p["temperature"] = temp
+        if provider_cfg.get("thinking_disabled"):
+            # DeepSeek 思考模式需关闭以支持多轮工具调用（litellm 用 extra_body 透传）
+            p["extra_body"] = {"thinking": {"type": "disabled"}}
+        return p
+
+    vision_model = provider_cfg["vision_model"]
     llm_config = {
         "name": model,
         "model_list": [
-            {
-                "model_name": model,
-                "litellm_params": {
-                    "model": model,
-                    "temperature": temperature,
-                    "api_base": api_base,
-                    "api_key": api_key,
-                    # DeepSeek 默认"思考模式"会返回 reasoning_content；多轮工具调用时必须原样回传，
-                    # litellm 目前不保留该字段导致 400。用 extra_body 关闭思考模式以支持 agent 多轮调用。
-                    "extra_body": {"thinking": {"type": "disabled"}},
-                },
-            }
+            {"model_name": model, "litellm_params": _litellm_params(model, temperature)}
+        ],
+    }
+    vision_config = {
+        "name": vision_model,
+        "model_list": [
+            {"model_name": vision_model, "litellm_params": _litellm_params(vision_model)}
         ],
     }
     embedding_config = {
         "name": embedding_model,
         "model_list": [
-            {
-                "model_name": embedding_model,
-                "litellm_params": {
-                    "model": embedding_model,
-                    "api_base": api_base,
-                    "api_key": api_key,
-                },
-            }
+            {"model_name": embedding_model, "litellm_params": _litellm_params(embedding_model)}
         ],
         "batch_size": embedding_batch_size,
     }
+    embedding_local = bool(provider_cfg["embedding_local"]) and embedding_model.startswith("st-")
 
     return Settings(
         llm=model,
         llm_config=llm_config,
-        # [macOS original] summary_llm=model, summary_llm_config=llm_config,
-        # Windows: 证据片段（context）可能携带论文图片；纯文本模型会报 "does not support image"，
-        # 因此证据摘要使用 DeepSeek 视觉模型。
-        summary_llm="openai/deepseek-v4-flash-vision-exp",
-        summary_llm_config={
-            "name": "openai/deepseek-v4-flash-vision-exp",
-            "model_list": [
-                {
-                    "model_name": "openai/deepseek-v4-flash-vision-exp",
-                    "litellm_params": {
-                        "model": "openai/deepseek-v4-flash-vision-exp",
-                        "api_base": api_base,
-                        "api_key": api_key,
-                        "extra_body": {"thinking": {"type": "disabled"}},
-                    },
-                }
-            ],
-        },
+        summary_llm=vision_model,
+        summary_llm_config=vision_config,
         agent=AgentSettings(
             agent_llm=model,
             agent_llm_config=llm_config,
@@ -234,28 +249,12 @@ def build_settings(
         embedding=embedding_model,
         # local "st-*" SentenceTransformer embeddings don't use the API model_list config
         embedding_config=(
-            {"batch_size": embedding_batch_size}
-            if embedding_model.startswith("st-")
-            else embedding_config
+            {"batch_size": embedding_batch_size} if embedding_local else embedding_config
         ),
         parsing=ParsingSettings(
             use_doc_details=use_doc_details,
-            # [macOS original] enrichment_llm=model, enrichment_llm_config=llm_config,
-            # Windows: DeepSeek vision model enriches images/figures inside papers
-            enrichment_llm="openai/deepseek-v4-flash-vision-exp",
-            enrichment_llm_config={
-                "name": "openai/deepseek-v4-flash-vision-exp",
-                "model_list": [
-                    {
-                        "model_name": "openai/deepseek-v4-flash-vision-exp",
-                        "litellm_params": {
-                            "model": "openai/deepseek-v4-flash-vision-exp",
-                            "api_base": api_base,
-                            "api_key": api_key,
-                        },
-                    }
-                ],
-            },
+            enrichment_llm=vision_model,
+            enrichment_llm_config=vision_config,
         ),
     )
 
@@ -669,25 +668,28 @@ def main() -> None:
         _default_paper_dir = str(
             (Path(__file__).resolve().parent.parent / "data" / "pdf")
         )
-        paper_dir = st.text_input(
-            "论文目录",
-            _default_paper_dir,
-        )
+        paper_dir = st.text_input("论文目录", _default_paper_dir)
         index_name = st.text_input("索引名", "debug_index")
+
+        # 服务商切换：deepseek / dashscope / openai，切换后自动填充下方默认值（仍可手动覆盖）
+        _provider_opts = sorted(PROVIDERS.keys())
+        _provider_default = DEFAULT_PROVIDER if DEFAULT_PROVIDER in PROVIDERS else _provider_opts[0]
+        provider = st.selectbox(
+            "模型服务商",
+            _provider_opts,
+            index=_provider_opts.index(_provider_default),
+            help="切换后自动填充 API Base / 模型 / Embedding 默认值，也可手动修改。",
+        )
+        _pcfg = get_provider_config(provider)
+
         api_key = st.text_input(
             "API Key",
-            value=os.getenv("OPENAI_API_KEY", ""),
+            value=_pcfg["api_key"] or os.getenv("OPENAI_API_KEY", ""),
             type="password",
         )
-        # [macOS original] api_base 默认 dashscope
-        api_base = st.text_input("API Base", "https://api.deepseek.com")
-        # [macOS original] model 默认 openai/qwen-omni-turbo
-        model = st.text_input("LLM 模型", "openai/deepseek-v4-flash")
-        # [macOS original] embedding 默认 openai/text-embedding-v4（API 向量化）
-        # Windows: DeepSeek 无 embedding API -> 本地 sentence-transformers
-        embedding_model = st.text_input(
-            "Embedding 模型", "st-multi-qa-MiniLM-L6-cos-v1"
-        )
+        api_base = st.text_input("API Base", value=_pcfg["api_base"] or "")
+        model = st.text_input("LLM 模型", value=_pcfg["model"])
+        embedding_model = st.text_input("Embedding 模型", value=_pcfg["embedding"])
         qa_mode = st.selectbox(
             "问答执行模式",
             ["透明流程（推荐）", "Agent流程（Tool Calling）"],
@@ -744,6 +746,7 @@ def main() -> None:
         embedding_batch_size=int(embedding_batch_size),
         use_doc_details=use_doc_details,
         rebuild_index=rebuild_index,
+        provider=provider,
     )
 
     tab_overview, tab_index, tab_chat, tab_nodes, tab_trace, tab_logs = st.tabs(
