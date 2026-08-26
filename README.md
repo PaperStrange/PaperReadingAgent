@@ -112,9 +112,12 @@ export DEEPSEEK_API_KEY=sk-你的DeepSeek密钥
 > 密钥读取顺序：服务商专属环境变量 → 通用 `OPENAI_API_KEY` → `.env`。
 > 各服务商默认模型/向量化映射见文末「模型服务商切换」。
 
+> **脚本启动方式（Windows）**：`.ps1` 默认关联记事本，双击或在 cmd 运行都会打开记事本。
+> 请改用 **`scripts\start-*.bat`（可双击）**，或在 PowerShell 执行 `powershell -ExecutionPolicy Bypass -File .\scripts\start-*.ps1`。
+
 ### 第 4 步：启动后端并验证
 
-**Windows**：`.\scripts\start-backend.ps1`　**macOS/Linux**：`bash scripts/start-backend.sh`
+**Windows**：`.\scripts\start-backend.bat`　**macOS/Linux**：`bash scripts/start-backend.sh`
 
 看到 `Uvicorn running on http://127.0.0.1:8787` 即成功。另开终端验证：
 
@@ -124,13 +127,13 @@ curl http://127.0.0.1:8787/api/health     # 期望 {"status":"ok"}
 
 ### 第 5 步：启动前端并验证
 
-**Windows**：`.\scripts\start-frontend.ps1`　**macOS/Linux**：`bash scripts/start-frontend.sh`
+**Windows**：`.\scripts\start-frontend.bat`　**macOS/Linux**：`bash scripts/start-frontend.sh`
 
 浏览器打开 **http://127.0.0.1:5173** 应出现 6 节点画布。
 
 ### 第 6 步（可选）：启动 Streamlit 调试 UI
 
-**Windows**：`.\scripts\start-streamlit.ps1`　**macOS/Linux**：`bash scripts/start-streamlit.sh`
+**Windows**：`.\scripts\start-streamlit.bat`　**macOS/Linux**：`bash scripts/start-streamlit.sh`
 
 浏览器打开 **http://127.0.0.1:8501**。
 
