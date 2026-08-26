@@ -1,4 +1,4 @@
-﻿"""Verify agent flow (agent_query, fake agent) + translate endpoint with DeepSeek."""
+"""Verify agent flow (agent_query, fake agent) + translate endpoint with DeepSeek."""
 import asyncio
 import importlib.util
 import os
@@ -7,9 +7,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "paper-qa-script"))
-os.environ["OPENAI_API_KEY"] = os.getenv(
-    "OPENAI_API_KEY", "sk-***REDACTED***"
-)
+# 密钥从环境变量读取（不硬编码）；也可从 paper-qa-script/.env 加载
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "")
 
 
 async def main() -> None:

@@ -111,7 +111,8 @@ app = FastAPI(title="PaperQA ReactFlow Prototype API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # 安全加固：只允许本地前端来源跨域访问，避免公网任意页面调用本地后端
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

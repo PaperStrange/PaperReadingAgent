@@ -444,7 +444,18 @@ def summarize_pipeline_steps(logs: list[str]) -> list[dict[str, str]]:
 
 
 def _dot_escape(s: str) -> str:
-    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    # 安全加固：完整转义 DOT 特殊字符，避免论文文本/函数名破坏 DOT 结构
+    # 或经 graphviz SVG 输出引入注入内容。
+    return (
+        s.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("<", "\\<")
+        .replace(">", "\\>")
+        .replace("{", "\\{")
+        .replace("}", "\\}")
+        .replace("|", "\\|")
+    )
 
 
 def _func_to_module(func_id: str) -> str:

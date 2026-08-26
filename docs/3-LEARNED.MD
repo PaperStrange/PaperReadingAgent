@@ -43,7 +43,7 @@
 - 结论：`st.graphviz_chart` 与 DOT 下载不受影响；SVG/PNG 下载需 `winget install Graphviz.Graphviz`（本机 winget 源不可用，已降级处理）。
 
 ### 1.9 旧 DashScope 密钥全部失效（账户问题，非代码问题）
-- `sk-6d83…`：账户欠费（`Arrearage`）；`sk-d70b…`：模型无权限；`sk-proj-…`：OpenAI 配额超限。
+- 旧 DashScope 密钥：账户欠费（`Arrearage`）；另一 DashScope 密钥：模型无权限；OpenAI 密钥：配额超限（均为账户侧问题）。
 - 结论：请求均成功到达服务端并返回账户级错误 → 端点/模型名/请求格式正确。全链路改用 DeepSeek key（用户指定）。
 
 ## 2. 验证记录（Windows，实际执行）

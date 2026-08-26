@@ -1,8 +1,13 @@
 import asyncio
 import os
+import sys
 import logging
 from pathlib import Path
 from paperqa import Settings
+
+# Windows GBK 控制台输出 emoji/中文会抛 UnicodeEncodeError，强制 stdout 为 UTF-8
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 from paperqa.settings import AgentSettings, ParsingSettings, IndexSettings
 from paperqa.agents.search import get_directory_index
 from paperqa.agents.main import agent_query
@@ -15,17 +20,25 @@ for noisy_logger in ("litellm", "openai", "httpx", "asyncio"):
     logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 logging.getLogger("paperqa.agents.main.agent_callers").setLevel(logging.INFO)
   
-# [macOS original] 你的环境配置（DashScope/阿里百炼）
-# QWEN_API_KEY = 'sk-***REDACTED***'
-# model = 'openai/qwen-omni-turbo'  #  qwen-max
-# embedding_model = "openai/text-embedding-v4"
-# 你的环境配置（Windows：DeepSeek API + 本地向量模型）
-QWEN_API_KEY = os.getenv(
-    "OPENAI_API_KEY", "sk-***REDACTED***"
-)
+# 从 paper-qa-script/.env 读取 OPENAI_API_KEY（若存在且未设置），避免在代码中硬编码密钥
+if not os.getenv("OPENAI_API_KEY"):
+    _ENV_FILE = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(_ENV_FILE):
+        with open(_ENV_FILE, encoding="utf-8") as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if _line.startswith("export "):
+                    _line = _line[7:].strip()
+                if _line.startswith("OPENAI_API_KEY="):
+                    os.environ["OPENAI_API_KEY"] = _line.split("=", 1)[1].strip()
+                    break
+
+# 你的环境配置（Windows：DeepSeek API + 本地向量模型）；密钥一律从环境变量 / `.env` 读取
+# （macOS 原版在此处硬编码 DashScope 密钥，现已移除）
+QWEN_API_KEY = os.getenv("OPENAI_API_KEY", "")
 model = 'openai/deepseek-v4-flash'  # 可选 deepseek-v4-pro
 embedding_model = "st-multi-qa-MiniLM-L6-cos-v1"  # 本地 sentence-transformers，无需 key
-API_BASE = "https://api.deepseek.com"  # [macOS original] https://dashscope.aliyuncs.com/compatible-mode/v1
+API_BASE = "https://api.deepseek.com"  # macOS 原版为 dashscope OpenAI 兼容端点
 
 os.environ["OPENAI_API_KEY"] = QWEN_API_KEY  
 

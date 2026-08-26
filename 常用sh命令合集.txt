@@ -34,6 +34,6 @@ npm run dev
 2>&1 | tee tmp.log
 
 # 你的环境配置  
-QWEN_API_KEY = 'sk-***REDACTED***'  
+QWEN_API_KEY = 'sk-你的API密钥'  # 原硬编码密钥已移除，请用环境变量 OPENAI_API_KEY 或 .env 提供
 model = 'openai/qwen-omni-turbo'  #  qwen-max
 embedding_model = "openai/text-embedding-v4" 
