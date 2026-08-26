@@ -49,3 +49,15 @@
 - 原代码整体结构清晰、跨平台兼容良好；唯一的代码级缺陷集中在 `runtime_trace.py` 的描述符处理。
 - 全链路问答在 Windows 上改用 DeepSeek 后完整跑通（见 windows 仓库 `docs/3-LEARNED.MD`）；macOS 侧因 DashScope 账户欠费未能在线复跑，但请求格式/端点连通性已验证。
 - 经验：给"透明流程 + fake agent"留默认值，比 ToolSelector 更稳；函数级追踪务必保持描述符语义。
+
+## 5. 安全整改记录（仓库公开前）
+
+| 项 | 整改内容 |
+|---|---|
+| 密钥硬编码 | 删除所有源码/文档中的真实 API Key；CLI 脚本改为从环境变量 / `.env` 读取；新增 `.env.example` 模板，`.env` 加入 `.gitignore` |
+| git 历史密钥 | 用 `git filter-repo --replace-text` 清洗**全部历史提交**中的密钥并强推 |
+| CORS | 后端 `allow_origins` 由 `*` 收紧为仅本地前端来源 |
+| 前端注入 | Streamlit `_dot_escape` 增加 DOT 特殊字符转义 |
+| 监听范围 | 后端仅监听 `127.0.0.1` |
+
+- **仍需用户操作**：曾暴露过的 DashScope / OpenAI Key 请在服务商控制台**撤销并重新生成**。

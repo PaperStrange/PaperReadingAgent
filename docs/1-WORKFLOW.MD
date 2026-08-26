@@ -25,9 +25,10 @@
 ## 2. 开发规范
 
 - **改动范围**：mac 仓库只保留原版；仅当模拟运行发现原文件代码缺陷时，才直接修改原文件（并同步到 windows 仓库）。
-- **密钥**：读取环境变量 `OPENAI_API_KEY`；`.env`/脚本中旧 key 保留注释备查。
+- **密钥**：读取环境变量 `OPENAI_API_KEY` 或本地 `paper-qa-script/.env`（以 `.env.example` 为模板）；**代码与文档中禁止出现真实密钥**，`.env` 已被 `.gitignore` 忽略。
+- **安全**：后端 CORS 仅允许本地前端来源、仅监听 `127.0.0.1`；公开仓库前先确认无密钥残留并轮换曾暴露的密钥。
 - **依赖**：`paper-qa/uv.lock` 锁定（fhlmi==0.42.1、litellm==1.76.1 等）；venv 位于 `paper-qa/.venv`，Python 3.13。
-- **入库排除**：`node_modules/`、`__pycache__/`、`.pytest_cache/`、`._*`（AppleDouble）、`data/parsed/*.jsonl`、`tmp.log`、`dist/`（本仓库经 `.git/info/exclude` 排除，避免新增文件污染原目录）。
+- **入库排除**：`node_modules/`、`__pycache__/`、`.pytest_cache/`、`._*`（AppleDouble）、`data/parsed/*.jsonl`、`tmp.log`、`dist/`、`.env`（见 `.gitignore`）。
 - 常见 macOS 噪音：`find ./ -type f -name '._*' -delete` 清理 AppleDouble。
 
 ## 3. 项目管理（分支与远程）
