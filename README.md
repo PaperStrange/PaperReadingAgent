@@ -237,6 +237,15 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 
 ---
 
+## 安全说明
+
+- **密钥不落库**：API Key 一律通过环境变量 `OPENAI_API_KEY` 或本地 `paper-qa-script/.env` 提供（以 `paper-qa-script/.env.example` 为模板，`.env` 已被 `.gitignore` 忽略）；代码中不再硬编码任何密钥。
+- **后端仅监听本机**：FastAPI 绑定 `127.0.0.1:8787`，不对公网暴露；CORS 仅允许 `http://localhost:5173` / `http://127.0.0.1:5173`。
+- **前端渲染安全**：React 默认转义后端返回文本；Streamlit 的 DOT→SVG 图渲染已做特殊字符转义，避免注入。
+- **⚠ 请轮换密钥**：历史提交中曾包含真实密钥（已用 `git filter-repo` 从全部历史清除并强推）。为彻底安全，请到服务商控制台**撤销并重新生成**曾暴露的 DeepSeek / DashScope / OpenAI Key。
+
+---
+
 ## 下一步
 
 - 开发规范 / 项目管理 / 更完整运行手册：`docs/1-WORKFLOW.MD`
