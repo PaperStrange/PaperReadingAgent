@@ -14,13 +14,15 @@
 | `docs/1-WORKFLOW.MD` | 开发规范、知识管理规范、项目管理、运行手册 |
 | `docs/2-ARCHITECTURE.MD` | 系统架构、模块职责、数据流、模型与存储约定 |
 | `docs/3-LEARNED.MD` | 开发经验教训、踩坑记录、验证记录、已知限制 |
+| `docs/iteration/` | 敏捷迭代：`sprint/<日期>-sprint-N.md`（Sprint 计划/执行/Retro + **项目管理与关闭证据**）+ 迭代中新增的其它项目文档 |
 
 规则：
 
 1. 新增知识先归类（流程→1，结构→2，经验/教训→3）；无法归类才新开编号文档。
-2. 代码/依赖/模型/路径变更必须同步更新对应文档。
-3. macOS / Windows 双轨：两仓库文档结构一致（同名三件套），内容分别描述各自平台；共性内容允许重复但不矛盾。
-4. 架构图用 Mermaid。
+2. **敏捷迭代**：功能/体验类工作按 Sprint 推进，Sprint 文档统一放 `docs/iteration/sprint/`，迭代中新增项目文档放 `docs/iteration/`（详见 §4）。
+3. 代码/依赖/模型/路径变更必须同步更新对应文档。
+4. macOS / Windows 双轨：两仓库文档结构一致（同名三件套），内容分别描述各自平台；共性内容允许重复但不矛盾。
+5. 架构图用 Mermaid。
 
 ## 2. 开发规范
 
@@ -35,10 +37,39 @@
 ## 3. 项目管理（分支与远程）
 
 - 远程：`https://github.com/PaperStrange/PaperReadingAgent.git`
-- 分支：`mac`（本仓库）｜`windows`（Windows 移植版）
-- 约定：每类工作一个提交；提交信息 `type: 说明`。
+- 分支：`main`（跨平台融合/集成分支）｜`mac`（本仓库 macOS 原版）｜`windows`（Windows 移植版）
+- 约定：`windows` / `mac` 各自改动后，通过 **Pull Request 合并到 `main`**；每类工作一个提交，提交信息 `type: 说明`。
 
-## 4. 运行手册（macOS）
+## 4. Sprint（迭代）项目管理与关闭标准
+
+> 适用：所有功能/体验类改动。Sprint 文档统一放 `docs/iteration/sprint/<日期>-sprint-N.md`；迭代中新增项目文档放 `docs/iteration/`。
+
+### 4.1 Sprint 生命周期
+
+`Plan（目标+Backlog+验收标准）` → `Dev（按 US 拆解实现）` → `Verify（可运行验证）` → **`Close（关闭评审）`**。
+
+### 4.2 Sprint 关闭：必须有足够 solid 的证据 + 理由
+
+**关闭 Sprint 的前提是"证据充分、理由明确"。证据需同时包含图文（例如浏览器截图）与文字，并附理由，统一写入该 Sprint 文档的「项目管理与证据」板块。** 缺少证据或无法自证"达成目标"的项不能标记为 done。
+
+#### 证据 checklist（按需选取，尽可能覆盖）
+
+| 类别 | 示例 |
+|---|---|
+| 🖼️ 功能截图（before/after） | 浏览器截图（面板缩放、全屏、lightbox、按钮、连线效果） |
+| 🖼️ 运行/接口输出 | 后端 API 返回、`verify_*.py` 实测输出、日志 tail |
+| 🖼️ 命令与产物 | `npm run build`、pytest / e2e 结果、生成的报告 |
+| 📝 验收用例 | 对应 Backlog US-* 的验收标准逐条说明，标注通过/未通过 |
+| 📝 理由/权衡 | 为什么这么做、关键取舍、为什么不采用其它方案、局限 |
+| 📝 边界与回归 | 受影响面、是否破坏既有功能、（可选）回归验证结果 |
+
+截图存放到 `docs/iteration/sprint/`，Markdown 相对路径引用；关闭时做 Self-check（每个 US 有证据、结论可复现、记录了权衡/局限、无回归或已记录）。
+
+### 4.3 Sprint 文档模板
+
+见 `docs/iteration/sprint/_template-sprint.md`。关闭时把第 4.2 节的**项目管理与证据**板块填实。
+
+## 5. 运行手册（macOS）
 
 来自 `常用sh命令合集.txt` 的原始命令：
 
