@@ -29,7 +29,10 @@ export default function FlowNode({ id, data }) {
     onRun,
     onRunUpstream,
     onRunFromHere,
+    onLoadEmbedding,
   } = data;
+
+  const isParseStep = step === "parse_chunk_embed";
 
   return (
     <div className={`node-card status-${status || "idle"}`}>
@@ -57,6 +60,25 @@ export default function FlowNode({ id, data }) {
           Run From Here
         </button>
       </div>
+
+      {isParseStep && onLoadEmbedding ? (
+        <div className="node-actions embed-actions">
+          <button
+            className="run-btn"
+            title="载入最近一次 Embedding 结果；若无则按原逻辑执行"
+            onClick={() => onLoadEmbedding(id, "load")}
+          >
+            载入 Embedding
+          </button>
+          <button
+            className="run-btn"
+            title="即使已有 Embedding，也强制重新执行 parse_chunk_embed"
+            onClick={() => onLoadEmbedding(id, "regen")}
+          >
+            重新生成
+          </button>
+        </div>
+      ) : null}
 
       <div className="node-actions">
         <span className="node-status">

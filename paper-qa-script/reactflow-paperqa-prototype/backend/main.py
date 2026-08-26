@@ -3,6 +3,7 @@ import sys
 import time
 import uuid
 import json
+import hashlib
 import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -220,6 +221,35 @@ def _paperqa_trace(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [e for e in events if str(e.get("func", "")).startswith("paperqa.")]
 
 
+# ---- parse_chunk_embed 的 Embedding 缓存（用于"载入最近一次 Embedding"） ----
+
+def _embed_cache_dir() -> Path:
+    d = Path.home() / ".pqa" / "embed_cache"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _embed_cache_path(paper_dir: str, index_name: str, paths: list[str]) -> Path:
+    key = hashlib.sha1("|".join([paper_dir, index_name, *paths]).encode("utf-8")).hexdigest()[:16]
+    return _embed_cache_dir() / f"{key}.json"
+
+
+def _read_embed_cache(p: Path) -> dict[str, Any] | None:
+    try:
+        if p.exists():
+            return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return None
+
+
+def _write_embed_cache(p: Path, data: dict[str, Any]) -> None:
+    try:
+        p.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -370,41 +400,112 @@ async def run_step(req: StepRequest) -> StepResponse:
                     raise ValueError("Run config step first")
                 if session.search_index is None:
                     raise ValueError("Run load_index step first")
-                docs = Docs()
+                embed_mode = (req.params.get("embed_mode") or "run").lower()
                 paper_dir = Path(session.settings.agent.index.paper_directory)
                 paths = req.params.get("candidate_paths") or session.candidate_paths
                 if not paths:
                     paths = list((await session.search_index.index_files).keys())[:5]
-                per_file = []
-                for p in paths:
-                    before = len(docs.texts)
-                    p0 = time.perf_counter()
-                    abs_path = str((paper_dir / p).resolve()) if not Path(p).is_absolute() else p
-                    docname = await docs.aadd(path=abs_path, settings=session.settings)
-                    per_file.append(
-                        {
-                            "file": p,
-                            "docname": docname,
-                            "added_chunks": len(docs.texts) - before,
-                            "duration_s": round(time.perf_counter() - p0, 3),
+                cache_path = _embed_cache_path(
+                    str(paper_dir),
+                    session.settings.agent.index.name or "",
+                    sorted(paths),
+                )
+
+                # "载入最近一次 Embedding"：能复用本会话 docs 则最快；否则用缓存（仅还原展示）
+                if embed_mode == "load":
+                    if session.docs is not None:
+                        docs = session.docs
+                        sample_texts = [
+                            {
+                                "name": getattr(t, "name", ""),
+                                "docname": getattr(getattr(t, "doc", None), "docname", ""),
+                                "text_preview": _safe_text_preview(getattr(t, "text", "")),
+                            }
+                            for t in list(docs.texts)[:8]
+                        ]
+                        output = {
+                            "docs_count": len(docs.docs),
+                            "texts_count": len(docs.texts),
+                            "per_file": [],
+                            "sample_texts": sample_texts,
+                            "loaded": True,
+                            "source": "session",
                         }
-                    )
-                session.docs = docs
-                sample_texts: list[dict[str, Any]] = []
-                for t in list(docs.texts)[:8]:
-                    sample_texts.append(
+                    else:
+                        cached = _read_embed_cache(cache_path)
+                        if cached is not None:
+                            output = {**cached, "loaded": True, "source": "cache"}
+                            # docs 未在内存（跨会话）：evidence/answer 直接用它会缺 docs，
+                            # 前端此时会提示"重新生成"以重建 docs。
+                        else:
+                            # 无缓存 -> 按原逻辑执行
+                            docs = Docs()
+                            per_file = []
+                            for p in paths:
+                                before = len(docs.texts)
+                                p0 = time.perf_counter()
+                                abs_path = str((paper_dir / p).resolve()) if not Path(p).is_absolute() else p
+                                docname = await docs.aadd(path=abs_path, settings=session.settings)
+                                per_file.append(
+                                    {
+                                        "file": p,
+                                        "docname": docname,
+                                        "added_chunks": len(docs.texts) - before,
+                                        "duration_s": round(time.perf_counter() - p0, 3),
+                                    }
+                                )
+                            session.docs = docs
+                            sample_texts = [
+                                {
+                                    "name": getattr(t, "name", ""),
+                                    "docname": getattr(getattr(t, "doc", None), "docname", ""),
+                                    "text_preview": _safe_text_preview(getattr(t, "text", "")),
+                                }
+                                for t in list(docs.texts)[:8]
+                            ]
+                            output = {
+                                "docs_count": len(docs.docs),
+                                "texts_count": len(docs.texts),
+                                "per_file": per_file,
+                                "sample_texts": sample_texts,
+                                "loaded": False,
+                            }
+                            _write_embed_cache(cache_path, output)
+                else:
+                    # "重新生成"（regen）或默认（run）：总是重跑并覆盖缓存
+                    docs = Docs()
+                    per_file = []
+                    for p in paths:
+                        before = len(docs.texts)
+                        p0 = time.perf_counter()
+                        abs_path = str((paper_dir / p).resolve()) if not Path(p).is_absolute() else p
+                        docname = await docs.aadd(path=abs_path, settings=session.settings)
+                        per_file.append(
+                            {
+                                "file": p,
+                                "docname": docname,
+                                "added_chunks": len(docs.texts) - before,
+                                "duration_s": round(time.perf_counter() - p0, 3),
+                            }
+                        )
+                    session.docs = docs
+                    sample_texts = [
                         {
                             "name": getattr(t, "name", ""),
                             "docname": getattr(getattr(t, "doc", None), "docname", ""),
                             "text_preview": _safe_text_preview(getattr(t, "text", "")),
                         }
-                    )
-                output = {
-                    "docs_count": len(docs.docs),
-                    "texts_count": len(docs.texts),
-                    "per_file": per_file,
-                    "sample_texts": sample_texts,
-                }
+                        for t in list(docs.texts)[:8]
+                    ]
+                    output = {
+                        "docs_count": len(docs.docs),
+                        "texts_count": len(docs.texts),
+                        "per_file": per_file,
+                        "sample_texts": sample_texts,
+                        "loaded": False,
+                        "regen": embed_mode == "regen",
+                    }
+                    _write_embed_cache(cache_path, output)
 
             elif step == "evidence":
                 if session.docs is None:

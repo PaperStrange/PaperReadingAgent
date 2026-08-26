@@ -21,6 +21,7 @@ export default function FunctionTraceNode({ data }) {
   const [zhText, setZhText] = useState("");
   const [translating, setTranslating] = useState(false);
   const [translateErr, setTranslateErr] = useState("");
+  const [lightbox, setLightbox] = useState(null); // 大图预览 URL
 
   const rp = data?.result_payload || null;
   const ap = data?.args_payload || null;
@@ -102,11 +103,17 @@ export default function FunctionTraceNode({ data }) {
             </details>
           ) : null}
           {showMedia ? (
-            <img
-              className="fn-media"
-              src={rp.page_preview_url || rp.first_media_url}
-              alt="chunk media preview"
-            />
+            <div className="fn-media-wrap">
+              <img
+                className="fn-media"
+                src={rp.page_preview_url || rp.first_media_url}
+                alt="chunk media preview"
+                onClick={() => setLightbox(rp.page_preview_url || rp.first_media_url)}
+              />
+              <button className="run-btn fn-zoom-btn" onClick={() => setLightbox(rp.page_preview_url || rp.first_media_url)}>
+                🔍 放大查看
+              </button>
+            </div>
           ) : null}
           {!showMedia && previewReason ? (
             <div className="fn-preview-reason">preview: {String(previewReason)}</div>
@@ -115,6 +122,15 @@ export default function FunctionTraceNode({ data }) {
       ) : null}
       {data?.error ? <div className="fn-error-text">error: {data.error}</div> : null}
       <Handle type="source" position={Position.Right} />
+
+      {lightbox ? (
+        <div className="fn-lightbox" onClick={() => setLightbox(null)}>
+          <div className="fn-lightbox-inner" onClick={(e) => e.stopPropagation()}>
+            <img className="fn-lightbox-img" src={lightbox} alt="chunk media zoom" />
+            <button className="fn-lightbox-close" onClick={() => setLightbox(null)}>✕ 关闭</button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
