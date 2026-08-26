@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Handle, Position } from "reactflow";
 import JsonTree from "./JsonTree";
 import { translatePreview } from "./api";
@@ -123,14 +124,17 @@ export default function FunctionTraceNode({ data }) {
       {data?.error ? <div className="fn-error-text">error: {data.error}</div> : null}
       <Handle type="source" position={Position.Right} />
 
-      {lightbox ? (
-        <div className="fn-lightbox" onClick={() => setLightbox(null)}>
-          <div className="fn-lightbox-inner" onClick={(e) => e.stopPropagation()}>
-            <img className="fn-lightbox-img" src={lightbox} alt="chunk media zoom" />
-            <button className="fn-lightbox-close" onClick={() => setLightbox(null)}>✕ 关闭</button>
-          </div>
-        </div>
-      ) : null}
+      {lightbox
+        ? createPortal(
+            <div className="fn-lightbox" onClick={() => setLightbox(null)}>
+              <div className="fn-lightbox-inner" onClick={(e) => e.stopPropagation()}>
+                <img className="fn-lightbox-img" src={lightbox} alt="chunk media zoom" />
+                <button className="fn-lightbox-close" onClick={() => setLightbox(null)}>✕ 关闭</button>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
