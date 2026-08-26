@@ -1,0 +1,28 @@
+# --- generated / runtime leftovers ---
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+dist/
+.venv/
+venv/
+.DS_Store
+
+# --- macOS AppleDouble junk ---
+._*
+__MACOSX/
+
+# --- local data / logs ---
+data/parsed/*.jsonl
+tmp.log
+
+# --- secrets (use .env.example as template) ---
+.env
+**/.env
+.env.local
+*.pem
+*.key
+
+# --- IDE ---
+.idea/
+.vscode/

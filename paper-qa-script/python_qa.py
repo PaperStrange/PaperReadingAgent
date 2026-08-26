@@ -28,8 +28,26 @@
 from paperqa import Settings, ask
 from paperqa.settings import AgentSettings,ParsingSettings
 import os
+import sys
 
-OPENAI_API_KEY = 'sk-***REDACTED***'
+# 强制 stdout 为 UTF-8，避免非 UTF-8 终端输出 emoji/中文时抛异常
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+# 从 paper-qa-script/.env 读取 OPENAI_API_KEY（若存在且未设置），避免在代码中硬编码密钥
+if not os.getenv("OPENAI_API_KEY"):
+    _ENV_FILE = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(_ENV_FILE):
+        with open(_ENV_FILE, encoding="utf-8") as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if _line.startswith("export "):
+                    _line = _line[7:].strip()
+                if _line.startswith("OPENAI_API_KEY="):
+                    os.environ["OPENAI_API_KEY"] = _line.split("=", 1)[1].strip()
+                    break
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")  # 原硬编码密钥已移除
 
 model = 'openai/qwen3-max'
 embedding_model = "openai/text-embedding-v4"

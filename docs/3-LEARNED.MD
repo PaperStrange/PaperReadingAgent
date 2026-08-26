@@ -23,8 +23,8 @@
 - **Agent(ToolSelector) 常 status=fail**：`tmp.log` 显示每次 ToolSelector 问答最终 `MalformedMessageError`
   （Qwen 未按工具调用格式返回）。可用 `Agent 模式=fake`（稳定）或"透明流程（推荐）"。
 - **终端乱码**：`tmp.log` 中问题文本以 GBK/UTF-8 混码（如 `鐢ㄤ腑鏂囧洖绛斾竴涓?`），是终端编码问题，非代码问题。
-- **旧 DashScope 密钥全部失效**（账户问题，非代码问题）：`sk-6d83…` 欠费（Arrearage）、
-  `sk-d70b…` 模型无权限、`sk-proj-…` OpenAI 配额超限。
+- **旧 DashScope 密钥全部失效**（账户问题，非代码问题）：其中一个 DashScope 密钥欠费（Arrearage）、
+  另一个 DashScope 密钥模型无权限、OpenAI 密钥配额超限。
 
 ## 3. 验证记录（对原代码的模拟运行验证）
 
