@@ -20,11 +20,14 @@ if not os.getenv("OPENAI_API_KEY"):
                     os.environ["OPENAI_API_KEY"] = _line.split("=", 1)[1].strip()
                     break
 
-# 你的环境配置（密钥一律从环境变量 / `.env` 读取，不再硬编码）
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-model = 'openai/qwen3-max'
-embedding_model = "openai/text-embedding-v4"
-API_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+# 你的环境配置（服务商切换：PAPERQA_PROVIDER=deepseek|dashscope|openai，默认 dashscope）
+from provider_config import get_provider_config
+
+_PCFG = get_provider_config()
+OPENAI_API_KEY = _PCFG["api_key"] or os.getenv("OPENAI_API_KEY", "")
+model = _PCFG["model"]
+embedding_model = _PCFG["embedding"]
+API_BASE = _PCFG["api_base"] or ""
 
 os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 
@@ -56,7 +59,7 @@ async def test_api():
         return
     try:
         response = await acompletion(
-            model="openai/qwen3-max",
+            model=model,
             messages=[{"role": "user", "content": "Hello"}],
             api_base=API_BASE,
             api_key=OPENAI_API_KEY

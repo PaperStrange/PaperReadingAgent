@@ -63,6 +63,8 @@ function mergeFunctionTrace(prevTrace, nextTrace) {
 const initialNodesRaw = [
   makeNode("n1", "1) Config", "config", 20, 40, {
     api_key: "",
+    // 服务商：deepseek | dashscope | openai（api_base/model/embedding 显式填写时优先）
+    provider: "dashscope",
     api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     model: "openai/qwen-omni-turbo",
     embedding_model: "openai/text-embedding-v4",

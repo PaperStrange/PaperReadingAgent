@@ -157,6 +157,18 @@ streamlit run paper-qa-script/streamlit_paperqa_app.py
 
 ---
 
+## 模型服务商切换
+
+统一通过环境变量 `PAPERQA_PROVIDER`（或 Streamlit 侧边栏"模型服务商"下拉框）在三个服务商间切换：
+
+| 服务商 | LLM / 视觉模型 | 向量化 | API Base |
+|---|---|---|---|
+| `dashscope`（默认） | `openai/qwen-omni-turbo` | `openai/text-embedding-v4`（API） | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `deepseek` | `openai/deepseek-v4-flash` / `openai/deepseek-v4-flash-vision-exp` | `st-multi-qa-MiniLM-L6-cos-v1`（本地） | `https://api.deepseek.com` |
+| `openai` | `gpt-4o-mini` | `text-embedding-3-small`（API） | OpenAI 官方默认 |
+
+密钥按顺序读取：服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → 本地 `paper-qa-script/.env`。显式传入的 `api_base/model/embedding_model` 参数优先级最高。
+
 ## 版本控制
 
 - 远程：`https://github.com/PaperStrange/PaperReadingAgent.git`

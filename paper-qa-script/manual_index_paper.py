@@ -34,9 +34,14 @@ if not os.getenv("OPENAI_API_KEY"):
                     os.environ["OPENAI_API_KEY"] = _line.split("=", 1)[1].strip()
                     break
 
-QWEN_API_KEY = os.getenv("OPENAI_API_KEY", "")  # 原硬编码密钥已移除  
-model = 'openai/qwen-omni-turbo'  #  qwen-max
-embedding_model = "openai/text-embedding-v4"  
+from provider_config import get_provider_config
+
+# 服务商切换：PAPERQA_PROVIDER=deepseek|dashscope|openai（默认 dashscope）
+_PCFG = get_provider_config()
+QWEN_API_KEY = _PCFG["api_key"] or os.getenv("OPENAI_API_KEY", "")
+model = _PCFG["model"]
+embedding_model = _PCFG["embedding"]
+API_BASE = _PCFG["api_base"] or ""
   
 os.environ["OPENAI_API_KEY"] = QWEN_API_KEY  
   
@@ -48,7 +53,7 @@ llm_config = {
             "litellm_params": {  
                 "model": model,
                 "temperature": 0.1,  
-                "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",  
+                "api_base": API_BASE,  
                 "api_key": QWEN_API_KEY}  
         }
     ]  
@@ -61,7 +66,7 @@ embedding_config = {
             "model_name": embedding_model,  
             "litellm_params": {  
                 "model": embedding_model,  
-                "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",  
+                "api_base": API_BASE,  
                 "api_key": QWEN_API_KEY}  
         }
     ],
