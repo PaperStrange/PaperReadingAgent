@@ -113,12 +113,14 @@ PaperReading-Windows/
 │   ├── count_paperqa_functions.py
 │   ├── paperqa_system_report.md       # 分析产物（371 函数）
 │   ├── .env                            # OPENAI_API_KEY=DeepSeek key（旧 key 注释保留）
-│   ├── app/                            # Sprint-2 分层（UI → API → 编排 → 引擎适配 → 基础设施）
+│   ├── app/                            # Sprint-2/3 分层（UI → API → 编排 → 引擎适配 → 基础设施）
 │   │   ├── orchestration.py            # 编排层：PipelineOrchestrator（六步流水线 + StepRequest/Response + embed 缓存）
 │   │   ├── engine.py                   # 引擎适配层：EngineAdapter 接口 + LocalVendorAdapter（paperqa 透传）
 │   │   ├── config_schema.py            # 配置唯一真源：策展 schema + validate_config + CLI 生成 config_schema.json
 │   │   ├── events.py                   # 统一事件模型（StepEvent/FunctionTraceEvent/…，SSE 线协议兼容）
-│   │   └── session_store.py            # 基础设施：SessionStore 接口 + MemorySessionStore
+│   │   ├── session_store.py            # 基础设施：SessionStore 接口 + MemorySessionStore（含会话级数据源参数）
+│   │   ├── data_sources.py             # 数据源领域模型（SourceKind/SourceSpec/RemoteSourceConfig，纯校验无 IO）
+│   │   └── remote_resolver.py          # 远程源解析器（arXiv API/Unpaywall DOI/直链 → data/remote/<index_name>/ 暂存）
 │   └── reactflow-paperqa-prototype/
 │       ├── backend/main.py             # FastAPI 路由层（Sprint-2 解耦后：8 路由 + RunEventBroker/SSE + 组合根）
 │       ├── backend/requirements.txt
@@ -140,6 +142,7 @@ PaperReading-Windows/
 - **app/engine.py**（引擎适配层）：`EngineAdapter` 接口（config/index/query/add_doc/evidence/answer/run_agent/version）+ `LocalVendorAdapter` 透传现有 paperqa 调用。
 - **app/config_schema.py**（配置唯一真源）：策展六组 schema + 从 `Settings.model_fields` 自动提取默认值 + `validate_config`（errors/warnings/hints）；`python -m app.config_schema` 生成 `config_schema.json`。
 - **app/events.py / app/session_store.py**：统一事件模型（StepEvent/FunctionTraceEvent/AgentActionEvent/…）；`SessionStore` 接口 + `MemorySessionStore`。
+- **app/data_sources.py / app/remote_resolver.py**（Sprint-3 主题 B）：数据源领域模型与远程源解析——`data_source` 模式（local 默认 / remote 下载暂存）；URL/arXiv/DOI 经 `resolve_remote_sources` 统一下载到 `data/remote/<index_name>/`（幂等、逐源失败明细），复用现有索引/解析管线；`manifest_file` 元数据增强生效。
 - **App.jsx**（1000+ 行）：节点状态机（idle/running/success/failed/stale）；`runSingleNode`（EventSource 收流 + POST）；上下游拓扑（`getUpstreamIds/getDownstreamIds`）；`buildFunctionSubgraphForStep`（调用树布局：深度分组、列宽 340、软碰撞避让、最多 140 调用）；`runAllSequential`。
 - **FlowNode.jsx / FunctionTraceNode.jsx / JsonTree.jsx**：步骤节点卡片（参数 JSON 编辑、Run/Run Upstream/Run From Here、快照、trace 列表）；函数节点卡片（文本全文/中文翻译按钮/图片预览）；JSON 树渲染。
 - **runtime_trace.py**：`RuntimeTracer`（19 个显式 TARGETS + 8 个 MODULE_TARGETS 全量函数 + 可选 lmi embed）；上下文栈基于 contextvars；`_make_chunk` 的 result 载荷含 text_full/text_preview/media 信息/页码预览（fitz 渲染，0.45 缩放，≤400KB）。

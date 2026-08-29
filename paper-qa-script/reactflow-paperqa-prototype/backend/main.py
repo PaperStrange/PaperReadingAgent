@@ -35,12 +35,16 @@ from app.session_store import MemorySessionStore, SessionState  # noqa: E402
 class RunEventBroker:
     """SSE 传输层：内存 pub/sub + 事件历史（订阅者先拿历史再收实时）。"""
 
+    _MAX_HISTORY = 500  # 每个 (session_id, run_id) 的历史上限（review m8：防无界增长）
+
     def __init__(self) -> None:
         self._history: dict[tuple[str, str], list[dict[str, Any]]] = {}
         self._subscribers: dict[tuple[str, str], set[asyncio.Queue]] = {}
 
     def publish(self, key: tuple[str, str], event: dict[str, Any]) -> None:
-        self._history.setdefault(key, []).append(event)
+        history = self._history.setdefault(key, [])
+        history.append(event)
+        del history[: max(0, len(history) - self._MAX_HISTORY)]
         for q in list(self._subscribers.get(key, set())):
             try:
                 q.put_nowait(event)

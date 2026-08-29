@@ -76,6 +76,12 @@ const initialNodesRaw = [
     // relative to the backend process cwd (start backend from the repo root)
     paper_directory: "data/pdf",
     index_name: "debug_index",
+    // 数据源（Sprint-3）：local=本地目录（默认）；remote=URL/arXiv/DOI 下载到 data/remote/<index_name>/
+    data_source: "local",
+    source_urls: [],
+    source_arxiv_ids: [],
+    source_dois: [],
+    manifest_file: "",
     embedding_batch_size: 10,
     chunk_chars: 5000,
     chunk_overlap: 250,

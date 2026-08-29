@@ -19,8 +19,10 @@ from typing import Any, Callable
 from pydantic import BaseModel, Field
 
 from app.config_schema import validate_config
+from app.data_sources import parse_remote_sources, validate_source_specs
 from app.engine import ENGINE, EngineAdapter
 from app.events import FunctionTraceEvent, StepEvent
+from app.remote_resolver import resolve_remote_sources
 from app.session_store import SessionState, SessionStore
 
 try:
@@ -73,6 +75,22 @@ def _paperqa_trace(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [e for e in events if str(e.get("func", "")).startswith("paperqa.")]
 
 
+# code review M3：快照/记录中的敏感字段脱敏，避免 api_key 明文进入
+# StepResponse.input_snapshot / run_records / session_records API
+_SECRET_KEYS = {"api_key", "apikey", "password", "token", "secret", "authorization"}
+
+
+def _redact_secrets(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            k: ("***" if str(k).lower() in _SECRET_KEYS else _redact_secrets(v))
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_secrets(v) for v in value]
+    return value
+
+
 # ---- parse_chunk_embed 的 Embedding 缓存（用于"载入最近一次 Embedding"） ----
 
 def _embed_cache_dir() -> Path:
@@ -120,11 +138,13 @@ class PipelineOrchestrator:
         run_id = req.run_id or f"run-{uuid.uuid4().hex[:10]}"
         step = req.step
         t0 = time.perf_counter()
-        input_snapshot = {
-            "step": step,
-            "params": req.params,
-            "upstream": req.upstream,
-        }
+        input_snapshot = _redact_secrets(
+            {
+                "step": step,
+                "params": req.params,
+                "upstream": req.upstream,
+            }
+        )
 
         def on_trace_event(evt: dict[str, Any]) -> None:
             func_name = str(evt.get("func", ""))
@@ -146,6 +166,11 @@ class PipelineOrchestrator:
             with tracer:
                 if step == "config":
                     session.settings = self._engine.make_settings(req.params)
+                    # US-3.3：数据源参数存入会话（load_index 步骤读取；Run All 时各节点参数独立）
+                    session.data_source_params = {
+                        k: req.params.get(k)
+                        for k in ("data_source", "source_urls", "source_arxiv_ids", "source_dois")
+                    }
                     output = {
                         "paper_directory": session.settings.agent.index.paper_directory,
                         "index_name": session.settings.agent.index.name,
@@ -158,6 +183,24 @@ class PipelineOrchestrator:
                 elif step == "load_index":
                     if session.settings is None:
                         raise ValueError("Run config step first")
+                    # US-3.3：remote 模式先解析下载远程源（staging 目录在 make_settings 已指向）。
+                    # 数据源参数以会话内 config 步骤的值为唯一来源（与 make_settings 决策一致，防覆盖漂移）。
+                    ds_params: dict[str, Any] = session.data_source_params
+                    remote_cfg = parse_remote_sources(ds_params)
+                    data_source = (ds_params.get("data_source") or "local").lower()
+                    remote_report = None
+                    if data_source == "remote":
+                        if remote_cfg.is_empty():
+                            raise ValueError(
+                                "remote 模式需要至少一个数据源：source_urls / source_arxiv_ids / source_dois"
+                            )
+                        spec_errors = validate_source_specs(remote_cfg.to_specs())
+                        if spec_errors:
+                            raise ValueError("远程源校验失败：\n" + "\n".join(f"  - {e}" for e in spec_errors))
+                        remote_report = await resolve_remote_sources(
+                            remote_cfg,
+                            session.settings.agent.index.name or "",
+                        )
                     build = bool(req.params.get("build", True))
                     session.search_index = await self._engine.get_directory_index(
                         settings=session.settings, build=build
@@ -168,6 +211,9 @@ class PipelineOrchestrator:
                         "indexed_files": len(index_files),
                         "files": list(index_files.keys()),
                     }
+                    if remote_report is not None:
+                        # 追加：远程源解析明细（只增不减）
+                        output["remote_sources"] = remote_report.model_dump()
 
                 elif step == "retrieve":
                     if session.search_index is None:
