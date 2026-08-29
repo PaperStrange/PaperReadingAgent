@@ -46,6 +46,33 @@
 - 旧 DashScope 密钥：账户欠费（`Arrearage`）；另一 DashScope 密钥：模型无权限；OpenAI 密钥：配额超限（均为账户侧问题）。
 - 结论：请求均成功到达服务端并返回账户级错误 → 端点/模型名/请求格式正确。全链路改用 DeepSeek key（用户指定）。
 
+### 1.10 ReactFlow 节点内的 fixed 弹层被 transform 祖先裁剪（Sprint-1 证据收集时发现）
+- 现象：chunk 图片 lightbox（`position:fixed;inset:0`）在 DOM 里存在但截图看不到。
+- 根因：ReactFlow 节点容器带 `transform: translate(...)`，CSS `fixed` 在 transform 祖先内退化为相对其定位并被裁剪。
+- 解决：lightbox 改用 **React Portal**（`createPortal(…, document.body)`）渲染到 body，脱离 transform 上下文。
+- 教训：**凡悬浮层/弹层出现在画布节点内部，一律用 Portal 挂到 body**；用浏览器截图（Playwright）验证"看得见"而不只看 DOM 存在。
+
+### 1.11 批量杀进程误伤宿主会话（运维纪律）
+- 现象：一次 `Get-Process node|python | Stop-Process` 清理开发服务器，导致运行器工具调用被中断。
+- 教训：**禁止宽泛按进程名批量杀进程**。停止服务优先：明确 PID / 端口级确认 / 由服务自身停止信号；工具自身宿主进程（如 Web 运行器）绝不触碰。
+
+### 1.12 Playwright 驱动 ReactFlow 交互的技巧（Sprint 证据标准配套）
+- 现象：Playwright 点击 ReactFlow 节点内按钮/图片常失败（元素在 transform 容器内、"outside of viewport"、点击被节点拖拽拦截）。
+- 解决：点击"Run All"等顶栏按钮走正常 click；节点内部 img 用 `page.evaluate(() => img.dispatchEvent(new MouseEvent('click',{bubbles:true})))` 派发；截图后用 `read_image` 逐张核对内容是否符合需求卡片。
+
+### 1.13 依赖漂移教训升级：需要"框架适配层 + 版本检查"（Sprint-2 动机）
+- 回顾 1.5（fhlmi/litellm 大版本漂移）与 vendor 本地注入的维护痛点 → 决策：引入 `EngineAdapter` 接口、支持 pip 包注入与版本检查/回滚（见 `docs/iteration/refactor-analysis.MD` 主题 E1/E2）。
+- 教训：**版本 pin 不要散落在注释里**，要进可校验的配置/锁文件；框架升级必须有回归锚点。
+
+### 1.14 pydantic `model_json_schema()` 在复杂类型上会整体失败 → 用 `model_fields` 逐段导航（US-2.1）
+- 现象：paperqa `Settings.model_json_schema()` 抛 `PydanticInvalidForJsonSchema`（`AsyncContextSerializer` 无法 JSON-Schema 化），整个 schema 都拿不到，不能做"自动抽取默认值"。
+- 解决：改为 `Settings.model_fields` 逐段导航（`parsing.use_doc_details`、`answer.evidence_k`…），注解经 `Optional/Union` 解包、遇非 BaseModel 容器（如 `MaybeDict`）视为叶子；解析失败回落策展默认值。一致性自检同样走 `_path_exists`（防拼写错误）。
+- 教训：**别把框架的整树 schema 生成当免费午餐**；按需逐字段读取 + 回落策略，才能既自动抽取又不被框架类型卡死。
+
+### 1.15 大文件分层拆分三件套：逐字迁移 + 线协议比对 + 每卡回归（US-2.2/US-2.5）
+- 做法：557 行 `main.py` 拆成 路由/编排/引擎适配 三层时，六步逻辑**逐字迁移**（diff 只应出现 `self._engine.` 前缀与 `on_event` 回调）；SSE 消息改为事件模型构造后，用单元脚本把新旧**线字段集合逐一比对**（function_trace 17 键、step_done ok/fail 键集），再跑 smoke/e2e/embed_load/GUI 四层回归。
+- 教训：**"行为不变"要靠三层证据**——(1) 代码级逐字迁移 (2) 协议级字段比对 (3) 运行级回归一致；三者齐了才算 DONE，而不是"看起来一样"。
+
 ## 2. 验证记录（Windows，实际执行）
 
 ### 2.1 冒烟（`verify/verify_smoke.py`）—— 8 项中 7 项通过
