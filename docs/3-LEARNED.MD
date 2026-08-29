@@ -46,6 +46,24 @@
 - 旧 DashScope 密钥：账户欠费（`Arrearage`）；另一 DashScope 密钥：模型无权限；OpenAI 密钥：配额超限（均为账户侧问题）。
 - 结论：请求均成功到达服务端并返回账户级错误 → 端点/模型名/请求格式正确。全链路改用 DeepSeek key（用户指定）。
 
+### 1.10 ReactFlow 节点内的 fixed 弹层被 transform 祖先裁剪（Sprint-1 证据收集时发现）
+- 现象：chunk 图片 lightbox（`position:fixed;inset:0`）在 DOM 里存在但截图看不到。
+- 根因：ReactFlow 节点容器带 `transform: translate(...)`，CSS `fixed` 在 transform 祖先内退化为相对其定位并被裁剪。
+- 解决：lightbox 改用 **React Portal**（`createPortal(…, document.body)`）渲染到 body，脱离 transform 上下文。
+- 教训：**凡悬浮层/弹层出现在画布节点内部，一律用 Portal 挂到 body**；用浏览器截图（Playwright）验证"看得见"而不只看 DOM 存在。
+
+### 1.11 批量杀进程误伤宿主会话（运维纪律）
+- 现象：一次 `Get-Process node|python | Stop-Process` 清理开发服务器，导致运行器工具调用被中断。
+- 教训：**禁止宽泛按进程名批量杀进程**。停止服务优先：明确 PID / 端口级确认 / 由服务自身停止信号；工具自身宿主进程（如 Web 运行器）绝不触碰。
+
+### 1.12 Playwright 驱动 ReactFlow 交互的技巧（Sprint 证据标准配套）
+- 现象：Playwright 点击 ReactFlow 节点内按钮/图片常失败（元素在 transform 容器内、"outside of viewport"、点击被节点拖拽拦截）。
+- 解决：点击"Run All"等顶栏按钮走正常 click；节点内部 img 用 `page.evaluate(() => img.dispatchEvent(new MouseEvent('click',{bubbles:true})))` 派发；截图后用 `read_image` 逐张核对内容是否符合需求卡片。
+
+### 1.13 依赖漂移教训升级：需要"框架适配层 + 版本检查"（Sprint-2 动机）
+- 回顾 1.5（fhlmi/litellm 大版本漂移）与 vendor 本地注入的维护痛点 → 决策：引入 `EngineAdapter` 接口、支持 pip 包注入与版本检查/回滚（见 `docs/iteration/refactor-analysis.MD` 主题 E1/E2）。
+- 教训：**版本 pin 不要散落在注释里**，要进可校验的配置/锁文件；框架升级必须有回归锚点。
+
 ## 2. 验证记录（Windows，实际执行）
 
 ### 2.1 冒烟（`verify/verify_smoke.py`）—— 8 项中 7 项通过
