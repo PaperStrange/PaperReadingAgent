@@ -64,6 +64,11 @@
 - 回顾 1.5（fhlmi/litellm 大版本漂移）与 vendor 本地注入的维护痛点 → 决策：引入 `EngineAdapter` 接口、支持 pip 包注入与版本检查/回滚（见 `docs/iteration/refactor-analysis.MD` 主题 E1/E2）。
 - 教训：**版本 pin 不要散落在注释里**，要进可校验的配置/锁文件；框架升级必须有回归锚点。
 
+### 1.14 pydantic `model_json_schema()` 在复杂类型上会整体失败 → 用 `model_fields` 逐段导航（US-2.1）
+- 现象：paperqa `Settings.model_json_schema()` 抛 `PydanticInvalidForJsonSchema`（`AsyncContextSerializer` 无法 JSON-Schema 化），整个 schema 都拿不到，不能做"自动抽取默认值"。
+- 解决：改为 `Settings.model_fields` 逐段导航（`parsing.use_doc_details`、`answer.evidence_k`…），注解经 `Optional/Union` 解包、遇非 BaseModel 容器（如 `MaybeDict`）视为叶子；解析失败回落策展默认值。一致性自检同样走 `_path_exists`（防拼写错误）。
+- 教训：**别把框架的整树 schema 生成当免费午餐**；按需逐字段读取 + 回落策略，才能既自动抽取又不被框架类型卡死。
+
 ## 2. 验证记录（Windows，实际执行）
 
 ### 2.1 冒烟（`verify/verify_smoke.py`）—— 8 项中 7 项通过
