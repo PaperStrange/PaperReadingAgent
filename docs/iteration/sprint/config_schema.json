@@ -222,6 +222,76 @@
       ]
     },
     {
+      "key": "datasource",
+      "label": "数据源",
+      "fields": [
+        {
+          "key": "data_source",
+          "label": "数据源模式",
+          "type": "enum",
+          "hint": "local=本地论文目录（默认）；remote=URL/arXiv/DOI 下载后建索引",
+          "impacts": [
+            "切换 remote 需联网下载（首次较慢）",
+            "修改后需重建索引才生效"
+          ],
+          "readonly": false,
+          "options": [
+            "local",
+            "remote"
+          ],
+          "default": "local"
+        },
+        {
+          "key": "source_urls",
+          "label": "URL 列表",
+          "type": "string_list",
+          "hint": "每行一个：PDF/HTML 直链（http/https）",
+          "impacts": [
+            "需联网"
+          ],
+          "readonly": false,
+          "default": []
+        },
+        {
+          "key": "source_arxiv_ids",
+          "label": "arXiv ID 列表",
+          "type": "string_list",
+          "hint": "每行一个：如 2409.13740（export.arxiv.org 解析，免 key）",
+          "impacts": [
+            "需联网"
+          ],
+          "readonly": false,
+          "default": []
+        },
+        {
+          "key": "source_dois",
+          "label": "DOI 列表",
+          "type": "string_list",
+          "hint": "每行一个：如 10.xxxx/yyyy（Unpaywall 查开放全文，可能无 OA PDF）",
+          "impacts": [
+            "需联网",
+            "部分论文无 OA 全文会失败"
+          ],
+          "readonly": false,
+          "default": []
+        },
+        {
+          "key": "manifest_file",
+          "label": "Manifest 清单",
+          "type": "string",
+          "hint": "可选：元数据 CSV/JSON（相对论文目录或绝对路径），对索引文件做元数据增强",
+          "impacts": [],
+          "readonly": false,
+          "default": "",
+          "pydantic_path": [
+            "agent",
+            "index",
+            "manifest_file"
+          ]
+        }
+      ]
+    },
+    {
       "key": "index",
       "label": "Index",
       "fields": [
@@ -229,7 +299,7 @@
           "key": "paper_directory",
           "label": "论文目录",
           "type": "string",
-          "hint": "本地目录（相对后端工作目录）；远程数据源支持见 roadmap",
+          "hint": "本地目录（相对后端工作目录）；remote 模式时为下载暂存目录",
           "impacts": [
             "数据源"
           ],
@@ -240,24 +310,10 @@
           "key": "index_name",
           "label": "索引名",
           "type": "string",
-          "hint": "存于 ~/.pqa/indexes/<name>/",
+          "hint": "存于 ~/.pqa/indexes/<name>/；remote 下载目录为 data/remote/<name>/",
           "impacts": [],
           "readonly": false,
           "default": "debug_index"
-        },
-        {
-          "key": "manifest_file",
-          "label": "Manifest 清单",
-          "type": "string",
-          "hint": "可选：元数据 CSV 路径（当前表单暂未暴露）",
-          "impacts": [],
-          "readonly": true,
-          "default": null,
-          "pydantic_path": [
-            "agent",
-            "index",
-            "manifest_file"
-          ]
         }
       ]
     }
