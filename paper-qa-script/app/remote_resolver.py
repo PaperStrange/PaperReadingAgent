@@ -11,6 +11,7 @@ staging 目录（`data/remote/<index_name>/`），随后复用现有索引/解�
 """
 from __future__ import annotations
 
+import hashlib
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -146,7 +147,8 @@ async def resolve_one(
             filename = _safe_filename(f"{spec.value.replace('/', '_')}.pdf", "paper.pdf")
         else:  # URL
             pdf_url = spec.value
-            filename = _safe_filename(spec.value, f"source-{abs(hash(spec.value)) % 100000}.pdf")
+            digest = hashlib.sha1(spec.value.encode("utf-8")).hexdigest()[:10]
+            filename = _safe_filename(spec.value, f"source-{digest}.pdf")
 
         target = dest_dir / filename
         result.pdf_url = pdf_url
