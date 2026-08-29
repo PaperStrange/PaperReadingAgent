@@ -1,9 +1,23 @@
 // GUI 全链路回归脚本（US-2.6 证据）：Run All 全链路 + 截图
-// 运行前提：后端 8787 / 前端 5173 已启动；在 frontend 目录执行（复用其 node_modules 的 playwright）：
-//   node ..\..\..\verify\gui_check.mjs
-import { chromium } from "playwright";
+// 运行前提：后端 8787 / 前端 5173 已启动：
+//   node verify\gui_check.mjs
+// playwright 为前端 node_modules 的 --no-save 安装：经 createRequire 显式定位。
+import { createRequire } from "module";
+import path from "path";
+import { fileURLToPath } from "url";
 
-const SHOT = "D:/All-Downloads/PaperReading/PaperReading-Windows/docs/iteration/sprint/us2-06.png";
+const _here = path.dirname(fileURLToPath(import.meta.url));
+const _frontendNm = path.resolve(
+  _here,
+  "../paper-qa-script/reactflow-paperqa-prototype/frontend/node_modules"
+);
+const require = createRequire(path.join(_frontendNm, "noop.js"));
+const { chromium } = require("playwright");
+
+// 截图输出：默认 verify/（两分支都存在）；可用环境变量 GUI_SHOT 覆盖（如指向 docs/iteration/sprint/）
+const SHOT =
+  process.env.GUI_SHOT ||
+  path.resolve(_here, "gui_check.png");
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1700, height: 1000 } });
 await page.goto("http://127.0.0.1:5173", { waitUntil: "networkidle" });

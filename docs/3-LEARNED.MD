@@ -73,6 +73,11 @@
 - 做法：557 行 `main.py` 拆成 路由/编排/引擎适配 三层时，六步逻辑**逐字迁移**（diff 只应出现 `self._engine.` 前缀与 `on_event` 回调）；SSE 消息改为事件模型构造后，用单元脚本把新旧**线字段集合逐一比对**（function_trace 17 键、step_done ok/fail 键集），再跑 smoke/e2e/embed_load/GUI 四层回归。
 - 教训：**"行为不变"要靠三层证据**——(1) 代码级逐字迁移 (2) 协议级字段比对 (3) 运行级回归一致；三者齐了才算 DONE，而不是"看起来一样"。
 
+### 1.16 远程数据源三教训：跨节点参数要会话化、httpx 异常 str 为空、第三方 API 的隐形门槛（Sprint-3）
+- 现象：Run All 全链路中 load_index 读不到 config 节点的数据源参数（各节点参数相互独立）→ 索引 0 文件；arXiv 失败时错误明细为空串（httpx 异常 `str()` 为空）；Unpaywall 对示例邮箱返回 422。
+- 解决：config 步骤把数据源参数写入 `SessionState.data_source_params`（会话级持久化，显式传参可覆盖）；错误捕获 `str(exc) or repr(exc) or type(exc).__name__` 兜底 + 超时单独语义；DOI 源改读 `UNPAYWALL_EMAIL` 环境变量并给中文指引。
+- 教训：**跨步骤共享的配置要落在会话/状态里而不是指望节点参数**；**记录错误时永远给 repr 兜底**（网络库异常常是空 str）；**接第三方 API 先实测其隐形门槛**（真实邮箱、限流、422 语义）。
+
 ## 2. 验证记录（Windows，实际执行）
 
 ### 2.1 冒烟（`verify/verify_smoke.py`）—— 8 项中 7 项通过

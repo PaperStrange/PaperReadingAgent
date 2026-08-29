@@ -1,5 +1,6 @@
 import React from "react";
 import { Handle, Position } from "reactflow";
+import DataSourcePanel from "./DataSourcePanel";
 import JsonTree from "./JsonTree";
 
 function functionTraceList(trace) {
@@ -33,6 +34,7 @@ export default function FlowNode({ id, data }) {
   } = data;
 
   const isParseStep = step === "parse_chunk_embed";
+  const isConfigStep = step === "config";
 
   return (
     <div className={`node-card status-${status || "idle"}`}>
@@ -42,6 +44,13 @@ export default function FlowNode({ id, data }) {
         <div className="node-title">{title}</div>
         <div className="node-step">{step}</div>
       </div>
+
+      {isConfigStep ? (
+        <DataSourcePanel
+          params={params}
+          onChange={(text) => onChangeParams(id, text)}
+        />
+      ) : null}
 
       <textarea
         className="node-textarea"

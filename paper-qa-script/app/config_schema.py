@@ -2,7 +2,7 @@
 
 设计（refactor-analysis.MD §4 Q2）：
 - **唯一真源** = 本模块的 `GROUPS`（策展覆盖层：分组/中文标签/类型/范围/影响提示/顺序），
-  分六组：LLM / Embedding / Parsing / Agent / Answer / Index。
+  分七组：LLM / Embedding / Parsing / Agent / Answer / 数据源 / Index（数据源组为 Sprint-3 主题 B 新增）。
 - 字段默认值两级来源：
   1. 策展层显式 `default`（app 有效默认，如 build_settings 的 `temperature=0.1`）优先；
   2. 否则若有 `pydantic_path`，从 paperqa `Settings.model_fields` **自动提取**默认值
@@ -106,18 +106,38 @@ GROUPS: list[dict[str, Any]] = [
         ],
     },
     {
+        "key": "datasource",
+        "label": "数据源",
+        "fields": [
+            {"key": "data_source", "type": "enum", "options": ["local", "remote"],
+             "default": "local", "label": "数据源模式",
+             "hint": "local=本地论文目录（默认）；remote=URL/arXiv/DOI 下载后建索引",
+             "impacts": ["切换 remote 需联网下载（首次较慢）", _IMPACTS_INDEX]},
+            {"key": "source_urls", "type": "string_list", "default": [],
+             "label": "URL 列表",
+             "hint": "每行一个：PDF/HTML 直链（http/https）", "impacts": ["需联网"]},
+            {"key": "source_arxiv_ids", "type": "string_list", "default": [],
+             "label": "arXiv ID 列表",
+             "hint": "每行一个：如 2409.13740（export.arxiv.org 解析，免 key）", "impacts": ["需联网"]},
+            {"key": "source_dois", "type": "string_list", "default": [],
+             "label": "DOI 列表",
+             "hint": "每行一个：如 10.xxxx/yyyy（Unpaywall 查开放全文；需设置 UNPAYWALL_EMAIL 环境变量为真实邮箱）",
+             "impacts": ["需联网", "部分论文无 OA 全文会失败"]},
+            {"key": "manifest_file", "type": "string", "default": "",
+             "label": "Manifest 清单",
+             "hint": "可选：元数据 CSV/JSON（相对论文目录或绝对路径），对索引文件做元数据增强",
+             "pydantic_path": ("agent", "index", "manifest_file")},
+        ],
+    },
+    {
         "key": "index",
         "label": "Index",
         "fields": [
             {"key": "paper_directory", "type": "string", "default": "data/pdf",
-             "label": "论文目录", "hint": "本地目录（相对后端工作目录）；远程数据源支持见 roadmap",
+             "label": "论文目录", "hint": "本地目录（相对后端工作目录）；remote 模式时为下载暂存目录",
              "impacts": ["数据源"]},
             {"key": "index_name", "type": "string", "default": "debug_index",
-             "label": "索引名", "hint": "存于 ~/.pqa/indexes/<name>/"},
-            {"key": "manifest_file", "type": "string", "readonly": True,
-             "label": "Manifest 清单",
-             "hint": "可选：元数据 CSV 路径（当前表单暂未暴露）",
-             "pydantic_path": ("agent", "index", "manifest_file")},
+             "label": "索引名", "hint": "存于 ~/.pqa/indexes/<name>/；remote 下载目录为 data/remote/<name>/"},
         ],
     },
 ]
@@ -125,7 +145,8 @@ GROUPS: list[dict[str, Any]] = [
 # 各步骤运行时参数（不属于配置 schema，但前端/步骤会传，不应报未知参数）
 KNOWN_RUNTIME_KEYS = {
     "query", "top_n", "build", "question", "candidate_paths", "embed_mode",
-    "session_id", "run_id", "step",
+    "session_id", "run_id", "step", "data_source", "source_urls",
+    "source_arxiv_ids", "source_dois",
 }
 
 
@@ -254,10 +275,29 @@ def validate_config(params: dict[str, Any]) -> dict[str, list[str]]:
                 lo, hi = field["range"]
                 if value < lo or value > hi:
                     errors.append(f"参数 {field['label']}({key}) 超出范围 [{lo}, {hi}]")
+        elif ft == "string_list":
+            # 与解析层（parse_remote_sources）契约一致：接受字符串（换行/逗号/分号切分）或列表
+            if isinstance(value, str):
+                pass
+            elif isinstance(value, (list, tuple)):
+                if any(not isinstance(v, str) for v in value):
+                    errors.append(f"参数 {field['label']}({key}) 列表元素应全部为字符串")
+            else:
+                errors.append(f"参数 {field['label']}({key}) 应为字符串或字符串列表，收到 {type(value).__name__}")
 
         # 影响提示（切换前可预期）
         for impact in field.get("impacts", []):
             hints.append(f"[{field['label']}] {impact}")
+
+    # 跨字段提示：提供了远程源但模式仍为 local -> 不会生效
+    has_remote = any(
+        params.get(k)
+        for k in ("source_urls", "source_arxiv_ids", "source_dois")
+    )
+    if has_remote and (params.get("data_source") or "local") != "remote":
+        warnings.append(
+            "已提供 URL/arXiv/DOI 数据源，但 data_source=local：远程源不会生效，请切换为 remote"
+        )
 
     return {"errors": errors, "warnings": warnings, "hints": hints}
 

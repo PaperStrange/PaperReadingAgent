@@ -35,9 +35,7 @@
 | [`docs/1-WORKFLOW.MD`](docs/1-WORKFLOW.MD) | 项目工作流：开发规范、知识管理、项目管理、运行手册、分支协作 |
 | [`docs/2-ARCHITECTURE.MD`](docs/2-ARCHITECTURE.MD) | 系统架构：架构图、模块职责、数据流、模型与存储约定 |
 | [`docs/3-LEARNED.MD`](docs/3-LEARNED.MD) | 开发经验教训：踩坑记录、验证记录、已知限制 |
-| [`docs/iteration/sprint/2026-08-26-sprint-1.md`](docs/iteration/sprint/2026-08-26-sprint-1.md) | 敏捷迭代 Sprint 1：目标/Backlog/执行/Retro |
-| [`docs/iteration/embed-optimization.MD`](docs/iteration/embed-optimization.MD) | parse_chunk_embed 提速分析（预分割加速探索） |
-| [`verify/README.md`](verify/README.md) | 验收脚本（`verify_smoke/e2e/agent/embed_load/provider_switch.py`）使用说明 |
+| [`verify/README.md`](verify/README.md) | 验收脚本（`verify_smoke/e2e/agent/embed_load/provider_switch/remote_e2e` + GUI 检查）使用说明 |
 | [`paper-qa-script/reactflow-paperqa-prototype/README.md`](paper-qa-script/reactflow-paperqa-prototype/README.md) | ReactFlow 前端 + FastAPI 后端原型说明 |
 | [`paper-qa-script/paperqa_system_report.md`](paper-qa-script/paperqa_system_report.md) | paperqa 源码静态分析报告（371 个函数） |
 | [`paper-qa/README.md`](paper-qa/README.md) 等 | vendored PaperQA2 上游文档（README/CONTRIBUTING/tutorials/packages） |

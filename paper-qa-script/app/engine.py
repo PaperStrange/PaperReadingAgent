@@ -89,18 +89,38 @@ class LocalVendorAdapter(EngineAdapter):
         # 统一服务商切换：provider 参数 / PAPERQA_PROVIDER 环境变量；显式参数仍可覆盖
         provider_cfg = get_provider_config(params.get("provider"))
 
+        def _as_float(key: str, default: float) -> float:
+            try:
+                return float(params.get(key, default))
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"参数 {key} 应为数字，收到 {params.get(key)!r}") from exc
+
+        def _as_int(key: str, default: int) -> int:
+            try:
+                return int(params.get(key, default))
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"参数 {key} 应为整数，收到 {params.get(key)!r}") from exc
+
         api_key = params.get("api_key") or os.getenv("OPENAI_API_KEY") or provider_cfg["api_key"]
         api_base = params.get("api_base") or provider_cfg["api_base"]
         model = params.get("model") or provider_cfg["model"]
         vision_model = provider_cfg["vision_model"]
         embedding_model = params.get("embedding_model") or provider_cfg["embedding"]
         embedding_local = bool(provider_cfg["embedding_local"]) and embedding_model.startswith("st-")
-        temperature = float(params.get("temperature", 0.1))
-        paper_dir = str(Path(params.get("paper_directory", "./data/pdf")).expanduser())
+        temperature = _as_float("temperature", 0.1)
         index_name = params.get("index_name", "debug_index")
-        embedding_batch_size = int(params.get("embedding_batch_size", 10))
-        chunk_chars = int(params.get("chunk_chars", 5000))
-        chunk_overlap = int(params.get("chunk_overlap", 250))
+        data_source = (params.get("data_source") or "local").lower()
+        if data_source == "remote":
+            # US-3.3：remote 模式 -> 论文目录指向统一下载的 staging 目录（data/remote/<index_name>/）
+            from app.data_sources import remote_staging_dir
+
+            paper_dir = str(remote_staging_dir(index_name))
+        else:
+            paper_dir = str(Path(params.get("paper_directory", "./data/pdf")).expanduser())
+        manifest_file = params.get("manifest_file") or None
+        embedding_batch_size = _as_int("embedding_batch_size", 10)
+        chunk_chars = _as_int("chunk_chars", 5000)
+        chunk_overlap = _as_int("chunk_overlap", 250)
 
         if not api_key:
             raise ValueError("api_key is required（请在 .env 或环境变量设置对应服务商的 Key）")
@@ -162,6 +182,7 @@ class LocalVendorAdapter(EngineAdapter):
                     paper_directory=str(Path(paper_dir).resolve()),
                     files_filter=lambda f: f.suffix in {".pdf", ".txt", ".md", ".html"},
                     name=index_name,
+                    manifest_file=manifest_file,
                 ),
             ),
         )
