@@ -24,6 +24,7 @@ if str(_ROOT_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_ROOT_SCRIPT_DIR))
 
 from provider_config import get_provider_config  # noqa: E402
+from app.config_schema import validate_config  # noqa: E402
 from app.session_store import MemorySessionStore, SessionState  # noqa: E402
 
 try:
@@ -349,6 +350,8 @@ async def run_step(req: StepRequest) -> StepResponse:
                     "index_name": session.settings.agent.index.name,
                     "llm": session.settings.llm,
                     "embedding": session.settings.embedding,
+                    # 追加：配置唯一真源校验/提示（US-2.1，只增不减，行为不变）
+                    "config_notes": validate_config(req.params),
                 }
 
             elif step == "load_index":
