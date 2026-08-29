@@ -93,7 +93,7 @@ sequenceDiagram
     BE-->>UI: context_ids(10 条)
     UI->>BE: answer
     PQ->>DS: llm=flash：基于证据+图片上下文生成答案+引用
-    BE-->>UI: answer(≈1600 字符) + references + used_contexts
+    BE-->>UI: answer(约 1600~1800 字符，示例值随 LLM 波动) + references + used_contexts
 ```
 
 ## 3. 目录结构
@@ -112,7 +112,8 @@ PaperReading-Windows/
 │   ├── analyze_paperqa_system.py      # 静态 AST 分析（路径已改相对）
 │   ├── count_paperqa_functions.py
 │   ├── paperqa_system_report.md       # 分析产物（371 函数）
-│   ├── .env                            # OPENAI_API_KEY=DeepSeek key（旧 key 注释保留）
+│   ├── .env                            # PAPERQA_PROVIDER + 服务商 key（旧 key 注释保留）
+│   ├── provider_config.py              # 服务商模型/向量化/密钥映射（PAPERQA_PROVIDER 切换）
 │   ├── app/                            # Sprint-2/3 分层（UI → API → 编排 → 引擎适配 → 基础设施）
 │   │   ├── orchestration.py            # 编排层：PipelineOrchestrator（六步流水线 + StepRequest/Response + embed 缓存）
 │   │   ├── engine.py                   # 引擎适配层：EngineAdapter 接口 + LocalVendorAdapter（paperqa 透传）
@@ -122,13 +123,14 @@ PaperReading-Windows/
 │   │   ├── data_sources.py             # 数据源领域模型（SourceKind/SourceSpec/RemoteSourceConfig，纯校验无 IO）
 │   │   └── remote_resolver.py          # 远程源解析器（arXiv API/Unpaywall DOI/直链 → data/remote/<index_name>/ 暂存）
 │   └── reactflow-paperqa-prototype/
-│       ├── backend/main.py             # FastAPI 路由层（Sprint-2 解耦后：8 路由 + RunEventBroker/SSE + 组合根）
+│       ├── backend/main.py             # FastAPI 路由层（Sprint-2 解耦后：7 条 API 路由 + RunEventBroker/SSE + 组合根）
 │       ├── backend/requirements.txt
-│       └── frontend/                   # React+Vite（App.jsx 默认参数已适配）
+│       └── frontend/                   # React+Vite（App.jsx / FlowNode.jsx / DataSourcePanel.jsx / FunctionTraceNode.jsx / JsonTree.jsx）
 ├── src/                       # ACL/ICLR/NeurIPS 语料采集
 ├── data/pdf/PaperQA2.pdf      # 示例论文
-├── scripts/                   # setup-env.ps1 / start-backend.ps1 / start-frontend.ps1 / start-streamlit.ps1
-├── verify/                    # 验收脚本（smoke/e2e/agent）+ e2e 结果
+├── data/remote/               # Sprint-3 远程源下载暂存（.gitignore 忽略，运行时生成）
+├── scripts/                   # setup-env.ps1 / start-backend.ps1 / start-frontend.ps1 / start-streamlit.ps1（+ .bat 双击版）
+├── verify/                    # 验收脚本（smoke/e2e/agent/provider_switch/embed_load/remote_e2e + gui_check*.mjs）+ e2e 结果
 ├── requirements-windows.txt   # Windows 依赖清单
 ├── requirements.txt           # 原语料采集依赖（未动）
 ├── docs/                      # 1-WORKFLOW / 2-ARCHITECTURE / 3-LEARNED
@@ -137,14 +139,14 @@ PaperReading-Windows/
 
 ## 4. 文件级职责
 
-- **backend/main.py**（路由层，Sprint-2 US-2.2 解耦后 ~220 行）：FastAPI app + CORS、8 条路由、`RunEventBroker`/SSE 传输、组合根（`SESSIONS`=MemorySessionStore、`ORCHESTRATOR`=make_orchestrator）；`build_settings()` 保留为 `ENGINE.make_settings` 薄包装（模型配置真源在 `app/engine.py` + `provider_config.py`）。
+- **backend/main.py**（路由层，Sprint-2 US-2.2 解耦后 ~190 行）：FastAPI app + CORS、7 条 API 路由、`RunEventBroker`/SSE 传输（历史 500 条/键）、组合根（`SESSIONS`=MemorySessionStore、`ORCHESTRATOR`=make_orchestrator）；`build_settings()` 保留为 `ENGINE.make_settings` 薄包装（模型配置真源在 `app/engine.py` + `provider_config.py`）。
 - **app/orchestration.py**（编排层）：`PipelineOrchestrator.run_step`——六步流水线（config→load_index→retrieve→parse_chunk_embed→evidence→answer）、`StepRequest/StepResponse`、embed 缓存、`RuntimeTracer(on_event=…)` 接线；实时事件经 `on_event` 回调交路由层发布（SSE 消息由 `app/events` 模型构造，线协议兼容）。
 - **app/engine.py**（引擎适配层）：`EngineAdapter` 接口（config/index/query/add_doc/evidence/answer/run_agent/version）+ `LocalVendorAdapter` 透传现有 paperqa 调用。
-- **app/config_schema.py**（配置唯一真源）：策展六组 schema + 从 `Settings.model_fields` 自动提取默认值 + `validate_config`（errors/warnings/hints）；`python -m app.config_schema` 生成 `config_schema.json`。
+- **app/config_schema.py**（配置唯一真源）：策展七组 schema（LLM/Embedding/Parsing/Agent/Answer/数据源/Index）+ 从 `Settings.model_fields` 自动提取默认值 + `validate_config`（errors/warnings/hints）；`python -m app.config_schema` 生成 `config_schema.json`。
 - **app/events.py / app/session_store.py**：统一事件模型（StepEvent/FunctionTraceEvent/AgentActionEvent/…）；`SessionStore` 接口 + `MemorySessionStore`。
-- **app/data_sources.py / app/remote_resolver.py**（Sprint-3 主题 B）：数据源领域模型与远程源解析——`data_source` 模式（local 默认 / remote 下载暂存）；URL/arXiv/DOI 经 `resolve_remote_sources` 统一下载到 `data/remote/<index_name>/`（幂等、逐源失败明细），复用现有索引/解析管线；`manifest_file` 元数据增强生效。
+- **app/data_sources.py / app/remote_resolver.py**（Sprint-3 主题 B）：数据源领域模型与远程源解析——`data_source` 模式（local 默认 / remote 下载暂存）；URL/arXiv/DOI 经 `resolve_remote_sources` 统一下载到 `data/remote/<index_name>/`（幂等、逐源失败明细），复用现有索引/解析管线；`manifest_file` 元数据增强生效。**安全**：下载前 SSRF 校验（仅公网 http/https、拒绝内网/本机地址、重定向逐跳复检）、单文件 200MB 上限 + 流式临时文件；编排层对 `input_snapshot`/`run_records` 做 api_key 脱敏。
 - **App.jsx**（1000+ 行）：节点状态机（idle/running/success/failed/stale）；`runSingleNode`（EventSource 收流 + POST）；上下游拓扑（`getUpstreamIds/getDownstreamIds`）；`buildFunctionSubgraphForStep`（调用树布局：深度分组、列宽 340、软碰撞避让、最多 140 调用）；`runAllSequential`。
-- **FlowNode.jsx / FunctionTraceNode.jsx / JsonTree.jsx**：步骤节点卡片（参数 JSON 编辑、Run/Run Upstream/Run From Here、快照、trace 列表）；函数节点卡片（文本全文/中文翻译按钮/图片预览）；JSON 树渲染。
+- **FlowNode.jsx / DataSourcePanel.jsx / FunctionTraceNode.jsx / JsonTree.jsx**：步骤节点卡片（参数 JSON 编辑、Run/Run Upstream/Run From Here、快照、trace 列表）；Config 节点「数据源」切换面板（local/remote、URL/arXiv/DOI 列表、manifest 路径）；函数节点卡片（文本全文/中文翻译按钮/图片预览）；JSON 树渲染。
 - **runtime_trace.py**：`RuntimeTracer`（19 个显式 TARGETS + 8 个 MODULE_TARGETS 全量函数 + 可选 lmi embed）；上下文栈基于 contextvars；`_make_chunk` 的 result 载荷含 text_full/text_preview/media 信息/页码预览（fitz 渲染，0.45 缩放，≤400KB）。
 - **streamlit_paperqa_app.py**：`SessionLogHandler`、`_reset_litellm_logging_worker`（修复跨 event loop 队列问题）、`run_coro`、透明流水线（5 节点计时）、DOT 生成与 graphviz 渲染/下载。
 
@@ -159,10 +161,11 @@ PaperReading-Windows/
 | API Base | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `https://api.deepseek.com` |
 | 思考模式 | 不适用 | `extra_body={"thinking":{"type":"disabled"}}` 关闭（详见 3-LEARNED） |
 
-密钥读取顺序：config 节点 `params.api_key` 或环境变量 `OPENAI_API_KEY`（`.env` 由 ps1 启动脚本导入）。
+密钥解析优先级：config 节点 `params.api_key` → 服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → 本地 `paper-qa-script/.env`（ps1 启动脚本导入）；服务商由 `PAPERQA_PROVIDER` 切换，显式 `api_base/model/embedding_model` 参数优先级最高。
 
 ## 6. 数据与存储约定
 
-- 索引目录：`%USERPROFILE%\.pqa\indexes\<name>\`（`PQA_HOME` 可覆盖）；mac 版为 `~/.pqa/indexes`（同一代码路径）。
+- 索引目录：`%USERPROFILE%\.pqa\indexes\<name>\`（`PQA_HOME` 可覆盖）；mac 版为 `~/.pqa/indexes`（同一代码路径；Mermaid 图中简写为 `~/.pqa/indexes`）。
+- 远程源暂存：`data/remote/<index_name>/`（.gitignore 忽略；remote 模式下即 `paper_directory`，下载→索引→解析全流程复用本地管线）。
 - 前端只读后端返回的 JSON 快照；会话/索引在后端与磁盘；重启后端会话丢失、索引保留（`load_index{build:false}` 复用）。
-- `data/parsed/*.jsonl`（97MB 语料）不入库；`data/pdf/PaperQA2.pdf` 入库用于演示。
+- `data/parsed/*.jsonl`（语料）不入库；`data/pdf/PaperQA2.pdf` 入库用于演示。

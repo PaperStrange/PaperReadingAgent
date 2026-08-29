@@ -5,7 +5,7 @@
 - 六步流水线编排 → `app.orchestration.PipelineOrchestrator`；
 - paperqa 引擎调用 → `app.engine.EngineAdapter`；
 - 事件模型 → `app.events`；配置 SSOT → `app.config_schema`。
-- 8 条路由与线上协议（run_step 请求/响应、SSE 消息字段）与拆分前完全一致。
+- 7 条 API 路由与线上协议（run_step 请求/响应、SSE 消息字段）与拆分前完全一致。
 """
 import sys
 import uuid

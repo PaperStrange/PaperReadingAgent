@@ -28,8 +28,8 @@
 
 - **改动范围**：Windows 移植只允许改 `PaperReading-Windows`；原文件仅当发现原代码缺陷时修改（对应 macOS 仓库同文件）。
 - **保留原代码**：所有被替换的 macOS 原始配置/路径，用 `[macOS original]` 注释保留，**不删除**。
-- **密钥**：一律读取环境变量 `OPENAI_API_KEY` 或本地 `paper-qa-script/.env`（以 `.env.example` 为模板），**代码与文档中禁止出现真实密钥**；`.env` 已被 `.gitignore` 忽略。
-- **服务商切换**：`PAPERQA_PROVIDER=deepseek|dashscope|openai` 统一切换；各服务商的模型/向量化/密钥映射集中在 `paper-qa-script/provider_config.py`（显式参数优先级更高）。
+- **密钥**：一律读取环境变量或本地 `paper-qa-script/.env`（以 `.env.example` 为模板），**代码与文档中禁止出现真实密钥**；`.env` 已被 `.gitignore` 忽略。解析优先级：config 节点 `params.api_key` → 服务商专属环境变量（`DEEPSEEK_API_KEY`/`DASHSCOPE_API_KEY`/`OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → `.env`。
+- **服务商切换**：`PAPERQA_PROVIDER=deepseek|dashscope|openai` 统一切换；服务商模型/向量化/密钥映射集中在 `paper-qa-script/provider_config.py`（显式参数优先级更高）；配置**唯一真源**（分组 schema/默认值/影响提示）在 `paper-qa-script/app/config_schema.py`（`python -m app.config_schema` 可生成/自检）。
 - **安全**：后端 CORS 仅允许本地前端来源、仅监听 `127.0.0.1`；前端渲染依赖 React 默认转义 + Streamlit DOT 转义；如需公开仓库，先确认无密钥残留（`git grep` 全历史）并轮换曾暴露的密钥。
 - **依赖锁定**：与 macOS `paper-qa/uv.lock` 对齐（fhlmi==0.42.1、litellm==1.76.1）；直接 `pip install` 会解析到更高大版本，需显式锁定。
 - **Python**：3.11+（本机 3.13）；**Node**：18+（本机 23）。
@@ -95,10 +95,8 @@
 ### 5.1 一次性环境准备
 
 ```powershell
-cd D:\All-Downloads\PaperReading\PaperReading-Windows
-powershell -ExecutionPolicy Bypass -File .\scripts\setup-env.ps1
-# 与 mac uv.lock 对齐的锁定版本
-.\.venv\Scripts\python.exe -m pip install "fhlmi==0.42.1" "litellm==1.76.1"
+cd D:\All-Downloads\PaperReading\PaperReading-Windows   # 或你的仓库根目录
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-env.ps1   # 含锁定 fhlmi/litellm 版本（对齐 mac uv.lock）+ requirements-windows.txt
 # 前端依赖
 cd paper-qa-script\reactflow-paperqa-prototype\frontend
 npm ci
@@ -115,11 +113,13 @@ npm ci
 .\scripts\start-streamlit.ps1
 ```
 
+> 若 `.ps1` 被记事本打开：用 `powershell -ExecutionPolicy Bypass -File .\scripts\start-*.ps1`，或双击 `scripts\start-*.bat`。
+
 浏览器打开 http://127.0.0.1:5173 。
 
 ### 5.3 使用流程（ReactFlow 原型）
 
-1. 打开前端 → **1) Config** 节点：确认/填写 `api_key`（DeepSeek key，`.env` 已含默认值）、`paper_directory`（默认 `data/pdf`，相对后端 cwd）。
+1. 打开前端 → **1) Config** 节点：`api_key` 留空即可（读环境变量 / `.env`）；确认 `paper_directory`（默认 `data/pdf`，相对后端 cwd）与「数据源」面板（local/remote 模式，见 README「数据源」节）。
 2. 依次或 `Run All (Left-to-Right)` 执行：**Load Index → Retrieve → Parse Chunk Embed → Gather Evidence → Generate Answer**。
 3. 点击任一节点，右侧"函数子画布"展示该步骤函数调用图；节点卡片可展开文本/页码预览图/中文翻译。
 4. 顶栏 `New Run ID` 分组一次实验；`New Session` 重建会话（会话为后端内存态）。
@@ -134,10 +134,16 @@ npm ci
 ### 5.5 验收脚本
 
 ```powershell
-$env:OPENAI_API_KEY = "<DeepSeek key>"
-.\.venv\Scripts\python.exe .\verify\verify_smoke.py   # 8 项冒烟（离线）
-.\.venv\Scripts\python.exe .\verify\verify_e2e.py     # 全链路（真实 API）
-.\.venv\Scripts\python.exe .\verify\verify_agent.py   # Agent 流程 + 翻译
+$env:PAPERQA_PROVIDER = "deepseek"                  # 与服务商一致
+$env:DEEPSEEK_API_KEY = "<DeepSeek key>"             # 若 .env 已配置可跳过
+$env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
+.\.venv\Scripts\python.exe .\verify\verify_smoke.py             # 8 项冒烟（离线）
+.\.venv\Scripts\python.exe .\verify\verify_provider_switch.py   # 服务商切换/路由
+.\.venv\Scripts\python.exe .\verify\verify_e2e.py               # 全链路（真实 API）
+.\.venv\Scripts\python.exe .\verify\verify_embed_load.py        # Embedding 三步
+.\.venv\Scripts\python.exe .\verify\verify_remote_e2e.py        # remote 数据源全链路（联网）
+node .\verify\gui_check.mjs          # GUI 全链路（需前后端已启动）
+node .\verify\gui_check_remote.mjs   # GUI remote 数据源（需前后端 + 联网）
 ```
 
 详见 `verify/README.md` 与 `docs/3-LEARNED.MD` 的验证记录。

@@ -45,5 +45,5 @@
 - 若需保留图片语义，优先选 **③（换更快的视觉模型/降分辨率）+ ⑤（缓存）**，而非完全关闭。
 
 ## 相关
-- `docs/2-ARCHITECTURE.MD`（multimodal / enrichment 配置见 build_settings）
+- `docs/2-ARCHITECTURE.MD`（multimodal / enrichment 配置在 `app/engine.py::make_settings`——即原 `main.build_settings`；parse_chunk_embed 步骤与 embed 缓存在 `app/orchestration.py`，Sprint-2 解耦后迁移）
 - Sprint 记录：`docs/iteration/sprint/2026-08-26-sprint-1.md`

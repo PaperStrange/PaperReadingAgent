@@ -78,22 +78,31 @@
 - 解决：config 步骤把数据源参数写入 `SessionState.data_source_params`（会话级持久化，显式传参可覆盖）；错误捕获 `str(exc) or repr(exc) or type(exc).__name__` 兜底 + 超时单独语义；DOI 源改读 `UNPAYWALL_EMAIL` 环境变量并给中文指引。
 - 教训：**跨步骤共享的配置要落在会话/状态里而不是指望节点参数**；**记录错误时永远给 repr 兜底**（网络库异常常是空 str）；**接第三方 API 先实测其隐形门槛**（真实邮箱、限流、422 语义）。
 
+### 1.17 双分支 code review 的价值：安全/资源/隐私三类漏洞在合并前拦截（Sprint-3 评审轮）
+- 现象：windows 评审发现 4 项必须修复——SSRF（远程下载可访问内网/本机）、下载无上限全量内存缓冲、api_key 明文进 input_snapshot/run_records、前端面板对字符串参数崩溃；main 评审发现"PR 只合了 Sprint-2、Sprint-3 未同步"的合并完整性缺口。
+- 解决：SSRF 校验 + 重定向逐跳复检（沙箱透明代理 198.18/15 豁免）；200MB 上限 + 流式临时文件；`_redact_secrets` 脱敏；`toText()` 归一化；另修 m2/m3/m5/m6/m8/m9/m11 共 7 项；随后 PR #3 补同步 main。
+- 教训：**评审要覆盖"新增的攻击面"而非只查老代码**——本次新增的网络下载/快照持久化正是漏洞高发区；**评审结论要落到 commit 与文档闭环**（sprint-3 §9 记录发现→修复→回归的完整链路）。
+
 ## 2. 验证记录（Windows，实际执行）
 
-### 2.1 冒烟（`verify/verify_smoke.py`）—— 8 项中 7 项通过
+### 2.1 冒烟（`verify/verify_smoke.py`）—— 8/8 通过
 | 检查 | 结果 |
 |---|---|
 | paperqa 导入 v2026.1.6.dev10+g36348d0ca | ✅ |
-| backend/main.py 加载（FastAPI 8 条路由） | ✅ |
+| backend/main.py 加载（FastAPI 7 条 API 路由） | ✅ |
 | RuntimeTracer（19 个显式目标） | ✅ |
-| streamlit / litellm / PyMuPDF（25 页渲染） | ✅ |
-| graphviz python 包 + SVG | ⚠️ 缺系统 dot（可选） |
+| streamlit 1.62.0 | ✅ |
+| litellm | ✅ |
+| PyMuPDF 页渲染（PaperQA2.pdf 25 页） | ✅ |
+| graphviz python 包 + SVG（自动发现 `C:\Program Files\Graphviz\bin` 的 dot） | ✅ |
 | PDF 解析器自动发现（paperqa_pymupdf） | ✅ |
+
+> 早期版本第 7 项曾因缺系统 dot 报 `ExecutableNotFound`（可选安装）；现已自动发现，仅当系统完全未装 Graphviz 时才提示。
 
 ### 2.2 全链路端到端（`verify/verify_e2e.py`，真实 DeepSeek）✅
 - 后端 8787 `/api/health` ✅ → `load_index`（74 追踪事件）✅ → `retrieve` 候选 `['PaperQA2.pdf']` ✅
-- `parse_chunk_embed`（含 vision 图片增强）✅ → `evidence`（10 条上下文）✅
-- `answer`：**1656 字符带引用答案**（Skarlinski2024 pages 1-2 等）✅
+- `parse_chunk_embed`（含 vision 图片增强）✅ → `evidence`（9~10 条上下文）✅
+- `answer`：**约 1600~1800 字符带引用答案**（Skarlinski2024 pages 1-2 等，示例值随 LLM 输出波动）✅
 - 结论：透明流水线在 Windows 上完整跑通。
 
 ### 2.3 Agent 流程（`verify/verify_agent.py`）✅
@@ -101,9 +110,18 @@
 - 翻译接口：`'PaperQA2执行检索增强生成。'` ✅。
 
 ### 2.4 前端与 Streamlit ✅
-- `npm ci` + `npm run build`：197 模块；`dist` 与 mac 版同源（hash 一致）。
-- Vite dev：`/`、`/index.html`、`/src/main.jsx` 均 200。
-- `streamlit run --server.headless true`：8501 返回 200（11KB HTML）。
+- `npm ci` + `vite build`：198 模块（Sprint-3 增加 `DataSourcePanel.jsx` 后）；Vite dev `/` 等均 200。
+- `streamlit run --server.headless true`：8501 返回 200。
+
+### 2.5 Sprint-2/3 新增验证（`verify/`）
+
+| 脚本 | 结果（最近一次实测） |
+|---|---|
+| `verify_provider_switch.py` | 三服务商 `build_settings` 输出一致；deepseek 真实 key SUCCESS；dashscope/openai 占位 key 报各自端点错误（证明路由正确） |
+| `verify_embed_load.py` | run 30.5s / 同会话 load 0.0s / 新会话缓存 load 0.0s，texts=23 一致 |
+| `verify_remote_e2e.py` | remote+arXiv：下载 1.78MB → 索引 1 文件 → retrieve 1 候选 → evidence 9 contexts → answer 1663 字符 |
+| `gui_check.mjs` | GUI Run All 六步 → 答案含 Skarlinski（截图 `us2-06.png`） |
+| `gui_check_remote.mjs` | 面板切 remote + arXiv → Run All → 答案含 PaperQA2（截图 `us3-remote.png`） |
 
 ## 3. 已知限制
 
@@ -125,6 +143,10 @@
 | 前端注入 | React 默认转义后端文本；Streamlit `_dot_escape` 增加 DOT 特殊字符转义（`< > { } | \ " \n`） |
 | 监听范围 | 后端仅监听 `127.0.0.1`（不对外网暴露） |
 | 输出编码 | CLI 脚本 `sys.stdout.reconfigure(utf-8)` 修复 GBK 控制台打印 emoji/中文崩溃 |
+| SSRF 防护（Sprint-3） | 远程数据源下载前校验 URL：仅 http/https、拒绝本机/内网/链路本地/保留地址，重定向逐跳复检（≤5 跳）；沙箱透明代理段 198.18.0.0/15 豁免并注释 |
+| 下载上限（Sprint-3） | 单文件 200MB 上限（Content-Length 预检 + 流式计数）+ 流式写 `.part` 临时文件后原子改名，防内存/磁盘被打爆 |
+| 密钥脱敏（Sprint-3） | `orchestration._redact_secrets`：`input_snapshot`/`run_records` 中 api_key/token 等递归脱敏为 `***`（session_records API 不再泄露明文） |
+| 事件历史上限（Sprint-3） | `RunEventBroker` 历史 500 条/键，防内存无界增长 |
 
 - **仍需用户操作**：曾暴露过的 DeepSeek Key（以及其他旧密钥）请在服务商控制台**撤销并重新生成**。
-- 验证：整改后 `verify_smoke.py` 7/8（graphviz 可选）、`manual_test_internet_connection.py` 正常连接、`git grep` 全历史无密钥。
+- 验证：整改后 `verify_smoke.py` 8/8、`manual_test_internet_connection.py` 正常连接、`git grep` 全历史无密钥；Sprint-3 安全项由 windows 分支 code review（sprint-3 文档 §9）复核并回归通过。

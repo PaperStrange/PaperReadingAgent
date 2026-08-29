@@ -35,7 +35,8 @@
 | [`docs/1-WORKFLOW.MD`](docs/1-WORKFLOW.MD) | 项目工作流：开发规范、知识管理、项目管理、运行手册 |
 | [`docs/2-ARCHITECTURE.MD`](docs/2-ARCHITECTURE.MD) | 系统架构：架构图、模块职责、数据流、模型与存储约定 |
 | [`docs/3-LEARNED.MD`](docs/3-LEARNED.MD) | 开发经验教训：踩坑记录、验证记录、已知限制 |
-| [`verify/README.md`](verify/README.md) | 验收脚本（`verify_smoke/e2e/agent.py`）使用说明 |
+| [`verify/README.md`](verify/README.md) | 验收脚本（`verify_smoke/e2e/agent/provider_switch/embed_load/remote_e2e` + `gui_check*.mjs`）使用说明 |
+| [`docs/iteration/`](docs/iteration/) | 迭代增量文档（重构分析 `refactor-analysis.MD`、Sprint 记录 `sprint/`、性能分析；**仅 windows 分支**，不进 main/mac） |
 | [`paper-qa-script/reactflow-paperqa-prototype/README.md`](paper-qa-script/reactflow-paperqa-prototype/README.md) | ReactFlow 前端 + FastAPI 后端原型说明 |
 | [`paper-qa-script/paperqa_system_report.md`](paper-qa-script/paperqa_system_report.md) | paperqa 源码静态分析报告（371 个函数、入口签名、调用路径） |
 
@@ -206,9 +207,13 @@ curl.exe http://127.0.0.1:8787/api/health
 $env:PAPERQA_PROVIDER = "deepseek"               # 与 .env 一致即可
 $env:DEEPSEEK_API_KEY = "sk-你的DeepSeek密钥"      # 若 .env 已配置可跳过
 $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
-.\.venv\Scripts\python.exe .\verify\verify_smoke.py   # 8 项冒烟（离线）
-.\.venv\Scripts\python.exe .\verify\verify_e2e.py     # 全链路（真实 API）
-.\.venv\Scripts\python.exe .\verify\verify_agent.py   # Agent 流程 + 翻译
+.\.venv\Scripts\python.exe .\verify\verify_smoke.py             # 8 项冒烟（离线）
+.\.venv\Scripts\python.exe .\verify\verify_provider_switch.py   # 服务商切换/路由（离线+连通）
+.\.venv\Scripts\python.exe .\verify\verify_e2e.py               # 全链路（真实 API，本地目录）
+.\.venv\Scripts\python.exe .\verify\verify_embed_load.py        # Embedding 三步（run/load/缓存）
+.\.venv\Scripts\python.exe .\verify\verify_remote_e2e.py        # remote 数据源全链路（联网，arXiv）
+node .\verify\gui_check.mjs           # GUI 全链路（需前后端已启动）
+node .\verify\gui_check_remote.mjs    # GUI remote 数据源（需前后端已启动 + 联网）
 ```
 
 `verify_e2e.py` 期望输出（节选）：
@@ -227,10 +232,11 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 | 检查项 | 命令 | 期望结果 |
 |---|---|---|
 | 后端存活 | `curl.exe http://127.0.0.1:8787/api/health` | `{"status":"ok"}` |
-| 前端页面 | 浏览器 http://127.0.0.1:5173 | 6 节点画布 |
+| 前端页面 | 浏览器 http://127.0.0.1:5173 | 6 节点画布 + Config 数据源面板 |
 | Streamlit | 浏览器 http://127.0.0.1:8501 | 配置侧边栏 |
 | 依赖版本 | `.\.venv\Scripts\python.exe -m pip show fhlmi litellm` | `0.42.1` / `1.76.1` |
 | 全链路 | `.\.venv\Scripts\python.exe .\verify\verify_e2e.py` | 最终 `answer chars` 且 exit 0 |
+| remote 数据源 | `.\.venv\Scripts\python.exe .\verify\verify_remote_e2e.py` | `remote_sources` 明细 + `answer chars`（需联网） |
 
 ---
 
@@ -335,7 +341,20 @@ $env:DASHSCOPE_API_KEY = "sk-你的DashScope密钥"
 > dashscope/openai 用无效 key 时，错误信息应来自**各自端点**（aliyun / platform.openai.com），
 > 这证明路由正确——换成有效 key 后即可成功。
 
+## 数据源（Sprint-3）
+
+Config 节点顶部有「数据源」面板，两种模式：
+
+| 模式 | 说明 |
+|---|---|
+| `local`（默认） | 用 `paper_directory` 本地论文目录（`data/pdf`），行为与之前完全一致 |
+| `remote` | 逐行填 `source_urls`（PDF/HTML 直链）/ `source_arxiv_ids`（如 `2409.13740`，走 export.arxiv.org 免 key）/ `source_dois`（Unpaywall 查开放全文，需环境变量 `UNPAYWALL_EMAIL=你的邮箱`）→ 统一下载到 `data/remote/<index_name>/`（已在 .gitignore）→ 复用原有索引/解析管线 |
+
+`manifest_file`（可选）：元数据 CSV/JSON（相对论文目录），对索引文件做元数据增强。
+远程下载有安全防护：仅公网 http/https、拒绝内网/本机地址、单文件 200MB 上限、失败逐源报告。
+
 ## 版本控制
 
 - 远程：`https://github.com/PaperStrange/PaperReadingAgent.git`
-- 分支：`mac`（macOS 原版）｜`windows`（本仓库）
+- 分支：`main`（跨平台融合/集成分支）｜`mac`（macOS 原版）｜`windows`（本仓库，迭代分支）
+- 约定：`windows` 改动经 PR 合并进 `main`（`docs/iteration/` 只保留在 windows，不进 main/mac）
