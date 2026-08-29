@@ -71,9 +71,11 @@ API 服务层         FastAPI REST + SSE            薄：协议/路由/校验
 
 | Sprint | 目标 |
 |---|---|
-| **Sprint-2（本前置重构）** | 地基：配置 SSOT（策展 schema 生成器+覆盖层）、编排层解耦、事件模型、SessionStore、EngineAdapter 接口；全程行为不变 |
+| **Sprint-2（本前置重构）** ✅ 已完成（2026-08-29） | 地基：配置 SSOT（策展 schema 生成器+覆盖层）、编排层解耦、事件模型、SessionStore、EngineAdapter 接口；全程行为不变（证据见 `sprint/2026-08-29-sprint-2.md` §7） |
 | Sprint-3 | B 数据源抽象（本地目录/URL/manifest/论文ID 多源）+ 前端切换 UI |
 | Sprint-4 | C Agent 可观测闭环（结构化事件→时间线）+ 一手证据（原始错误/trace_id）→ 交付 E3 v1 **只读可视化**，验收后再迭代 |
 | Sprint-5 | E1/E2 pip 注入 + 版本检查/更新/回滚 |
 | Sprint-6 | D 单机多 worker + 会话外置 + 网关分流；之后评估简单多机 |
 | Sprint-7+ | E3 可编辑工作流（编排 DSL/配置 + 执行器） |
+
+> Sprint-2 落地结果（分层映射）：`app/config_schema.py`（配置 SSOT）、`app/orchestration.py`（编排）、`app/engine.py`（引擎适配）、`app/events.py`（事件模型）、`app/session_store.py`（SessionStore）；`backend/main.py` 已瘦身为纯路由层（~220 行，8 路由不变）。

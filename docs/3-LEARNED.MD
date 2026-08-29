@@ -69,6 +69,10 @@
 - 解决：改为 `Settings.model_fields` 逐段导航（`parsing.use_doc_details`、`answer.evidence_k`…），注解经 `Optional/Union` 解包、遇非 BaseModel 容器（如 `MaybeDict`）视为叶子；解析失败回落策展默认值。一致性自检同样走 `_path_exists`（防拼写错误）。
 - 教训：**别把框架的整树 schema 生成当免费午餐**；按需逐字段读取 + 回落策略，才能既自动抽取又不被框架类型卡死。
 
+### 1.15 大文件分层拆分三件套：逐字迁移 + 线协议比对 + 每卡回归（US-2.2/US-2.5）
+- 做法：557 行 `main.py` 拆成 路由/编排/引擎适配 三层时，六步逻辑**逐字迁移**（diff 只应出现 `self._engine.` 前缀与 `on_event` 回调）；SSE 消息改为事件模型构造后，用单元脚本把新旧**线字段集合逐一比对**（function_trace 17 键、step_done ok/fail 键集），再跑 smoke/e2e/embed_load/GUI 四层回归。
+- 教训：**"行为不变"要靠三层证据**——(1) 代码级逐字迁移 (2) 协议级字段比对 (3) 运行级回归一致；三者齐了才算 DONE，而不是"看起来一样"。
+
 ## 2. 验证记录（Windows，实际执行）
 
 ### 2.1 冒烟（`verify/verify_smoke.py`）—— 8 项中 7 项通过
