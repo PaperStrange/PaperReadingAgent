@@ -44,6 +44,7 @@ class StepEvent(BaseEvent):
     duration_s: float = 0.0
     output: dict = Field(default_factory=dict)
     error: str | None = None
+    function_count: int = 0          # 线协议兼容：现有 step_done 消息带 function_count
 
 
 class AgentActionEvent(BaseEvent):
@@ -74,6 +75,7 @@ class FunctionTraceEvent(BaseEvent):
     depth: int = 0
     task_id: str | None = None
     func: str = ""
+    started_at: str | None = None       # 线协议兼容：runtime_trace 事件带 started_at
     status: str = "ok"
     duration_s: float = 0.0
     args: dict = Field(default_factory=dict)
