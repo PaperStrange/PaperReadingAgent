@@ -267,7 +267,7 @@
           "key": "source_dois",
           "label": "DOI 列表",
           "type": "string_list",
-          "hint": "每行一个：如 10.xxxx/yyyy（Unpaywall 查开放全文，可能无 OA PDF）",
+          "hint": "每行一个：如 10.xxxx/yyyy（Unpaywall 查开放全文；需设置 UNPAYWALL_EMAIL 环境变量为真实邮箱）",
           "impacts": [
             "需联网",
             "部分论文无 OA 全文会失败"

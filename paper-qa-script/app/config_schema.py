@@ -121,7 +121,7 @@ GROUPS: list[dict[str, Any]] = [
              "hint": "每行一个：如 2409.13740（export.arxiv.org 解析，免 key）", "impacts": ["需联网"]},
             {"key": "source_dois", "type": "string_list", "default": [],
              "label": "DOI 列表",
-             "hint": "每行一个：如 10.xxxx/yyyy（Unpaywall 查开放全文，可能无 OA PDF）",
+             "hint": "每行一个：如 10.xxxx/yyyy（Unpaywall 查开放全文；需设置 UNPAYWALL_EMAIL 环境变量为真实邮箱）",
              "impacts": ["需联网", "部分论文无 OA 全文会失败"]},
             {"key": "manifest_file", "type": "string", "default": "",
              "label": "Manifest 清单",
