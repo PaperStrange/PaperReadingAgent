@@ -5,7 +5,6 @@ import uuid
 import json
 import hashlib
 import asyncio
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +24,7 @@ if str(_ROOT_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_ROOT_SCRIPT_DIR))
 
 from provider_config import get_provider_config  # noqa: E402
+from app.session_store import MemorySessionStore, SessionState  # noqa: E402
 
 try:
     from runtime_trace import RuntimeTracer
@@ -40,19 +40,8 @@ except Exception:
             return None
 
 
-@dataclass
-class SessionState:
-    session_id: str
-    settings: Settings | None = None
-    search_index: Any | None = None
-    candidate_paths: list[str] = field(default_factory=list)
-    docs: Docs | None = None
-    evidence_session: Any | None = None
-    answer_session: Any | None = None
-    run_records: list[dict[str, Any]] = field(default_factory=list)
-
-
-SESSIONS: dict[str, SessionState] = {}
+# Sprint-2 US-2.4：会话存储从全局字典迁移到 SessionStore 接口（内存实现），行为不变
+SESSIONS = MemorySessionStore()
 
 
 class RunEventBroker:
@@ -123,10 +112,7 @@ app.add_middleware(
 
 
 def get_or_create_session(session_id: str | None) -> SessionState:
-    sid = session_id or str(uuid.uuid4())
-    if sid not in SESSIONS:
-        SESSIONS[sid] = SessionState(session_id=sid)
-    return SESSIONS[sid]
+    return SESSIONS.get_or_create(session_id)
 
 
 def build_settings(params: dict[str, Any]) -> Settings:
@@ -288,7 +274,7 @@ async def reset_session(payload: dict[str, str]) -> dict[str, str]:
     sid = payload.get("session_id")
     if not sid:
         raise HTTPException(status_code=400, detail="session_id is required")
-    SESSIONS[sid] = SessionState(session_id=sid)
+    SESSIONS.reset(sid)
     return {"session_id": sid, "status": "reset"}
 
 
