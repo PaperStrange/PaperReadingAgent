@@ -1,6 +1,8 @@
 # PaperQA System Inventory
 
-- Source root: `/Volumes/Extreme SSD/vscode_projects/PaperReading/paper-qa/src/paperqa`
+> Generated from vendored paperqa `2026.1.6.dev10+g36348d0ca`（`paper-qa/src/paperqa`；本报告为静态分析产物，生成于 macOS 移植期）
+
+- Source root（Windows）: `paper-qa/src/paperqa`（原 macOS 路径：`/Volumes/Extreme SSD/vscode_projects/PaperReading/paper-qa/src/paperqa`）
 - Total functions: **371**
 - Top-level: **121** | Class methods: **233** | Nested: **17** | Async: **133**
 

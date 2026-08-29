@@ -8,8 +8,12 @@ A minimal prototype showing:
 
 ## Structure
 
-- `backend/main.py`: FastAPI step API and in-memory session state.
-- `frontend/`: React + Vite + React Flow UI.
+- `backend/main.py`: FastAPI 路由层（7 条 API 路由 + SSE 事件传输 + 组合根）。
+- `paper-qa-script/app/`: 分层实现（编排 `orchestration.py`、引擎适配 `engine.py`、
+  配置 SSOT `config_schema.py`、事件模型 `events.py`、会话 `session_store.py`、
+  数据源 `data_sources.py` + 远程解析 `remote_resolver.py`）。
+- `frontend/`: React + Vite + React Flow UI（`src/App.jsx`、`FlowNode.jsx`、
+  `DataSourcePanel.jsx`、`FunctionTraceNode.jsx`、`JsonTree.jsx`）。
 
 <!--
 ## Backend run (macOS original)
@@ -64,7 +68,17 @@ npm run dev
 5. `evidence`
 6. `answer`
 
-You can run a single node manually or click `Run All (Left->Right)`.
+You can run a single node manually or click `Run All (Left-to-Right)`.
+
+## Config 数据源面板（Sprint-3）
+
+Config 节点顶部有「数据源」面板（`DataSourcePanel.jsx`）：
+
+- `local`（默认）：使用 `paper_directory` 本地论文目录。
+- `remote`：URL / arXiv ID / DOI 列表逐行填写 → 统一下载到 `data/remote/<index_name>/`
+  再建索引（arXiv 走 export.arxiv.org 免 key；DOI 走 Unpaywall，需环境变量
+  `UNPAYWALL_EMAIL` 为真实邮箱）。
+- `manifest_file`：可选元数据 CSV/JSON（相对论文目录），对索引文件做元数据增强。
 
 ## Run ID & snapshots
 
@@ -83,14 +97,14 @@ You can run a single node manually or click `Run All (Left->Right)`.
 
 ## Function subgraph
 
-- `Expand Function Subgraph` builds a call graph from `function_trace`.
+- `Expand Selected Step Only` builds a call graph from `function_trace`.
 - Edges are parent->child (`parent_call_id`) rather than plain linear time.
 - Layout is expanded downward by call depth.
 
 ## Notes
 
 - This is a prototype for transparency and interaction, not production-hardening.
-- API key is passed in the `config` node `params.api_key`.
+- API key 可在 `config` 节点 `params.api_key` 覆盖；留空时读环境变量 / `paper-qa-script/.env`（按服务商）。
 - Session state is in-memory and resets when backend restarts.
 - Windows 默认模型：DeepSeek `openai/deepseek-v4-flash`（api_base `https://api.deepseek.com`）；
   图片/图表增强用 DeepSeek 视觉模型 `openai/deepseek-v4-flash-vision-exp`；
