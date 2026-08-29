@@ -1,7 +1,18 @@
 // GUI 全链路回归脚本（US-2.6 证据）：Run All 全链路 + 截图
-// 运行前提：后端 8787 / 前端 5173 已启动；在 frontend 目录执行（复用其 node_modules 的 playwright）：
-//   node ..\..\..\verify\gui_check.mjs
-import { chromium } from "playwright";
+// 运行前提：后端 8787 / 前端 5173 已启动：
+//   node verify\gui_check.mjs
+// playwright 为前端 node_modules 的 --no-save 安装：经 createRequire 显式定位。
+import { createRequire } from "module";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const _here = path.dirname(fileURLToPath(import.meta.url));
+const _frontendNm = path.resolve(
+  _here,
+  "../paper-qa-script/reactflow-paperqa-prototype/frontend/node_modules"
+);
+const require = createRequire(path.join(_frontendNm, "noop.js"));
+const { chromium } = require("playwright");
 
 const SHOT = "D:/All-Downloads/PaperReading/PaperReading-Windows/docs/iteration/sprint/us2-06.png";
 const browser = await chromium.launch({ headless: true });

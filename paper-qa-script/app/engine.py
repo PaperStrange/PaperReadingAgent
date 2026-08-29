@@ -96,8 +96,16 @@ class LocalVendorAdapter(EngineAdapter):
         embedding_model = params.get("embedding_model") or provider_cfg["embedding"]
         embedding_local = bool(provider_cfg["embedding_local"]) and embedding_model.startswith("st-")
         temperature = float(params.get("temperature", 0.1))
-        paper_dir = str(Path(params.get("paper_directory", "./data/pdf")).expanduser())
         index_name = params.get("index_name", "debug_index")
+        data_source = (params.get("data_source") or "local").lower()
+        if data_source == "remote":
+            # US-3.3：remote 模式 -> 论文目录指向统一下载的 staging 目录（data/remote/<index_name>/）
+            from app.data_sources import remote_staging_dir
+
+            paper_dir = str(remote_staging_dir(index_name))
+        else:
+            paper_dir = str(Path(params.get("paper_directory", "./data/pdf")).expanduser())
+        manifest_file = params.get("manifest_file") or None
         embedding_batch_size = int(params.get("embedding_batch_size", 10))
         chunk_chars = int(params.get("chunk_chars", 5000))
         chunk_overlap = int(params.get("chunk_overlap", 250))
@@ -162,6 +170,7 @@ class LocalVendorAdapter(EngineAdapter):
                     paper_directory=str(Path(paper_dir).resolve()),
                     files_filter=lambda f: f.suffix in {".pdf", ".txt", ".md", ".html"},
                     name=index_name,
+                    manifest_file=manifest_file,
                 ),
             ),
         )

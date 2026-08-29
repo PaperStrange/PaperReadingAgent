@@ -25,6 +25,8 @@ class SessionState:
     evidence_session: Any | None = None
     answer_session: Any | None = None
     run_records: list[dict[str, Any]] = field(default_factory=list)
+    # Sprint-3：config 步骤存下的数据源参数（load_index 步骤读取；Run All 时各节点参数相互独立）
+    data_source_params: dict[str, Any] = field(default_factory=dict)
 
 
 class SessionStore(ABC):

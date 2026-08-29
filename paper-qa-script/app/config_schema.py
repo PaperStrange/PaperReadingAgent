@@ -293,6 +293,16 @@ def validate_config(params: dict[str, Any]) -> dict[str, list[str]]:
         for impact in field.get("impacts", []):
             hints.append(f"[{field['label']}] {impact}")
 
+    # 跨字段提示：提供了远程源但模式仍为 local -> 不会生效
+    has_remote = any(
+        params.get(k)
+        for k in ("source_urls", "source_arxiv_ids", "source_dois")
+    )
+    if has_remote and (params.get("data_source") or "local") != "remote":
+        warnings.append(
+            "已提供 URL/arXiv/DOI 数据源，但 data_source=local：远程源不会生效，请切换为 remote"
+        )
+
     return {"errors": errors, "warnings": warnings, "hints": hints}
 
 

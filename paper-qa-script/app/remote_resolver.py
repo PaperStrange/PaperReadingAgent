@@ -81,17 +81,27 @@ def _sniff_suffix(head: bytes, current: str) -> str:
 
 
 async def resolve_arxiv_pdf_url(arxiv_id: str, client: httpx.AsyncClient) -> str:
-    """export.arxiv.org 公开 API（免 key）：arXiv ID → PDF 链接。"""
-    r = await client.get(_ARXIV_API, params={"id_list": arxiv_id, "max_results": 1})
-    r.raise_for_status()
-    root = ET.fromstring(r.text)
-    entries = root.findall("a:entry", _ATOM_NS)
-    if not entries:
-        raise ValueError(f"arXiv 未找到 {arxiv_id!r}")
-    title = (entries[0].findtext("a:title", default="", namespaces=_ATOM_NS) or "").strip()
-    if title.lower().startswith("error"):
-        raise ValueError(f"arXiv 返回错误：{title}")
-    return f"https://arxiv.org/pdf/{arxiv_id}"
+    """export.arxiv.org 公开 API（免 key）：arXiv ID → PDF 链接（失败重试一次）。"""
+    last_exc: Exception | None = None
+    for attempt in range(2):
+        try:
+            r = await client.get(_ARXIV_API, params={"id_list": arxiv_id, "max_results": 1})
+            r.raise_for_status()
+            root = ET.fromstring(r.text)
+            entries = root.findall("a:entry", _ATOM_NS)
+            if not entries:
+                raise ValueError(f"arXiv 未找到 {arxiv_id!r}")
+            title = (entries[0].findtext("a:title", default="", namespaces=_ATOM_NS) or "").strip()
+            if title.lower().startswith("error"):
+                raise ValueError(f"arXiv 返回错误：{title}")
+            return f"https://arxiv.org/pdf/{arxiv_id}"
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if attempt == 0:
+                import asyncio
+
+                await asyncio.sleep(1.0)
+    raise last_exc  # type: ignore[misc]
 
 
 async def resolve_doi_pdf_url(doi: str, client: httpx.AsyncClient) -> str:
@@ -169,9 +179,13 @@ async def resolve_one(
         result.ok = True
         result.status = "downloaded"
         result.size_bytes = target.stat().st_size
+    except httpx.TimeoutException:
+        result.status = "failed"
+        result.error = f"网络超时（{_TIMEOUT}s），请重试或检查网络"
     except Exception as exc:  # noqa: BLE001 单个源失败仅记录
         result.status = "failed"
-        result.error = str(exc)
+        # httpx 等异常 str() 可能为空 -> repr 兜底，保证错误明细可读
+        result.error = str(exc) or repr(exc) or type(exc).__name__
     return result
 
 

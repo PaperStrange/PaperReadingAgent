@@ -150,6 +150,57 @@ body,
   resize: vertical;
 }
 
+/* Sprint-3 数据源面板（Config 节点） */
+.data-source-panel {
+  margin-bottom: 6px;
+  padding: 8px;
+  border: 1px solid #dbeafe;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+.data-source-panel .ds-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.data-source-panel .ds-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+  min-width: 76px;
+}
+.data-source-panel .ds-sub {
+  font-size: 10px;
+  color: #64748b;
+}
+.data-source-panel .ds-select,
+.data-source-panel .ds-input {
+  flex: 1;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 3px 6px;
+  background: #fff;
+}
+.data-source-panel .ds-textarea {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 2px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  padding: 4px 6px;
+  resize: vertical;
+  background: #fff;
+}
+.data-source-panel .ds-hint {
+  margin-top: 6px;
+  font-size: 10px;
+  color: #64748b;
+}
+
 .node-actions {
   margin-top: 6px;
   display: flex;
