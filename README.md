@@ -36,7 +36,7 @@
 | [`docs/2-ARCHITECTURE.MD`](docs/2-ARCHITECTURE.MD) | 系统架构：架构图、模块职责、数据流、模型与存储约定 |
 | [`docs/3-LEARNED.MD`](docs/3-LEARNED.MD) | 开发经验教训：踩坑记录、验证记录、已知限制 |
 | [`verify/README.md`](verify/README.md) | 验收脚本（`verify_smoke/e2e/agent/provider_switch/embed_load/remote_e2e` + `gui_check*.mjs`）使用说明 |
-| [`docs/iteration/`](docs/iteration/) | 迭代增量文档（重构分析 `refactor-analysis.MD`、Sprint 记录 `sprint/`、性能分析；**仅 windows 分支**，不进 main/mac） |
+| `docs/iteration/` | 迭代增量文档（重构分析、Sprint 记录、性能分析；**仅 windows 分支维护**，不进 main/mac） |
 | [`paper-qa-script/reactflow-paperqa-prototype/README.md`](paper-qa-script/reactflow-paperqa-prototype/README.md) | ReactFlow 前端 + FastAPI 后端原型说明 |
 | [`paper-qa-script/paperqa_system_report.md`](paper-qa-script/paperqa_system_report.md) | paperqa 源码静态分析报告（371 个函数、入口签名、调用路径） |
 
