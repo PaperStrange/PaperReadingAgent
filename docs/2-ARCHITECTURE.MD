@@ -113,10 +113,16 @@ PaperReading-Windows/
 │   ├── count_paperqa_functions.py
 │   ├── paperqa_system_report.md       # 分析产物（371 函数）
 │   ├── .env                            # OPENAI_API_KEY=DeepSeek key（旧 key 注释保留）
+│   ├── app/                            # Sprint-2 分层（UI → API → 编排 → 引擎适配 → 基础设施）
+│   │   ├── orchestration.py            # 编排层：PipelineOrchestrator（六步流水线 + StepRequest/Response + embed 缓存）
+│   │   ├── engine.py                   # 引擎适配层：EngineAdapter 接口 + LocalVendorAdapter（paperqa 透传）
+│   │   ├── config_schema.py            # 配置唯一真源：策展 schema + validate_config + CLI 生成 config_schema.json
+│   │   ├── events.py                   # 统一事件模型（StepEvent/FunctionTraceEvent/…，SSE 线协议兼容）
+│   │   └── session_store.py            # 基础设施：SessionStore 接口 + MemorySessionStore
 │   └── reactflow-paperqa-prototype/
-│       ├── backend/main.py            # FastAPI 后端（已适配：DeepSeek/vision/st-）
+│       ├── backend/main.py             # FastAPI 路由层（Sprint-2 解耦后：8 路由 + RunEventBroker/SSE + 组合根）
 │       ├── backend/requirements.txt
-│       └── frontend/                  # React+Vite（App.jsx 默认参数已适配）
+│       └── frontend/                   # React+Vite（App.jsx 默认参数已适配）
 ├── src/                       # ACL/ICLR/NeurIPS 语料采集
 ├── data/pdf/PaperQA2.pdf      # 示例论文
 ├── scripts/                   # setup-env.ps1 / start-backend.ps1 / start-frontend.ps1 / start-streamlit.ps1
@@ -129,7 +135,11 @@ PaperReading-Windows/
 
 ## 4. 文件级职责
 
-- **backend/main.py**（529+ 行）：全部 API 路由；`build_settings()` 是**模型配置唯一真源**（前端 config 节点参数直接映射）；6 步执行逻辑；`RunEventBroker`/SSE；`RuntimeTracer(on_event=…)` 实时推送。
+- **backend/main.py**（路由层，Sprint-2 US-2.2 解耦后 ~220 行）：FastAPI app + CORS、8 条路由、`RunEventBroker`/SSE 传输、组合根（`SESSIONS`=MemorySessionStore、`ORCHESTRATOR`=make_orchestrator）；`build_settings()` 保留为 `ENGINE.make_settings` 薄包装（模型配置真源在 `app/engine.py` + `provider_config.py`）。
+- **app/orchestration.py**（编排层）：`PipelineOrchestrator.run_step`——六步流水线（config→load_index→retrieve→parse_chunk_embed→evidence→answer）、`StepRequest/StepResponse`、embed 缓存、`RuntimeTracer(on_event=…)` 接线；实时事件经 `on_event` 回调交路由层发布（SSE 消息由 `app/events` 模型构造，线协议兼容）。
+- **app/engine.py**（引擎适配层）：`EngineAdapter` 接口（config/index/query/add_doc/evidence/answer/run_agent/version）+ `LocalVendorAdapter` 透传现有 paperqa 调用。
+- **app/config_schema.py**（配置唯一真源）：策展六组 schema + 从 `Settings.model_fields` 自动提取默认值 + `validate_config`（errors/warnings/hints）；`python -m app.config_schema` 生成 `config_schema.json`。
+- **app/events.py / app/session_store.py**：统一事件模型（StepEvent/FunctionTraceEvent/AgentActionEvent/…）；`SessionStore` 接口 + `MemorySessionStore`。
 - **App.jsx**（1000+ 行）：节点状态机（idle/running/success/failed/stale）；`runSingleNode`（EventSource 收流 + POST）；上下游拓扑（`getUpstreamIds/getDownstreamIds`）；`buildFunctionSubgraphForStep`（调用树布局：深度分组、列宽 340、软碰撞避让、最多 140 调用）；`runAllSequential`。
 - **FlowNode.jsx / FunctionTraceNode.jsx / JsonTree.jsx**：步骤节点卡片（参数 JSON 编辑、Run/Run Upstream/Run From Here、快照、trace 列表）；函数节点卡片（文本全文/中文翻译按钮/图片预览）；JSON 树渲染。
 - **runtime_trace.py**：`RuntimeTracer`（19 个显式 TARGETS + 8 个 MODULE_TARGETS 全量函数 + 可选 lmi embed）；上下文栈基于 contextvars；`_make_chunk` 的 result 载荷含 text_full/text_preview/media 信息/页码预览（fitz 渲染，0.45 缩放，≤400KB）。

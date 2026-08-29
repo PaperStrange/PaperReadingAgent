@@ -8,6 +8,8 @@
 | `verify_e2e.py` | 启动真实后端 → 全链路 6 步（config→load_index→retrieve→parse_chunk_embed→evidence→answer），校验答案长度并保存结构化结果到 `verify_e2e_result.json` | 需要 `OPENAI_API_KEY` 环境变量（DeepSeek） |
 | `verify_agent.py` | Agent 流程（fake agent）+ 翻译接口 | 同上，且索引 `verify_e2e_index` 已存在（e2e 先跑过） |
 | `verify_provider_switch.py` | 验证服务商切换（deepseek/dashscope/openai）：配置解析、密钥优先级、build_settings、实际连通性/路由 | 无需有效 key；第 4 步 deepseek 需真实 key |
+| `verify_embed_load.py` | parse_chunk_embed 三种模式：run（重跑）/load 同会话（秒级）/load 新会话（embed 缓存），校验 texts 数量一致 | 需要 `OPENAI_API_KEY`（DeepSeek）+ 本地 st- 向量模型 |
+| `gui_check.mjs` | GUI 全链路：Playwright 打开前端 → 点 "Run All (Left-to-Right)" → 等待答案出现 → 截图 | 后端 8787 + 前端 5173 已启动；在 `frontend/` 目录 `node ..\..\..\verify\gui_check.mjs`（复用其 node_modules 的 playwright） |
 
 运行示例：
 
