@@ -12,7 +12,10 @@ const _frontendNm = path.resolve(
 const require = createRequire(path.join(_frontendNm, "noop.js"));
 const { chromium } = require("playwright");
 
-const SHOT = "D:/All-Downloads/PaperReading/PaperReading-Windows/docs/iteration/sprint/us3-remote.png";
+// 截图输出：默认 verify/（两分支都存在）；可用环境变量 GUI_SHOT 覆盖（如指向 docs/iteration/sprint/）
+const SHOT =
+  process.env.GUI_SHOT ||
+  path.resolve(_here, "gui_check_remote.png");
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1700, height: 1000 } });
 await page.goto("http://127.0.0.1:5173", { waitUntil: "networkidle" });

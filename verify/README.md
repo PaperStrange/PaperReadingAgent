@@ -27,4 +27,4 @@ node .\verify\gui_check.mjs          # GUI（需先启动前后端）
 node .\verify\gui_check_remote.mjs   # GUI remote 数据源（需先启动前后端 + 联网）
 ```
 
-已知差异：graphviz 系统二进制缺失时冒烟第 7 项报 `ExecutableNotFound`（可选安装，见 docs/03 §7）。
+已知差异：graphviz 系统二进制缺失时冒烟第 7 项报 `ExecutableNotFound`（可选安装，见 `docs/3-LEARNED.MD` 验证记录）。
