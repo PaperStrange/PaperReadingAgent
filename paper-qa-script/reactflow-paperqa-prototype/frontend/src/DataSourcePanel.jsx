@@ -7,13 +7,20 @@ function linesToArr(text) {
     .filter(Boolean);
 }
 
+// 后端解析层接受字符串或数组：显示前归一化（code review M4，防字符串值导致 .join 崩溃）
+function toText(value) {
+  if (Array.isArray(value)) return value.join("\n");
+  if (typeof value === "string") return value;
+  return "";
+}
+
 // Config 节点的「数据源」切换面板（Sprint-3 US-3.4）：
 // 编辑同一份 params JSON（经 onChange 回写），不破坏原有 JSON 编辑区。
 export default function DataSourcePanel({ params, onChange }) {
   const mode = params?.data_source || "local";
-  const urls = (params?.source_urls || []).join("\n");
-  const arxivIds = (params?.source_arxiv_ids || []).join("\n");
-  const dois = (params?.source_dois || []).join("\n");
+  const urls = toText(params?.source_urls);
+  const arxivIds = toText(params?.source_arxiv_ids);
+  const dois = toText(params?.source_dois);
   const manifest = params?.manifest_file || "";
 
   const update = (patch) => {

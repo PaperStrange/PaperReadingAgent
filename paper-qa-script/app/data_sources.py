@@ -104,9 +104,3 @@ def remote_staging_dir(index_name: str, base_dir: Path | None = None) -> Path:
     # 索引名只作路径段：净化防穿越
     safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", index_name).strip("._") or "debug_index"
     return (base_dir or Path("data") / "remote") / safe_name
-
-
-def suggest_arxiv_id(value: str) -> str:
-    """从 arXiv 链接/DOI 等松散输入中尝试提取 arXiv ID（失败返回空串）。"""
-    m = re.search(r"(\d{4}\.\d{4,5})(v\d+)?", value, re.IGNORECASE)
-    return (m.group(1) + (m.group(2) or "")).lower() if m else ""

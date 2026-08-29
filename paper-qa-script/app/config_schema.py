@@ -276,18 +276,14 @@ def validate_config(params: dict[str, Any]) -> dict[str, list[str]]:
                 if value < lo or value > hi:
                     errors.append(f"参数 {field['label']}({key}) 超出范围 [{lo}, {hi}]")
         elif ft == "string_list":
+            # 与解析层（parse_remote_sources）契约一致：接受字符串（换行/逗号/分号切分）或列表
             if isinstance(value, str):
-                value = value.strip()
-                if not value:
-                    continue
-                errors.append(
-                    f"参数 {field['label']}({key}) 应为字符串列表（如 JSON 数组），收到字符串 {value!r}"
-                )
+                pass
             elif isinstance(value, (list, tuple)):
                 if any(not isinstance(v, str) for v in value):
                     errors.append(f"参数 {field['label']}({key}) 列表元素应全部为字符串")
             else:
-                errors.append(f"参数 {field['label']}({key}) 应为字符串列表，收到 {type(value).__name__}")
+                errors.append(f"参数 {field['label']}({key}) 应为字符串或字符串列表，收到 {type(value).__name__}")
 
         # 影响提示（切换前可预期）
         for impact in field.get("impacts", []):

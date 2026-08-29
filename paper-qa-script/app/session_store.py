@@ -30,7 +30,11 @@ class SessionState:
 
 
 class SessionStore(ABC):
-    """会话存储接口。实现必须线程安全（FastAPI 可能多 worker 共享进程内实例）。"""
+    """会话存储接口。
+
+    注意（review m8 澄清）：当前部署形态为**单进程单 worker**，内存实现无需加锁；
+    多 worker/多机时需换 Redis 等实现并同步保证线程/进程安全。
+    """
 
     @abstractmethod
     def get_or_create(self, session_id: str | None = None) -> SessionState:

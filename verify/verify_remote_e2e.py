@@ -52,6 +52,8 @@ try:
         )
         data = r.json()
         print(f"[{name}] ok={data.get('ok')} dur={data.get('duration_s')} err={data.get('error')}")
+        if not data.get("ok"):  # review m11：失败即止，避免误导性输出
+            raise SystemExit(f"step {name} failed: {data.get('error')}")
         return data
 
     step("config", config_params)

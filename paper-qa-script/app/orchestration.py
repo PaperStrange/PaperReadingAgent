@@ -75,6 +75,22 @@ def _paperqa_trace(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [e for e in events if str(e.get("func", "")).startswith("paperqa.")]
 
 
+# code review M3：快照/记录中的敏感字段脱敏，避免 api_key 明文进入
+# StepResponse.input_snapshot / run_records / session_records API
+_SECRET_KEYS = {"api_key", "apikey", "password", "token", "secret", "authorization"}
+
+
+def _redact_secrets(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            k: ("***" if str(k).lower() in _SECRET_KEYS else _redact_secrets(v))
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_secrets(v) for v in value]
+    return value
+
+
 # ---- parse_chunk_embed 的 Embedding 缓存（用于"载入最近一次 Embedding"） ----
 
 def _embed_cache_dir() -> Path:
@@ -122,11 +138,13 @@ class PipelineOrchestrator:
         run_id = req.run_id or f"run-{uuid.uuid4().hex[:10]}"
         step = req.step
         t0 = time.perf_counter()
-        input_snapshot = {
-            "step": step,
-            "params": req.params,
-            "upstream": req.upstream,
-        }
+        input_snapshot = _redact_secrets(
+            {
+                "step": step,
+                "params": req.params,
+                "upstream": req.upstream,
+            }
+        )
 
         def on_trace_event(evt: dict[str, Any]) -> None:
             func_name = str(evt.get("func", ""))
@@ -166,15 +184,8 @@ class PipelineOrchestrator:
                     if session.settings is None:
                         raise ValueError("Run config step first")
                     # US-3.3：remote 模式先解析下载远程源（staging 目录在 make_settings 已指向）。
-                    # 数据源参数以会话内 config 步骤的值为准；本步骤显式传参可覆盖（直接 API 调用场景）。
-                    ds_params: dict[str, Any] = {
-                        **session.data_source_params,
-                        **{
-                            k: req.params[k]
-                            for k in ("data_source", "source_urls", "source_arxiv_ids", "source_dois")
-                            if k in req.params
-                        },
-                    }
+                    # 数据源参数以会话内 config 步骤的值为唯一来源（与 make_settings 决策一致，防覆盖漂移）。
+                    ds_params: dict[str, Any] = session.data_source_params
                     remote_cfg = parse_remote_sources(ds_params)
                     data_source = (ds_params.get("data_source") or "local").lower()
                     remote_report = None
