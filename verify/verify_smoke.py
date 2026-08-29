@@ -1,8 +1,9 @@
-"""Smoke verification for the original (pre-port) codebase on Windows.
+"""Smoke verification for the Windows-ported codebase (8 checks, offline).
 
-Checks: paperqa package imports, backend main.py loads its FastAPI app,
-frontend static assets exist, PDF can be rendered to a page preview via PyMuPDF
-(used by runtime_trace), and the local paper reader parses PaperQA2.pdf.
+Checks: paperqa package imports, backend main.py loads its FastAPI app
+(7 API routes), runtime_trace targets, streamlit/litellm imports,
+PyMuPDF page preview (used by runtime_trace), graphviz dot auto-discovery,
+and the local paper reader parses PaperQA2.pdf.
 Run: .venv\\Scripts\\python.exe verify_smoke.py
 """
 from __future__ import annotations
