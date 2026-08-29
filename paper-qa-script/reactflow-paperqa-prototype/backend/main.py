@@ -1,4 +1,3 @@
-import os
 import sys
 import time
 import uuid
@@ -14,17 +13,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from paperqa import Docs, Settings
-from paperqa.agents.search import get_directory_index
-from paperqa.settings import AgentSettings, IndexSettings, ParsingSettings
+from paperqa import Settings
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _ROOT_SCRIPT_DIR = _SCRIPT_DIR.parent.parent
 if str(_ROOT_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_ROOT_SCRIPT_DIR))
 
-from provider_config import get_provider_config  # noqa: E402
 from app.config_schema import validate_config  # noqa: E402
+from app.engine import ENGINE  # noqa: E402
 from app.session_store import MemorySessionStore, SessionState  # noqa: E402
 
 try:
@@ -117,85 +114,8 @@ def get_or_create_session(session_id: str | None) -> SessionState:
 
 
 def build_settings(params: dict[str, Any]) -> Settings:
-    # 统一服务商切换：provider 参数 / PAPERQA_PROVIDER 环境变量；显式参数仍可覆盖
-    provider_cfg = get_provider_config(params.get("provider"))
-
-    api_key = params.get("api_key") or os.getenv("OPENAI_API_KEY") or provider_cfg["api_key"]
-    api_base = params.get("api_base") or provider_cfg["api_base"]
-    model = params.get("model") or provider_cfg["model"]
-    vision_model = provider_cfg["vision_model"]
-    embedding_model = params.get("embedding_model") or provider_cfg["embedding"]
-    embedding_local = bool(provider_cfg["embedding_local"]) and embedding_model.startswith("st-")
-    temperature = float(params.get("temperature", 0.1))
-    paper_dir = str(Path(params.get("paper_directory", "./data/pdf")).expanduser())
-    index_name = params.get("index_name", "debug_index")
-    embedding_batch_size = int(params.get("embedding_batch_size", 10))
-    chunk_chars = int(params.get("chunk_chars", 5000))
-    chunk_overlap = int(params.get("chunk_overlap", 250))
-
-    if not api_key:
-        raise ValueError("api_key is required（请在 .env 或环境变量设置对应服务商的 Key）")
-
-    os.environ["OPENAI_API_KEY"] = api_key
-
-    def _litellm_params(model_name: str, temp: float | None = None) -> dict[str, Any]:
-        p: dict[str, Any] = {"model": model_name, "api_key": api_key}
-        if api_base:
-            p["api_base"] = api_base
-        if temp is not None:
-            p["temperature"] = temp
-        if provider_cfg.get("thinking_disabled"):
-            # DeepSeek 思考模式需关闭以支持多轮工具调用（litellm 用 extra_body 透传）
-            p["extra_body"] = {"thinking": {"type": "disabled"}}
-        return p
-
-    llm_config = {
-        "name": model,
-        "model_list": [
-            {"model_name": model, "litellm_params": _litellm_params(model, temperature)}
-        ],
-    }
-    vision_config = {
-        "name": vision_model,
-        "model_list": [
-            {"model_name": vision_model, "litellm_params": _litellm_params(vision_model)}
-        ],
-    }
-    embedding_config = {
-        "name": embedding_model,
-        "model_list": [
-            {"model_name": embedding_model, "litellm_params": _litellm_params(embedding_model)}
-        ],
-        "batch_size": embedding_batch_size,
-    }
-
-    return Settings(
-        llm=model,
-        llm_config=llm_config,
-        summary_llm=vision_model,
-        summary_llm_config=vision_config,
-        embedding=embedding_model,
-        embedding_config=(
-            {"batch_size": embedding_batch_size} if embedding_local else embedding_config
-        ),
-        parsing=ParsingSettings(
-            use_doc_details=bool(params.get("use_doc_details", False)),
-            reader_config={
-                "chunk_chars": max(200, chunk_chars),
-                "overlap": max(0, chunk_overlap),
-            },
-            enrichment_llm=vision_model,
-            enrichment_llm_config=vision_config,
-        ),
-        agent=AgentSettings(
-            rebuild_index=False,
-            index=IndexSettings(
-                paper_directory=str(Path(paper_dir).resolve()),
-                files_filter=lambda f: f.suffix in {".pdf", ".txt", ".md", ".html"},
-                name=index_name,
-            ),
-        ),
-    )
+    # US-2.5：经 EngineAdapter 透传（LocalVendorAdapter 实现与原先完全一致，行为不变）
+    return ENGINE.make_settings(params)
 
 def _safe_text_preview(text: str, max_len: int = 220) -> str:
     raw = (text or "").replace("\n", " ").strip()
@@ -358,7 +278,9 @@ async def run_step(req: StepRequest) -> StepResponse:
                 if session.settings is None:
                     raise ValueError("Run config step first")
                 build = bool(req.params.get("build", True))
-                session.search_index = await get_directory_index(settings=session.settings, build=build)
+                session.search_index = await ENGINE.get_directory_index(
+                    settings=session.settings, build=build
+                )
                 index_files = await session.search_index.index_files
                 output = {
                     "index_name": session.search_index.index_name,
@@ -373,7 +295,7 @@ async def run_step(req: StepRequest) -> StepResponse:
                 if not query:
                     query = req.upstream.get("question") or "PaperQA"
                 top_n = int(req.params.get("top_n", 5))
-                results = await session.search_index.query(query, top_n=top_n, keep_filenames=True)
+                results = await ENGINE.query_index(session.search_index, query, top_n)
                 paths = [r[1] for r in results if isinstance(r, tuple) and len(r) == 2]
                 if not paths:
                     paths = list((await session.search_index.index_files).keys())[:top_n]
@@ -428,13 +350,13 @@ async def run_step(req: StepRequest) -> StepResponse:
                             # 前端此时会提示"重新生成"以重建 docs。
                         else:
                             # 无缓存 -> 按原逻辑执行
-                            docs = Docs()
+                            docs = ENGINE.new_docs()
                             per_file = []
                             for p in paths:
                                 before = len(docs.texts)
                                 p0 = time.perf_counter()
                                 abs_path = str((paper_dir / p).resolve()) if not Path(p).is_absolute() else p
-                                docname = await docs.aadd(path=abs_path, settings=session.settings)
+                                docname = await ENGINE.add_doc(docs, abs_path, session.settings)
                                 per_file.append(
                                     {
                                         "file": p,
@@ -462,13 +384,13 @@ async def run_step(req: StepRequest) -> StepResponse:
                             _write_embed_cache(cache_path, output)
                 else:
                     # "重新生成"（regen）或默认（run）：总是重跑并覆盖缓存
-                    docs = Docs()
+                    docs = ENGINE.new_docs()
                     per_file = []
                     for p in paths:
                         before = len(docs.texts)
                         p0 = time.perf_counter()
                         abs_path = str((paper_dir / p).resolve()) if not Path(p).is_absolute() else p
-                        docname = await docs.aadd(path=abs_path, settings=session.settings)
+                        docname = await ENGINE.add_doc(docs, abs_path, session.settings)
                         per_file.append(
                             {
                                 "file": p,
@@ -504,7 +426,9 @@ async def run_step(req: StepRequest) -> StepResponse:
                 question = req.params.get("question")
                 if not question:
                     question = req.upstream.get("question") or "什么是PaperQA？"
-                session.evidence_session = await session.docs.aget_evidence(question, settings=session.settings)
+                session.evidence_session = await ENGINE.get_evidence(
+                    session.docs, question, session.settings
+                )
                 output = {
                     "question": question,
                     "contexts_count": len(session.evidence_session.contexts or []),
@@ -518,7 +442,9 @@ async def run_step(req: StepRequest) -> StepResponse:
                     raise ValueError("Run config step first")
                 if session.evidence_session is None:
                     raise ValueError("Run evidence step first")
-                session.answer_session = await session.docs.aquery(session.evidence_session, settings=session.settings)
+                session.answer_session = await ENGINE.query_answer(
+                    session.docs, session.evidence_session, session.settings
+                )
                 ans_obj = session.answer_session
                 answer_text = (
                     getattr(ans_obj, "answer", None)
