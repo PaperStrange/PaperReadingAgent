@@ -113,7 +113,7 @@ PaperReading-Windows/
 │   ├── count_paperqa_functions.py
 │   ├── paperqa_system_report.md       # 分析产物（371 函数）
 │   ├── .env                            # PAPERQA_PROVIDER + 服务商 key（旧 key 注释保留）
-│   ├── provider_config.py              # 服务商模型/向量化/密钥映射（PAPERQA_PROVIDER 切换）
+│   ├── provider_config.py              # 服务商注册表（内置 4 家 + providers.json/环境变量自定义；PAPERQA_PROVIDER 切换）
 │   ├── app/                            # Sprint-2/3 分层（UI → API → 编排 → 引擎适配 → 基础设施）
 │   │   ├── orchestration.py            # 编排层：PipelineOrchestrator（六步流水线 + StepRequest/Response + embed 缓存）
 │   │   ├── engine.py                   # 引擎适配层：EngineAdapter 接口 + LocalVendorAdapter（paperqa 透传）
@@ -139,9 +139,9 @@ PaperReading-Windows/
 
 ## 4. 文件级职责
 
-- **backend/main.py**（路由层，Sprint-2 US-2.2 解耦后 ~190 行）：FastAPI app + CORS、8 条 API 路由（Sprint-4 新增 `GET /api/providers` 脱敏注册表）、`RunEventBroker`/SSE 传输（历史 500 条/键）、组合根（`SESSIONS`=MemorySessionStore、`ORCHESTRATOR`=make_orchestrator）；`build_settings()` 保留为 `ENGINE.make_settings` 薄包装（模型配置真源在 `app/engine.py` + `provider_config.py`）。
-- **app/orchestration.py**（编排层）：`PipelineOrchestrator.run_step`——六步流水线（config→load_index→retrieve→parse_chunk_embed→evidence→answer）、`StepRequest/StepResponse`、embed 缓存、`RuntimeTracer(on_event=…)` 接线；实时事件经 `on_event` 回调交路由层发布（SSE 消息由 `app/events` 模型构造，线协议兼容）。
-- **app/engine.py**（引擎适配层）：`EngineAdapter` 接口（config/index/query/add_doc/evidence/answer/run_agent/version）+ `LocalVendorAdapter` 透传现有 paperqa 调用。
+- **backend/main.py**（路由层，Sprint-2 US-2.2 解耦后 ~186 行）：FastAPI app + CORS、8 条 API 路由（Sprint-4 新增 `GET /api/providers` 脱敏注册表）、`RunEventBroker`/SSE 传输（历史 500 条/键）、组合根（`SESSIONS`=MemorySessionStore、`ORCHESTRATOR`=make_orchestrator）；`build_settings()` 保留为 `ENGINE.make_settings` 薄包装（模型配置真源在 `app/engine.py` + `provider_config.py`）。
+- **app/orchestration.py**（编排层）：`PipelineOrchestrator.run_step`——六步流水线（config→load_index→retrieve→parse_chunk_embed→evidence→answer）、`StepRequest/StepResponse`、embed 缓存、`RuntimeTracer(on_event=…)` 接线；实时事件经 `on_event` 回调交路由层发布（SSE 消息由 `app/events` 模型构造，线协议兼容）。**Sprint-4 增量**：config 步骤 embedding 推荐注入；load_index 的目录存在检查与**索引自愈**（files.zip 前置 zlib 试解压，坏则删、build=true 重建）。
+- **app/engine.py**（引擎适配层）：`EngineAdapter` 接口（config/index/query/add_doc/evidence/answer/run_agent/version）+ `LocalVendorAdapter` 透传现有 paperqa 调用；`make_settings` 含密钥优先级（显式→专属→通用）、**Windows `\\?\` 长路径前缀（UNC 转 `\\?\UNC\`）**、隐藏目录过滤、`recurse_subdirectories` 参数。
 - **app/config_schema.py**（配置唯一真源）：策展七组 schema（LLM/Embedding/Parsing/Agent/Answer/数据源/Index）+ 从 `Settings.model_fields` 自动提取默认值 + `validate_config`（errors/warnings/hints）；`python -m app.config_schema` 生成 `config_schema.json`。
 - **app/events.py / app/session_store.py**：统一事件模型（StepEvent/FunctionTraceEvent/AgentActionEvent/…）；`SessionStore` 接口 + `MemorySessionStore`。
 - **app/data_sources.py / app/remote_resolver.py**（Sprint-3 主题 B）：数据源领域模型与远程源解析——`data_source` 模式（local 默认 / remote 下载暂存）；URL/arXiv/DOI 经 `resolve_remote_sources` 统一下载到 `data/remote/<index_name>/`（幂等、逐源失败明细），复用现有索引/解析管线；`manifest_file` 元数据增强生效。**安全**：下载前 SSRF 校验（仅公网 http/https、拒绝内网/本机地址、重定向逐跳复检）、单文件 200MB 上限 + 流式临时文件；编排层对 `input_snapshot`/`run_records` 做 api_key 脱敏。
@@ -161,7 +161,7 @@ PaperReading-Windows/
 | API Base | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `https://api.deepseek.com` |
 | 思考模式 | 不适用 | `extra_body={"thinking":{"type":"disabled"}}` 关闭（详见 3-LEARNED） |
 
-密钥解析优先级：config 节点 `params.api_key` → 服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → 本地 `paper-qa-script/.env`（ps1 启动脚本导入）；服务商由 `PAPERQA_PROVIDER` 切换，显式 `api_base/model/embedding_model` 参数优先级最高。
+密钥解析优先级：config 节点 `params.api_key` → 服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY`）→ 通用 `OPENAI_API_KEY` → 本地 `paper-qa-script/.env`（ps1 启动脚本导入）；服务商由 `PAPERQA_PROVIDER` 切换（内置 4 家 + `providers.json`/`PAPERQA_PROVIDERS_JSON` 自定义），显式 `api_base/model/vision_model/embedding_model` 参数优先级最高。
 
 ## 6. 数据与存储约定
 

@@ -29,8 +29,8 @@
 
 - **改动范围**：Windows 移植只允许改 `PaperReading-Windows`；原文件仅当发现原代码缺陷时修改（对应 macOS 仓库同文件）。
 - **保留原代码**：所有被替换的 macOS 原始配置/路径，用 `[macOS original]` 注释保留，**不删除**。
-- **密钥**：一律读取环境变量或本地 `paper-qa-script/.env`（以 `.env.example` 为模板），**代码与文档中禁止出现真实密钥**；`.env` 已被 `.gitignore` 忽略。解析优先级：config 节点 `params.api_key` → 服务商专属环境变量（`DEEPSEEK_API_KEY`/`DASHSCOPE_API_KEY`/`OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → `.env`。
-- **服务商切换**：`PAPERQA_PROVIDER=deepseek|dashscope|openai` 统一切换；服务商模型/向量化/密钥映射集中在 `paper-qa-script/provider_config.py`（显式参数优先级更高）；配置**唯一真源**（分组 schema/默认值/影响提示）在 `paper-qa-script/app/config_schema.py`（`python -m app.config_schema` 可生成/自检）。
+- **密钥**：一律读取环境变量或本地 `paper-qa-script/.env`（以 `.env.example` 为模板），**代码与文档中禁止出现真实密钥**；`.env` 已被 `.gitignore` 忽略。解析优先级：config 节点 `params.api_key` → 服务商专属环境变量（`DEEPSEEK_API_KEY`/`DASHSCOPE_API_KEY`/`OPENAI_API_KEY`/`OPENROUTER_API_KEY`）→ 通用 `OPENAI_API_KEY` → `.env`。
+- **服务商切换**：`PAPERQA_PROVIDER=deepseek|dashscope|openai|openrouter|<自定义名>` 统一切换；服务商模型/向量化/密钥映射集中在 `paper-qa-script/provider_config.py`（内置 4 家 + `providers.json`/`PAPERQA_PROVIDERS_JSON` 自定义，显式参数优先级更高）；配置**唯一真源**（分组 schema/默认值/影响提示）在 `paper-qa-script/app/config_schema.py`（`python -m app.config_schema` 可生成/自检）。
 - **安全**：后端 CORS 仅允许本地前端来源、仅监听 `127.0.0.1`；前端渲染依赖 React 默认转义 + Streamlit DOT 转义；如需公开仓库，先确认无密钥残留（`git grep` 全历史）并轮换曾暴露的密钥。
 - **依赖锁定**：与 macOS `paper-qa/uv.lock` 对齐（fhlmi==0.42.1、litellm==1.76.1）；直接 `pip install` 会解析到更高大版本，需显式锁定。
 - **Python**：3.11+（本机 3.13）；**Node**：18+（本机 23）。

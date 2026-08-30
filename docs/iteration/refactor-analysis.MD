@@ -78,7 +78,8 @@ API 服务层         FastAPI REST + SSE            薄：协议/路由/校验
 | Sprint-6 | D 单机多 worker + 会话外置 + 网关分流；之后评估简单多机 |
 | Sprint-7+ | E3 可编辑工作流（编排 DSL/配置 + 执行器） |
 
-> Sprint-2 落地结果（分层映射）：`app/config_schema.py`（配置 SSOT）、`app/orchestration.py`（编排）、`app/engine.py`（引擎适配）、`app/events.py`（事件模型）、`app/session_store.py`（SessionStore）；`backend/main.py` 已瘦身为纯路由层（~190 行，7 条 API 路由不变）。
+> Sprint-2 落地结果（分层映射）：`app/config_schema.py`（配置 SSOT）、`app/orchestration.py`（编排）、`app/engine.py`（引擎适配）、`app/events.py`（事件模型）、`app/session_store.py`（SessionStore）；`backend/main.py` 已瘦身为纯路由层（~186 行；路由数 7 条 → Sprint-4 新增 `/api/providers` 后为 8 条）。
 > Sprint-3 落地结果：`app/data_sources.py`（数据源领域模型）+ `app/remote_resolver.py`（arXiv/DOI/URL → `data/remote/<index_name>/` 暂存，复用索引/解析管线）+ 前端 `DataSourcePanel.jsx`（Config 节点切换 UI）；local 默认行为不变（回归为证）。
+> Sprint-4 落地结果（2026-08-30 体验修复与 provider 扩展，见 `sprint/2026-08-30-sprint-4.md`）：光标草稿态、`\\?\` 长路径/索引自愈、OpenRouter+自定义 provider、`/api/providers`、样式统一、ModelConfigPanel 交互面板。
 >
-> **当前状态（2026-08-29）**：Sprint-4~7+ 全部 **hold**；E3 工作流可视化 v1 交付后**需用户 review**（Q3 闸门）。双分支 code review 已完成，发现与修复闭环见 `sprint/2026-08-29-sprint-3.md` §9。
+> **当前状态（2026-08-30）**：2026-08-30 已**插队完成 Sprint-4（体验修复 + provider 扩展，见 `sprint/2026-08-30-sprint-4.md`）**；下表的 Sprint-4（C/E3）及之后**顺延一个编号并全部 hold**；E3 工作流可视化 v1 交付后**需用户 review**（Q3 闸门）。双分支 code review 已完成，发现与修复闭环见 `sprint/2026-08-29-sprint-3.md` §9。
