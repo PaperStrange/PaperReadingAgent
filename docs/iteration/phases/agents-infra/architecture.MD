@@ -255,7 +255,7 @@ source:
 | UC-10 | prices.json 含自动提取条目（gpt-4o-mini、text-embedding-3-large 完整单价）+ 人工覆盖段（deepseek/qwen/openrouter 可空，估算标 `pending_price`） | §2.1/§5.1 价表预研 | 派生脚本 + 断言（US-8.4/S8） |
 | UC-11 | agent-ops CLI 纯 Python 标准库可跑（不依赖 DSH/仓库外工具）；spec 为纯 markdown | §3.5 CLI 契约 / 跨 IDE 需求 | 干净环境冒烟（US-8.5/S8） |
 | UC-12 | 三查 fan-out = 职能级（code-review 跑 windows+main 两任务、doc-audit 一任务）且环境核验留主代理 | §3.3 触发分级 + D2 | Sprint-8 三查实操（US-8.6/S8） |
-| UC-13 | 三查范围由 **impact-assessment 职能**输出确定（不得默认收窄到 Sprint 交付物）；覆盖率 ≥ 60% 或明确豁免理由 | §8（用户问题①） | 下一次三查实操（含账本 run） |
+| UC-13 | 三查范围由 **impact-assessment 职能**输出确定（不得默认收窄到 Sprint 交付物）；复合指标 composite=(0.8A+0.2B)×100 阈值 X=50 → 全量档/窄档两档决策，与预计算 ground truth 一致 | §8（用户问题① + 复合指标细化） | 双例子代理验证（本次）+ 下一次三查实操 |
 
 ## 8. 影响范围评估与量化指标（用户问题①，2026-08-30）
 
@@ -263,19 +263,35 @@ source:
 
 **审查范围不得默认收窄到"Sprint 交付物"**（Sprint-8 时间盒重试属临时处置，不是规则）。三查前必须先由 **impact-assessment 职能（新子代理）** 评估本次 Sprint/变更的影响范围，再据其输出确定 code-review/doc-audit 的审查范围（文件/模块清单）。
 
-### 8.2 量化指标：方案对比与选择
+### 8.2 量化指标：方案对比与选择（用户细化 → 复合指标，2026-08-30）
 
 | 方案 | 定义 | 计算 | 优点 | 缺点 |
 |---|---|---|---|---|
-| **A 核心功能覆盖率（选定）** | 审查范围触达的核心功能数 / 核心功能清单总数 | 核心功能清单 = spec 内静态清单（11 项，见 impact-assessment.md）；受审范围按"模块→功能"映射表逐项判定 | 与"项目核心功能"直接对齐（用户要求）；可解释、可审计；阈值 60% | 清单需维护（每季度复核一次） |
-| B 核心 API 覆盖率 | 受审范围涉及的 API 路由数 / 8 | 路由↔模块映射表 | 最易算、零歧义 | 只覆盖后端路由；前端/文档/verify 是盲区 |
-| C 风险加权文件覆盖率 | Σ(受审文件权重) / Σ(核心文件权重) | 权重表按 核心路径(编排/引擎/路由)>面板/verify>文档 | 细粒度 | 权重主观、难以审计与复现 |
-| D 回归证据覆盖率 | 本轮回归脚本数 / 受影响模块关联脚本数 | 模块↔verify 脚本映射 | 直接对验收充分性 | 度量的是"验证充分性"而非"审查范围" |
+| **A 核心功能覆盖率** | 触达的核心功能数 / 11 项核心功能清单 | 模块→功能映射表 | 与"项目核心功能"直接对齐；可审计 | 清单需维护（每季度复核一次） |
+| **B 核心 API 覆盖率** | 触达的 API 路由数 / 8 | 路由↔宿主模块映射表 | 最易算、零歧义 | 只覆盖后端路由 |
+| C 风险加权文件覆盖率 | Σ(受审文件权重) / Σ(核心文件权重) | 权重表 | 细粒度 | 权重主观、难复现 |
+| D 回归证据覆盖率 | 本轮回归脚本数 / 受影响模块关联脚本数 | 模块↔verify 映射 | 直接对验收充分性 | 度量对象不同（验证充分性） |
 
-**选择：A 为主指标（阈值 ≥60%，即 11 项核心功能中受审查范围覆盖 ≥7 项），D 作为回归充分性辅助检查**。理由：A 与"项目核心功能相关"这一要求直接吻合（B/C 是代理指标，D 度量对象不同）；量化口径 = impact-assessment 报告中的 `coverage = affected / total` 数字 + 逐项触达清单（可复核）。
+**最终选择（用户细化）：A 与 B 复合，权重 8:2**——`composite = (0.8×A + 0.2×B) × 100`（A、B 均为 [0,1] 比率，加权和即归一化百分比）；D 作为回归充分性辅助检查；C 弃用。
+
+**两档范围规则（阈值 X=50，用户确认）**：
+- `composite > 50` → **全量档**：审查范围 = **整个代码库**；
+- `composite ≤ 50` → **窄档**：审查范围 = **Sprint 修改文件 ∪ 核心文件区域**（核心文件区域恒全部包含，用户确认——小改动也始终对照"皇冠明珠"区域审查）。
+
+合理性自检（X=50）：A=7/11 仅 A 即 50.9 → 全量（改 7 项核心功能理应全库审查）；A=4/11、B=2/8 → 34.1 → 窄档。边界与直觉一致。
 
 ### 8.3 落地
 
-- 新职能 spec：`docs/agents/functions/impact-assessment.md`（含 11 项核心功能清单 + 模块→功能映射 + 输出模板：affected_core_functions / coverage / threshold_met / recommended_scope）；
-- fan-out 顺序改为：**impact-assessment（先）→ 按 recommended_scope 执行 code-review ×2 + doc-audit → workspace-check（主代理）**；范围默认取 recommended_scope，偏离需在 Sprint §9 记录理由；
-- code-review/doc-audit spec 的"范围限定"段改为引用 impact-assessment 输出（task 输入新增 `scope` 字段）；
+- 职能 spec v1.1.0：`docs/agents/functions/impact-assessment.md`（11 项核心功能 + 8 条路由↔宿主映射 + 复合公式 + 两档规则 + 核心文件区域清单（代码区/文档区）+ 输出模板含 A/B/composite/tier/recommended_scope）；
+- fan-out 顺序：**impact-assessment（先）→ 按 recommended_scope 执行 code-review ×2 + doc-audit → workspace-check（主代理）**；范围默认取 recommended_scope，偏离需在 Sprint §9 记录理由；
+- code-review/doc-audit spec 的"范围限定"段引用 impact-assessment 输出（task 输入含 `scope` 字段）；
+- **验证方式（双例，用户确认）**：两组合成变更集跑真实子代理，对比预计算 ground truth（高影响例 → 期望全量档；低影响例 → 期望窄档），结果记录于 §8.4 并账本登记。
+
+### 8.4 双例验证结果（2026-08-30 实测，账本 run-…-impact-assessment-001/002）
+
+| 用例 | 代理输出 | ground truth（修正后） | 判定 |
+|---|---|---|---|
+| 高影响例（orchestration/engine/config_schema/provider/main.py/App.jsx/verify_e2e） | A=9/11=81.8%、B=8/8=100%、composite=85.45 → **全量档（整个代码库）** | 同左（初稿漏计 #7/#8 分段宿主，修正后一致） | ✅ PASS |
+| 低影响例（verify_agentops/impact-assessment.md/sprint-8.md） | A=2/11=18.18%、B=0%、composite=14.55 → **窄档（修改文件 ∪ 核心文件区域）** | 同左 | ✅ PASS |
+
+**结论：代理行为与定义预想一致**——数字计算、触达判定、档位决策、recommended_scope 均符合 spec v1.1.0；ground truth 修正说明：orchestration.py 整文件变更即触达其分段宿主功能（#1/#7/#8）。
