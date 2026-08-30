@@ -199,7 +199,10 @@ class LocalVendorAdapter(EngineAdapter):
         if not api_key:
             raise ValueError("api_key is required（请在 .env 或环境变量设置对应服务商的 Key）")
 
-        os.environ["OPENAI_API_KEY"] = api_key
+        # 注（Sprint-7 修复·多 provider 共存）：不再把 api_key 写回 os.environ["OPENAI_API_KEY"]——
+        # 旧行为会把 deepseek 的 key 污染进通用环境变量，同进程内 deepseek→openai 切换时
+        # resolve_key("openai") 会读到 deepseek key → 401。paperqa 源码不读该环境变量，
+        # 所有 litellm 调用都经下方 litellm_params 显式携带 api_key，故移除写回无副作用。
 
         def _litellm_params(model_name: str, temp: float | None = None) -> dict[str, Any]:
             p: dict[str, Any] = {"model": model_name, "api_key": api_key}

@@ -99,8 +99,25 @@ async def main() -> int:
         )
         print(f"  {p:10s} llm={s.llm:40s} emb={s.embedding:36s} summary={s.summary_llm}")
 
+    print("\n== 3b) make_settings 不污染 OPENAI_API_KEY（多 provider 共存回归，Sprint-7 修复）==")
+    # 旧实现把解析出的 api_key 写回 OPENAI_API_KEY：先跑 deepseek 再切 openai 会拿到 deepseek key → 401
+    sentinel = "sk-SENTINEL-openai"
+    os.environ["OPENAI_API_KEY"] = sentinel
+    m.build_settings(
+        {"provider": "deepseek", "api_key": "sk-PLACEHOLDER-ds",
+         "paper_directory": str(ROOT / "data" / "pdf")}
+    )
+    assert os.environ.get("OPENAI_API_KEY") == sentinel, (
+        f"OPENAI_API_KEY 被 deepseek 配置污染：{os.environ.get('OPENAI_API_KEY')}"
+    )
+    assert get_provider_config("openai")["api_key"] == sentinel, (
+        "resolve_key('openai') 未取 OPENAI_API_KEY 本身（污染未隔离）"
+    )
+    os.environ.pop("OPENAI_API_KEY", None)
+    print("PASS: deepseek 配置后 OPENAI_API_KEY 未被覆盖；resolve_key('openai') 取到自身 key（隔离正确）")
+
     print("\n== 4) 实际连通性（deepseek 真实 key；其余占位 key 断言路由）==")
-    # 第 3 步 build_settings 会污染 OPENAI_API_KEY，先清除再从 .env 重新加载真实 key
+    # Sprint-7 修复后 make_settings 不再写 OPENAI_API_KEY（无污染）；仍清一遍并从 .env 重载真实 key 兜底
     for k in ("DEEPSEEK_API_KEY", "DASHSCOPE_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"):
         os.environ.pop(k, None)
     _load_dotenv()
