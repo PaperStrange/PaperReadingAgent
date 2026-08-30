@@ -94,6 +94,11 @@
 - 解决：① textarea 改本地草稿态（聚焦期间外部 params 不覆盖、失焦后跟随），Playwright 用 `execCommand("insertText")+setSelectionRange` 验证光标位置；② `make_settings` 对 Windows 绝对路径统一加 `\\?\` 前缀、parse 步骤拼接不再 re-resolve（否则丢前缀），另补索引损坏自愈（zlib/decompress 签名含 ExceptionGroup 子异常）与缺失目录友好报错；③ provider 注册表 = 内置 + `providers.json`/`PAPERQA_PROVIDERS_JSON` 合并，`/api/providers` 脱敏列表，前端下拉联动（有 embedding API 带出策展模型、无则清空交给 recommender）。
 - 教训：**"递归/嵌套"这类问题先实测再归因**（真凶是 MAX_PATH 而非递归开关）；**Windows 深度路径操作永远考虑 260 上限**（`\\?\` 前缀 + 不 re-resolve）；**受控输入组件永远给"聚焦保护"**，否则格式化回写必然打断连续编辑。
 
+### 1.20 后台任务停止 ≠ 端口释放：job_kill 只杀包装 shell，子进程会变孤儿占住端口
+- 现象：Sprint-4 GUI 检查后，用户启动 dev server 报 `Error: Port 5173 is already in use`——vite(node) 与后端(python) 是当时后台任务的**子进程**，包装 pwsh 被停后它们存活下来继续监听 5173/8787。
+- 解决（SOP）：`Get-NetTCPConnection -LocalPort <port> -State Listen` 定位 PID → `Get-CimInstance Win32_Process` 核对命令行确认是本项目进程 → **只对确认的 PID** `Stop-Process -Id`（绝不批量杀，见 1.11）→ 复查端口 FREE。
+- 教训：**停止任何 dev server 后必须复查端口**；把"端口释放"纳入 Sprint 关闭三查的"三查 环境"固定项。
+
 ## 2. 验证记录（Windows，实际执行）
 
 ### 2.1 冒烟（`verify/verify_smoke.py`）—— 8/8 通过
