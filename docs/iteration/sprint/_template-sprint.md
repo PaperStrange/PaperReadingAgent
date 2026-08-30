@@ -69,11 +69,16 @@ N ┤●
 - [ ] 记录关键权衡/理由/局限
 - [ ] 未破坏既有功能（或有回归记录）
 - [ ] sprint 文档已入库并随分支同步
+- [ ] **三查完成且发现项闭环**（一查文档一致性含 4-ALGORITHM 对照 / 二查 windows+main 双分支 code review / 三查工作区零残留+回归全绿），结论写入 §9
+- [ ] windows 已 PR 同步 main（不含 `docs/iteration/`）
 
 ## 8. 回顾 Retro（Sprint Review 后填）
 
 **做得好（Keep）** / **可改进（Improve）** / **行动项（Action）**（逐条编号，未落实项后续标注状态）
 
-## 9.（可选）评审/同步记录
+## 9. 评审/同步记录（三查结论 + PR 同步，Sprint 关闭必填）
 
-- 双分支 code review 结论与修复映射、PR 同步结果（如 Sprint-3 §9 形式）。
+- 一查（文档审计）结论与修复映射；
+- 二查（双分支 code review）分级结论与修复映射；
+- 三查（工作区/功能完整性）：`git status` 零残留、回归（smoke/e2e/新增端点/GUI）输出摘要；
+- PR 同步 main 结果（PR 号/合并 sha，不含 `docs/iteration/`）。
