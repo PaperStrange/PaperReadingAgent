@@ -36,6 +36,7 @@
 | [`docs/2-ARCHITECTURE.MD`](docs/2-ARCHITECTURE.MD) | 系统架构：架构图、模块职责、数据流、模型与存储约定 |
 | [`docs/3-LEARNED.MD`](docs/3-LEARNED.MD) | 开发经验教训：踩坑记录、验证记录、已知限制 |
 | [`docs/4-ALGORITHM.MD`](docs/4-ALGORITHM.MD) | **前后端决策逻辑与算法**：DSL 规则 + 决策表 + UML（类图/时序图/状态机），每条规则标注代码位置 |
+| [`docs/5-VERSIONS.MD`](docs/5-VERSIONS.MD) | **发版记录与版本号规范**（`年.月.日-v(R.R.R)`；首个版本在 roadmap 全部 Sprint 完成后发布） |
 | [`verify/README.md`](verify/README.md) | 验收脚本（`verify_smoke/e2e/agent/provider_switch/embed_load/remote_e2e` + `gui_check*.mjs`）使用说明 |
 | `docs/iteration/` | 迭代增量文档（重构分析、Sprint 记录、性能分析；**仅 windows 分支维护**，不进 main/mac） |
 | [`paper-qa-script/reactflow-paperqa-prototype/README.md`](paper-qa-script/reactflow-paperqa-prototype/README.md) | ReactFlow 前端 + FastAPI 后端原型说明 |
@@ -273,6 +274,7 @@ node .\verify\gui_check_s4.mjs        # Sprint-4：光标/面板联动（需前�
 - 开发规范 / 项目管理 / 更完整运行手册：`docs/1-WORKFLOW.MD`
 - 系统架构与文件职责：`docs/2-ARCHITECTURE.MD`
 - **前后端决策逻辑与算法（DSL+UML）**：`docs/4-ALGORITHM.MD`
+- **发版记录与版本号规范**：`docs/5-VERSIONS.MD`
 - 踩坑记录与验证记录：`docs/3-LEARNED.MD`
 
 ---
