@@ -101,7 +101,13 @@ class LocalVendorAdapter(EngineAdapter):
             except (TypeError, ValueError) as exc:
                 raise ValueError(f"参数 {key} 应为整数，收到 {params.get(key)!r}") from exc
 
-        api_key = params.get("api_key") or os.getenv("OPENAI_API_KEY") or provider_cfg["api_key"]
+        # 密钥优先级：显式参数 → 服务商专属（resolve_key 内部含通用 OPENAI_API_KEY 兜底）→ 通用
+        # （review 修正：原顺序把通用 OPENAI_API_KEY 排在 provider 专属之前，与文档/预期相反）
+        api_key = (
+            params.get("api_key")
+            or provider_cfg["api_key"]
+            or os.getenv("OPENAI_API_KEY")
+        )
         api_base = params.get("api_base") or provider_cfg["api_base"]
         model = params.get("model") or provider_cfg["model"]
         # 视觉/增强模型可显式覆盖（默认随 provider；provider 未定义时回落 model）
@@ -167,10 +173,14 @@ class LocalVendorAdapter(EngineAdapter):
         }
 
         def _win_ready_path(p: Path) -> str:
-            """Windows 长路径（>260 字符）需要 \\\\?\\ 前缀才能被 open 正常访问（Sprint-4 US-4.2）。"""
+            """Windows 长路径（>260 字符）需要 `\\\\?\\` 前缀；UNC 路径用 `\\\\?\\UNC\\server\\share` 形式
+            （Sprint-4 US-4.2 + review 修正：原实现会把 UNC 拼成非法的 `\\\\?\\\\server\\share`）。"""
             resolved = str(p.resolve())
             if os.name == "nt" and not resolved.startswith("\\\\?\\"):
-                resolved = "\\\\?\\" + resolved
+                if resolved.startswith("\\\\"):
+                    resolved = "\\\\?\\UNC" + resolved[1:]
+                else:
+                    resolved = "\\\\?\\" + resolved
             return resolved
 
         return Settings(

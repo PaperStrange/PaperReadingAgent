@@ -13,6 +13,7 @@ import json
 import hashlib
 import time
 import uuid
+import zlib
 from pathlib import Path
 from typing import Any, Callable
 
@@ -98,6 +99,27 @@ def _embed_cache_dir() -> Path:
     d = Path.home() / ".pqa" / "embed_cache"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def _heal_corrupt_index_files(settings: Any) -> bool:
+    """索引自愈（US-4.2）：paperqa 的 files.zip 是 zlib 压缩的对象存储——解压失败即损坏。
+
+    只删损坏的 files.zip（build=true 时 get_directory_index 会重建），
+    不碰 Tantivy 段文件；用前置校验而非异常重试，避免误伤 PDF 解析期的 zlib 错误。
+    """
+    try:
+        index_dir = Path(settings.agent.index.index_directory)
+        zipf = index_dir / (settings.agent.index.name or "") / "files.zip"
+        if not zipf.exists():
+            return False
+        zlib.decompress(zipf.read_bytes())
+        return False
+    except zlib.error:
+        try:
+            zipf.unlink(missing_ok=True)  # noqa: B023
+        except Exception:
+            pass
+        return True
 
 
 def _embed_cache_path(paper_dir: str, index_name: str, paths: list[str]) -> Path:
@@ -227,39 +249,13 @@ class PipelineOrchestrator:
                             f"论文目录不存在：{paper_dir_str}（请检查 paper_directory 参数；"
                             "remote 模式请先在 config 节点配置数据源）"
                         )
-                    try:
-                        session.search_index = await self._engine.get_directory_index(
-                            settings=session.settings, build=build
-                        )
-                    except BaseException as exc:  # noqa: BLE001
-                        # US-4.2：索引文件损坏（中断残留 files.zip）→ 自动删除损坏文件并重建一次
-                        parts = [str(exc), repr(exc)]
-                        for sub in (getattr(exc, "exceptions", None) or []):
-                            parts.extend([str(sub), repr(sub)])
-                        sig = "\n".join(parts)
-                        if build and any(
-                            k in sig
-                            for k in (
-                                "Failed to load index file",
-                                "zlib",
-                                "decompress",
-                                "truncated stream",
-                                "incorrect header",
-                            )
-                        ):
-                            index_dir = Path(session.settings.agent.index.index_directory)
-                            index_dir = index_dir / (session.settings.agent.index.name or "")
-                            if index_dir.exists():
-                                for zipf in index_dir.glob("*.zip"):
-                                    try:
-                                        zipf.unlink(missing_ok=True)
-                                    except Exception:
-                                        pass
-                            session.search_index = await self._engine.get_directory_index(
-                                settings=session.settings, build=build
-                            )
-                        else:
-                            raise
+                    # US-4.2：索引损坏自愈——精确校验 files.zip（zlib 对象存储），坏则删，
+                    # build=true 时自动重建。不用"异常签名重试"（review：会误伤 PDF 解析期的 zlib 错误）
+                    if build:
+                        _heal_corrupt_index_files(session.settings)
+                    session.search_index = await self._engine.get_directory_index(
+                        settings=session.settings, build=build
+                    )
                     index_files = await session.search_index.index_files
                     output = {
                         "index_name": session.search_index.index_name,

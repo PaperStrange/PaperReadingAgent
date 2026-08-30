@@ -66,7 +66,7 @@
 | Python | `>= 3.11`（本机验证 3.13） | `python --version` |
 | Node.js | `>= 18`（本机验证 23） | `node --version` |
 | npm | `>= 9`（本机验证 10.9） | `npm --version` |
-| API Key | DeepSeek / DashScope / OpenAI 任选其一 | 见"第 3 步" |
+| API Key | DeepSeek / DashScope / OpenAI / OpenRouter 任选其一 | 见"第 3 步" |
 
 - 首次运行会**联网下载**：Python 依赖（pip）、前端依赖（npm）、本地向量模型
   `multi-qa-MiniLM-L6-cos-v1`（约 90MB，HuggingFace）。
@@ -145,7 +145,7 @@ export DEEPSEEK_API_KEY=sk-你的DeepSeek密钥
 ```
 
 > - 也可不写 `.env`：直接设环境变量，或在网页 Config 节点填写 `api_key` / `provider`。
-> - 密钥读取顺序：服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → `.env`。
+> - 密钥读取顺序：服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY`）→ 通用 `OPENAI_API_KEY` → `.env`。
 > - 各服务商默认模型/向量化映射见文末「模型服务商切换」。
 
 ### 第 4 步：启动后端并验证
@@ -192,8 +192,8 @@ curl.exe http://127.0.0.1:8787/api/health
 ### 第 7 步：跑通第一个问答
 
 1. 浏览器打开 http://127.0.0.1:5173 。
-2. 点击左侧 **1) Config** 节点，确认参数：
-   - `api_key`（留空则用 `.env`）、`provider`（deepseek/dashscope/openai）、
+2. 点击左侧 **1) Config** 节点，确认参数（也可用顶部「模型配置」面板下拉选择，自动带出相关字段）：
+   - `api_key`（留空则用 `.env`）、`provider`（deepseek/dashscope/openai/openrouter 或自定义）、
      `paper_directory`（默认 `data/pdf`，相对后端工作目录）、
    - `model` / `embedding_model`（默认随 provider 自动填充，见文末「模型服务商切换」）。
 3. 点击 **2) Load Index**（首次约 1–2 分钟：解析 PDF + 本地向量化 + 写索引）。
@@ -213,8 +213,10 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 .\.venv\Scripts\python.exe .\verify\verify_e2e.py               # 全链路（真实 API，本地目录）
 .\.venv\Scripts\python.exe .\verify\verify_embed_load.py        # Embedding 三步（run/load/缓存）
 .\.venv\Scripts\python.exe .\verify\verify_remote_e2e.py        # remote 数据源全链路（联网，arXiv）
+.\.venv\Scripts\python.exe .\verify\verify_agent.py             # Agent 流程（fake）+ 翻译（需先跑过 e2e）
 node .\verify\gui_check.mjs           # GUI 全链路（需前后端已启动）
 node .\verify\gui_check_remote.mjs    # GUI remote 数据源（需前后端已启动 + 联网）
+node .\verify\gui_check_s4.mjs        # Sprint-4：光标/面板联动（需前后端已启动）
 ```
 
 `verify_e2e.py` 期望输出（节选）：
@@ -292,12 +294,14 @@ node .\verify\gui_check_remote.mjs    # GUI remote 数据源（需前后端已�
 
 **显式参数覆盖（Config 节点 JSON 编辑，优先级最高）**：
 
-- `provider`：切服务商（三选一，重设 api_base/model/embedding 默认值）。
+- `provider`：切服务商（内置 4 家或自定义名，重设 api_base/model/embedding 默认值）。
 - `model`：指定该服务商的任意 LLM 模型，如 `provider=openai` + `model="gpt-5"`（litellm 路由到 OpenAI 官方端点，需有效 key 与模型权限；gpt-5 时 paperqa 会把 temperature 强制为 1）。
 - `vision_model`：证据摘要/图片增强模型（含图片上下文必须支持视觉），留空随 provider 默认。
 - `embedding_model`：`st-` 前缀 = HuggingFace 任意 SentenceTransformer 模型（本地已缓存或首次自动下载，**不依赖 provider 是否有 embedding API**，如 `st-BAAI/bge-small-en-v1.5`）；其它名 = litellm API 向量（需 provider 支持）；`litellm-` 前缀可强制 API 路径。切换后需重建索引。
 
-**Embedding 智能默认（不写 `embedding_model` 时自动生效，均可手动覆盖）**：
+**Embedding 智能默认（`embedding_model` 缺省时自动生效，均可手动覆盖）**：
+
+> 注意：前端 Config 节点**默认参数已显式填 `st-multi-qa-MiniLM-L6-cos-v1`**——此时不触发智能推荐；在面板选「Embedding → 自动」或删除 JSON 中的 `embedding_model` 后，才按以下规则自动选择。
 
 - 服务商**有** embedding API（openai/dashscope）→ 自动用其最新策展模型（openai=`text-embedding-3-large`，dashscope=`openai/text-embedding-v4`）。
 - 服务商**无** embedding API（deepseek）→ 自动查询 HuggingFace 下载量最高且**兼容中文**的 SentenceTransformer 模型（当前为 `paraphrase-multilingual-MiniLM-L12-v2`，4600 万+ 下载），首次自动下载；结果缓存 24h，离线/超时回落 `st-multi-qa-MiniLM-L6-cos-v1`（设 `PAPERQA_EMBED_RECOMMEND_LIVE=0` 可关闭在线查询）。
@@ -314,11 +318,11 @@ key 与服务商**一一对应**，同时配置多家 key 互相独立、不会�
 | 同上 | `openai` | ✅ 只取 `OPENAI_API_KEY` |
 | 只填通用 `OPENAI_API_KEY` | `deepseek` / `dashscope` | ⚠️ 会用它**兜底**（见下） |
 
-**解析优先级**：服务商专属 key（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → `.env`。
+**解析优先级**：服务商专属 key（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY`）→ 通用 `OPENAI_API_KEY` → `.env`。
 
 **⚠ 唯一要注意的一点**：若某服务商**没配专属 key**，会回退用通用 `OPENAI_API_KEY`。此时若 `PAPERQA_PROVIDER=deepseek`（或 `dashscope`）而 `OPENAI_API_KEY` 是另一家的 key，就会拿错 key 去调对应端点，导致鉴权失败。
 
-**推荐做法**：三家 key 要么都填各自正确的，要么只填当前要用的那一家，并保证 `PAPERQA_PROVIDER` 与所填 key 一致。例如只用 DeepSeek：
+**推荐做法**：各家 key 要么都填各自正确的，要么只填当前要用的那一家，并保证 `PAPERQA_PROVIDER` 与所填 key 一致。例如只用 DeepSeek：
 
 ```text
 export PAPERQA_PROVIDER=deepseek
@@ -345,7 +349,7 @@ export DASHSCOPE_API_KEY=sk-你的DashScope密钥
 ### 如何测试切换是否生效
 
 ```powershell
-# 1) 纯配置/路由验证（无需有效 key，会打印三服务商的解析结果与端点路由）
+# 1) 纯配置/路由验证（无需有效 key，会打印全注册表 provider 的解析结果与端点路由）
 .\.venv\Scripts\python.exe .\verify\verify_provider_switch.py
 
 # 2) 端到端问答（用某个服务商的真实 key）

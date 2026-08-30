@@ -61,7 +61,7 @@
 - 解决：点击"Run All"等顶栏按钮走正常 click；节点内部 img 用 `page.evaluate(() => img.dispatchEvent(new MouseEvent('click',{bubbles:true})))` 派发；截图后用 `read_image` 逐张核对内容是否符合需求卡片。
 
 ### 1.13 依赖漂移教训升级：需要"框架适配层 + 版本检查"（Sprint-2 动机）
-- 回顾 1.5（fhlmi/litellm 大版本漂移）与 vendor 本地注入的维护痛点 → 决策：引入 `EngineAdapter` 接口、支持 pip 包注入与版本检查/回滚（见 `docs/iteration/refactor-analysis.MD` 主题 E1/E2）。
+- 回顾 1.5（fhlmi/litellm 大版本漂移）与 vendor 本地注入的维护痛点 → 决策：引入 `EngineAdapter` 接口、支持 pip 包注入与版本检查/回滚（见 `docs/iteration/refactor-analysis.MD` 主题 E1/E2，该文件**仅 windows 分支**维护）。
 - 教训：**版本 pin 不要散落在注释里**，要进可校验的配置/锁文件；框架升级必须有回归锚点。
 
 ### 1.14 pydantic `model_json_schema()` 在复杂类型上会整体失败 → 用 `model_fields` 逐段导航（US-2.1）
@@ -100,7 +100,7 @@
 | 检查 | 结果 |
 |---|---|
 | paperqa 导入 v2026.1.6.dev10+g36348d0ca | ✅ |
-| backend/main.py 加载（FastAPI 7 条 API 路由） | ✅ |
+| backend/main.py 加载（FastAPI 8 条 API 路由） | ✅ |
 | RuntimeTracer（19 个显式目标） | ✅ |
 | streamlit 1.62.0 | ✅ |
 | litellm | ✅ |
@@ -128,7 +128,7 @@
 
 | 脚本 | 结果（最近一次实测） |
 |---|---|
-| `verify_provider_switch.py` | 三服务商 `build_settings` 输出一致；deepseek 真实 key SUCCESS；dashscope/openai 占位 key 报各自端点错误（证明路由正确） |
+| `verify_provider_switch.py` | 全注册表 provider（内置 4 家 + 自定义）`build_settings` 输出一致；deepseek 真实 key SUCCESS；其余占位 key 报各自端点错误（证明路由正确） |
 | `verify_embed_load.py` | run 30.5s / 同会话 load 0.0s / 新会话缓存 load 0.0s，texts=23 一致 |
 | `verify_remote_e2e.py` | remote+arXiv：下载 1.78MB → 索引 1 文件 → retrieve 1 候选 → evidence 9 contexts → answer 1663 字符 |
 | `gui_check.mjs` | GUI Run All 六步 → 答案含 Skarlinski（截图 `us2-06.png`） |

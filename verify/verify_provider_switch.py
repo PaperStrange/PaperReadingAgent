@@ -1,10 +1,10 @@
-"""验证 LLM 服务商切换功能（deepseek / dashscope / openai）。
+"""验证 LLM 服务商切换功能（内置 deepseek / dashscope / openai / openrouter + 自定义）。
 
 覆盖：
-  1) provider_config 配置解析（三服务商的模型/向量化/api_base）
-  2) 密钥解析优先级（DEEPSEEK/DASHSCOPE/OPENAI_API_KEY 各取各的）
-  3) 后端 build_settings 对三服务商生成正确 Settings
-  4) 实际连通性：deepseek 用真实 key 应成功；dashscope/openai 用占位 key
+  1) provider_config 配置解析（全注册表 provider 的模型/向量化/api_base）
+  2) 密钥解析优先级（DEEPSEEK/DASHSCOPE/OPENAI/OPENROUTER_API_KEY 各取各的）
+  3) 后端 build_settings 对全注册表生成正确 Settings
+  4) 实际连通性：deepseek 用真实 key 应成功；其余用占位 key
      应"到达各自端点并返回该端点的错误"（证明 api_base 路由正确，即使 key 无效）。
 
 运行：
@@ -65,12 +65,13 @@ async def main() -> int:
     os.environ["DEEPSEEK_API_KEY"] = "sk-TEST-deepseek"
     os.environ["DASHSCOPE_API_KEY"] = "sk-TEST-dashscope"
     os.environ["OPENAI_API_KEY"] = "sk-TEST-openai"
+    os.environ["OPENROUTER_API_KEY"] = "sk-TEST-openrouter"
     for p in sorted(PROVIDERS):
         print(f"  {p:10s} -> {get_provider_config(p)['api_key']}")
-    for k in ("DEEPSEEK_API_KEY", "DASHSCOPE_API_KEY", "OPENAI_API_KEY"):
+    for k in ("DEEPSEEK_API_KEY", "DASHSCOPE_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"):
         os.environ.pop(k, None)
 
-    print("\n== 3) 后端 build_settings 对三服务商 ==")
+    print("\n== 3) 后端 build_settings 对全注册表 provider ==")
     spec = importlib.util.spec_from_file_location(
         "backend_main",
         ROOT / "paper-qa-script" / "reactflow-paperqa-prototype" / "backend" / "main.py",
@@ -84,9 +85,9 @@ async def main() -> int:
         )
         print(f"  {p:10s} llm={s.llm:40s} emb={s.embedding:36s} summary={s.summary_llm}")
 
-    print("\n== 4) 实际连通性（deepseek 用真实 key；dashscope/openai 用占位 key 验证路由）==")
+    print("\n== 4) 实际连通性（deepseek 用真实 key；其余用占位 key 验证路由）==")
     # 第 3 步 build_settings 会污染 OPENAI_API_KEY，先清除再从 .env 重新加载真实 key
-    for k in ("DEEPSEEK_API_KEY", "DASHSCOPE_API_KEY", "OPENAI_API_KEY"):
+    for k in ("DEEPSEEK_API_KEY", "DASHSCOPE_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"):
         os.environ.pop(k, None)
     _load_dotenv()
     real_key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
