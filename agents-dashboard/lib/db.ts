@@ -261,27 +261,66 @@ export function aggregates(): {
   total: number;
   by_status: Record<string, number>;
   by_role: Record<string, number>;
+  by_model: { model: string; runs: number; cost: number; pending: number }[];
   cost_total: number;
   pending_price: number;
+  estimated_count: number;
+  fx_usd_cny: number;
 } {
   const db = getDb();
-  const rows = db.prepare("SELECT status, role, cost FROM runs").all() as {
+  const rows = db.prepare("SELECT status, role, model, cost FROM runs").all() as {
     status: string;
     role: string;
+    model: string;
     cost: string;
   }[];
   const by_status: Record<string, number> = {};
   const by_role: Record<string, number> = {};
+  const by_model: Record<string, { runs: number; cost: number; pending: number }> = {};
   let cost_total = 0;
   let pending_price = 0;
+  let estimated_count = 0;
   for (const r of rows) {
     by_status[r.status] = (by_status[r.status] ?? 0) + 1;
     by_role[r.role] = (by_role[r.role] ?? 0) + 1;
-    const cost = JSON.parse(r.cost || "{}") as { total?: number | null; pending_price?: boolean };
-    if (typeof cost.total === "number") cost_total += cost.total;
-    if (cost.pending_price) pending_price++;
+    const cost = JSON.parse(r.cost || "{}") as {
+      total?: number | null;
+      pending_price?: boolean;
+      estimated?: boolean;
+    };
+    const m = by_model[r.model || "未知模型"] ?? { runs: 0, cost: 0, pending: 0 };
+    m.runs += 1;
+    if (typeof cost.total === "number") {
+      cost_total += cost.total;
+      m.cost += cost.total;
+    }
+    if (cost.pending_price) {
+      pending_price++;
+      m.pending += 1;
+    }
+    if (cost.estimated) estimated_count++;
+    by_model[r.model || "未知模型"] = m;
   }
-  return { total: rows.length, by_status, by_role, cost_total, pending_price };
+  let fx_usd_cny = 7.2;
+  const pricesPath = path.join(AGENTS_DIR, "runtime", "prices.json");
+  if (fs.existsSync(pricesPath)) {
+    try {
+      const meta = (JSON.parse(fs.readFileSync(pricesPath, "utf-8")) as { meta?: { fx_usd_cny?: number } }).meta;
+      if (meta?.fx_usd_cny) fx_usd_cny = meta.fx_usd_cny;
+    } catch {
+      /* ignore */
+    }
+  }
+  return {
+    total: rows.length,
+    by_status,
+    by_role,
+    by_model: Object.entries(by_model).map(([model, v]) => ({ model, ...v })),
+    cost_total,
+    pending_price,
+    estimated_count,
+    fx_usd_cny,
+  };
 }
 
 export function specsList(): { name: string; path: string; version: string }[] {

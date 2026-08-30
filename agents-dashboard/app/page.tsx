@@ -197,6 +197,10 @@ export default function Home() {  const [agg, setAgg] = useState<Agg | null>(nul
             loading={loading}
             size="small"
             dataSource={rows}
+            onRow={(record) => ({
+              onClick: () => (window.location.href = `/runs/${encodeURIComponent(record.run_id)}`),
+              style: { cursor: "pointer" },
+            })}
             pagination={{ pageSize: 20, total, showTotal: (t) => `共 ${t} 条` }}
             columns={[
               { title: "Run", dataIndex: "run_id", width: 260, render: (v) => <Typography.Text code>{v}</Typography.Text> },
