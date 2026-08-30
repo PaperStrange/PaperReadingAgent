@@ -16,8 +16,19 @@ import {
   Typography,
 } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
+import DonutChart from "./components/DonutChart";
 
 const { Content, Header } = Layout;
+
+const STATUS_COLOR_HEX: Record<string, string> = {
+  succeeded: "#52c41a",
+  running: "#1677ff",
+  failed: "#ff4d4f",
+  queued: "#d9d9d9",
+  cancelled: "#faad14",
+};
+
+const ROLE_COLORS = ["#1677ff", "#52c41a", "#faad14", "#722ed1", "#13c2c2", "#eb2f96"];
 
 interface RunRow {
   run_id: string;
@@ -108,34 +119,54 @@ export default function Home() {
       <Content style={{ padding: 24 }}>
         <Row gutter={[16, 16]}>
           <Col xs={12} md={6}>
-            <Card>
+            <Card styles={{ body: { minHeight: 210, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" } }}>
               <Statistic title="总 Run 数" value={agg?.total ?? 0} />
             </Card>
           </Col>
           <Col xs={12} md={6}>
-            <Card>
-              <Statistic
-                title="状态分布"
-                value={agg ? Object.entries(agg.by_status).map(([k, v]) => `${k} ${v}`).join(" · ") : "—"}
-                valueStyle={{ fontSize: 14 }}
-              />
+            <Card
+              title="状态分布"
+              styles={{ body: { minHeight: 210, display: "flex", alignItems: "center", justifyContent: "center" } }}
+            >
+              {agg ? (
+                <DonutChart
+                  center={String(agg.total)}
+                  data={Object.entries(agg.by_status).map(([k, v]) => ({
+                    label: k,
+                    value: v,
+                    color: STATUS_COLOR_HEX[k] ?? "#d9d9d9",
+                  }))}
+                />
+              ) : (
+                <Typography.Text type="secondary">—</Typography.Text>
+              )}
             </Card>
           </Col>
           <Col xs={12} md={6}>
-            <Card>
-              <Statistic
-                title="职能分布"
-                value={agg ? Object.entries(agg.by_role).map(([k, v]) => `${k} ${v}`).join(" · ") : "—"}
-                valueStyle={{ fontSize: 14 }}
-              />
+            <Card
+              title="职能分布"
+              styles={{ body: { minHeight: 210, display: "flex", alignItems: "center", justifyContent: "center" } }}
+            >
+              {agg ? (
+                <DonutChart
+                  center={String(agg.total)}
+                  data={Object.entries(agg.by_role).map(([k, v], i) => ({
+                    label: k,
+                    value: v,
+                    color: ROLE_COLORS[i % ROLE_COLORS.length],
+                  }))}
+                />
+              ) : (
+                <Typography.Text type="secondary">—</Typography.Text>
+              )}
             </Card>
           </Col>
           <Col xs={12} md={6}>
-            <Card>
+            <Card styles={{ body: { minHeight: 210, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" } }}>
               <Statistic
                 title="累计成本（自报+估算）"
                 value={agg ? `$${agg.cost_total.toFixed(6)}` : "—"}
-                valueStyle={{ fontSize: 14 }}
+                valueStyle={{ fontSize: 16 }}
               />
               {agg && agg.pending_price > 0 && (
                 <Typography.Text type="warning" style={{ fontSize: 12 }}>
