@@ -7,7 +7,7 @@
 |---|---|
 | **阶段目标** | 把"多子代理并行评审/开发"制度化为可复用基础设施：agent spec 文件 + runtime 账本 + 本地看板；为未来新增更多 agent、以及 paper-qa workflow 引用 agent 能力打地基 |
 | **边界** | 稳定交付物（`agents/` spec、`agents-dashboard/` 应用、`scripts/agent-ops.py` 账本工具）随分支同步 main；本阶段规划/分析/调研文档仅 windows 分支 |
-| **状态** | 🟢 进行中（阶段 1 ✅；Sprint-8 = 阶段1修订 + 阶段2，见 `../sprint/2026-08-30-sprint-8.md`） |
+| **状态** | ✅ 阶段 1/2/3 全部完成（2026-08-30：Sprint-8 = 阶段1修订+阶段2；Sprint-9 = 阶段3 看板，PR #31 合并 main cbf93ea）；本目录待归档封存 |
 | **阶段内文档** | 见下 |
 
 ## 文档入口

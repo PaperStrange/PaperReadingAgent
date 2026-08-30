@@ -13,7 +13,7 @@
 | A-SPEC | 四职能 spec 文件（impact-assessment / code-review / doc-audit / workspace-check 主代理手册，按 A-FN 定稿格式） | 3 | ✅ 完成 | Sprint-8 | 阶段 2 交付物（impact-assessment 为用户问题①后增） |
 | A-LEDGER | `scripts/agent-ops.py` 账本 CLI（8 子命令）+ `registry.json` + `runs/` 报告 + `prices.json` | 3 | ✅ 完成 | Sprint-8 | 阶段 2 交付物（§3.2 字段） |
 | A-IDE | 跨 IDE 迁移说明（`agents/README.md`）+ 1-WORKFLOW §4.2 三查引用更新 | 1 | ✅ 完成 | Sprint-8 | 阶段 2 交付物 |
-| A-DASH | 本地看板应用（Next.js 16 + **antd 6.6.2** + better-sqlite3/FTS5 + chokidar；概览/specs/costs/runs 四页面；端口 8600） | 15（12+US-9.7 插卡 3） | 🟢 进行中 | Sprint-9（2026-08-30，关闭中；规划时间盒 08-31~09-01 未启用） | 阶段 3 交付物（§6）；US-9.7 换栈 antd（Tailwind v4 冲突，issue #56015） |
+| A-DASH | 本地看板应用（Next.js 16 + **antd 6.6.2** + better-sqlite3/FTS5 + chokidar；概览/specs/costs/runs 四页面；端口 8600） | 15（12+US-9.7 插卡 3） | ✅ 完成 | Sprint-9（2026-08-30 关闭；PR #31 合并 cbf93ea） | 阶段 3 交付物（§6）；US-9.7 换栈 antd（Tailwind v4 冲突，issue #56015） |
 
 ## 2. 维护卡 / PM 固化备选（用户意见③：可 agent 固化的项目管理过程）
 
