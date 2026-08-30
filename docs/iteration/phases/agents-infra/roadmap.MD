@@ -21,6 +21,7 @@
 | Sprint-8（阶段1修订+阶段2） | 2026-08-30 | 职能化划分补充调研 + A-FN/A-UC/A-SPEC/A-LEDGER/A-IDE（`../sprint/2026-08-30-sprint-8.md`）；US-8.1~8.6 全部 DONE；三查按新协议 fan-out（2 code-review 任务 + 1 doc-audit，账本登记），发现项全部闭环；PR #23（`3d58081`） | ✅ 完成 |
 | 用户问题修正（阶段 2 收尾） | 2026-08-30 | ① 审查范围不得默认收窄 → 新增 **impact-assessment 职能** + 核心功能覆盖率指标（4 方案对比选定 A，阈值 ≥60%），三查顺序加"〇查范围"；② 中间态/实时结果/留证文件出库（registry/runs/截图/分析产物 gitignore，本地保留） | ✅ 完成（PR #24 `1e78b60`） |
 | 复合指标细化（用户问题①深化） | 2026-08-30 | 指标改为 **A+B 复合（权重 8:2）**：composite=(0.8A+0.2B)×100，阈值 **X=50** 两档（>50 全量代码库 / ≤50 Sprint 修改+核心文件区域，核心区域恒含）；impact-assessment spec **v1.2.0**；**双例子代理验证 PASS**（85.45→全量档、14.55→窄档，与修正 ground truth 一致） | ✅ 完成（PR #25 `0853f33`） |
+| 用户意见③（运行前自检/可配置参数/目录架构） | 2026-08-30 | ① impact-assessment **v1.2.0**：N_core/N_routes **运行前自检**（读仓库统计，不写死）；② 四个 spec 均加**可配置参数（编辑点）**节；③ `docs/agents/` → 顶层 **`agents/`**（项目级设置与 docs 平级，git mv + 全量引用更新）；④ 迁移后按新协议全项目文档审阅（impact-assessment 实战：composite=14.55 窄档 → doc-audit 8 条发现全部闭环） | ✅ 完成（PR #26 `8de9fb9`） |
 | Sprint-9（阶段 3 看板） | 规划中 | A-DASH 看板应用 + 真实 fan-out 验收演示 | ⬜ 待启动 |
 
 ## 3. 落地映射
