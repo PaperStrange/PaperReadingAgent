@@ -492,8 +492,12 @@ classDiagram
         +evidence_session / answer_session / run_records
         +data_source_params
     }
-    class StepRequest / StepResponse
-    class validate_config / get_config_schema
+    class StepRequest
+    class StepResponse
+    class "config_schema 模块" {
+        +validate_config(params)
+        +get_config_schema()
+    }
     class provider_config {
         +get_provider_config(p) / get_providers() / list_providers_safe()
     }
@@ -514,7 +518,7 @@ classDiagram
     PipelineOrchestrator --> EngineAdapter
     PipelineOrchestrator --> SessionStore
     PipelineOrchestrator --> EmbeddingRecommender
-    PipelineOrchestrator --> validate_config
+    PipelineOrchestrator --> "config_schema 模块"
     PipelineOrchestrator --> data_sources
     PipelineOrchestrator --> remote_resolver
     LocalVendorAdapter ..|> EngineAdapter
