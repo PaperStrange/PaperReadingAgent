@@ -37,7 +37,7 @@
 | [`docs/3-LEARNED.MD`](docs/3-LEARNED.MD) | 开发经验教训：踩坑记录、验证记录、已知限制 |
 | [`docs/4-ALGORITHM.MD`](docs/4-ALGORITHM.MD) | **前后端决策逻辑与算法**：DSL 规则 + 决策表 + UML（类图/时序图/状态机），每条规则标注代码位置 |
 | [`docs/5-VERSIONS.MD`](docs/5-VERSIONS.MD) | **发版记录与版本号规范**（`年.月.日-v(R.R.R)`；首个版本在 roadmap 全部 Sprint 完成后发布） |
-| [`verify/README.md`](verify/README.md) | 验收脚本（`verify_smoke/e2e/agent/provider_switch/embed_load/remote_e2e/prune_callbacks/index_health` + `eval_retrieve` + `gui_check*.mjs`）使用说明 |
+| [`verify/README.md`](verify/README.md) | 验收脚本（`verify_smoke/e2e/agent/provider_switch/embed_load/remote_e2e/prune_callbacks/index_health/agentops` + `eval_retrieve` + `gui_check*.mjs`）使用说明 |
 | `docs/iteration/` | 迭代管理（**仅 windows 分支维护**，不进 main/mac）：`ROADMAP.MD` 全局三档路线图、`phases/<阶段>/` 分阶段 roadmap+backlog、`sprint/` Sprint 记录 |
 | [`paper-qa-script/reactflow-paperqa-prototype/README.md`](paper-qa-script/reactflow-paperqa-prototype/README.md) | ReactFlow 前端 + FastAPI 后端原型说明 |
 | [`paper-qa-script/paperqa_system_report.md`](paper-qa-script/paperqa_system_report.md) | paperqa 源码静态分析报告（371 个函数、入口签名、调用路径） |
@@ -212,6 +212,7 @@ $env:DEEPSEEK_API_KEY = "sk-你的DeepSeek密钥"      # 若 .env 已配置可�
 $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 .\.venv\Scripts\python.exe .\verify\verify_smoke.py             # 8 项冒烟（离线）
 .\.venv\Scripts\python.exe .\verify\verify_prune_callbacks.py   # litellm 回调裁剪（离线）
+.\.venv\Scripts\python.exe .\verify\verify_agentops.py          # AgentOps 账本 CLI 用例断言（离线）
 .\.venv\Scripts\python.exe .\verify\verify_index_health.py      # 索引三重探针 + 自愈（离线）
 .\.venv\Scripts\python.exe .\verify\verify_provider_switch.py   # 服务商切换/路由实证（联网）
 .\.venv\Scripts\python.exe .\verify\verify_e2e.py               # 全链路（真实 API，本地目录）

@@ -181,6 +181,7 @@ $env:DEEPSEEK_API_KEY = "<DeepSeek key>"             # 若 .env 已配置可跳�
 $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 .\.venv\Scripts\python.exe .\verify\verify_smoke.py             # 8 项冒烟（离线）
 .\.venv\Scripts\python.exe .\verify\verify_prune_callbacks.py   # litellm 回调裁剪（离线）
+.\.venv\Scripts\python.exe .\verify\verify_agentops.py          # AgentOps 账本 CLI 用例断言（离线）
 .\.venv\Scripts\python.exe .\verify\verify_index_health.py      # 索引三重探针 + 自愈（离线）
 .\.venv\Scripts\python.exe .\verify\verify_provider_switch.py   # 服务商切换/路由实证（联网）
 .\.venv\Scripts\python.exe .\verify\verify_e2e.py               # 全链路（真实 API）

@@ -11,7 +11,7 @@
 | 工作区核验 | [`functions/workspace-check.md`](functions/workspace-check.md) | — | **主代理执行**（D2：起服务/杀进程不子代理化） |
 
 - 同一职能对多个 target 各跑一次任务（如三查时 code-review 跑 windows+main 两任务），分支/PR 只是任务参数。
-- 新增职能：在 `functions/` 新建 `<fn>.md`（frontmatter 超集 + 五段式），升 `version`，跑 `agent-ops validate-spec` 后上线（backlog 卡 A-PM4 评估流程）。
+- 新增职能：在 `functions/` 新建 `<fn>.md`（frontmatter 超集 + 五段式），升 `version`，跑 `agent-ops validate-spec` 后上线（上线评估流程见阶段规划 backlog，后续迭代固化）。
 
 ## 2. 账本 CLI（`scripts/agent-ops.py`，纯 Python 标准库）
 
@@ -22,9 +22,9 @@
 .\.venv\Scripts\python.exe .\scripts\agent-ops.py list --role code-review
 ```
 
-- 账本 = 文件真相源：`runtime/registry.json`（append + sha256 完整性校验，手改即拒——防双写）；`runs/<run_id>/<role>.report.md` 为报告存档（memory 浏览入口）；`runtime/prices.json` 为价表（auto 段由 litellm 价表派生，manual 段人工覆盖，`null` = 待填价 → 估算标 `pending_price`）。
+- 账本 = 文件真相源：`runtime/registry.json`（append + sha256 完整性校验，手改即拒——防双写）；`runs/<run_id>/<role>.report.md` 为报告存档（memory 浏览入口，**入库随仓库提交**——审计底稿，非 gitignore 产物）；`runtime/prices.json` 为价表（auto 段由 litellm 价表派生，manual 段人工覆盖且**非 null 时优先于 auto**，`null` = 待填价 → 估算标 `pending_price`）。
 - 成本估算：`usage × 单价`（含 cache 分列）；无 usage 时 `chars/4` 兜底并标 `estimated`；口径 = **自报+估算**，精确账单以服务商后台为准。
-- 其余子命令：`validate-spec`（spec frontmatter 校验）、`fetch-spec`（source 块远程拉取：url+ref+sha256 校验，失败/`--offline` 回退本地）、`parse-report`（critical/major/minor/nit 结构化）、`prices-derive`（价表再派生，保留 manual）。
+- 其余子命令：`update`（进入 running + 补 usage）、`validate-spec`（spec frontmatter 校验）、`fetch-spec`（source 块远程拉取：url+ref+sha256 校验、仅 http/https 且拒绝私网/保留地址，失败/`--offline` 回退本地）、`parse-report`（critical/major/minor/nit 结构化，位置含 file:line）、`prices-derive`（价表再派生，保留 manual）。
 
 ## 3. 跨 IDE / 编排方迁移说明
 
