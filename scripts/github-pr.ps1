@@ -89,7 +89,7 @@ switch ($Action) {
         $m = Invoke-GitHubJson -Uri "$Api/pulls/$Number/merge" -HttpMethod "Put" -Payload $payload
         Write-Output ("MERGED #{0}: {1}" -f $Number, $m.sha)
         if (-not $KeepBranch) {
-            # layer-3 git hygiene (2026-08-31): cleanup the merged head branch.
+            # layer-3 git hygiene (2026-08-30): cleanup the merged head branch.
             # Repo setting delete_branch_on_merge also deletes it (async, API merges too),
             # so "failed to push some refs" here means the ref is already gone = success.
             # API head.label 为 "owner/branch"；直接 -Head 传入时整段即分支名（分支名本身可含 "/"）

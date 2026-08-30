@@ -31,7 +31,7 @@ metadata:
 
 1. **工作区零残留**：`git status --short` 逐条核对——每个改动文件都应属于本轮改动清单；意外残留（临时文件、生成物、未登记的截图）逐一处理（入库 or gitignore or 删除）。
 2. **分支卫生（本地）**：本地分支只剩 main/windows（+ 当前 sync 分支）；过期 sync 分支删除；`git log --oneline -3` 确认 HEAD 与计划一致。
-3. **分支卫生（远程，2026-08-31 用户发现盲区后新增）**：`git ls-remote --heads origin` 应为 `mac/main/windows` 三条——**每个已合并 PR 的 `sync/*` 头分支必须删除**（`git push origin --delete <branch>`）；若启用仓库"合并后自动删头分支"设置则自动满足，仍需复查。
+3. **分支卫生（远程，2026-08-30 用户发现盲区后新增）**：`git ls-remote --heads origin` 应为 `mac/main/windows` 三条——**每个已合并 PR 的 `sync/*` 头分支必须删除**（`git push origin --delete <branch>`）；若启用仓库"合并后自动删头分支"设置则自动满足，仍需复查。
 4. **端口卫生**：`Get-NetTCPConnection -LocalPort 5173,8787,8501,8600 -State Listen` 全 FREE；若占用 → 按 SOP 定位 PID + `Get-CimInstance Win32_Process` 核对命令行确认是本项目进程 → **只对确认的 PID** `Stop-Process`（绝不按进程名批量杀，见 3-LEARNED 1.11/1.20）→ 复查 FREE。
 5. **.gitignore 覆盖**：`git status --porcelain --ignored` 抽查生成物（__pycache__/.venv/node_modules/.next/agents-dashboard/data/data/remote/verify/*.log/*_result.json）是否被正确忽略。
 6. **回归套件**（按改动范围选取）：
