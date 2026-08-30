@@ -18,8 +18,9 @@ PROVIDERS: dict[str, dict] = {
         "api_base": "https://api.deepseek.com",
         "model": "openai/deepseek-v4-flash",           # 可选 deepseek-v4-pro
         "vision_model": "openai/deepseek-v4-flash-vision-exp",  # 图片增强/证据摘要
-        "embedding": "st-multi-qa-MiniLM-L6-cos-v1",   # 本地向量，无需 key
+        "embedding": "st-multi-qa-MiniLM-L6-cos-v1",   # 兜底本地向量（自动推荐时会被 HF 热门多语言模型替换）
         "embedding_local": True,
+        "has_embedding_api": False,                    # DeepSeek 无 embedding API → 默认走 HF 本地模型
         "key_envs": ("DEEPSEEK_API_KEY", "OPENAI_API_KEY"),
         "thinking_disabled": True,                     # DeepSeek 思考模式需关闭以支持多轮工具调用
     },
@@ -27,8 +28,9 @@ PROVIDERS: dict[str, dict] = {
         "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "model": "openai/qwen-omni-turbo",             # 或 openai/qwen3-max
         "vision_model": "openai/qwen-omni-turbo",
-        "embedding": "openai/text-embedding-v4",
+        "embedding": "openai/text-embedding-v4",       # 最新策展（2026-08）
         "embedding_local": False,
+        "has_embedding_api": True,
         "key_envs": ("DASHSCOPE_API_KEY", "OPENAI_API_KEY"),
         "thinking_disabled": False,
     },
@@ -36,8 +38,9 @@ PROVIDERS: dict[str, dict] = {
         "api_base": None,                              # 使用 OpenAI 官方默认端点
         "model": "gpt-4o-mini",
         "vision_model": "gpt-4o-mini",
-        "embedding": "text-embedding-3-small",
+        "embedding": "text-embedding-3-large",         # 最新策展（2026-08；更省可改 text-embedding-3-small）
         "embedding_local": False,
+        "has_embedding_api": True,
         "key_envs": ("OPENAI_API_KEY",),
         "thinking_disabled": False,
     },

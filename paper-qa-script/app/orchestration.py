@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from app.config_schema import validate_config
 from app.data_sources import parse_remote_sources, validate_source_specs
+from app.embedding_recommender import RECOMMENDER
 from app.engine import ENGINE, EngineAdapter
 from app.events import FunctionTraceEvent, StepEvent
 from app.remote_resolver import resolve_remote_sources
@@ -165,20 +166,37 @@ class PipelineOrchestrator:
         try:
             with tracer:
                 if step == "config":
-                    session.settings = self._engine.make_settings(req.params)
+                    # embedding 智能默认（未显式指定时按 provider 自动选择；均可手动覆盖）
+                    settings_params = dict(req.params)
+                    embedding_rec = None
+                    if not settings_params.get("embedding_model"):
+                        embedding_rec = await RECOMMENDER.recommend(
+                            settings_params.get("provider")
+                        )
+                        settings_params["embedding_model"] = embedding_rec.model
+
+                    session.settings = self._engine.make_settings(settings_params)
                     # US-3.3：数据源参数存入会话（load_index 步骤读取；Run All 时各节点参数独立）
                     session.data_source_params = {
                         k: req.params.get(k)
                         for k in ("data_source", "source_urls", "source_arxiv_ids", "source_dois")
                     }
+                    config_notes = validate_config(settings_params)
+                    if embedding_rec is not None:
+                        config_notes["hints"].insert(
+                            0, f"[Embedding 自动选择] {embedding_rec.reason}"
+                        )
                     output = {
                         "paper_directory": session.settings.agent.index.paper_directory,
                         "index_name": session.settings.agent.index.name,
                         "llm": session.settings.llm,
                         "embedding": session.settings.embedding,
                         # 追加：配置唯一真源校验/提示（US-2.1，只增不减，行为不变）
-                        "config_notes": validate_config(req.params),
+                        "config_notes": config_notes,
                     }
+                    if embedding_rec is not None:
+                        # 追加：自动解析结果（含理由），前端可直接展示
+                        output["embedding_resolved"] = embedding_rec.model_dump()
 
                 elif step == "load_index":
                     if session.settings is None:

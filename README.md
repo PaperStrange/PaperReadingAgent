@@ -292,6 +292,12 @@ node .\verify\gui_check_remote.mjs    # GUI remote 数据源（需前后端已�
 - `vision_model`：证据摘要/图片增强模型（含图片上下文必须支持视觉），留空随 provider 默认。
 - `embedding_model`：`st-` 前缀 = HuggingFace 任意 SentenceTransformer 模型（本地已缓存或首次自动下载，**不依赖 provider 是否有 embedding API**，如 `st-BAAI/bge-small-en-v1.5`）；其它名 = litellm API 向量（需 provider 支持）；`litellm-` 前缀可强制 API 路径。切换后需重建索引。
 
+**Embedding 智能默认（不写 `embedding_model` 时自动生效，均可手动覆盖）**：
+
+- 服务商**有** embedding API（openai/dashscope）→ 自动用其最新策展模型（openai=`text-embedding-3-large`，dashscope=`openai/text-embedding-v4`）。
+- 服务商**无** embedding API（deepseek）→ 自动查询 HuggingFace 下载量最高且**兼容中文**的 SentenceTransformer 模型（当前为 `paraphrase-multilingual-MiniLM-L12-v2`，4600 万+ 下载），首次自动下载；结果缓存 24h，离线/超时回落 `st-multi-qa-MiniLM-L6-cos-v1`（设 `PAPERQA_EMBED_RECOMMEND_LIVE=0` 可关闭在线查询）。
+- 推荐结果与理由在 config 步骤输出 `embedding_resolved` 与 `config_notes.hints` 中展示；逻辑在 `app/embedding_recommender.py`（`EmbeddingRecommender` 接口，未来 E3 可替换为 agent 推荐步骤）。
+
 ### 配置多个 Key 会不会冲突？—— 不会（重要参数配置说明）
 
 key 与服务商**一一对应**，同时配置多家 key 互相独立、不会串用：
