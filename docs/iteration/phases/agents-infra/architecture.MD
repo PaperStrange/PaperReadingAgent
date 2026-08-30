@@ -191,17 +191,18 @@ source:
 - **better-sqlite3 原生模块**：在 Node v23.10.0 上 `npm install better-sqlite3@13.0.3`（prebuilt，3s 装完）+ FTS5 实测（word/phrase/AND 查询均命中）→ **风险清除**；`engines: node>=22` 与本机匹配。
 - **价表来源**：litellm 1.76.1 在 venv 内捆绑 `model_prices_and_context_window_backup.json`（1533 个模型，可离线读取）——`gpt-4o-mini`、`text-embedding-3-large` 有完整单价（in/out/cache）；**deepseek 系列 / qwen-omni-turbo / text-embedding-v4 / openrouter/auto 无条目** → `prices.json` 需人工覆盖段（由服务商页面填入），派生脚本只自动提取有单价的模型。
 
-## 6. 阶段交付物清单与验收标准（评审靶子，待用户修改意见）
+## 6. 阶段交付物清单与验收标准
 
-### 阶段 2（四评审代理 spec/账本/跨 IDE）
+### 阶段 2（职能化 spec/账本/跨 IDE，Sprint-8）
 
 | 交付物 | 位置 | 验收标准 |
 |---|---|---|
-| 4 份 spec（code-review-windows / code-review-main / doc-audit / workspace-check-主代理手册） | `docs/agents/*.md` | frontmatter 超集 + body 五段式（角色/触发/步骤/输出模板/禁止）；可直接粘贴执行 |
-| 账本 CLI | `scripts/agent-ops.py` | register/update/finish 三子命令；落 `docs/agents/runtime/registry.json`（§3.2 字段）+ `runs/<run_id>/<role>.report.md` |
+| 职能 spec（**按职能划分，用户意见①**：职能清单由 A-FN 调研定稿；如 code-review 职能以分支为任务参数，doc-audit 职能，workspace-check 为主代理手册） | `docs/agents/*.md` | frontmatter 超集 + body 五段式（角色/触发/步骤/输出模板/禁止）；可直接粘贴执行；同一职能可对多个任务参数执行 |
+| 账本 CLI | `scripts/agent-ops.py` | register/update/finish 三子命令；落 `docs/agents/runtime/registry.json`（§3.2 字段，含 task 参数）+ `runs/<run_id>/<role>.report.md` |
 | 价表 | `docs/agents/runtime/prices.json` | 由 LiteLLM 价表派生精简版（本项目用到的模型），可人工覆盖 |
+| 用例表 | `architecture.MD` §7（A-UC） | ≥10 条"调研结论→可测断言"用例，Sprint 开发逐条验证 |
 | 跨 IDE 迁移说明 | `docs/agents/README.md` | spec 如何在 DSH/Cursor/Claude Code/CI 引用；账本脚本任意 terminal 可用；source 块远程引用流程 |
-| 实战验证 | 下一次三查 | 按 §3.3 触发分级执行：3 子代理并行 + 账本登记 + 分诊闭环，结果写入 Sprint §9 |
+| 实战验证 | 下一次三查 | 按 §3.3 触发分级执行：职能 fan-out + 账本登记 + 分诊闭环，结果写入 Sprint §9 |
 
 ### 阶段 3（本地看板）
 
@@ -210,3 +211,22 @@ source:
 | 看板应用 | `agents-dashboard/`（Next.js App Router + Tailwind + shadcn/ui + better-sqlite3/Drizzle/FTS5 + chokidar） | 端口 8600；`scripts/start-agents-dashboard.ps1` 一键启动 |
 | 页面 | ① 概览（任务 runtime 状态）② 账本列表（检索/过滤/聚合，TanStack Table）③ spec 编辑（直写文件）④ skill URL 配置（source 块编辑）⑤ 成本/上下文（Tremor/Recharts，自报+估算标注）⑥ memory 报告浏览 | 每页有对应 CRUD/检索交互；数据来自文件真相源 + SQLite 派生索引 |
 | 验收演示 | 一次真实 fan-out | 看板完整呈现该次 fan-out 的 状态/自报上下文/估算成本/报告浏览 + spec 在线编辑生效 |
+
+## 7. 调研结论→用例表（A-UC，用户意见②：Sprint 开发时逐条验证实现遵循调研结论）
+
+> 每条用例 = 调研出处 + 可测断言 + 验证方式；验证方式标注 所属 US / 阶段（S8=本 Sprint，S9=看板 Sprint）。
+
+| ID | 用例（可测断言） | 调研出处 | 验证方式 |
+|---|---|---|---|
+| UC-1 | `docs/agents/*.md` frontmatter 必填 `name`(=文件名)+`description`+`version` 且 name 唯一 | §2.4 SKILL.md/Claude subagents | `agent-ops validate-spec`（US-8.3/S8） |
+| UC-2 | `source` 块含 `url+ref+sha256+fallback`；模拟拉取失败/校验不符 → 回退本地并告警 | §2.4 自研远程引用 + D5 | `agent-ops fetch-spec --offline` 断言（US-8.3/S8） |
+| UC-3 | registry 条目含 §3.2 全部字段；状态机 queued→running→succeeded/failed/cancelled 合法流转，非法流转被拒 | §2.1 Langfuse / §2.3 账本模型 | CLI 往返测试（US-8.4/S8） |
+| UC-4 | 成本估算 = usage×prices.json 单价（含 cache 分列）；无 usage 时 `chars/4` 兜底且 `estimated=true` | §2.1 LiteLLM 价表/双轨 | 给定输入输出断言计算值（US-8.4/S8） |
+| UC-5 | 报告解析器能从 spec 输出模板解析出 critical/major/minor/nit 条目（文件:行+建议+必修标记） | §2.3 类型化结果（Pydantic output_type） | 样例报告解析断言（US-8.4/S8） |
+| UC-6 | 同一 code-review 职能以 `task=branch:windows|main` 参数执行两次 → 两份报告 + 账本两条记录（task 区分） | §2.3 Send 并行 / 用户意见①职能化 | 真实 fan-out（S9 验收演示；S8 先以 dry-run 断言） |
+| UC-7 | registry.json 为唯一账本源：记录只能经 agent-ops CLI 追加，看板/脚本直改会被校验拒绝（防双写） | §2.2 Database-Backed Agents | CLI 追加 + 校验命令（US-8.4/S8；看板 S9） |
+| UC-8 | SQLite 派生索引与文件源一致：registry.json 变更后（chokidar）库内检索结果更新 | §2.2 文件为源、库为索引 | S9 看板集成测试 |
+| UC-9 | context_occupancy{input_tokens,max_context,ratio} 与 cost_est 在 finish 时可自报并可人工覆盖 | §2.1 自报+估算口径（D4） | CLI finish 参数断言（US-8.4/S8） |
+| UC-10 | prices.json 含自动提取条目（gpt-4o-mini、text-embedding-3-large 完整单价）+ 人工覆盖段（deepseek/qwen/openrouter 可空，估算标 `pending_price`） | §2.1/§5.1 价表预研 | 派生脚本 + 断言（US-8.4/S8） |
+| UC-11 | agent-ops CLI 纯 Python 标准库可跑（不依赖 DSH/仓库外工具）；spec 为纯 markdown | §3.5 CLI 契约 / 跨 IDE 需求 | 干净环境冒烟（US-8.5/S8） |
+| UC-12 | 三查 fan-out = 职能级（code-review 跑 windows+main 两任务、doc-audit 一任务）且环境核验留主代理 | §3.3 触发分级 + D2 | Sprint-8 三查实操（US-8.6/S8） |
