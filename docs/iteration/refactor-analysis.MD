@@ -96,3 +96,33 @@ API 服务层         FastAPI REST + SSE            薄：协议/路由/校验
 | 原 Sprint-7+（E3 可编辑） | — | 编排 DSL/配置 + 执行器 | ⏸ hold |
 
 > 落地映射（分层）：`app/config_schema.py`（SSOT）、`app/orchestration.py`（编排）、`app/engine.py`（引擎适配）、`app/events.py`（事件）、`app/session_store.py`（会话）、`app/data_sources.py`+`app/remote_resolver.py`（数据源）、`app/embedding_recommender.py`（embedding 推荐）；`backend/main.py` 纯路由层（8 条 API 路由）；前端 `ModelConfigPanel.jsx`/`DataSourcePanel.jsx` 交互面板。
+
+## 8. 新增补充候选（对原规划的新增 Backlog，2026-08-30 起维护）
+
+> 来源：历次 Sprint Retro 行动项 + 三查建议修 + 用户实战反馈。分为「功能候选」与「维护候选」；
+> 按 §4.4 判定标准（见 `1-WORKFLOW.MD`）决定进 sprint / 直接修复 / 批处理。原规划（§6）保持不动。
+
+### 8.1 功能候选（建议优先级）
+
+| # | 候选 | 动机 | 依赖/备注 |
+|---|---|---|---|
+| F1 | **检索体验与查询质量**：中文 query 在英文分块零命中的改写/多语检索（含双语分块或 query 翻译），retrieve 展示命中理由 | Sprint-5 实测零命中回退频繁（用户直接体验痛点） | 与 C 可观测联动展示 |
+| F2 | **配置面板深化 + SSOT 驱动前端**：`/api/config_schema` 端点、剩余字段（chunk/temperature/use_doc_details…）迁移交互面板、JSON 编辑区与面板单一受控状态（遗留 m10） | 收敛三处默认值漂移（评审 m1 欠账）；Config UX 主线 | F2 后可自然接 E3 只读可视化 |
+| F3 | **Agent 接入后端**：`EngineAdapter.run_agent` 接线 + Agent 事件流（SSE 复用事件模型）+ 前端时间线雏形 | 为 C/E3 v1 铺路；同时满足"Agent 流程不透明"原始诉求 | 部分等于原 Sprint-4 前置，属解冻前置步，**E3 v1 交付仍需用户 review** |
+| F4 | **本地评测基准**：小样本问答质量对比（检索/证据/答案三环），产物进 `docs/iteration/` 或新目录 | 为 F1 与 E3 提供量化依据 | 轻量脚本即可起步 |
+
+### 8.2 维护候选（按严重度/来源）
+
+| # | 候选 | 类型 | 来源 |
+|---|---|---|---|
+| M1 | 索引一致性增强：Tantivy 段损坏探测（现仅 files.zip 探针 + 指纹） | Major/维护 | Sprint-5 二查 |
+| M2 | `prune_litellm_callbacks` 上限可配置化（env） | Minor | Sprint-5 Retro |
+| M3 | staging 清理 UI/自动清理策略；DOI 源接真实 `UNPAYWALL_EMAIL` 实测 | Minor | Sprint-3 Retro |
+| M4 | 多节点并发计时显示；`runStartTimesRef` 清理 | Trivial | Sprint-5 二查 nit |
+| M5 | `verify_provider_switch` 对 openrouter/自定义做真实连通实测；gui 脚本依赖显式化（playwright devDependencies） | Minor | 三查建议修 |
+| M6 | 文档/知识管理例行勘误（随三查进行） | Trivial | — |
+
+### 8.3 与 hold 状态的关系
+
+- 原 Sprint-4（C+E3 v1）仍 hold；**若用户选择先做 F3/F1，E3 v1 的可视化验收闸门不变**。
+- 插队/新 Sprint 的启动按 §4.4 判定；所有新候选完成后在 §7 实际 Roadmap 登记。

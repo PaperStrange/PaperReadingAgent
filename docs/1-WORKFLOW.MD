@@ -102,6 +102,31 @@
 
 见 `docs/iteration/sprint/_template-sprint.md`。关闭时把第 4.2 节的**项目管理与证据**板块填实。
 
+### 4.4 Sprint / Bug / 日常维护 的判定标准（2026-08-30 制度化）
+
+> 方法论依据：缺陷**严重度分诊**（Blocker/Critical/Major/Minor/Trivial 分级，见 [NRAO Issue 类型](https://open-confluence.nrao.edu/pages/diffpagesbyversion.action?pageId=29529259&originalVersion=3&revisedVersion=8) 与 [Zowe 社区 triage 指南](https://github.com/zowe/community/pull/1980)）；**维护 vs 项目**的区别（纠正性/适应性维护 vs 立项开发，见 [EMI 软件维护与支持计划](https://twikiai07.cern.ch/twiki/pub/EMI/DeliverableDSA11/EMI-DSA1.1-1277556-SoftwareMaintenanceAndSupportPlan-v0.9.pdf) 与 [项目和维护的主要区别](https://worktile.com/kb/p/3913291)）；**服务等级（Classes of Service）**与"非计划工作预算"思想（[Kanban 术语表](https://kanban.university/glossary/)；为缺陷/验收修复预留 sprint 产能的讨论见 [SoftwareEngineering.SE](https://softwareengineering.stackexchange.com/posts/311947/revisions)）。
+
+**三类工作定义与判定（按顺序问 5 个问题）**：
+
+1. 是否引入**用户可见的新能力 / 协议变更**（新端点、新面板、新数据源类型、SSE/请求字段变化）？
+2. 是否触碰**决策逻辑**（`4-ALGORITHM.MD` §3–§10 任一规则变化，含默认值/优先级/短路顺序）？
+3. 是否**跨层**（后端编排+前端 UI+文档 同时改）或**新增模块**？
+4. 预估规模是否 ≥ **8 点 / 2 个模块**，或同类问题 ≥ **3 个**（成批）？
+5. 是否属于 **roadmap 主题**（原规划或已批准的新增候选）？
+
+| 判定 | 条件 | 处理路径 |
+|---|---|---|
+| **新 Sprint** | 命中任一 1/2/5，或命中 3/4 | 完整 Sprint 流程（planning/看板/燃尽/DoD/三查），写 `docs/iteration/sprint/<日期>-sprint-N.md` |
+| **插队 Sprint** | 用户实测驱动的**成批修复**（≥3 个同源问题或合计 >8 点），须用户提出或明确批准 | 同新 Sprint 流程，sprint 文档标注"插队"，roadmap §7 实录登记 |
+| **Bug（直接修复）** | 单点根因、不改设计/接口/协议、≤2h、纯缺陷或回归 | `fix:` 提交 + 对应回归（smoke/e2e/GUI 按需）+ 有教训记 `3-LEARNED` + PR 同步；**不写 sprint 文档** |
+| **日常维护** | 文档勘误/知识管理、依赖 pin、清理/环境 SOP、验证脚本维护、≤5 点且行为不变的小重构 | `docs:`/`chore:` 提交 + PR 同步；不写 sprint 文档 |
+
+**严重度分诊（决定时效，不决定归属）**：`Blocker`（主流程不可用/数据损坏）→ 立即 fix 或立即插队；`Critical`（核心功能失效，有规避）→ 当日内；`Major`（功能缺陷/无规避）→ 纳入最近 sprint 或批处理；`Minor/Trivial`（体验/文案/样式）→ backlog 候选，凑批后进插队 sprint。
+
+**非计划工作预算**：每个 Sprint 预留 **~20% 产能**应对 Blocker/Critical 缺陷与紧急维护；超出预算则先补计划再执行（新 sprint 或插队 sprint），**禁止长期游离于流程之外**。
+
+**边界澄清（本项目经验）**：单文件"改了目录没生效"这类**流程缺陷**，若修复需要前后端协同+新增决策规则（如 Sprint-5 的自动重跑+状态失效），属于插队 sprint；若只是文案/样式单点问题，属 Bug/维护。判断先例见 `docs/iteration/sprint/2026-08-30-sprint-4.md`（插队）与 Sprint-5（插队，后补三查整改）。
+
 ## 5. 运行手册（Windows）
 
 > **新用户请先看根目录 `README.md` 的"本地部署"**（含先决条件、一步步部署、验证安装、故障排查）。
