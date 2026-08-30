@@ -83,6 +83,12 @@
 - 解决：SSRF 校验 + 重定向逐跳复检（沙箱透明代理 198.18/15 豁免）；200MB 上限 + 流式临时文件；`_redact_secrets` 脱敏；`toText()` 归一化；另修 m2/m3/m5/m6/m8/m9/m11 共 7 项；随后 PR #3 补同步 main。
 - 教训：**评审要覆盖"新增的攻击面"而非只查老代码**——本次新增的网络下载/快照持久化正是漏洞高发区；**评审结论要落到 commit 与文档闭环**（sprint-3 §9 记录发现→修复→回归的完整链路）。
 
+### 1.18 PowerShell 5.1 的编码陷阱：Invoke-RestMethod 中文 Body 变乱码 + 无 BOM 中文 .ps1 语法错
+- 现象：PR #2 标题/正文中文在 GitHub 显示为乱码（GBK 字节被按 UTF-8 解析）；`scripts/github-pr.ps1` 首版（含中文注释）报 "Unexpected token" 语法错。
+- 根因：PS 5.1 把 `Invoke-RestMethod -Body <字符串>` 按 **ANSI 代码页（中文 Windows=GBK）** 编码发出，GitHub 按 UTF-8 解析 → 乱码；同理 PS 5.1 把**无 BOM 的 UTF-8 .ps1 按 ANSI 读**，中文注释的误读会吞掉换行、破坏解析。
+- 解决：① API 调用改 `[System.Text.Encoding]::UTF8.GetBytes($json)` 字节数组 + `ContentType "application/json; charset=utf-8"`；② 沉淀 `scripts/github-pr.ps1`（UTF-8 字节体，纯 ASCII 脚本）；③ 用 PATCH 修复 PR #2 正文。
+- 教训：**跨编码边界（PS 控制台 GBK / 文件 UTF-8 / 网络 UTF-8）传非 ASCII 文本时，永远显式指定 UTF-8 字节，别信默认值**；`.ps1` 要么纯 ASCII 注释，要么存成带 BOM 的 UTF-8。
+
 ## 2. 验证记录（Windows，实际执行）
 
 ### 2.1 冒烟（`verify/verify_smoke.py`）—— 8/8 通过
