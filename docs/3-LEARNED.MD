@@ -18,7 +18,7 @@
 | 🛡️ 安全与防护 | 1.16、1.17、§4 整改表 |
 | 🏗️ 工程方法（分层/一致性/自愈） | 1.15、1.17、1.19（长路径/注册表可扩展）、1.21、1.22、1.28 |
 | 🔎 检索与算法改进 | 1.21（来源标记）、1.23 |
-| 📋 项目管理与流程 | 1.17（评审闭环）、1.24、1.26、1.28、1.29、`1-WORKFLOW.MD` §4.4 |
+| 📋 项目管理与流程 | 1.17（评审闭环）、1.24、1.26、1.28、1.29、1.30、`1-WORKFLOW.MD` §4.4 |
 
 ### 1.1 DeepSeek 无 embedding API → 本地向量化
 - 现象：DeepSeek 平台只提供 `deepseek-v4-flash / -pro / -flash-vision-exp`，无 embedding 端点。
@@ -155,6 +155,11 @@
 - 现象：① 三查评审超时后我把范围"时间盒化"收窄到 Sprint 交付物，被用户指出这**不能固化为规则**——审查范围应基于"影响范围评估"；且影响范围需要**量化指标**（建议与核心功能相关）。② `registry.json`/runs 报告/截图/静态分析产物等中间态、实时结果、留证文件被我 commit 追踪，污染仓库与远程。
 - 解决：① 新增 **impact-assessment 职能**（`agents/functions/impact-assessment.md`）：11 项核心功能静态清单 + 模块→功能映射；指标方案对比（A 核心功能覆盖率 / B 核心 API 覆盖率 / C 风险加权文件覆盖率 / D 回归证据覆盖率）后选定 **A+B 复合（权重 8:2，阈值 X=50；v1.2 起 N_core/N_routes 运行前自检不写死）**，D 作辅助（后经复合指标细化，见 architecture §8.2 与 roadmap 实际实录 PR #25）；三查顺序 = 〇查范围 → 一查文档 → 二查代码 → 三查环境，recommended_scope 作为 scope 入参，偏离须在 Sprint §9 记理由。② 中间态/留证文件**全部出库**：gitignore + `git rm --cached`（本地保留），远程随 PR 同步清理；**prices.json 属配置（人工维护段）仍入库**——区分"配置输入"与"运行时产物"。
 - 教训：**"临时处置"很容易被下一次执行当成"惯例"**——超时收窄是应急手段，规则必须显式写"不得默认收窄"并前置影响评估；**量化指标要多方案对比后选定**，且指标要与用户关心的事物（核心功能）对齐而非技术便利；**仓库边界**：源码/配置入库，运行时状态/生成物/留证截图一律 gitignore（本地留证即可，账本真相源不等于 git 追踪）。
+
+### 1.30 Sprint-9 看板开发五教训 + CI/CD 与 git 卫生分层（Sprint-9 Day1）
+- 现象：① Next 16 与训练数据不同——scaffold 自带 AGENTS.md 指引读 `node_modules/next/dist/docs/`（路由 params 是 Promise、`next dev -p` 而非 `--port` 等 breaking changes）；② dev 模式长时间热更新后 `/_next/static/chunks` 403（客户端 JS 加载失败、页面不水合、列表空）→ 重启或**改生产构建**（验收/演示用 `next build + next start`）；③ FTS5 虚拟表**不支持 UPDATE**（`no such column: T.report_body`）→ 内容变更用 delete+reinsert；连字符检索（`code-review`）需**短语查询**（双引号包裹）；④ PS 控制台 GBK 再次搅乱中文 API 往返测试（文件被写坏，git 恢复）→ **API 往返测试必须走 UTF-8 客户端（Node）**；⑤ agents/ 迁移时 Copy-Item 计数 9≠10 暴露 3 条账本 run 与报告文件遗漏 → 按会话留存内容重建——**目录迁移必须逐文件计数核对**。
+- 决策：CI 做轻量（离线套件+双构建，push/PR 触发；真实 API e2e 仅 workflow_dispatch）；CD 不做（本地应用无部署目标）；git 卫生分四层——① spec 检查（workspace-check 远程分支 + code-review main 头分支删除）② 仓库 `delete_branch_on_merge`（对 API 合并**异步生效**，删已消失的 ref 报"failed to push some refs"=成功）③ helper merge 自动清理（`-C` 仓库根、跳过当前检出分支）④ 三查审计。
+- 教训：**新大版本框架先读它自带的 docs/AGENTS.md 再写码**；**长跑 dev server 出诡异 403 先切生产构建验证**（dev 模式不是验收环境）；**全文检索记得查询端转义/短语化**；**目录搬迁用文件计数做完整性验收**；**工具链自动化（CI/分支清理）要分层设计**——平台设置治本、工具兜底、spec 审计保底。
 
 ## 2. 验证记录（Windows，实际执行）
 
