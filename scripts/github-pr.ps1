@@ -80,7 +80,7 @@ switch ($Action) {
         if (-not $Head) {
             # fetch the PR to build a complete merge commit title
             $prInfo = Invoke-GitHubJson -Uri "$Api/pulls/$Number" -HttpMethod "Get"
-            $Head = $prInfo.head.label
+            $Head = ($prInfo.head.label -replace ":", "/")
         }
         $payload = [ordered]@{ merge_method = $Method; commit_title = "Merge pull request #$Number from $Head" }
         $m = Invoke-GitHubJson -Uri "$Api/pulls/$Number/merge" -HttpMethod "Put" -Payload $payload
