@@ -31,6 +31,8 @@ param(
 $ErrorActionPreference = "Stop"
 $Repo = "PaperStrange/PaperReadingAgent"
 $Api = "https://api.github.com/repos/$Repo"
+# scripts/ sits directly under the repo root; use -C so layer-3 git ops work from any cwd
+$RepoRoot = Split-Path -Parent $PSScriptRoot
 
 # 1) read token from git credential (never printed)
 $cred = (echo "protocol=https`nhost=github.com`n" | git credential fill) -split "`n"
@@ -91,8 +93,8 @@ switch ($Action) {
             # Remote deletion is a no-op if the repo setting auto-deleted it already.
             $branch = ($Head -split "/", 2)[1]
             if ($branch) {
-                git branch -D $branch 2>$null | Out-Null
-                git push origin --delete $branch 2>$null | Out-Null
+                git -C $RepoRoot branch -D $branch 2>$null | Out-Null
+                git -C $RepoRoot push origin --delete $branch 2>$null | Out-Null
                 Write-Output ("HEAD-BRANCH-DELETED {0}" -f $branch)
             }
         }
