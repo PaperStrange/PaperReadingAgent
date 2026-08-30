@@ -23,11 +23,13 @@ metadata:
 
 ```json
 {"target": "branch:windows | branch:main | pr:<n> | working-tree",
+ "scope": "<来自 impact-assessment 输出的 recommended_scope；缺省 = 全维度全仓库，不得默认收窄到 Sprint 交付物>",
  "focus": ["correctness","security","ssot","compat","architecture","tech-debt"],  // 空 = 全维度
  "strictness": "normal | strict"}
 ```
 
 - `target` 决定审查对象（分支用 `git diff origin/main..<branch>` 与工作区 diff；PR 读 GitHub 页面与 diff；working-tree 用 `git status`/`git diff`）。
+- `scope` 由 **impact-assessment 职能**先行评估给出（核心功能覆盖 ≥60%）；无 scope 时按全维度全仓库执行，**不得自行收窄到本轮交付物**。
 - `focus` 只列要聚焦的维度，其余维度跳过（报告中不出现）。
 
 # 步骤（默认全维度检查清单）
