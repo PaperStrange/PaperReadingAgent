@@ -17,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "scripts" / "agent-ops.py"
-FUNCTIONS = ROOT / "docs" / "agents" / "functions"
+FUNCTIONS = ROOT / "agents" / "functions"
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")

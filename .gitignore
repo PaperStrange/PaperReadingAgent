@@ -39,8 +39,8 @@ verify/verify_e2e_openai_result.json
 
 # --- 用户问题②（2026-08-30）：中间态/实时结果/存档留证不入库（本地保留）---
 # AgentOps runtime 账本与报告存档（实时态与留证；账本真相源=本地文件，非 git 追踪）
-docs/agents/runtime/registry.json
-docs/agents/runs/
+agents/runtime/registry.json
+agents/runs/
 # 静态分析中间产物（可由 analyze_paperqa_system.py 再生成）
 paper-qa-script/paperqa_callgraph.json
 paper-qa-script/paperqa_function_interfaces.json

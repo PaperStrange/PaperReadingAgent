@@ -1,9 +1,9 @@
 """AgentOps 账本 CLI（Sprint-8 A-LEDGER，US-8.4）。
 
 职责：子代理 run 的登记/状态流转/成本估算，全部落在**文件真相源**：
-  docs/agents/runtime/registry.json          # 账本（append + 完整性校验，防手改双写 UC-7）
-  docs/agents/runtime/prices.json            # 价表（litellm 价表派生 + 人工覆盖段 UC-10）
-  docs/agents/runs/<run_id>/<role>.report.md # 报告存档（memory 浏览入口）
+  agents/runtime/registry.json          # 账本（append + 完整性校验，防手改双写 UC-7）
+  agents/runtime/prices.json            # 价表（litellm 价表派生 + 人工覆盖段 UC-10）
+  agents/runs/<run_id>/<role>.report.md # 报告存档（memory 浏览入口）
 
 约束：纯 Python 标准库（UC-11），不依赖 DSH 或仓库外工具；任何编排方（DSH/CI/IDE）都可调用。
 
@@ -37,8 +37,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-# AGENT_OPS_DIR 环境变量可重定向账本根（verify 脚本用临时目录隔离；默认 docs/agents）
-_AGENTS_BASE = Path(os.environ.get("AGENT_OPS_DIR", str(REPO_ROOT / "docs" / "agents")))
+# AGENT_OPS_DIR 环境变量可重定向账本根（verify 脚本用临时目录隔离；默认 agents）
+_AGENTS_BASE = Path(os.environ.get("AGENT_OPS_DIR", str(REPO_ROOT / "agents")))
 RUNTIME_DIR = _AGENTS_BASE / "runtime"
 REGISTRY_PATH = RUNTIME_DIR / "registry.json"
 PRICES_PATH = RUNTIME_DIR / "prices.json"

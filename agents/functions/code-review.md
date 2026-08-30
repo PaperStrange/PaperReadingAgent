@@ -29,8 +29,18 @@ metadata:
 ```
 
 - `target` 决定审查对象（分支用 `git diff origin/main..<branch>` 与工作区 diff；PR 读 GitHub 页面与 diff；working-tree 用 `git status`/`git diff`）。
-- `scope` 由 **impact-assessment 职能**先行评估给出（核心功能覆盖 ≥60%）；无 scope 时按全维度全仓库执行，**不得自行收窄到本轮交付物**。
+- `scope` 由 **impact-assessment 职能**先行评估给出（composite 指标两档）；无 scope 时按全维度全仓库执行，**不得自行收窄到本轮交付物**。
 - `focus` 只列要聚焦的维度，其余维度跳过（报告中不出现）。
+
+# 可配置参数（编辑点：调整只改本节，不改正文规则）
+
+| 参数 | 当前值 | 说明 |
+|---|---|---|
+| `focus` 枚举 | correctness / security / ssot / compat / architecture / tech-debt | 聚焦维度清单（§步骤 1~6 与之对应） |
+| `strictness` 取值 | normal / strict | strict 时每条发现必须给出修复建议与回归方式 |
+| 时间盒 | 60 分钟 | 超时前必须给出当前进度报告（Sprint-8 教训：全量清单易超时） |
+| 发现条数上限 | 10 | 按严重度排序截断；超出部分仅列标题 |
+| 输出级别集 | critical / major / minor / nit | 分级词汇表（parse-report 依赖） |
 
 # 步骤（默认全维度检查清单）
 

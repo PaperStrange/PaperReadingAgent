@@ -18,6 +18,15 @@ metadata:
 - Sprint 关闭三查（"三查"）；
 - 任何"我改完了，收尾吧"的时刻。
 
+# 可配置参数（编辑点：调整只改本节，不改正文规则）
+
+| 参数 | 当前值 | 说明 |
+|---|---|---|
+| 端口清单 | 5173（前端）、8787（后端）、8501（Streamlit）、8600（agents 看板，阶段 3） | §步骤 3 检查的端口 |
+| 回归脚本（离线） | verify_smoke / verify_prune_callbacks / verify_agentops / verify_index_health | 无 API、无网络 |
+| 回归脚本（联网） | verify_provider_switch / verify_e2e / verify_e2e_openai / eval_retrieve | 需真实 key（e2e_openai 需账户余额） |
+| 回归脚本（GUI） | gui_check*.mjs | 需前后端已启动 + Playwright |
+
 # 步骤（固定顺序）
 
 1. **工作区零残留**：`git status --short` 逐条核对——每个改动文件都应属于本轮改动清单；意外残留（临时文件、生成物、未登记的截图）逐一处理（入库 or gitignore or 删除）。
