@@ -7,11 +7,14 @@
 | `verify_smoke.py` | 8 项冒烟检查：paperqa 导入、后端 FastAPI 路由、RuntimeTracer、streamlit、litellm、PyMuPDF 页渲染、graphviz(py)、PDF 解析器自动发现 | 无 API 调用，纯离线 |
 | `verify_e2e.py` | 启动真实后端 → 全链路 6 步（config→load_index→retrieve→parse_chunk_embed→evidence→answer），校验答案长度并保存结构化结果到 `verify_e2e_result.json` | 需要 `OPENAI_API_KEY` 环境变量（DeepSeek） |
 | `verify_agent.py` | Agent 流程（fake agent）+ 翻译接口 | 同上，且索引 `verify_e2e_index` 已存在（e2e 先跑过） |
-| `verify_provider_switch.py` | 验证服务商切换（deepseek/dashscope/openai）：配置解析、密钥优先级、build_settings、实际连通性/路由 | 无需有效 key；第 4 步 deepseek 需真实 key |
+| `verify_provider_switch.py` | 验证服务商切换（内置 4 家 + 自定义）：配置解析、密钥优先级、build_settings、实际连通性/路由 | 无需有效 key；第 4 步 deepseek 需真实 key |
 | `verify_embed_load.py` | parse_chunk_embed 三种模式：run（重跑）/load 同会话（秒级）/load 新会话（embed 缓存），校验 texts 数量一致 | 需要 `OPENAI_API_KEY`（DeepSeek）+ 本地 st- 向量模型 |
 | `verify_remote_e2e.py` | remote 数据源全链路（Sprint-3）：config(remote+arXiv) → load_index（下载+索引）→ retrieve → parse → evidence → answer | 需要 `OPENAI_API_KEY`；联网（export.arxiv.org） |
+| `verify_prune_callbacks.py` | Sprint-5：litellm 回调去重裁剪单元证据（超上限 32 项 → 20 唯一） | 无 API 调用，纯离线 |
 | `gui_check.mjs` | GUI 全链路：Playwright 打开前端 → 点 "Run All (Left-to-Right)" → 等待答案出现 → 截图 | 后端 8787 + 前端 5173 已启动；`node verify\gui_check.mjs`（playwright 取前端 node_modules） |
 | `gui_check_remote.mjs` | GUI 远程数据源（Sprint-3）：Config 面板切 remote + 填 arXiv ID → Run All → 答案出现 → 截图 `us3-remote.png` | 同上 + 联网 |
+| `gui_check_s4.mjs` | Sprint-4：光标不跳末尾 + provider 下拉联动（openrouter/deepseek 自动带出） | 同上 |
+| `gui_check_s5.mjs` | Sprint-5：自动重跑 config、retrieve 双模式标记、计时冻结、复制报错按钮（7 项断言） | 同上 |
 
 运行示例：
 
