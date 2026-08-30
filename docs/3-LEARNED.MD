@@ -12,7 +12,7 @@
 | 分类 | 条目 |
 |---|---|
 | 🖥️ 平台/环境（Windows·PowerShell·端口·编码） | 1.6、1.7、1.8、1.9、1.11、1.18、1.20 |
-| 🧩 框架/服务商（paperqa·litellm·模型） | 1.1、1.2、1.3、1.4、1.14、1.25 |
+| 🧩 框架/服务商（paperqa·litellm·模型） | 1.1、1.2、1.3、1.4、1.14、1.25、1.27 |
 | 📦 依赖与版本管理 | 1.5、1.13 |
 | 🎨 前端与测试驱动（React·Playwright） | 1.10、1.12、1.19（光标部分） |
 | 🛡️ 安全与防护 | 1.16、1.17、§4 整改表 |
@@ -142,6 +142,11 @@
 - 解决：backlog 维护卡 M1~M6 独立登记（来源标注 Sprint-5/6 Retro 与三查），用户批准后打包成插队 Sprint-7 一次性清零（M3 按用户指示保留未完成，卡上注明）；每个卡配**可复现 verify 证据**（index_health/prune_callbacks/provider_switch 升级），Sprint 关闭前再跑一次 windows+main 全量 code review 兜底。
 - 教训：**三查的"建议修"必须回流 backlog 卡**，否则就是纸面闭环；**清账 Sprint 的 DoD 是"卡清零 + verify 证据入库 + 全量 review 无遗漏"**，而不是"看起来都改了"。
 
+### 1.27 多 provider 共存的 key 污染：make_settings 写回 OPENAI_API_KEY（Sprint-7 用户 openai 实测引出）
+- 现象：用户要求 deepseek 与 openai 双 key 共存并可用 openai 走全流程。排查发现 `make_settings` 会把解析出的 api_key 写回 `os.environ["OPENAI_API_KEY"]`——同进程先跑 deepseek 再切 openai 时，`resolve_key("openai")` 读到的通用变量已被 deepseek key 覆盖 → OpenAI 401。实测 openai key 本身有效（到达 OpenAI 端点并认证通过，报"账户无余额"是计费问题而非代码问题）。
+- 解决：**移除写回**（paperqa 源码不读该环境变量，所有 litellm 调用都经 `litellm_params` 显式携带 key）；`verify_provider_switch` 新增 3b 离线断言（sentinel 验证不被覆盖 + `resolve_key('openai')` 取自身 key）；新增 `verify_e2e_openai.py` 双阶段固化（openai 全流程 + 同进程 deepseek→openai 切换）。
+- 教训：**"把解析结果写回环境变量"是对共享状态的污染**——单 provider 时无害，多 provider 切换时是隐蔽雷；**跨 provider 共存要在真实切换路径上断言**，而不是只测各 provider 单独跑通。
+
 ## 2. 验证记录（Windows，实际执行）
 
 ### 2.1 冒烟（`verify/verify_smoke.py`）—— 8/8 通过
@@ -191,6 +196,7 @@
 | `verify_provider_switch.py`（M5 升级） | deepseek 真实 SUCCESS；dashscope/openai/openrouter/自定义 占位 key 端点级拒绝（非连接类错误断言）→ 路由实证 PASS |
 | `gui_check_s7.mjs`（M4 新增） | 并发 parse+retrieve 双节点计时 `A X.Xs · B Y.Ys` + 先完成节点冻结不被覆盖 + 完成后冻结（截图 `gui_check_s7*.png`） |
 | `verify_e2e.py` | Sprint-7 改动后全链路六步 PASS（parse 30.3s / evidence 15.7s / answer 1502 字符；既有健康索引未被三重探针误判重建） |
+| `verify_e2e_openai.py`（新增） | config(openai) PASS（provider+key 解析正确）；load_index 起被 OpenAI 计费拒绝（`no credits remaining`）——**key 有效、账户欠费**，完整流程待充值后一键复测；同进程 deepseek→openai key 隔离由 `verify_provider_switch` 3b 离线断言锁定 PASS |
 
 ## 3. 已知限制
 

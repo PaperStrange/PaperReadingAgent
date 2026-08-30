@@ -35,3 +35,4 @@ tmp.log
 verify/*.log
 # Sprint-7 review 修正：验收生成物不入库（每次运行都变，会污染 PR diff）
 verify/verify_e2e_result.json
+verify/verify_e2e_openai_result.json
