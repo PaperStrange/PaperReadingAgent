@@ -23,7 +23,12 @@ jobs:
           python-version: "3.13"
 
       - name: Install Python deps (pinned fhlmi/litellm + vendored paper-qa)
+        env:
+          # vendored paper-qa 无 .git 元数据，setuptools-scm 需显式版本
+          SETUPTOOLS_SCM_PRETEND_VERSION: "2026.1.6.dev10+g36348d0ca"
+          PYTHONUTF8: "1"
         run: |
+          $ErrorActionPreference = "Stop"
           pip install "fhlmi==0.42.1" "litellm==1.76.1"
           pip install -e ./paper-qa
           pip install -e "./paper-qa/packages/paper-qa-pypdf[media]"
@@ -39,6 +44,8 @@ jobs:
           PYTHONUTF8: "1"
           HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
         run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = "True"
           python verify/verify_smoke.py
           python verify/verify_prune_callbacks.py
           python verify/verify_agentops.py
