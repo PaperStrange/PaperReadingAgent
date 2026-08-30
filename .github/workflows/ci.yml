@@ -36,6 +36,9 @@ jobs:
           pip install -e ./paper-qa/packages/paper-qa-pymupdf
           pip install -r requirements-windows.txt
 
+      - name: Install Graphviz (verify_smoke renders DOT via local Graphviz; cold runner lacks dot)
+        run: choco install graphviz -y --no-progress
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
