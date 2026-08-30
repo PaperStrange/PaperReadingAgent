@@ -302,6 +302,14 @@ def validate_config(params: dict[str, Any]) -> dict[str, list[str]]:
             "已提供 URL/arXiv/DOI 数据源，但 data_source=local：远程源不会生效，请切换为 remote"
         )
 
+    # 未显式指定 embedding_model -> 按 provider 自动选择（见 embedding_recommender）
+    if not params.get("embedding_model"):
+        hints.append(
+            "[Embedding 模型] 未显式指定：将按 provider 自动选择"
+            "（服务商有 embedding API 用其最新策展模型；无则选 HuggingFace 下载量最高的"
+            "多语言（含中文）模型并自动下载）；可用 embedding_model 参数手动覆盖"
+        )
+
     return {"errors": errors, "warnings": warnings, "hints": hints}
 
 
