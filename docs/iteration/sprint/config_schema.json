@@ -41,10 +41,18 @@
           "key": "model",
           "label": "LLM 模型名",
           "type": "string",
-          "hint": "如 openai/deepseek-v4-flash、openai/qwen-omni-turbo、gpt-4o-mini",
+          "hint": "显式覆盖 provider 默认；如 provider=openai 时填 gpt-5、gpt-4o-mini",
           "impacts": [],
           "readonly": false,
           "default": "openai/deepseek-v4-flash"
+        },
+        {
+          "key": "vision_model",
+          "label": "视觉/增强模型",
+          "type": "string",
+          "hint": "证据摘要与图片增强用（含图片上下文必须支持视觉）；留空则随 provider 默认",
+          "impacts": [],
+          "readonly": false
         },
         {
           "key": "temperature",
@@ -72,7 +80,7 @@
           "key": "embedding_model",
           "label": "Embedding 模型",
           "type": "string",
-          "hint": "st-* 为本地模型（首次自动下载）；API 向量模型需服务商支持",
+          "hint": "st- 前缀 = HuggingFace 任意 SentenceTransformer 模型（本地下载/远程下载，首次自动拉取，不依赖 provider 的 embedding API）；其它名 = litellm API 向量（需 provider 支持）；litellm- 前缀强制 API",
           "impacts": [
             "切换后需重新下载对应模型并重建索引"
           ],

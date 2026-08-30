@@ -283,7 +283,14 @@ node .\verify\gui_check_remote.mjs    # GUI remote 数据源（需前后端已�
 | `dashscope` | `openai/qwen-omni-turbo` | `openai/text-embedding-v4`（API） | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | `openai` | `gpt-4o-mini` | `text-embedding-3-small`（API） | OpenAI 官方默认 |
 
-密钥按顺序读取：服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → 本地 `paper-qa-script/.env`。显式传入的 `api_base/model/embedding_model` 参数优先级最高。
+密钥按顺序读取：服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → 本地 `paper-qa-script/.env`。
+
+**显式参数覆盖（Config 节点 JSON 编辑，优先级最高）**：
+
+- `provider`：切服务商（三选一，重设 api_base/model/embedding 默认值）。
+- `model`：指定该服务商的任意 LLM 模型，如 `provider=openai` + `model="gpt-5"`（litellm 路由到 OpenAI 官方端点，需有效 key 与模型权限；gpt-5 时 paperqa 会把 temperature 强制为 1）。
+- `vision_model`：证据摘要/图片增强模型（含图片上下文必须支持视觉），留空随 provider 默认。
+- `embedding_model`：`st-` 前缀 = HuggingFace 任意 SentenceTransformer 模型（本地已缓存或首次自动下载，**不依赖 provider 是否有 embedding API**，如 `st-BAAI/bge-small-en-v1.5`）；其它名 = litellm API 向量（需 provider 支持）；`litellm-` 前缀可强制 API 路径。切换后需重建索引。
 
 ### 配置多个 Key 会不会冲突？—— 不会（重要参数配置说明）
 
