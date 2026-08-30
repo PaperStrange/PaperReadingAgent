@@ -31,6 +31,16 @@ metadata:
 - `target` 决定审计哪份工作区/分支的文档（windows 分支含 `docs/iteration/`；main 不含——main 上出现 `docs/iteration/` 引用/文件即违规项）。
 - `scope` 由 **impact-assessment 职能**先行评估给出；无 scope 时全量文档审计，**不得自行收窄**。
 
+# 可配置参数（编辑点：调整只改本节，不改正文规则）
+
+| 参数 | 当前值 | 说明 |
+|---|---|---|
+| `focus` 枚举 | links / stale-facts / contradictions / algorithm-drift / tables / knowledge | 聚焦维度清单（§步骤 1~6 与之对应） |
+| `strictness` 取值 | normal / strict | strict 时每条必须给修法原文片段 |
+| 时间盒 | 60 分钟 | 超时前必须给出当前进度报告 |
+| 发现条数上限 | 12 | 必须修/建议修 合计上限，按重要性排序 |
+| 输出分级 | 必须修 / 建议修 | 与 parse-report 的 critical/major/minor/nit 不冲突（本职能用两档） |
+
 # 步骤（默认全维度检查清单）
 
 1. **死链**：docs/**/*.MD 与 README.md 中所有相对路径引用（Markdown 链接、`代码路径`、文档引用）指向的文件是否存在；跨文档引用层级（sprint 文档的 `../phases/...`、`../../ROADMAP.MD` 等）是否正确。

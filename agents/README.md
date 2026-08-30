@@ -1,4 +1,4 @@
-# docs/agents/ —— 评审职能 spec 与 AgentOps 账本（跨 IDE 说明）
+# agents/ —— 评审职能 spec 与 AgentOps 账本（跨 IDE 说明）
 
 > 本目录是 AgentOps 基础设施的**稳定交付物**（随分支同步 main）：职能 spec（`functions/`）、runtime 账本（`runtime/`、`runs/`）。设计与决策见 `docs/iteration/phases/agents-infra/architecture.MD`（仅 windows 分支）。
 
@@ -35,7 +35,7 @@ spec 是纯 markdown（body = 可直接粘贴的完整 prompt），账本是纯 
 | 编排方 | 用法 |
 |---|---|
 | 本会话（DSH） | 把 `functions/<fn>.md` 全文作为 subagent prompt + 任务输入 JSON 追加；run 前后跑 agent-ops register/finish |
-| Cursor | 把 spec 内容加入 `.cursor/rules/`（或直接引用 `docs/agents/functions/*.md`）；用 Terminal 跑 agent-ops |
+| Cursor | 把 spec 内容加入 `.cursor/rules/`（或直接引用 `agents/functions/*.md`）；用 Terminal 跑 agent-ops |
 | Claude Code | 复制 spec 到 `.claude/agents/<fn>.md`（frontmatter name/description 即用）；hooks 里调 agent-ops 记账 |
 | CI（GitHub Actions） | spec 作为 workflow 步骤的 prompt 模板；`agent-ops.py` 纯标准库直接跑，账本随仓库提交 |
 | 未来 paper-qa workflow | 走 CLI 契约 `agent-ops run <role> --context`（见 architecture.MD §3.5，阶段 3 后评估） |

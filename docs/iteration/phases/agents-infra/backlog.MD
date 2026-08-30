@@ -12,7 +12,7 @@
 | A-UC | **调研结论→用例表**：把四条调研线结论转成可测 use cases（验收断言），Sprint 开发时逐条验证实现遵循调研 | 2 | ✅ 完成 | Sprint-8 | 用户修改意见②（2026-08-30） |
 | A-SPEC | 三职能 spec 文件（code-review/doc-audit/workspace-check 主代理手册，按 A-FN 定稿格式） | 3 | ✅ 完成 | Sprint-8 | 阶段 2 交付物 |
 | A-LEDGER | `scripts/agent-ops.py` 账本 CLI（8 子命令）+ `registry.json` + `runs/` 报告 + `prices.json` | 3 | ✅ 完成 | Sprint-8 | 阶段 2 交付物（§3.2 字段） |
-| A-IDE | 跨 IDE 迁移说明（`docs/agents/README.md`）+ 1-WORKFLOW §4.2 三查引用更新 | 1 | ✅ 完成 | Sprint-8 | 阶段 2 交付物 |
+| A-IDE | 跨 IDE 迁移说明（`agents/README.md`）+ 1-WORKFLOW §4.2 三查引用更新 | 1 | ✅ 完成 | Sprint-8 | 阶段 2 交付物 |
 | A-DASH | 本地看板应用（Next.js+SQLite+shadcn/ui，六页面，端口 8600） | 8 | 候选 | Sprint-9（规划） | 阶段 3 交付物（§6） |
 
 ## 2. 维护卡 / PM 固化备选（用户意见③：可 agent 固化的项目管理过程）
@@ -24,7 +24,7 @@
 | A-PM3 | 调研结论→用例生成 agent 固化（A-UC 的方法论沉淀） | 2 | 候选（备选） | 用户 2026-08-30 |
 | A-PM4 | 新 agent 上线评审 agent（职能粒度/权限/spec 合规检查） | 2 | 候选（备选） | 用户 2026-08-30 |
 | A-M1 | 价表人工覆盖段填充（deepseek/qwen/openrouter 单价，来自服务商页面） | 1 | 候选 | 阶段 1 预研 |
-| A-M2 | ~~评审 spec v1.1 timebox~~ → **已由用户问题①方案取代（2026-08-30）**：新增 impact-assessment 职能（`docs/agents/functions/impact-assessment.md`），审查范围 = recommended_scope（核心功能覆盖率 ≥60%），不得默认收窄到 Sprint 交付物 | ✅ 完成 | Sprint-8 Retro / 用户问题① |
+| A-M2 | ~~评审 spec v1.1 timebox~~ → **已由用户问题①方案取代（2026-08-30）**：新增 impact-assessment 职能（`agents/functions/impact-assessment.md`），审查范围 = recommended_scope（核心功能覆盖率 ≥60%），不得默认收窄到 Sprint 交付物 | ✅ 完成 | Sprint-8 Retro / 用户问题① |
 | A-M3 | main 分支 docs/iteration 悬空引用清理（16 处 pre-existing 行内引用，main 评审发现） | 2 | 候选 | Sprint-8 二查 |
 | A-M4 | agent-ops fetch-spec 成功路径测试（sha256 命中/失配）+ 账本并发锁（last-writer-wins 边界） | 2 | 候选 | Sprint-8 二查 nit |
 | A-M5 | git/pwsh 环境 SOP：AMSI 崩溃重试、push/PR 前 fetch origin/main（过期引用致 cherry-pick 冲突） | 1 | 候选 | Sprint-8 三查过程 |

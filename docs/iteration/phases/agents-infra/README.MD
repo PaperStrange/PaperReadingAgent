@@ -6,7 +6,7 @@
 | 项 | 内容 |
 |---|---|
 | **阶段目标** | 把"多子代理并行评审/开发"制度化为可复用基础设施：agent spec 文件 + runtime 账本 + 本地看板；为未来新增更多 agent、以及 paper-qa workflow 引用 agent 能力打地基 |
-| **边界** | 稳定交付物（`docs/agents/` spec、`agents-dashboard/` 应用、`scripts/agent-ops.py` 账本工具）随分支同步 main；本阶段规划/分析/调研文档仅 windows 分支 |
+| **边界** | 稳定交付物（`agents/` spec、`agents-dashboard/` 应用、`scripts/agent-ops.py` 账本工具）随分支同步 main；本阶段规划/分析/调研文档仅 windows 分支 |
 | **状态** | 🟢 进行中（阶段 1 ✅；Sprint-8 = 阶段1修订 + 阶段2，见 `../sprint/2026-08-30-sprint-8.md`） |
 | **阶段内文档** | 见下 |
 
@@ -19,6 +19,6 @@
 
 ## 阶段完成与归档约定
 
-- 阶段 2 完成：`docs/agents/functions/` 三职能 spec（workspace-check 为主代理手册）+ `scripts/agent-ops.py` + `1-WORKFLOW.MD` §4.2 三查改为引用固定 spec；
+- 阶段 2 完成：`agents/functions/` 三职能 spec（workspace-check 为主代理手册）+ `scripts/agent-ops.py` + `1-WORKFLOW.MD` §4.2 三查改为引用固定 spec；
 - 阶段 3 完成：看板支持 spec 编辑 / skill URL 配置 / runtime 展示（自报+估算）/ memory 报告浏览，并跑通一次真实 fan-out 演示；
 - 完成后本目录归档封存，全局 `ROADMAP.MD` 状态更新。

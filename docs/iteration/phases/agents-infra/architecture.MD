@@ -44,7 +44,7 @@
 - **OpenHands microagents 三层模型（最贴合）**：knowledge（关键词触发窄能力）/ task（多步闭环工作流）/ repository（repo.md 常驻 = 目标对象参数）——**把"分支"下沉为 task 输入，而非职能维度**。
 - MetaGPT/CrewAI：角色=职能（PM/架构师/QA），一个 agent 一个职责、避免重叠。
 
-**采纳**（§3.1）：职能清单起步 3 个 `code-review` / `doc-audit` / `workspace-check`（主代理手册），预留 `test-audit` / `security-review` / `api-contract-review`；任务参数化 `{target 分支/PR, focus 维度, strictness}`；文件关系 = 职能 spec 一职能一文件（`docs/agents/functions/<fn>.md`），任务 skill 按需窄化拆分（先内置为职能 spec 的维度清单）。
+**采纳**（§3.1）：职能清单起步 3 个 `code-review` / `doc-audit` / `workspace-check`（主代理手册），预留 `test-audit` / `security-review` / `api-contract-review`；任务参数化 `{target 分支/PR, focus 维度, strictness}`；文件关系 = 职能 spec 一职能一文件（`agents/functions/<fn>.md`），任务 skill 按需窄化拆分（先内置为职能 spec 的维度清单）。
 
 ### 2.1 可观测性与成本追踪结论（子代理 06b68f0f）
 
@@ -110,7 +110,7 @@
  "strictness": "normal | strict"}
 ```
 
-文件：`docs/agents/functions/<fn>.md`（阶段 2 起步；未来任务窄化可拆 `<fn>/<task>.SKILL.md`）。
+文件：`agents/functions/<fn>.md`（阶段 2 起步；未来任务窄化可拆 `<fn>/<task>.SKILL.md`）。
 
 ```markdown
 ---
@@ -140,7 +140,7 @@ source:
 
 ### 3.2 账本数据模型（草稿，来源：调研线 3 推荐 + D4 自报估算口径）
 
-`docs/agents/runtime/registry.json`（数组，一条 = 一次子代理 run）：
+`agents/runtime/registry.json`（数组，一条 = 一次子代理 run）：
 
 ```json
 {
@@ -163,7 +163,7 @@ source:
 }
 ```
 
-- 估算公式：`cost = input×P_in + output×P_out + cache_read×P_cr + cache_write×P_cw`；P 取自本地价表（由 LiteLLM `model_prices_and_context_window.json` 派生精简版，入库 `docs/agents/runtime/prices.json`，可人工覆盖）；
+- 估算公式：`cost = input×P_in + output×P_out + cache_read×P_cr + cache_write×P_cw`；P 取自本地价表（由 LiteLLM `model_prices_and_context_window.json` 派生精简版，入库 `agents/runtime/prices.json`，可人工覆盖）；
 - 无 token 上报时 `tokens ≈ chars/4`（中英混合 /3.5）并打 `estimated=true`；
 - 上下文占用展示 = `input_tokens / max_context`（工具结果与 memory 计入 input 后膨胀自然可见）；
 - 命名对齐 OTel GenAI SemConv（usage 四列含 cache 分列）。
@@ -180,7 +180,7 @@ source:
 **输入**：spec 文件（本地或 github raw 拉取，D5）+ 本轮上下文（分支/commit/工作区 diff 范围、评审重点）。
 **输出模板（所有评审代理统一）**：分级问题清单 `critical/major/minor/nit`（每条 = 文件:行 + 问题 + 建议修法 + 是否本轮必修）+ main 代理附同步文件清单 + 一句话总结。
 **分诊闭环**：主代理按 `1-WORKFLOW.MD` §4.4 分诊——必修 → 立即修 + 回归；建议修 → 回流 backlog 卡；pre-existing → 新卡登记；结论写入 Sprint 文档 §9（三查记录）。
-**账本**：`scripts/agent-ops.py` 8 子命令（register/update/finish/list/validate-spec/fetch-spec/parse-report/prices-derive）落 `docs/agents/runtime/registry.json` + `runs/<run_id>/<role>.report.md`（子代理报告的原文存档 = memory 浏览入口）。
+**账本**：`scripts/agent-ops.py` 8 子命令（register/update/finish/list/validate-spec/fetch-spec/parse-report/prices-derive）落 `agents/runtime/registry.json` + `runs/<run_id>/<role>.report.md`（子代理报告的原文存档 = memory 浏览入口）。
 
 ### 3.4 看板技术栈与数据层（依据 §2.2；**D6 已确认 SQLite**）
 
@@ -222,11 +222,11 @@ source:
 
 | 交付物 | 位置 | 验收标准 |
 |---|---|---|
-| 职能 spec（**按职能划分，用户意见①**：职能清单由 A-FN 调研定稿；如 code-review 职能以分支为任务参数，doc-audit 职能，workspace-check 为主代理手册） | `docs/agents/functions/*.md` | frontmatter 超集 + body 五段式（角色/触发/步骤/输出模板/禁止）；可直接粘贴执行；同一职能可对多个任务参数执行 |
-| 账本 CLI | `scripts/agent-ops.py` | **8 子命令**（register/update/finish/list/validate-spec/fetch-spec/parse-report/prices-derive）；落 `docs/agents/runtime/registry.json`（§3.2 字段，含 task 参数）+ `runs/<run_id>/<role>.report.md` |
-| 价表 | `docs/agents/runtime/prices.json` | 由 LiteLLM 价表派生精简版（本项目用到的模型），可人工覆盖 |
+| 职能 spec（**按职能划分，用户意见①**：职能清单由 A-FN 调研定稿；如 code-review 职能以分支为任务参数，doc-audit 职能，workspace-check 为主代理手册） | `agents/functions/*.md` | frontmatter 超集 + body 五段式（角色/触发/步骤/输出模板/禁止）；可直接粘贴执行；同一职能可对多个任务参数执行 |
+| 账本 CLI | `scripts/agent-ops.py` | **8 子命令**（register/update/finish/list/validate-spec/fetch-spec/parse-report/prices-derive）；落 `agents/runtime/registry.json`（§3.2 字段，含 task 参数）+ `runs/<run_id>/<role>.report.md` |
+| 价表 | `agents/runtime/prices.json` | 由 LiteLLM 价表派生精简版（本项目用到的模型），可人工覆盖 |
 | 用例表 | `architecture.MD` §7（A-UC） | ≥10 条"调研结论→可测断言"用例，Sprint 开发逐条验证 |
-| 跨 IDE 迁移说明 | `docs/agents/README.md` | spec 如何在 DSH/Cursor/Claude Code/CI 引用；账本脚本任意 terminal 可用；source 块远程引用流程 |
+| 跨 IDE 迁移说明 | `agents/README.md` | spec 如何在 DSH/Cursor/Claude Code/CI 引用；账本脚本任意 terminal 可用；source 块远程引用流程 |
 | 实战验证 | 下一次三查 | 按 §3.3 触发分级执行：职能 fan-out + 账本登记 + 分诊闭环，结果写入 Sprint §9 |
 
 ### 阶段 3（本地看板）
@@ -243,7 +243,7 @@ source:
 
 | ID | 用例（可测断言） | 调研出处 | 验证方式 |
 |---|---|---|---|
-| UC-1 | `docs/agents/functions/*.md` frontmatter 必填 `name`(=文件名)+`description`+`version` 且 name 唯一 | §2.4 SKILL.md/Claude subagents | `agent-ops validate-spec`（US-8.3/S8） |
+| UC-1 | `agents/functions/*.md` frontmatter 必填 `name`(=文件名)+`description`+`version` 且 name 唯一 | §2.4 SKILL.md/Claude subagents | `agent-ops validate-spec`（US-8.3/S8） |
 | UC-2 | `source` 块含 `url+ref+sha256+fallback`；模拟拉取失败/校验不符 → 回退本地并告警 | §2.4 自研远程引用 + D5 | `agent-ops fetch-spec --offline` 断言（US-8.3/S8） |
 | UC-3 | registry 条目含 §3.2 全部字段；状态机 queued→running→succeeded/failed/cancelled 合法流转，非法流转被拒 | §2.1 Langfuse / §2.3 账本模型 | CLI 往返测试（US-8.4/S8） |
 | UC-4 | 成本估算 = usage×prices.json 单价（含 cache 分列）；无 usage 时 `chars/4` 兜底且 `estimated=true` | §2.1 LiteLLM 价表/双轨 | 给定输入输出断言计算值（US-8.4/S8） |
@@ -282,7 +282,7 @@ source:
 
 ### 8.3 落地
 
-- 职能 spec v1.1.0：`docs/agents/functions/impact-assessment.md`（11 项核心功能 + 8 条路由↔宿主映射 + 复合公式 + 两档规则 + 核心文件区域清单（代码区/文档区）+ 输出模板含 A/B/composite/tier/recommended_scope）；
+- 职能 spec v1.1.0：`agents/functions/impact-assessment.md`（11 项核心功能 + 8 条路由↔宿主映射 + 复合公式 + 两档规则 + 核心文件区域清单（代码区/文档区）+ 输出模板含 A/B/composite/tier/recommended_scope）；
 - fan-out 顺序：**impact-assessment（先）→ 按 recommended_scope 执行 code-review ×2 + doc-audit → workspace-check（主代理）**；范围默认取 recommended_scope，偏离需在 Sprint §9 记录理由；
 - code-review/doc-audit spec 的"范围限定"段引用 impact-assessment 输出（task 输入含 `scope` 字段）；
 - **验证方式（双例，用户确认）**：两组合成变更集跑真实子代理，对比预计算 ground truth（高影响例 → 期望全量档；低影响例 → 期望窄档），结果记录于 §8.4 并账本登记。

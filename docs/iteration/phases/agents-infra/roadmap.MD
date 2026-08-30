@@ -25,5 +25,5 @@
 
 ## 3. 落地映射
 
-- 稳定交付物（随分支同步 main）：`docs/agents/`（职能 spec + README 跨 IDE 说明）、`scripts/agent-ops.py`、`agents-dashboard/`（阶段 3）；
+- 稳定交付物（随分支同步 main）：`agents/`（职能 spec + README 跨 IDE 说明）、`scripts/agent-ops.py`、`agents-dashboard/`（阶段 3）；
 - 仅 windows：本阶段 `docs/iteration/phases/agents-infra/` 全部规划/分析文档。
