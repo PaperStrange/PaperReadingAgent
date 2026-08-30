@@ -1,7 +1,7 @@
 # Sprint N（YYYY-MM-DD）—— <一句话目标>
 
 > 归属：`docs/iteration/sprint/`。复制本文件为 `<YYYY-MM-DD>-sprint-N.md` 后填写（按 Sprint-2/3 已确立的标准格式）。
-> 输入：迭代背景/分析文档（放 `../`，即 `docs/iteration/` 下一级）。
+> 输入：阶段 backlog 卡（`../phases/<阶段>/backlog.MD` 卡号，如 F1）+ 迭代背景/分析文档（`../` 即 `docs/iteration/` 下）。
 > 范围：注明涉及分支（默认 windows 迭代 + 完成后同步 main 的对应部分；MAC 验证跳过）。
 
 ## 1. Sprint Planning
@@ -12,9 +12,11 @@
 
 ## 2. Backlog（用户故事 + 验收标准 + 估算）
 
-| ID | 用户故事 | 验收标准 | 点数 | 预估工时 |
-|---|---|---|---|---|
-| US-N.1 | <用户故事> | ① <可测标准> ② … | n | mh |
+| 卡号 | ID | 用户故事 | 验收标准 | 点数 | 预估工时 |
+|---|---|---|---|---|---|
+| F1 | US-N.1 | <用户故事> | ① <可测标准> ② … | n | mh |
+
+> 卡号对应 `phases/<阶段>/backlog.MD`（无对应卡写 `—`）；本 Sprint 完成后回填该卡的状态。
 
 ## 3. 任务看板（Kanban：开卡/推进/完成）
 

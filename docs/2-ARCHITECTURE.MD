@@ -130,7 +130,7 @@ PaperReading-Windows/
 ├── data/pdf/PaperQA2.pdf      # 示例论文
 ├── data/remote/               # Sprint-3 远程源下载暂存（.gitignore 忽略，运行时生成）
 ├── scripts/                   # setup-env.ps1 / start-backend.ps1 / start-frontend.ps1 / start-streamlit.ps1（+ .bat 双击版）
-├── verify/                    # 验收脚本（smoke/e2e/agent/provider_switch/embed_load/remote_e2e + gui_check*.mjs）+ e2e 结果
+├── verify/                    # 验收脚本（smoke/e2e/agent/provider_switch/embed_load/remote_e2e + eval_retrieve + gui_check*.mjs）+ e2e 结果
 ├── requirements-windows.txt   # Windows 依赖清单
 ├── requirements.txt           # 原语料采集依赖（未动）
 ├── docs/                      # 1-WORKFLOW / 2-ARCHITECTURE / 3-LEARNED
@@ -139,8 +139,8 @@ PaperReading-Windows/
 
 ## 4. 文件级职责
 
-- **backend/main.py**（路由层，Sprint-2 US-2.2 解耦后 ~186 行）：FastAPI app + CORS、8 条 API 路由（Sprint-4 新增 `GET /api/providers` 脱敏注册表）、`RunEventBroker`/SSE 传输（历史 500 条/键）、组合根（`SESSIONS`=MemorySessionStore、`ORCHESTRATOR`=make_orchestrator）；`build_settings()` 保留为 `ENGINE.make_settings` 薄包装（模型配置真源在 `app/engine.py` + `provider_config.py`）。
-- **app/orchestration.py**（编排层）：`PipelineOrchestrator.run_step`——六步流水线（config→load_index→retrieve→parse_chunk_embed→evidence→answer）、`StepRequest/StepResponse`、embed 缓存、`RuntimeTracer(on_event=…)` 接线；实时事件经 `on_event` 回调交路由层发布（SSE 消息由 `app/events` 模型构造，线协议兼容）。**Sprint-4 增量**：config 步骤 embedding 推荐注入；load_index 的目录存在检查与**索引自愈**（files.zip 前置 zlib 试解压，坏则删、build=true 重建）。
+- **backend/main.py**（路由层，Sprint-2 US-2.2 解耦后 ~192 行）：FastAPI app + CORS、8 条 API 路由（Sprint-4 新增 `GET /api/providers` 脱敏注册表）、`RunEventBroker`/SSE 传输（历史 500 条/键）、组合根（`SESSIONS`=MemorySessionStore、`ORCHESTRATOR`=make_orchestrator）；`build_settings()` 保留为 `ENGINE.make_settings` 薄包装（模型配置真源在 `app/engine.py` + `provider_config.py`）。
+- **app/orchestration.py**（编排层）：`PipelineOrchestrator.run_step`——六步流水线（config→load_index→retrieve→parse_chunk_embed→evidence→answer）、`StepRequest/StepResponse`、embed 缓存、`RuntimeTracer(on_event=…)` 接线；实时事件经 `on_event` 回调交路由层发布（SSE 消息由 `app/events` 模型构造，线协议兼容）。**增量**：config 步骤 embedding 推荐注入 + 重跑失效下游状态；load_index 目录存在检查与**索引一致性**（目录指纹 marker + files.zip 探针 → 整目录重建）；retrieve 多语检索 v1（CJK 零命中关键词重试 + query_strategy/hit_note）。
 - **app/engine.py**（引擎适配层）：`EngineAdapter` 接口（config/index/query/add_doc/evidence/answer/run_agent/version）+ `LocalVendorAdapter` 透传现有 paperqa 调用；`make_settings` 含密钥优先级（显式→专属→通用）、**Windows `\\?\` 长路径前缀（UNC 转 `\\?\UNC\`）**、隐藏目录过滤、`recurse_subdirectories` 参数。
 - **app/config_schema.py**（配置唯一真源）：策展七组 schema（LLM/Embedding/Parsing/Agent/Answer/数据源/Index）+ 从 `Settings.model_fields` 自动提取默认值 + `validate_config`（errors/warnings/hints）；`python -m app.config_schema` 生成 `config_schema.json`。
 - **app/events.py / app/session_store.py**：统一事件模型（StepEvent/FunctionTraceEvent/AgentActionEvent/…）；`SessionStore` 接口 + `MemorySessionStore`。

@@ -22,7 +22,7 @@
 | F1 后续 | query 翻译/双语索引（用 F4 评测选型） | F4 基准扩充 |
 | F2 配置面板深化 + SSOT 驱动前端 | `/api/config_schema` + 全字段交互 | — |
 | F3 Agent 接入 + 时间线雏形 | R-C 前置步骤 | 事件模型（已就绪） |
-| R-C（解冻） | C 可观测 + E3 v1 只读可视化 | **用户 review 闸门** |
+| R-C（解冻候选） | C 可观测 + E3 v1 只读可视化 | ⏸ hold：用户 review 闸门（backlog 卡 R-C） |
 
 ## Later（远期主题）
 
