@@ -44,7 +44,7 @@
 - **OpenHands microagents 三层模型（最贴合）**：knowledge（关键词触发窄能力）/ task（多步闭环工作流）/ repository（repo.md 常驻 = 目标对象参数）——**把"分支"下沉为 task 输入，而非职能维度**。
 - MetaGPT/CrewAI：角色=职能（PM/架构师/QA），一个 agent 一个职责、避免重叠。
 
-**采纳**（§3.1）：职能清单起步 3 个 `code-review` / `doc-audit` / `workspace-check`（主代理手册），预留 `test-audit` / `security-review` / `api-contract-review`；任务参数化 `{target 分支/PR, focus 维度, strictness}`；文件关系 = 职能 spec 一职能一文件（`agents/functions/<fn>.md`），任务 skill 按需窄化拆分（先内置为职能 spec 的维度清单）。
+**采纳**（§3.1）：职能清单起步 3 个 `code-review` / `doc-audit` / `workspace-check`（主代理手册），**后增 `impact-assessment`（用户问题①，fan-out 闸门）共 4 职能**；预留 `test-audit` / `security-review` / `api-contract-review`；任务参数化 `{target 分支/PR, focus 维度, strictness}`；文件关系 = 职能 spec 一职能一文件（`agents/functions/<fn>.md`），任务 skill 按需窄化拆分（先内置为职能 spec 的维度清单）。
 
 ### 2.1 可观测性与成本追踪结论（子代理 06b68f0f）
 
@@ -101,7 +101,7 @@
 
 **划分原则（用户意见① + §2.5 调研）**：按**职能**划分，不按分支——"团队中一个角色的一个闭环工作流 = 一个职能"；一个职能执行多个任务；任务 = skill（窄而深）或直接是职能 spec 内的维度清单；**分支/PR 下沉为任务参数（target）**。
 
-**职能清单（起步）**：`code-review`、`doc-audit`、`workspace-check`（主代理手册，不子代理化）；预留 `test-audit` / `security-review` / `api-contract-review`。
+**职能清单（定稿 4 个）**：`impact-assessment`（fan-out 闸门，子代理）、`code-review`、`doc-audit`、`workspace-check`（主代理手册，不子代理化）；预留 `test-audit` / `security-review` / `api-contract-review`。
 
 **任务参数（每次执行的任务输入）**：
 ```json
@@ -282,7 +282,7 @@ source:
 
 ### 8.3 落地
 
-- 职能 spec v1.1.0：`agents/functions/impact-assessment.md`（11 项核心功能 + 8 条路由↔宿主映射 + 复合公式 + 两档规则 + 核心文件区域清单（代码区/文档区）+ 输出模板含 A/B/composite/tier/recommended_scope）；
+- 职能 spec v1.2.0：`agents/functions/impact-assessment.md`（11 项核心功能 + 8 条路由↔宿主映射 + 复合公式 + 两档规则 + 核心文件区域清单（代码区/文档区）+ 输出模板含 A/B/composite/tier/recommended_scope）；
 - fan-out 顺序：**impact-assessment（先）→ 按 recommended_scope 执行 code-review ×2 + doc-audit → workspace-check（主代理）**；范围默认取 recommended_scope，偏离需在 Sprint §9 记录理由；
 - code-review/doc-audit spec 的"范围限定"段引用 impact-assessment 输出（task 输入含 `scope` 字段）；
 - **验证方式（双例，用户确认）**：两组合成变更集跑真实子代理，对比预计算 ground truth（高影响例 → 期望全量档；低影响例 → 期望窄档），结果记录于 §8.4 并账本登记。
@@ -294,4 +294,4 @@ source:
 | 高影响例（orchestration/engine/config_schema/provider/main.py/App.jsx/verify_e2e） | A=9/11=81.8%、B=8/8=100%、composite=85.45 → **全量档（整个代码库）** | 同左（初稿漏计 #7/#8 分段宿主，修正后一致） | ✅ PASS |
 | 低影响例（verify_agentops/impact-assessment.md/sprint-8.md） | A=2/11=18.18%、B=0%、composite=14.55 → **窄档（修改文件 ∪ 核心文件区域）** | 同左 | ✅ PASS |
 
-**结论：代理行为与定义预想一致**——数字计算、触达判定、档位决策、recommended_scope 均符合 spec v1.1.0；ground truth 修正说明：orchestration.py 整文件变更即触达其分段宿主功能（#1/#7/#8）。
+**结论：代理行为与定义预想一致**——数字计算、触达判定、档位决策、recommended_scope 均符合 spec v1.2.0；ground truth 修正说明：orchestration.py 整文件变更即触达其分段宿主功能（#1/#7/#8）。
