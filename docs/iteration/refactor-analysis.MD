@@ -67,7 +67,7 @@ API 服务层         FastAPI REST + SSE            薄：协议/路由/校验
 - **DI 替代全局可变状态**：`SESSIONS` 全局字典 → `SessionStore` 接口 + 内存实现，路由经依赖注入取得（为多 worker/多机铺路）。
 - **分层契约**：每层边界用 pydantic 类型表达（请求/响应/事件/配置），层间只依赖契约，不依赖实现。
 
-## 6. Sprint 序列（Roadmap —— 原始规划）
+## 6. Sprint 序列（原始规划）
 
 > 本节为 2026-08-29 制定的**原始规划**，保持原样不动；实际执行情况见 §7「实际 Roadmap（执行实录）」。
 
@@ -97,7 +97,7 @@ API 服务层         FastAPI REST + SSE            薄：协议/路由/校验
 
 > 落地映射（分层）：`app/config_schema.py`（SSOT）、`app/orchestration.py`（编排）、`app/engine.py`（引擎适配）、`app/events.py`（事件）、`app/session_store.py`（会话）、`app/data_sources.py`+`app/remote_resolver.py`（数据源）、`app/embedding_recommender.py`（embedding 推荐）；`backend/main.py` 纯路由层（8 条 API 路由）；前端 `ModelConfigPanel.jsx`/`DataSourcePanel.jsx` 交互面板。
 
-## 8. 新增补充候选（对原规划的新增 Backlog，2026-08-30 起维护）
+## 8. Backlog（对原规划的新增卡，2026-08-30 起维护）
 
 > 来源：历次 Sprint Retro 行动项 + 三查建议修 + 用户实战反馈。分为「功能候选」与「维护候选」；
 > 按 §4.4 判定标准（见 `1-WORKFLOW.MD`）决定进 sprint / 直接修复 / 批处理。原规划（§6）保持不动。
