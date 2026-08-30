@@ -24,6 +24,12 @@
 | A-PM3 | 调研结论→用例生成 agent 固化（A-UC 的方法论沉淀） | 2 | 候选（备选） | 用户 2026-08-30 |
 | A-PM4 | 新 agent 上线评审 agent（职能粒度/权限/spec 合规检查） | 2 | 候选（备选） | 用户 2026-08-30 |
 | A-M1 | 价表人工覆盖段填充（deepseek/qwen/openrouter 单价，来自服务商页面） | 1 | 候选 | 阶段 1 预研 |
+| A-M2 | 评审 spec v1.1：加 timebox/聚焦文件清单参数（首轮三查评审代理超 4 轮未返回的根因） | 1 | 候选 | Sprint-8 Retro 行动项 |
+| A-M3 | main 分支 docs/iteration 悬空引用清理（16 处 pre-existing 行内引用，main 评审发现） | 2 | 候选 | Sprint-8 二查 |
+| A-M4 | agent-ops fetch-spec 成功路径测试（sha256 命中/失配）+ 账本并发锁（last-writer-wins 边界） | 2 | 候选 | Sprint-8 二查 nit |
+| A-M5 | git/pwsh 环境 SOP：AMSI 崩溃重试、push/PR 前 fetch origin/main（过期引用致 cherry-pick 冲突） | 1 | 候选 | Sprint-8 三查过程 |
+
+> **阶段 2 待用户确认（2026-08-30 暂停）**：用户正在编辑两个问题的文字描述，收到后优先解决这两个问题，再继续阶段 3（Sprint-9 看板）。
 
 ## 3. 已完成归档（示例与速查）
 
