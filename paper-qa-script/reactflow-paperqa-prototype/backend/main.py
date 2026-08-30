@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from aviary.core import Message
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -158,19 +158,26 @@ async def session_records(session_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/stream/{session_id}/{run_id}")
-async def stream_run_events(session_id: str, run_id: str) -> StreamingResponse:
+async def stream_run_events(request: Request, session_id: str, run_id: str) -> StreamingResponse:
     key = (session_id, run_id)
     q, history = RUN_EVENT_BROKER.subscribe(key)
 
     async def gen():
         try:
             for evt in history:
+                # US-5.5：客户端断连后停止发送（避免 socket.send() raised exception 噪音）
+                if await request.is_disconnected():
+                    return
                 yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
             while True:
                 try:
                     evt = await asyncio.wait_for(q.get(), timeout=15.0)
+                    if await request.is_disconnected():
+                        return
                     yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
                 except asyncio.TimeoutError:
+                    if await request.is_disconnected():
+                        return
                     yield ": keepalive\n\n"
         finally:
             RUN_EVENT_BROKER.unsubscribe(key, q)

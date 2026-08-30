@@ -338,6 +338,9 @@ sequenceDiagram
 
 ### 8.1 节点状态机（前端展示，后端驱动）
 
+> US-5.4：每次 `run_step` 前置 `_prune_litellm_callbacks()`（去重并按注册序保留最近 20 个），
+> 防 litellm Router 每次模型实例化注册 logger 累计到 MAX_CALLBACKS(30) 抛错。
+
 ```mermaid
 stateDiagram-v2
     [*] --> idle
@@ -356,8 +359,8 @@ stateDiagram-v2
 |---|---|---|---|---|
 | config | 无 | 推荐注入 → make_settings | `settings`, `data_source_params` | paper_directory/index_name/llm/embedding/config_notes[/embedding_resolved] |
 | load_index | settings 非空 | 远程解析(remote) → 目录存在检查 → 索引(自愈) | `search_index` | index_name/indexed_files/files[/remote_sources] |
-| retrieve | search_index 非空 | query_index；query 缺省取 upstream.question 或 "PaperQA"；top_n 默认 5；**空结果回退取 `index_files.keys()[:top_n]`** | `candidate_paths` | query/candidate_count/candidate_paths |
-| parse_chunk_embed | settings、search_index 非空 | 见 8.3 三分支；**无 candidate_paths 时默认取索引前 5 篇** | `docs` | docs_count/texts_count/per_file/sample_texts/loaded[/regen] |
+| retrieve | search_index 非空 | query_index；query 缺省取 upstream.question 或 "PaperQA"；top_n 默认 5；**结果按命中顺序去重**；**零命中回退取 `index_files.keys()[:top_n]`，输出 `result=fallback_first_n`（命中时 `ranked`）** | `candidate_paths` | query/candidate_count/candidate_paths/result |
+| parse_chunk_embed | settings、search_index 非空 | 见 8.3 三分支；**无 candidate_paths 时默认取索引前 5 篇**；**单文件失败给定位信息**（"解析文件失败：<p>…若文件不存在：核对论文目录并重跑 Config → load_index"） | `docs` | docs_count/texts_count/per_file/sample_texts/loaded[/regen] |
 | evidence | docs、settings 非空 | `aget_evidence`；question 缺省 upstream 或 "什么是PaperQA？" | `evidence_session` | question/contexts_count/context_ids |
 | answer | docs、settings、evidence_session 非空 | `aquery`；**文本回退链 answer → formatted_answer → raw_answer** | `answer_session` | answer/references/used_contexts/answer_available_fields |
 
@@ -398,6 +401,14 @@ DRAFT_STATE(textarea) :=
 > 修复前：textarea 受控于格式化 JSON，父组件每次回写 → 光标跳末尾。修复后聚焦期间外部更新不打断输入（Playwright `gui_check_s4.mjs` 有光标位置回归）。
 
 ### 9.2 面板联动（ModelConfigPanel）
+
+```text
+AUTO_CONFIG_RERUN（US-5.1）:=   // runSingleNode(非 config 节点) 首步
+    非 config 节点 且 config 节点 status = "stale"
+        -> 先 runSingleNode(config)（markDependents=false）；失败则中止本节点
+    // 面板/JSON 改参 → onChangeParams 使 config 置 stale → 下游直接运行时自动先重跑 config，
+    // 保证 paper_directory/模型/embedding 等与当前配置一致（修复"改目录后 load_index 仍旧目录"）
+```
 
 ```text
 ON_PROVIDER_CHANGE(name) :=
@@ -445,6 +456,7 @@ sequenceDiagram
 
 - 事件模型：`app/events.py`（`BaseEvent{kind,session_id,run_id,step,ts,trace_id}` + `StepEvent/FunctionTraceEvent/AgentActionEvent/AgentToolEvent/ErrorEvent`）。
 - 发布链路：编排层 `on_event(callback)` → 路由层 `RUN_EVENT_BROKER.publish((session_id,run_id), evt)` → `GET /api/stream/{sid}/{run_id}` 先发历史再实时（15s keepalive）。
+- **US-5.5**：流循环内检测 `await request.is_disconnected()`（发送前），客户端断连即静默退出，避免 `socket.send() raised exception` 噪音。
 - **线协议字段（兼容约束，改动须比对）**：
   - `function_trace`：`{kind,session_id,run_id,step,call_id,parent_call_id,depth,task_id,func,started_at,status,duration_s,args,result,result_payload,args_payload,error}`（`model_dump(exclude={ts,trace_id})`，仅 paperqa.* 函数）
   - `step_done` 成功：`{kind,session_id,run_id,step,ok,duration_s,function_count}`；失败另加 `error`（`exclude={ts,trace_id,output[,error]}`）
@@ -540,7 +552,8 @@ classDiagram
 - [ ] D4：会话级 `data_source_params` 唯一来源；SSRF 校验（含重定向复检与 198.18/15 豁免）；200MB 上限；自愈 = files.zip 前置 zlib 试解压（非异常重试）
 - [ ] D5：schema 新增字段同步 `validate_config` 分支与 KNOWN_RUNTIME_KEYS；影响提示
 - [ ] D6：六步前置条件/写回字段表
-- [ ] D7：草稿态聚焦保护、面板联动、Run All 拓扑（节点参数独立 → 会话级共享）
+- [ ] D7：草稿态聚焦保护、面板联动、Run All 拓扑（节点参数独立 → 会话级共享）；**更改配置后下游自动重跑 config**（stale 检查）
+- [ ] D6/D8：retrieve 去重与 `result` 标记；parse 单文件定位报错；`_prune_litellm_callbacks`（MAX_CALLBACKS 防护）；stream `is_disconnected` 静默退出
 - [ ] D8：SSE 线协议字段（新增字段 = 新增兼容负担，须评估）
 - [ ] 本文相关 UML 图与真值表行序是否仍与代码短路顺序一致
 
