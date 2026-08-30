@@ -99,6 +99,11 @@
 - 解决（SOP）：`Get-NetTCPConnection -LocalPort <port> -State Listen` 定位 PID → `Get-CimInstance Win32_Process` 核对命令行确认是本项目进程 → **只对确认的 PID** `Stop-Process -Id`（绝不批量杀，见 1.11）→ 复查端口 FREE。
 - 教训：**停止任何 dev server 后必须复查端口**；把"端口释放"纳入 Sprint 关闭三查的"三查 环境"固定项。
 
+### 1.21 节点参数独立的三连坑：改配置要自动重跑、检索要显式标记来源、回调要设上限（Sprint-5）
+- 现象：① 改论文目录后直接跑 load_index 仍索引旧目录（前端只标 stale，不自动重跑 config）→ parse 报 "no such file"；② retrieve top5 看起来与 query 无关——真实是**中文 query 在英文分块上 BM25 零命中 → 回退取索引前 N 个文件**；③ litellm `MAX_CALLBACKS limit of 30`——每次模型实例化（Router）注册 logger，长期运行累计爆表；④ 客户端关闭 SSE 后 `socket.send() raised exception` 噪音。
+- 解决：① 下游节点运行前检查 config 节点 stale → 自动重跑 Config（失败中止）；parse 单文件失败给出"核对论文目录并重跑 Config→load_index"定位；② retrieve 按命中去重 + 输出 `result=ranked|fallback_first_n`（让用户看清选择逻辑）；③ 每次 run_step 前置 `_prune_litellm_callbacks`（去重保留最近 20）；④ stream 循环发送前检测 `request.is_disconnected()` 静默退出。
+- 教训：**"改了却没生效"先查"哪个节点在用哪份参数"**——节点参数独立的设计下，必须让"配置变更"与"下游执行"自动耦合（stale→自动重跑）；**检索类输出永远带来源标记**，否则"排名"与"回退"无法区分；**第三方 SDK 的全局注册表（回调/钩子）要主动设上限与清理**。
+
 ## 2. 验证记录（Windows，实际执行）
 
 ### 2.1 冒烟（`verify/verify_smoke.py`）—— 8/8 通过

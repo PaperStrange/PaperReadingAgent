@@ -37,6 +37,15 @@ export default function FlowNode({ id, data }) {
   const isParseStep = step === "parse_chunk_embed";
   const isConfigStep = step === "config";
 
+  // US-5.3：复制报错按钮的暂态反馈
+  const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef(null);
+  const flashCopied = () => {
+    setCopied(true);
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
+  };
+
   // US-4.1：JSON 编辑区用本地草稿态，避免父组件回写格式化 JSON 导致光标跳末尾/无法连续编辑。
   // 聚焦期间外部 params 变化不覆盖草稿；失焦后恢复跟随。
   const paramsJson = JSON.stringify(params || {}, null, 2);
@@ -133,7 +142,25 @@ export default function FlowNode({ id, data }) {
       <div className="node-output">
         <div className="node-block-title">output_snapshot</div>
         {error ? (
-          <pre className="error-text">{error}</pre>
+          <div>
+            <div className="node-actions err-actions">
+              <button
+                className="run-btn copy-err-btn"
+                title="复制完整错误信息，便于二次调试"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(error || "");
+                    flashCopied();
+                  } catch {
+                    /* clipboard 不可用时忽略 */
+                  }
+                }}
+              >
+                {copied ? "已复制 ✓" : "复制报错"}
+              </button>
+            </div>
+            <pre className="error-text">{error}</pre>
+          </div>
         ) : (
           <JsonTree value={output || {}} />
         )}

@@ -318,11 +318,28 @@ export default function App() {
   const edgesRef = useRef(edges);
   const fnNodesRef = useRef(fnNodes);
   const fnEdgesRef = useRef(fnEdges);
+  const runStartTimesRef = useRef({}); // US-5.3：步骤计时起点（node id → Date.now()）
+  const [subTimerText, setSubTimerText] = useState("");
 
   const sessionIdRef = useRef(sessionId);
   const runIdRef = useRef(runId);
   const activeStepIdRef = useRef(activeStepId);
   const lastRenderedStepRef = useRef(null);
+
+  // US-5.3：Function Subcanvas 当前步骤计时（运行中每 0.5s 刷新；完成/失败即停）
+  useEffect(() => {
+    const iv = setInterval(() => {
+      const runningNode = nodesRef.current.find((n) => n.data?.status === "running");
+      const start = runningNode ? runStartTimesRef.current[runningNode.id] : 0;
+      if (runningNode && start) {
+        const s = (Date.now() - start) / 1000;
+        setSubTimerText(`${runningNode.data.step} 运行中 ${s.toFixed(1)}s`);
+      } else {
+        setSubTimerText("");
+      }
+    }, 500);
+    return () => clearInterval(iv);
+  }, []);
 
   const refreshScheduledRef = useRef(false);
   const pendingFnNodesRef = useRef([]);
@@ -617,6 +634,19 @@ export default function App() {
       const currentNode = nodesRef.current.find((n) => n.id === id);
       if (!currentNode) return null;
 
+      // US-5.1：配置变更后直接跑下游 → 先自动重跑 Config，
+      // 保证 paper_directory/模型/embedding 等与当前配置一致（各节点参数相互独立）
+      if (id !== "n1") {
+        const cfgNode = nodesRef.current.find((n) => n.id === "n1");
+        if (cfgNode && cfgNode.data?.status === "stale") {
+          const cfgOk = await runSingleNode("n1", { markDependents: false });
+          if (!cfgOk || !cfgOk.ok) {
+            logLine("Config 重跑失败，中止后续节点");
+            return null;
+          }
+        }
+      }
+
       let sid = sessionIdRef.current;
       if (!sid) {
         const created = await newSession(apiBase);
@@ -719,6 +749,7 @@ export default function App() {
           n.id === id ? { ...n, data: { ...n.data, status: "running", error: null } } : n
         )
       );
+      runStartTimesRef.current[id] = Date.now(); // US-5.3：Subcanvas 步骤计时起点
 
       try {
         const params =
@@ -1076,6 +1107,7 @@ export default function App() {
               {fnIsRunning && <span className="fn-spinner" aria-hidden />}
               {fnStatusText}
             </span>
+            {subTimerText ? <span className="fn-timer">{subTimerText}</span> : null}
             <span className="fn-toolbar-actions">
               <button className="icon-btn" title="放大" aria-label="放大" onClick={() => fnFlowRef.current?.zoomIn({ duration: 200 })}>＋</button>
               <button className="icon-btn" title="缩小" aria-label="缩小" onClick={() => fnFlowRef.current?.zoomOut({ duration: 200 })}>－</button>
