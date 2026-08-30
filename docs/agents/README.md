@@ -6,11 +6,13 @@
 
 | 职能 | spec | 任务输入（参数化） | 执行方式 |
 |---|---|---|---|
-| 代码审阅 | [`functions/code-review.md`](functions/code-review.md) | `{target: branch:windows\|branch:main\|pr:<n>\|working-tree, focus, strictness}` | 子代理（每任务一次） |
-| 文档审计 | [`functions/doc-audit.md`](functions/doc-audit.md) | `{target, focus, strictness}` | 子代理 |
+| 影响范围评估（fan-out 第一道闸门） | [`functions/impact-assessment.md`](functions/impact-assessment.md) | `{change_set, scope_hint}` → 输出 recommended_scope + 核心功能覆盖率（阈值 ≥60%） | 子代理（三查/review 前先跑） |
+| 代码审阅 | [`functions/code-review.md`](functions/code-review.md) | `{target: branch:windows\|branch:main\|pr:<n>\|working-tree, scope, focus, strictness}` | 子代理（每任务一次） |
+| 文档审计 | [`functions/doc-audit.md`](functions/doc-audit.md) | `{target, scope, focus, strictness}` | 子代理 |
 | 工作区核验 | [`functions/workspace-check.md`](functions/workspace-check.md) | — | **主代理执行**（D2：起服务/杀进程不子代理化） |
 
 - 同一职能对多个 target 各跑一次任务（如三查时 code-review 跑 windows+main 两任务），分支/PR 只是任务参数。
+- **审查范围不得默认收窄到 Sprint 交付物**（用户问题①）：一律先由 impact-assessment 评估（核心功能覆盖率 ≥60% 或明确豁免），其 recommended_scope 作为 code-review/doc-audit 的 `scope` 入参。
 - 新增职能：在 `functions/` 新建 `<fn>.md`（frontmatter 超集 + 五段式），升 `version`，跑 `agent-ops validate-spec` 后上线（上线评估流程见阶段规划 backlog，后续迭代固化）。
 
 ## 2. 账本 CLI（`scripts/agent-ops.py`，纯 Python 标准库）
@@ -22,7 +24,7 @@
 .\.venv\Scripts\python.exe .\scripts\agent-ops.py list --role code-review
 ```
 
-- 账本 = 文件真相源：`runtime/registry.json`（append + sha256 完整性校验，手改即拒——防双写）；`runs/<run_id>/<role>.report.md` 为报告存档（memory 浏览入口，**入库随仓库提交**——审计底稿，非 gitignore 产物）；`runtime/prices.json` 为价表（auto 段由 litellm 价表派生，manual 段人工覆盖且**非 null 时优先于 auto**，`null` = 待填价 → 估算标 `pending_price`）。
+- 账本 = 文件真相源：`runtime/registry.json`（append + sha256 完整性校验，手改即拒——防双写；**本地实时态，gitignore 不入库**——用户问题②）；`runs/<run_id>/<role>.report.md` 为报告存档（memory 浏览入口，**本地留证不入库**）；`runtime/prices.json` 为价表（auto 段由 litellm 价表派生，manual 段人工覆盖且**非 null 时优先于 auto**，`null` = 待填价 → 估算标 `pending_price`，**配置文件，入库**）。
 - 成本估算：`usage × 单价`（含 cache 分列）；无 usage 时 `chars/4` 兜底并标 `estimated`；口径 = **自报+估算**，精确账单以服务商后台为准。
 - 其余子命令：`update`（进入 running + 补 usage）、`validate-spec`（spec frontmatter 校验）、`fetch-spec`（source 块远程拉取：url+ref+sha256 校验、仅 http/https 且拒绝私网/保留地址，失败/`--offline` 回退本地）、`parse-report`（critical/major/minor/nit 结构化，位置含 file:line）、`prices-derive`（价表再派生，保留 manual）。
 

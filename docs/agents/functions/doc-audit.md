@@ -23,11 +23,13 @@ metadata:
 
 ```json
 {"target": "working-tree | branch:windows | branch:main",
+ "scope": "<来自 impact-assessment 输出的 recommended_scope；缺省 = 全量文档，不得默认收窄到 Sprint 交付物>",
  "focus": ["links","stale-facts","contradictions","algorithm-drift","tables","knowledge"],
  "strictness": "normal | strict"}
 ```
 
 - `target` 决定审计哪份工作区/分支的文档（windows 分支含 `docs/iteration/`；main 不含——main 上出现 `docs/iteration/` 引用/文件即违规项）。
+- `scope` 由 **impact-assessment 职能**先行评估给出；无 scope 时全量文档审计，**不得自行收窄**。
 
 # 步骤（默认全维度检查清单）
 

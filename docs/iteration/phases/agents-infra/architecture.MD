@@ -173,8 +173,8 @@ source:
 **触发分级**：
 | 场景 | 子代理组合 | 说明 |
 |---|---|---|
-| Sprint 关闭三查 | `code-review` 职能 × 2 任务（target=branch:windows、branch:main）+ `doc-audit` 职能 × 1 任务，并行 | 环境核验留主代理（D2）；职能化划分（§2.5） |
-| Bug/日常维护（≤2h 直接修） | 1 个 `code-review` 任务或主代理自查 | 避免小事大动干戈 |
+| Sprint 关闭三查 | **impact-assessment ×1（先）** → `code-review` 职能 × 2 任务（target=branch:windows、branch:main）+ `doc-audit` 职能 × 1 任务（scope=recommended_scope），并行 | 环境核验留主代理（D2）；**范围不得默认收窄到 Sprint 交付物**（§8 用户问题①） |
+| Bug/日常维护（≤2h 直接修） | impact-assessment 快速版（主代理自查）→ 1 个 `code-review` 任务 | 避免小事大动干戈 |
 | 并行开发（模式 A） | 每张不相交卡 1 个实现子代理 | 前置：Sprint 文档含**文件所有权地图**，无交集才并行 |
 
 **输入**：spec 文件（本地或 github raw 拉取，D5）+ 本轮上下文（分支/commit/工作区 diff 范围、评审重点）。
@@ -182,7 +182,7 @@ source:
 **分诊闭环**：主代理按 `1-WORKFLOW.MD` §4.4 分诊——必修 → 立即修 + 回归；建议修 → 回流 backlog 卡；pre-existing → 新卡登记；结论写入 Sprint 文档 §9（三查记录）。
 **账本**：`scripts/agent-ops.py` 8 子命令（register/update/finish/list/validate-spec/fetch-spec/parse-report/prices-derive）落 `docs/agents/runtime/registry.json` + `runs/<run_id>/<role>.report.md`（子代理报告的原文存档 = memory 浏览入口）。
 
-### 3.4 看板技术栈与数据层（依据 §2.2；**数据层待用户确认**）
+### 3.4 看板技术栈与数据层（依据 §2.2；**D6 已确认 SQLite**）
 
 推荐：Next.js App Router + Tailwind + shadcn/ui + **SQLite**（better-sqlite3 + Drizzle + FTS5）+ chokidar 文件监听；文件为真相源、SQLite 为派生只读索引；编辑 spec 直写文件。UI 复用 shadcn-admin 范式 + Tremor/Recharts 成本图 + TanStack Table 账本列表。
 
@@ -255,3 +255,27 @@ source:
 | UC-10 | prices.json 含自动提取条目（gpt-4o-mini、text-embedding-3-large 完整单价）+ 人工覆盖段（deepseek/qwen/openrouter 可空，估算标 `pending_price`） | §2.1/§5.1 价表预研 | 派生脚本 + 断言（US-8.4/S8） |
 | UC-11 | agent-ops CLI 纯 Python 标准库可跑（不依赖 DSH/仓库外工具）；spec 为纯 markdown | §3.5 CLI 契约 / 跨 IDE 需求 | 干净环境冒烟（US-8.5/S8） |
 | UC-12 | 三查 fan-out = 职能级（code-review 跑 windows+main 两任务、doc-audit 一任务）且环境核验留主代理 | §3.3 触发分级 + D2 | Sprint-8 三查实操（US-8.6/S8） |
+| UC-13 | 三查范围由 **impact-assessment 职能**输出确定（不得默认收窄到 Sprint 交付物）；覆盖率 ≥ 60% 或明确豁免理由 | §8（用户问题①） | 下一次三查实操（含账本 run） |
+
+## 8. 影响范围评估与量化指标（用户问题①，2026-08-30）
+
+### 8.1 规则修正
+
+**审查范围不得默认收窄到"Sprint 交付物"**（Sprint-8 时间盒重试属临时处置，不是规则）。三查前必须先由 **impact-assessment 职能（新子代理）** 评估本次 Sprint/变更的影响范围，再据其输出确定 code-review/doc-audit 的审查范围（文件/模块清单）。
+
+### 8.2 量化指标：方案对比与选择
+
+| 方案 | 定义 | 计算 | 优点 | 缺点 |
+|---|---|---|---|---|
+| **A 核心功能覆盖率（选定）** | 审查范围触达的核心功能数 / 核心功能清单总数 | 核心功能清单 = spec 内静态清单（11 项，见 impact-assessment.md）；受审范围按"模块→功能"映射表逐项判定 | 与"项目核心功能"直接对齐（用户要求）；可解释、可审计；阈值 60% | 清单需维护（每季度复核一次） |
+| B 核心 API 覆盖率 | 受审范围涉及的 API 路由数 / 8 | 路由↔模块映射表 | 最易算、零歧义 | 只覆盖后端路由；前端/文档/verify 是盲区 |
+| C 风险加权文件覆盖率 | Σ(受审文件权重) / Σ(核心文件权重) | 权重表按 核心路径(编排/引擎/路由)>面板/verify>文档 | 细粒度 | 权重主观、难以审计与复现 |
+| D 回归证据覆盖率 | 本轮回归脚本数 / 受影响模块关联脚本数 | 模块↔verify 脚本映射 | 直接对验收充分性 | 度量的是"验证充分性"而非"审查范围" |
+
+**选择：A 为主指标（阈值 ≥60%，即 11 项核心功能中受审查范围覆盖 ≥7 项），D 作为回归充分性辅助检查**。理由：A 与"项目核心功能相关"这一要求直接吻合（B/C 是代理指标，D 度量对象不同）；量化口径 = impact-assessment 报告中的 `coverage = affected / total` 数字 + 逐项触达清单（可复核）。
+
+### 8.3 落地
+
+- 新职能 spec：`docs/agents/functions/impact-assessment.md`（含 11 项核心功能清单 + 模块→功能映射 + 输出模板：affected_core_functions / coverage / threshold_met / recommended_scope）；
+- fan-out 顺序改为：**impact-assessment（先）→ 按 recommended_scope 执行 code-review ×2 + doc-audit → workspace-check（主代理）**；范围默认取 recommended_scope，偏离需在 Sprint §9 记录理由；
+- code-review/doc-audit spec 的"范围限定"段改为引用 impact-assessment 输出（task 输入新增 `scope` 字段）；
