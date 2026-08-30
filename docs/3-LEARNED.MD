@@ -11,14 +11,14 @@
 
 | 分类 | 条目 |
 |---|---|
-| 🖥️ 平台/环境（Windows·PowerShell·端口·编码） | 1.6、1.7、1.8、1.9、1.11、1.18、1.20 |
+| 🖥️ 平台/环境（Windows·PowerShell·端口·编码） | 1.6、1.7、1.8、1.9、1.11、1.18、1.20、1.31 |
 | 🧩 框架/服务商（paperqa·litellm·模型） | 1.1、1.2、1.3、1.4、1.14、1.25、1.27 |
 | 📦 依赖与版本管理 | 1.5、1.13 |
 | 🎨 前端与测试驱动（React·Playwright） | 1.10、1.12、1.19（光标部分） |
-| 🛡️ 安全与防护 | 1.16、1.17、§4 整改表 |
-| 🏗️ 工程方法（分层/一致性/自愈） | 1.15、1.17、1.19（长路径/注册表可扩展）、1.21、1.22、1.28 |
+| 🛡️ 安全与防护 | 1.16、1.17、1.33、§4 整改表 |
+| 🏗️ 工程方法（分层/一致性/自愈） | 1.15、1.17、1.19（长路径/注册表可扩展）、1.21、1.22、1.28、1.32 |
 | 🔎 检索与算法改进 | 1.21（来源标记）、1.23 |
-| 📋 项目管理与流程 | 1.17（评审闭环）、1.24、1.26、1.28（AgentOps 工程化）、1.29、1.30、`1-WORKFLOW.MD` §4.4 |
+| 📋 项目管理与流程 | 1.17（评审闭环）、1.24、1.26、1.28（AgentOps 工程化）、1.29、1.30、1.34、`1-WORKFLOW.MD` §4.4 |
 
 ### 1.1 DeepSeek 无 embedding API → 本地向量化
 - 现象：DeepSeek 平台只提供 `deepseek-v4-flash / -pro / -flash-vision-exp`，无 embedding 端点。
@@ -100,7 +100,7 @@
 - 现象：PR #2 标题/正文中文在 GitHub 显示为乱码（GBK 字节被按 UTF-8 解析）；`scripts/github-pr.ps1` 首版（含中文注释）报 "Unexpected token" 语法错。
 - 根因：PS 5.1 把 `Invoke-RestMethod -Body <字符串>` 按 **ANSI 代码页（中文 Windows=GBK）** 编码发出，GitHub 按 UTF-8 解析 → 乱码；同理 PS 5.1 把**无 BOM 的 UTF-8 .ps1 按 ANSI 读**，中文注释的误读会吞掉换行、破坏解析。
 - 解决：① API 调用改 `[System.Text.Encoding]::UTF8.GetBytes($json)` 字节数组 + `ContentType "application/json; charset=utf-8"`；② 沉淀 `scripts/github-pr.ps1`（UTF-8 字节体，纯 ASCII 脚本）；③ 用 PATCH 修复 PR #2 正文。
-- 教训：**跨编码边界（PS 控制台 GBK / 文件 UTF-8 / 网络 UTF-8）传非 ASCII 文本时，永远显式指定 UTF-8 字节，别信默认值**；`.ps1` 要么纯 ASCII 注释，要么存成带 BOM 的 UTF-8。
+- 教训：**跨编码边界（PS 控制台 GBK / 文件 UTF-8 / 网络 UTF-8）传非 ASCII 文本时，永远显式指定 UTF-8 字节，别信默认值**；`.ps1` 要么纯 ASCII 注释，要么存成带 BOM 的 UTF-8。**（Sprint-9 复发**：`start-agents-dashboard.ps1` 中文注释 + 无 BOM 被 PS 5.1 误读 → 全角括号吞引号、ParserError，已改纯 ASCII；此后"新 .ps1 纯 ASCII 或带 BOM"作为提交前自查项。）
 
 ### 1.19 Sprint-4 三个 Windows/前端硬骨头：受控输入光标跳、MAX_PATH、写死的 provider 表
 - 现象：① Config JSON 编辑每敲一次光标跳最后一行（受控 textarea 被父组件回写格式化 JSON）；② 用户目录嵌套 PDF 索引报 FileNotFoundError（**Windows MAX_PATH 260 字符**——`\\?\` 前缀才能打开，普通 open 直接失败；递归本身 paperqa 默认已开）；③ provider 表写死三家，无法接 OpenRouter/自定义网关。
@@ -160,6 +160,26 @@
 - 现象：① Next 16 与训练数据不同——scaffold 自带 AGENTS.md 指引读 `node_modules/next/dist/docs/`（路由 params 是 Promise、`next dev -p` 而非 `--port` 等 breaking changes）；② dev 模式长时间热更新后 `/_next/static/chunks` 403（客户端 JS 加载失败、页面不水合、列表空）→ 重启或**改生产构建**（验收/演示用 `next build + next start`）；③ FTS5 虚拟表**不支持 UPDATE**（`no such column: T.report_body`）→ 内容变更用 delete+reinsert；连字符检索（`code-review`）需**短语查询**（双引号包裹）；④ PS 控制台 GBK 再次搅乱中文 API 往返测试（文件被写坏，git 恢复）→ **API 往返测试必须走 UTF-8 客户端（Node）**；⑤ agents/ 迁移时 Copy-Item 计数 9≠10 暴露 3 条账本 run 与报告文件遗漏 → 按会话留存内容重建——**目录迁移必须逐文件计数核对**。
 - 决策：CI 做轻量（离线套件+双构建，push/PR 触发；真实 API e2e 仅 workflow_dispatch）；CD 不做（本地应用无部署目标）；git 卫生分四层——① spec 检查（workspace-check 远程分支 + code-review main 头分支删除）② 仓库 `delete_branch_on_merge`（对 API 合并**异步生效**，删已消失的 ref 报"failed to push some refs"=成功）③ helper merge 自动清理（`-C` 仓库根、跳过当前检出分支）④ 三查审计。
 - 教训：**新大版本框架先读它自带的 docs/AGENTS.md 再写码**；**长跑 dev server 出诡异 403 先切生产构建验证**（dev 模式不是验收环境）；**全文检索记得查询端转义/短语化**；**目录搬迁用文件计数做完整性验收**；**工具链自动化（CI/分支清理）要分层设计**——平台设置治本、工具兜底、spec 审计保底。
+
+### 1.31 CI 首跑三坑：版本注入、pwsh 失败传播、冷 runner 环境差异（Sprint-9 CI）
+- 现象：① vendored paper-qa editable 安装无 .git 元数据 → setuptools-scm 无法推版本（本地预置环境掩盖此问题）；② pwsh step 只设 `$ErrorActionPreference` 未设 `$PSNativeCommandUseErrorActionPreference` → pip 静默失败而后续命令成功时 step 仍绿；且该变量是**强类型 Boolean**，赋字符串 `"True"` 报 `MetadataError`（必须 `$true`）；③ 冷 runner 无 Graphviz → `verify_smoke` 硬编码 `C:\Program Files\Graphviz` → 7/8 失败。
+- 解决：install/verify 步骤加 `SETUPTOOLS_SCM_PRETEND_VERSION`（与 `paper-qa/src/paperqa/version.py` 一致）+ 两变量 fail-fast（`$true` 字面量）+ `choco install graphviz`；agents-dashboard 构建步骤 `npm ci --ignore-scripts`——**better-sqlite3 v13 的 GitHub release 无预编译资产（0 assets）**，install script 恒走 `prebuild-install || node-gyp`（冷 runner VS18 不被 node-gyp 识别、本机 VS2019 BuildTools 缺 Windows SDK，两端都编不了源码），但 npm 包内自带 N-API `prebuilds/*.node`，跳过 install script 即可在运行时由包内预编译支撑。
+- 教训：**CI 与本地是两套环境**——版本推导、原生命令失败传播、系统二进制都不能假设"本地能跑 CI 就能跑"；CI 首跑要逐步骤盯 log 而非只看结论；pwsh 布尔型偏好变量只能赋 `$true/$false`；**原生依赖先查"包内 prebuild 是否存在、install script 是否画蛇添足"**，能用 `--ignore-scripts` 就不碰 node-gyp。
+
+### 1.32 成本口径混算：分项 USD 未乘汇率、对象级却标 CNY（Sprint-9 二查）
+- 现象：`_estimate_cost` 的 `input/output/cache_read/cache_write` 为 USD（未乘 fx），仅 `total` 乘 fx 且对象级 `currency="CNY"` → 按分项汇总的消费方得到 USD/CNY 混算。
+- 解决：分项同样 ×fx（保持**分项之和 = total**）；verify_agentops 增加断言锁死"分项为 CNY 且分项之和=total"（26→28 断言）。
+- 教训：**数值口径（单位/汇率）必须在单元断言锁死**；对象级 currency 标注是承诺，字段实际单位必须兑现——否则"看板显示 ¥、分项求和却是 $"。
+
+### 1.33 本地看板安全边界：0.0.0.0 + 无鉴权写 + 路径穿越（Sprint-9 二查）
+- 现象：`next start` 默认绑 0.0.0.0 + `/api/specs` PUT 无鉴权 → 局域网可覆盖 spec 源码；run-id 直接用作目录名无校验 → 路径穿越读 runs 目录之外文件；spec 名只做"剥离"而非白名单。
+- 解决：启动脚本 `-H 127.0.0.1` 显式回环 + 端口占用预检；run-id 白名单 `^[A-Za-z0-9._-]+$` + `path.basename`/前缀双保险；spec 名白名单正则 + 自动补 `.md`——**顺带修掉 UI 打开 spec 404**（审查看到"端点在"，跑通 UI 路径才发现 name 无扩展名）。
+- 教训：**本地工具不等于零攻击面**——监听端口 + 写端点就必须显式绑回环（+最小鉴权）；**路径/文件名一律白名单校验（拒绝而非剥离）**；**静态审查要连起来跑通 UI 路径**，端点在 ≠ 前端能用。
+
+### 1.34 spec 升级的文档同步链：自检驱动升级 vs living 文档滞后（Sprint-9 一查）
+- 现象：impact-assessment 008 运行前自检发现 2 条宿主路径重定位（映射表陈旧）→ 告警驱动 spec v1.2.1（N_core 11→12，增 #12 看板）；但升级后 1-WORKFLOW/agents README 仍写 11、backlog/roadmap 状态滞后、技术栈文档（Tailwind→antd）陈旧 → doc-audit 一次抓出 8 处 P1。
+- 解决：编排方升级 spec 时同步 grep 全库改数字/路径/版本；doc-audit 逐条标出并回填。
+- 教训：**spec 数字/常量变更是"文档一致性"变更，必须 grep 全库级联**；影响评估的"运行前自检"是活的防线——映射表与实际不符就要告警并升级 spec，而不是将就着算。
 
 ## 2. 验证记录（Windows，实际执行）
 
