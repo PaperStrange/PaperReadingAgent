@@ -275,15 +275,18 @@ node .\verify\gui_check_remote.mjs    # GUI remote 数据源（需前后端已�
 
 ## 模型服务商切换
 
-统一通过环境变量 `PAPERQA_PROVIDER`（或 Streamlit 侧边栏"模型服务商"下拉框）在三个服务商间切换：
+统一通过环境变量 `PAPERQA_PROVIDER`（或 Config 节点「模型配置」面板的 Provider 下拉框）切换服务商：
 
 | 服务商 | LLM / 视觉模型 | 向量化 | API Base |
 |---|---|---|---|
 | `deepseek`（默认） | `openai/deepseek-v4-flash` / `openai/deepseek-v4-flash-vision-exp` | `st-multi-qa-MiniLM-L6-cos-v1`（本地） | `https://api.deepseek.com` |
 | `dashscope` | `openai/qwen-omni-turbo` | `openai/text-embedding-v4`（API） | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| `openai` | `gpt-4o-mini` | `text-embedding-3-small`（API） | OpenAI 官方默认 |
+| `openai` | `gpt-4o-mini` | `text-embedding-3-large`（API） | OpenAI 官方默认 |
+| `openrouter` | `openrouter/auto`（智能路由，可指定任意模型如 `openrouter/anthropic/claude-sonnet-4`） | 无 API → 自动 HF 多语言模型 | `https://openrouter.ai/api/v1` |
 
-密钥按顺序读取：服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）→ 通用 `OPENAI_API_KEY` → 本地 `paper-qa-script/.env`。
+**自定义 provider（Sprint-4）**：复制 `paper-qa-script/providers.example.json` 为 `providers.json`（gitignored）增改条目，或用环境变量 `PAPERQA_PROVIDERS_JSON`（JSON 字符串，优先级最高）；前端下拉经 `/api/providers` 自动列出（不含密钥）。字段：`api_base / model(必填) / vision_model / embedding / embedding_local / has_embedding_api / key_envs / thinking_disabled`。
+
+密钥按顺序读取：服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY`）→ 通用 `OPENAI_API_KEY` → 本地 `paper-qa-script/.env`。
 
 **显式参数覆盖（Config 节点 JSON 编辑，优先级最高）**：
 
@@ -360,11 +363,12 @@ Config 节点顶部有「数据源」面板，两种模式：
 
 | 模式 | 说明 |
 |---|---|
-| `local`（默认） | 用 `paper_directory` 本地论文目录（`data/pdf`），行为与之前完全一致 |
+| `local`（默认） | 用 `paper_directory` 本地论文目录（`data/pdf`），行为与之前完全一致；**支持嵌套子目录（默认递归）与工作区外绝对路径（如 `D:\...\_papers`），Windows 长路径（>260 字符）自动加 `\\?\` 前缀**；隐藏目录（如 `.qoder`）自动跳过 |
 | `remote` | 逐行填 `source_urls`（PDF/HTML 直链）/ `source_arxiv_ids`（如 `2409.13740`，走 export.arxiv.org 免 key）/ `source_dois`（Unpaywall 查开放全文，需环境变量 `UNPAYWALL_EMAIL=你的邮箱`）→ 统一下载到 `data/remote/<index_name>/`（已在 .gitignore）→ 复用原有索引/解析管线 |
 
 `manifest_file`（可选）：元数据 CSV/JSON（相对论文目录），对索引文件做元数据增强。
 远程下载有安全防护：仅公网 http/https、拒绝内网/本机地址、单文件 200MB 上限、失败逐源报告。
+索引损坏（如中断残留）会在下次 `load_index{build:true}` 时自动删除重建。
 
 ## 版本控制
 

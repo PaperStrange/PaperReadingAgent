@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Handle, Position } from "reactflow";
 import DataSourcePanel from "./DataSourcePanel";
 import JsonTree from "./JsonTree";
+import ModelConfigPanel from "./ModelConfigPanel";
 
 function functionTraceList(trace) {
   const ordered = [...(trace || [])].sort(
@@ -36,6 +37,17 @@ export default function FlowNode({ id, data }) {
   const isParseStep = step === "parse_chunk_embed";
   const isConfigStep = step === "config";
 
+  // US-4.1：JSON 编辑区用本地草稿态，避免父组件回写格式化 JSON 导致光标跳末尾/无法连续编辑。
+  // 聚焦期间外部 params 变化不覆盖草稿；失焦后恢复跟随。
+  const paramsJson = JSON.stringify(params || {}, null, 2);
+  const [draft, setDraft] = useState(paramsJson);
+  const focusedRef = useRef(false);
+  useEffect(() => {
+    if (!focusedRef.current) {
+      setDraft(JSON.stringify(params || {}, null, 2));
+    }
+  }, [params]);
+
   return (
     <div className={`node-card status-${status || "idle"}`}>
       <Handle type="target" position={Position.Left} />
@@ -46,16 +58,32 @@ export default function FlowNode({ id, data }) {
       </div>
 
       {isConfigStep ? (
-        <DataSourcePanel
-          params={params}
-          onChange={(text) => onChangeParams(id, text)}
-        />
+        <>
+          <ModelConfigPanel
+            params={params}
+            apiBase={data.apiBase}
+            onChange={(text) => onChangeParams(id, text)}
+          />
+          <DataSourcePanel
+            params={params}
+            onChange={(text) => onChangeParams(id, text)}
+          />
+        </>
       ) : null}
 
       <textarea
         className="node-textarea"
-        value={JSON.stringify(params || {}, null, 2)}
-        onChange={(e) => onChangeParams(id, e.target.value)}
+        value={draft}
+        onFocus={() => {
+          focusedRef.current = true;
+        }}
+        onBlur={() => {
+          focusedRef.current = false;
+        }}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          onChangeParams(id, e.target.value);
+        }}
       />
 
       <div className="node-actions">

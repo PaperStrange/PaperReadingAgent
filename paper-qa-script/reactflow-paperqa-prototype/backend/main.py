@@ -5,7 +5,7 @@
 - 六步流水线编排 → `app.orchestration.PipelineOrchestrator`；
 - paperqa 引擎调用 → `app.engine.EngineAdapter`；
 - 事件模型 → `app.events`；配置 SSOT → `app.config_schema`。
-- 7 条 API 路由与线上协议（run_step 请求/响应、SSE 消息字段）与拆分前完全一致。
+- 8 条 API 路由（Sprint-4 新增 /api/providers）与线上协议（run_step 请求/响应、SSE 消息字段）与拆分前完全一致。
 """
 import sys
 import uuid
@@ -30,6 +30,7 @@ if str(_ROOT_SCRIPT_DIR) not in sys.path:
 from app.engine import ENGINE  # noqa: E402
 from app.orchestration import StepRequest, StepResponse, make_orchestrator  # noqa: E402
 from app.session_store import MemorySessionStore, SessionState  # noqa: E402
+from provider_config import list_providers_safe  # noqa: E402
 
 
 class RunEventBroker:
@@ -99,6 +100,12 @@ def build_settings(params: dict[str, Any]) -> Settings:
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/providers")
+async def providers() -> dict[str, Any]:
+    # Sprint-4 US-4.3：provider 注册表（内置 + 自定义），供前端下拉；绝不包含密钥
+    return {"providers": list_providers_safe()}
 
 
 @app.post("/api/translate_preview")

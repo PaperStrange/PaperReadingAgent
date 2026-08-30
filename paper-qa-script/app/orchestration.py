@@ -220,9 +220,46 @@ class PipelineOrchestrator:
                             session.settings.agent.index.name or "",
                         )
                     build = bool(req.params.get("build", True))
-                    session.search_index = await self._engine.get_directory_index(
-                        settings=session.settings, build=build
-                    )
+                    # US-4.2：目录不存在 → 友好报错（避免静默建空索引）
+                    paper_dir_str = session.settings.agent.index.paper_directory
+                    if build and paper_dir_str and not Path(paper_dir_str).exists():
+                        raise ValueError(
+                            f"论文目录不存在：{paper_dir_str}（请检查 paper_directory 参数；"
+                            "remote 模式请先在 config 节点配置数据源）"
+                        )
+                    try:
+                        session.search_index = await self._engine.get_directory_index(
+                            settings=session.settings, build=build
+                        )
+                    except BaseException as exc:  # noqa: BLE001
+                        # US-4.2：索引文件损坏（中断残留 files.zip）→ 自动删除损坏文件并重建一次
+                        parts = [str(exc), repr(exc)]
+                        for sub in (getattr(exc, "exceptions", None) or []):
+                            parts.extend([str(sub), repr(sub)])
+                        sig = "\n".join(parts)
+                        if build and any(
+                            k in sig
+                            for k in (
+                                "Failed to load index file",
+                                "zlib",
+                                "decompress",
+                                "truncated stream",
+                                "incorrect header",
+                            )
+                        ):
+                            index_dir = Path(session.settings.agent.index.index_directory)
+                            index_dir = index_dir / (session.settings.agent.index.name or "")
+                            if index_dir.exists():
+                                for zipf in index_dir.glob("*.zip"):
+                                    try:
+                                        zipf.unlink(missing_ok=True)
+                                    except Exception:
+                                        pass
+                            session.search_index = await self._engine.get_directory_index(
+                                settings=session.settings, build=build
+                            )
+                        else:
+                            raise
                     index_files = await session.search_index.index_files
                     output = {
                         "index_name": session.search_index.index_name,
@@ -300,7 +337,8 @@ class PipelineOrchestrator:
                                 for p in paths:
                                     before = len(docs.texts)
                                     p0 = time.perf_counter()
-                                    abs_path = str((paper_dir / p).resolve()) if not Path(p).is_absolute() else p
+                                    # paper_dir 已是绝对路径（Windows 含 \\?\ 长路径前缀），直接拼接避免 re-resolve 丢失前缀
+                                    abs_path = p if Path(p).is_absolute() else str(paper_dir / p)
                                     docname = await self._engine.add_doc(docs, abs_path, session.settings)
                                     per_file.append(
                                         {
@@ -334,7 +372,8 @@ class PipelineOrchestrator:
                         for p in paths:
                             before = len(docs.texts)
                             p0 = time.perf_counter()
-                            abs_path = str((paper_dir / p).resolve()) if not Path(p).is_absolute() else p
+                            # paper_dir 已是绝对路径（Windows 含 \\?\ 长路径前缀），直接拼接避免 re-resolve 丢失前缀
+                            abs_path = p if Path(p).is_absolute() else str(paper_dir / p)
                             docname = await self._engine.add_doc(docs, abs_path, session.settings)
                             per_file.append(
                                 {

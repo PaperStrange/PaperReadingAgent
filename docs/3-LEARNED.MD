@@ -89,6 +89,11 @@
 - 解决：① API 调用改 `[System.Text.Encoding]::UTF8.GetBytes($json)` 字节数组 + `ContentType "application/json; charset=utf-8"`；② 沉淀 `scripts/github-pr.ps1`（UTF-8 字节体，纯 ASCII 脚本）；③ 用 PATCH 修复 PR #2 正文。
 - 教训：**跨编码边界（PS 控制台 GBK / 文件 UTF-8 / 网络 UTF-8）传非 ASCII 文本时，永远显式指定 UTF-8 字节，别信默认值**；`.ps1` 要么纯 ASCII 注释，要么存成带 BOM 的 UTF-8。
 
+### 1.19 Sprint-4 三个 Windows/前端硬骨头：受控输入光标跳、MAX_PATH、写死的 provider 表
+- 现象：① Config JSON 编辑每敲一次光标跳最后一行（受控 textarea 被父组件回写格式化 JSON）；② 用户目录嵌套 PDF 索引报 FileNotFoundError（**Windows MAX_PATH 260 字符**——`\\?\` 前缀才能打开，普通 open 直接失败；递归本身 paperqa 默认已开）；③ provider 表写死三家，无法接 OpenRouter/自定义网关。
+- 解决：① textarea 改本地草稿态（聚焦期间外部 params 不覆盖、失焦后跟随），Playwright 用 `execCommand("insertText")+setSelectionRange` 验证光标位置；② `make_settings` 对 Windows 绝对路径统一加 `\\?\` 前缀、parse 步骤拼接不再 re-resolve（否则丢前缀），另补索引损坏自愈（zlib/decompress 签名含 ExceptionGroup 子异常）与缺失目录友好报错；③ provider 注册表 = 内置 + `providers.json`/`PAPERQA_PROVIDERS_JSON` 合并，`/api/providers` 脱敏列表，前端下拉联动（有 embedding API 带出策展模型、无则清空交给 recommender）。
+- 教训：**"递归/嵌套"这类问题先实测再归因**（真凶是 MAX_PATH 而非递归开关）；**Windows 深度路径操作永远考虑 260 上限**（`\\?\` 前缀 + 不 re-resolve）；**受控输入组件永远给"聚焦保护"**，否则格式化回写必然打断连续编辑。
+
 ## 2. 验证记录（Windows，实际执行）
 
 ### 2.1 冒烟（`verify/verify_smoke.py`）—— 8/8 通过

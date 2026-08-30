@@ -150,32 +150,41 @@ body,
   resize: vertical;
 }
 
-/* Sprint-3 数据源面板（Config 节点） */
-.data-source-panel {
+/* Sprint-3/4 配置面板（Config 节点）。
+   统一规范（US-4.4）：block 标题 = .node-block-title（12px/600/#334155）；
+   字段标签 = .ds-label（12px/600/#334155）；辅助说明 = .ds-sub / .ds-hint（11px/#64748b）。
+   后续任何节点新增参数 block/面板必须复用这些类，不再自定义字号。 */
+.data-source-panel,
+.config-panel {
   margin-bottom: 6px;
   padding: 8px;
   border: 1px solid #dbeafe;
   border-radius: 6px;
   background: #f8fafc;
 }
-.data-source-panel .ds-row {
+.data-source-panel .ds-row,
+.config-panel .ds-row {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-top: 4px;
 }
-.data-source-panel .ds-label {
+.data-source-panel .ds-label,
+.config-panel .ds-label {
   font-size: 12px;
   font-weight: 600;
-  color: #1e293b;
+  color: #334155;
   min-width: 76px;
 }
-.data-source-panel .ds-sub {
-  font-size: 10px;
+.data-source-panel .ds-sub,
+.config-panel .ds-sub {
+  font-size: 11px;
   color: #64748b;
 }
 .data-source-panel .ds-select,
-.data-source-panel .ds-input {
+.data-source-panel .ds-input,
+.config-panel .ds-select,
+.config-panel .ds-input {
   flex: 1;
   border: 1px solid #cbd5e1;
   border-radius: 4px;
@@ -195,9 +204,10 @@ body,
   resize: vertical;
   background: #fff;
 }
-.data-source-panel .ds-hint {
+.data-source-panel .ds-hint,
+.config-panel .ds-hint {
   margin-top: 6px;
-  font-size: 10px;
+  font-size: 11px;
   color: #64748b;
 }
 
@@ -236,8 +246,8 @@ body,
 
 .node-block-title {
   padding: 4px 6px 0 6px;
-  font-size: 11px;
-  color: #475569;
+  font-size: 12px;
+  color: #334155;
   font-weight: 600;
 }
 

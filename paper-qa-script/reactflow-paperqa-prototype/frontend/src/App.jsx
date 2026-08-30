@@ -845,6 +845,7 @@ export default function App() {
       ...node,
       data: {
         ...node.data,
+        apiBase, // Sprint-4：ModelConfigPanel 拉取 /api/providers 用
         onChangeParams: (id, text) => {
           const parsed = safeParseJson(text);
           if (!parsed.ok) {
@@ -880,7 +881,7 @@ export default function App() {
         onLoadEmbedding: (id, mode) => runSingleNode(id, { markDependents: true, embedMode: mode }),
       },
     }),
-    [applyNodesUpdate, markDownstreamStale, runFromHere, runSingleNode, runUpstreamOnly]
+    [apiBase, applyNodesUpdate, markDownstreamStale, runFromHere, runSingleNode, runUpstreamOnly]
   );
 
   const onMainConnect = useCallback(
