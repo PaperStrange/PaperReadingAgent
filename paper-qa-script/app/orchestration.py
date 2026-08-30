@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import re
 import time
 import uuid
 import zlib
@@ -312,25 +313,62 @@ class PipelineOrchestrator:
                     if not query:
                         query = req.upstream.get("question") or "PaperQA"
                     top_n = int(req.params.get("top_n", 5))
+
+                    def _dedupe(results: Any) -> list[str]:
+                        seen_local: set[str] = set()
+                        out: list[str] = []
+                        for r in results:
+                            if isinstance(r, tuple) and len(r) == 2 and r[1] not in seen_local:
+                                seen_local.add(r[1])
+                                out.append(r[1])
+                        return out
+
+                    # US-5.2：按命中顺序去重（chunk 级结果可能重复文件）
+                    query_used = query
+                    strategy = "direct"
                     results = await self._engine.query_index(session.search_index, query, top_n)
-                    # US-5.2：按命中顺序去重（chunk 级结果可能重复文件）；零命中才回退前 N 并显式标记
-                    seen: set[str] = set()
-                    deduped: list[str] = []
-                    for r in results:
-                        if isinstance(r, tuple) and len(r) == 2 and r[1] not in seen:
-                            seen.add(r[1])
-                            deduped.append(r[1])
+                    deduped = _dedupe(results)
+
+                    # US-6.1：多语检索 v1——含 CJK 的 query 零命中时提取英文关键词重试
+                    # （确定性、零 LLM 成本；如"什么是PaperQA？"→"PaperQA"）
+                    if not deduped and re.search(r"[\u4e00-\u9fff]", query):
+                        keywords = re.findall(r"[A-Za-z][A-Za-z0-9\-]{2,}", query)
+                        if keywords:
+                            query_used = " ".join(keywords)
+                            strategy = "keyword_retry"
+                            results = await self._engine.query_index(
+                                session.search_index, query_used, top_n
+                            )
+                            deduped = _dedupe(results)
+
                     if not deduped:
                         deduped = list((await session.search_index.index_files).keys())[:top_n]
                         result_mode = "fallback_first_n"
+                        strategy = "fallback_first_n"  # 三查修正：策略枚举与结果对齐，hit_note 不再误报
                     else:
                         result_mode = "ranked"
+
+                    hit_note = {
+                        "direct": "直接命中：query 与索引分块 BM25 匹配",
+                        "keyword_retry": (
+                            "中文 query 直接检索零命中，已提取英文关键词重试（多语检索 v1）；"
+                            "若仍不满意可改用英文 query"
+                        ),
+                        "fallback_first_n": (
+                            "零命中：query 未匹配到任何分块（中文 query 且无英文关键词，"
+                            "或索引内容与 query 语言不一致）；已回退取索引前 N 个文件"
+                        ),
+                    }[strategy]
+
                     session.candidate_paths = deduped
                     output = {
                         "query": query,
+                        "query_used": query_used,
+                        "query_strategy": strategy,  # direct / keyword_retry / fallback_first_n
                         "candidate_count": len(deduped),
                         "candidate_paths": deduped,
-                        "result": result_mode,  # ranked=BM25 命中排名；fallback_first_n=零命中回退
+                        "result": result_mode,  # ranked=命中排名；fallback_first_n=零命中回退
+                        "hit_note": hit_note,   # US-6.2：命中理由（前端 JsonTree 直接可见）
                     }
 
                 elif step == "parse_chunk_embed":
