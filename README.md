@@ -197,6 +197,7 @@ curl.exe http://127.0.0.1:8787/api/health
    - `api_key`（留空则用 `.env`）、`provider`（deepseek/dashscope/openai/openrouter 或自定义）、
      `paper_directory`（默认 `data/pdf`，相对后端工作目录）、
    - `model` / `embedding_model`（默认随 provider 自动填充，见文末「模型服务商切换」）。
+   - **改参数后直接运行任意下游节点会自动先重跑 Config**（保证目录/模型等与当前配置一致）；retrieve 输出含 `result`：`ranked`=BM25 命中排序 / `fallback_first_n`=零命中回退取索引前 N 个文件（如中文 query 在英文分块上零命中）。
 3. 点击 **2) Load Index**（首次约 1–2 分钟：解析 PDF + 本地向量化 + 写索引）。
 4. 依次点击 **3) Retrieve → 4) Parse Chunk Embed → 5) Gather Evidence → 6) Generate Answer**
    （或顶栏 `Run All (Left-to-Right)` 一键执行）。

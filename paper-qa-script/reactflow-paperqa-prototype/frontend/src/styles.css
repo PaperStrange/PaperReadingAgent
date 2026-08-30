@@ -251,6 +251,24 @@ body,
   font-weight: 600;
 }
 
+/* US-5.3：配置面板内标题与行内容左对齐（面板自身 padding 提供 8px 左边距，标题不再额外 6px） */
+.config-panel .node-block-title,
+.data-source-panel .node-block-title {
+  padding: 4px 0 0 0;
+}
+
+/* US-5.3：Function Subcanvas 步骤计时 */
+.fn-timer {
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f766e;
+  margin-left: 10px;
+}
+
+.copy-err-btn {
+  margin-bottom: 4px;
+}
+
 .node-output pre {
   margin: 0;
   padding: 6px;

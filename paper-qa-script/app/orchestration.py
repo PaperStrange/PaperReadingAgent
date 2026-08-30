@@ -143,6 +143,23 @@ def _write_embed_cache(p: Path, data: dict[str, Any]) -> None:
         pass
 
 
+def _prune_litellm_callbacks() -> None:
+    """US-5.4：litellm 每次 Router 实例化都会注册 logger（paperqa 每次模型创建），
+    长期运行会累计到 MAX_CALLBACKS(30) 上限而抛错；这里在每次步骤执行前
+    去重并按 id 保序裁剪（保留最近 20 个），死对象注册的旧回调自然被移除。"""
+    try:
+        import litellm
+    except Exception:
+        return
+    for attr in ("callbacks", "success_callback", "failure_callback", "input_callback"):
+        try:
+            items = list(getattr(litellm, attr, None) or [])
+            unique: list[Any] = list({id(x): x for x in items}.values())
+            setattr(litellm, attr, unique[-20:])
+        except Exception:
+            pass
+
+
 class PipelineOrchestrator:
     """六步流水线编排器：DI 注入 engine 与 store（路由层组装）。"""
 
@@ -157,6 +174,7 @@ class PipelineOrchestrator:
         on_event: Callable[[dict[str, Any]], None],
     ) -> StepResponse:
         """执行一个步骤，返回 StepResponse；过程事件经 on_event 发布（SSE 接线由 API 层完成）。"""
+        _prune_litellm_callbacks()  # US-5.4
         session: SessionState = self._store.get_or_create(req.session_id)
         run_id = req.run_id or f"run-{uuid.uuid4().hex[:10]}"
         step = req.step
@@ -274,14 +292,24 @@ class PipelineOrchestrator:
                         query = req.upstream.get("question") or "PaperQA"
                     top_n = int(req.params.get("top_n", 5))
                     results = await self._engine.query_index(session.search_index, query, top_n)
-                    paths = [r[1] for r in results if isinstance(r, tuple) and len(r) == 2]
-                    if not paths:
-                        paths = list((await session.search_index.index_files).keys())[:top_n]
-                    session.candidate_paths = paths
+                    # US-5.2：按命中顺序去重（chunk 级结果可能重复文件）；零命中才回退前 N 并显式标记
+                    seen: set[str] = set()
+                    deduped: list[str] = []
+                    for r in results:
+                        if isinstance(r, tuple) and len(r) == 2 and r[1] not in seen:
+                            seen.add(r[1])
+                            deduped.append(r[1])
+                    if not deduped:
+                        deduped = list((await session.search_index.index_files).keys())[:top_n]
+                        result_mode = "fallback_first_n"
+                    else:
+                        result_mode = "ranked"
+                    session.candidate_paths = deduped
                     output = {
                         "query": query,
-                        "candidate_count": len(paths),
-                        "candidate_paths": paths,
+                        "candidate_count": len(deduped),
+                        "candidate_paths": deduped,
+                        "result": result_mode,  # ranked=BM25 命中排名；fallback_first_n=零命中回退
                     }
 
                 elif step == "parse_chunk_embed":
@@ -335,7 +363,15 @@ class PipelineOrchestrator:
                                     p0 = time.perf_counter()
                                     # paper_dir 已是绝对路径（Windows 含 \\?\ 长路径前缀），直接拼接避免 re-resolve 丢失前缀
                                     abs_path = p if Path(p).is_absolute() else str(paper_dir / p)
-                                    docname = await self._engine.add_doc(docs, abs_path, session.settings)
+                                    try:
+                                        docname = await self._engine.add_doc(docs, abs_path, session.settings)
+                                    except Exception as exc:  # noqa: BLE001
+                                        # US-5.1：单文件失败给出上下文；文件缺失多半是索引与目录不一致
+                                        raise ValueError(
+                                            f"解析文件失败：{p}（{str(exc) or repr(exc)}）。"
+                                            "若为文件不存在：请核对 Config 节点的论文目录，"
+                                            "并重新运行 Config → load_index 使索引与目录一致"
+                                        ) from exc
                                     per_file.append(
                                         {
                                             "file": p,
@@ -370,7 +406,15 @@ class PipelineOrchestrator:
                             p0 = time.perf_counter()
                             # paper_dir 已是绝对路径（Windows 含 \\?\ 长路径前缀），直接拼接避免 re-resolve 丢失前缀
                             abs_path = p if Path(p).is_absolute() else str(paper_dir / p)
-                            docname = await self._engine.add_doc(docs, abs_path, session.settings)
+                            try:
+                                docname = await self._engine.add_doc(docs, abs_path, session.settings)
+                            except Exception as exc:  # noqa: BLE001
+                                # US-5.1：单文件失败给出上下文；文件缺失多半是索引与目录不一致
+                                raise ValueError(
+                                    f"解析文件失败：{p}（{str(exc) or repr(exc)}）。"
+                                    "若为文件不存在：请核对 Config 节点的论文目录，"
+                                    "并重新运行 Config → load_index 使索引与目录一致"
+                                ) from exc
                             per_file.append(
                                 {
                                     "file": p,
