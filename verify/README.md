@@ -11,6 +11,7 @@
 | `verify_embed_load.py` | parse_chunk_embed 三种模式：run（重跑）/load 同会话（秒级）/load 新会话（embed 缓存），校验 texts 数量一致 | 需要 `OPENAI_API_KEY`（DeepSeek）+ 本地 st- 向量模型 |
 | `verify_remote_e2e.py` | remote 数据源全链路（Sprint-3）：config(remote+arXiv) → load_index（下载+索引）→ retrieve → parse → evidence → answer | 需要 `OPENAI_API_KEY`；联网（export.arxiv.org） |
 | `verify_prune_callbacks.py` | Sprint-5：litellm 回调去重裁剪单元证据（超上限 32 项 → 20 唯一） | 无 API 调用，纯离线 |
+| `eval_retrieve.py` | Sprint-6/F4：检索质量小样本评测（双语料 + 策略断言 + 负对照，报告 hit@1） | 需 `OPENAI_API_KEY` + 本地 st- 向量模型 | 无 API 调用，纯离线 |
 | `gui_check.mjs` | GUI 全链路：Playwright 打开前端 → 点 "Run All (Left-to-Right)" → 等待答案出现 → 截图 | 后端 8787 + 前端 5173 已启动；`node verify\gui_check.mjs`（playwright 取前端 node_modules） |
 | `gui_check_remote.mjs` | GUI 远程数据源（Sprint-3）：Config 面板切 remote + 填 arXiv ID → Run All → 答案出现 → 截图 `us3-remote.png` | 同上 + 联网 |
 | `gui_check_s4.mjs` | Sprint-4：光标不跳末尾 + provider 下拉联动（openrouter/deepseek 自动带出） | 同上 |

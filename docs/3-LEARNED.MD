@@ -7,6 +7,19 @@
 
 ## 1. 踩坑记录（含原因与解决）
 
+> **经验分类索引（2026-08-30 起维护）**：新教训按类归位，编号仍按时间递增（历史不改号）。
+
+| 分类 | 条目 |
+|---|---|
+| 🖥️ 平台/环境（Windows·PowerShell·端口·编码） | 1.6、1.7、1.8、1.9、1.11、1.18、1.20 |
+| 🧩 框架/服务商（paperqa·litellm·模型） | 1.1、1.2、1.3、1.4、1.14 |
+| 📦 依赖与版本管理 | 1.5、1.13 |
+| 🎨 前端与测试驱动（React·Playwright） | 1.10、1.12、1.19（光标部分） |
+| 🛡️ 安全与防护 | 1.16、1.17、§4 整改表 |
+| 🏗️ 工程方法（分层/一致性/自愈） | 1.15、1.17、1.19（长路径/注册表可扩展）、1.21、1.22 |
+| 🔎 检索与算法改进 | 1.21（来源标记）、1.23 |
+| 📋 项目管理与流程 | 1.17（评审闭环）、1.24、`1-WORKFLOW.MD` §4.4 |
+
 ### 1.1 DeepSeek 无 embedding API → 本地向量化
 - 现象：DeepSeek 平台只提供 `deepseek-v4-flash / -pro / -flash-vision-exp`，无 embedding 端点。
 - 解决：`embedding="st-multi-qa-MiniLM-L6-cos-v1"`（paperqa 的 `embedding_model_factory` 支持 `st-` 前缀 → `SentenceTransformerEmbeddingModel`）；`embedding_config` 在 `st-` 前缀时只传 `{"batch_size": N}`（否则 `name` 与工厂注入的 `name` 冲突）。384 维、首次从 HuggingFace 下载 ~90MB。
@@ -103,6 +116,21 @@
 - 现象：① 改论文目录后直接跑 load_index 仍索引旧目录（前端只标 stale，不自动重跑 config）→ parse 报 "no such file"；② retrieve top5 看起来与 query 无关——真实是**中文 query 在英文分块上 BM25 零命中 → 回退取索引前 N 个文件**；③ litellm `MAX_CALLBACKS limit of 30`——每次模型实例化（Router）注册 logger，长期运行累计爆表；④ 客户端关闭 SSE 后 `socket.send() raised exception` 噪音。
 - 解决：① 下游节点运行前检查 config 节点 stale → 自动重跑 Config（失败中止）；parse 单文件失败给出"核对论文目录并重跑 Config→load_index"定位；② retrieve 按命中去重 + 输出 `result=ranked|fallback_first_n`（让用户看清选择逻辑）；③ 每次 run_step 前置 `_prune_litellm_callbacks`（去重保留最近 20）；④ stream 循环发送前检测 `request.is_disconnected()` 静默退出。
 - 教训：**"改了却没生效"先查"哪个节点在用哪份参数"**——节点参数独立的设计下，必须让"配置变更"与"下游执行"自动耦合（stale→自动重跑）；**检索类输出永远带来源标记**，否则"排名"与"回退"无法区分；**第三方 SDK 的全局注册表（回调/钩子）要主动设上限与清理**。
+
+### 1.22 索引对象存储与检索段的一致性：目录指纹 + 整目录重建（Sprint-5 关闭二查）
+- 现象：同一索引名跨 paper_directory 复用时，Tantivy 检索段与 `docs/<hash>.zip` 对象存储残留旧引用 → retrieve 报 `No such file .../docs/4a86....zip`；只删损坏的 `files.zip` 无法自愈（段与对象存储不同步）。
+- 解决：`load_index{build:true}` 前做一致性判定——索引目录写 **paper_directory 指纹 marker**（`paper_dir_marker.txt`）+ `files.zip` zlib 探针；指纹不一致或探针失败 → **整目录删除重建**；同目录同指纹保持增量（性能不回归）。实测"目录 A→B 切换"检索正确切换。
+- 教训：**对象存储与检索索引是两份状态**，自愈必须保证两者同生共死（整目录重建），"只修一半"会留下更隐蔽的旧引用；**跨配置复用同一资源名（索引名）必须显式记录资源指纹**。
+
+### 1.23 检索质量改进的顺序：先立评测基线（F4）再动检索（F1）（Sprint-6）
+- 现象/决策：用户反馈"top5 与 query 无关"后，先建 `verify/eval_retrieve.py` 小样本基线（双语料 + 策略断言 + 负对照），再实现多语检索 v1——改动效果可量化对比（"什么是PaperQA？" 由 fallback → keyword_retry 命中，hit@1 A=3/3）。
+- 做法：含 CJK 的 query 零命中 → 提取 `[A-Za-z][A-Za-z0-9\-]{2,}` 英文关键词重试（**确定性、零 LLM 成本**）；输出 `query_used/query_strategy/hit_note`；纯中文无关键词仍回退（记录为 F1 后续：query 翻译/双语索引）。
+- 教训：**检索/排序类改动先有评测再动手**（否则"变好变坏"靠感觉）；**优化优先确定性方案**（关键词提取）再考虑 LLM 方案（翻译/改写），成本与延迟差一个数量级。
+
+### 1.24 项目管理文档治理：两级 roadmap + 阶段 backlog 卡独立管理（PM 实践）
+- 现象：roadmap 只挂在 `refactor-analysis.MD`（分析文档）里，重构收口后规划无处安放；Sprint/Bug/维护边界靠感觉。
+- 解决（借鉴 Now/Next/Later + 滚动式规划 + 规划分层）：全局 `docs/iteration/ROADMAP.MD`（三档）↔ 阶段 `phases/<阶段>/{README,roadmap,backlog}.MD`（原规划冻结 + 实际实录 + 卡独立登记）；`1-WORKFLOW.MD` §4.4 制定 Sprint/Bug/维护判定五问 + 严重度分诊 + ~20% 非计划工作预算；分析文档回归纯分析定位。
+- 教训：**文档职责要跟着项目生命周期走**——"分析文档"不该长期承载"规划文档"职责；**分级规划**（全局主题级 ↔ 阶段 roadmap ↔ Sprint 细节）比一份越滚越大的 roadmap 更抗漂移；**历史文档（原规划）冻结不重写，执行情况另册实录**。
 
 ## 2. 验证记录（Windows，实际执行）
 

@@ -30,6 +30,8 @@
 | 分层地基 | 编排/引擎适配/事件模型/SessionStore（行为不变） | ✅ Sprint-2 完成 |
 | B 数据源抽象 | local/URL/arXiv/DOI/manifest + 前端切换面板 + 安全防护 | ✅ Sprint-3 完成 |
 | 体验与扩展（插队） | 光标草稿态、`\\?\` 长路径/索引自愈、OpenRouter+自定义 provider、`/api/providers`、ModelConfigPanel | ✅ Sprint-4（插队）完成 |
+| 实战修复（插队） | 自动重跑 config、retrieve 来源标记、litellm 回调防护、SSE 断连静默、UI 三件套 | ✅ Sprint-5（插队）完成 |
+| F1 检索体验（新增候选） | 多语检索 v1（CJK 零命中关键词重试 + 命中理由）+ F4 评测基准起步 | ✅ Sprint-6 完成（v1） |
 | C 可观测 + E3 v1 | Agent 结构化事件→时间线 + 工作流**只读可视化 v1** | ⏸ hold（**v1 需用户 review 后方可迭代**） |
 | E1/E2 框架适配 | pip 注入 + 版本检查/更新/回滚 | ⏸ hold |
 | D 基础设施 | 单机多 worker + 会话外置 + 网关分流 | ⏸ hold |
