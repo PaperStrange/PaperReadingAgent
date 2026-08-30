@@ -27,7 +27,7 @@
 ```
 
 - 账本 = 文件真相源：`runtime/registry.json`（append + sha256 完整性校验，手改即拒——防双写；**本地实时态，gitignore 不入库**——用户问题②）；`runs/<run_id>/<role>.report.md` 为报告存档（memory 浏览入口，**本地留证不入库**）；`runtime/prices.json` 为价表（auto 段由 litellm 价表派生，manual 段人工覆盖且**非 null 时优先于 auto**，`null` = 待填价 → 估算标 `pending_price`，**配置文件，入库**）。
-- 成本估算：`usage × 单价`（含 cache 分列）；无 usage 时 `chars/4` 兜底并标 `estimated`；**单位 = CNY（用户决策 2026-08-31）**——价表单价为 USD/token，按 `prices.json meta.fx_usd_cny`（默认 7.2，可人工改）换算；口径 = **自报+估算**，精确账单以服务商后台为准。
+- 成本估算：`usage × 单价`（含 cache 分列）；无 usage 时 `chars/4` 兜底并标 `estimated`；**单位 = CNY（用户决策 2026-08-30）**——价表单价为 USD/token，按 `prices.json meta.fx_usd_cny`（默认 7.2，可人工改）换算；口径 = **自报+估算**，精确账单以服务商后台为准。
 - 其余子命令：`update`（进入 running + 补 usage）、`validate-spec`（spec frontmatter 校验）、`fetch-spec`（source 块远程拉取：url+ref+sha256 校验、仅 http/https 且拒绝私网/保留地址，失败/`--offline` 回退本地）、`parse-report`（critical/major/minor/nit 结构化，位置含 file:line）、`prices-derive`（价表再派生，保留 manual）。
 
 ## 3. 跨 IDE / 编排方迁移说明

@@ -1,9 +1,9 @@
 # Ant Design 设计规范与集成参考（本地留档）
 
-> 用途：agents-dashboard 的 UI 规范与组件使用依据（用户决策：2026-08-31 采用 Ant Design 设计规范和组件样式，US-9.7）。
+> 用途：agents-dashboard 的 UI 规范与组件使用依据（用户决策：2026-08-30 采用 Ant Design 设计规范和组件样式，US-9.7）。
 > 版本锁定：**antd 6.6.2**（2026-08 官网最新 6.x）+ `@ant-design/nextjs-registry 1.3.0` + `@ant-design/icons`。
 
-## 1. 官方来源（联网核实于 2026-08-31）
+## 1. 官方来源（联网核实于 2026-08-30）
 
 | 主题 | 链接 |
 |---|---|

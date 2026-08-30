@@ -108,7 +108,7 @@ def _prices_for(model: str) -> dict | None:
 
 
 def _fx_usd_cny() -> float:
-    """用户决策（2026-08-31）：价格以 RMB 计。价表单价为 USD/token，按 meta.fx_usd_cny 换算（可人工覆盖）。"""
+    """用户决策（2026-08-30）：价格以 RMB 计。价表单价为 USD/token，按 meta.fx_usd_cny 换算（可人工覆盖）。"""
     try:
         return float(_load_prices().get("meta", {}).get("fx_usd_cny", 7.2))
     except (TypeError, ValueError):
@@ -117,7 +117,7 @@ def _fx_usd_cny() -> float:
 
 def _estimate_cost(entry: dict) -> dict:
     """UC-4：usage x 价表；无 usage 用 chars/4 兜底；无价表标 pending_price。
-    输出单位 = CNY（USD 单价 × meta.fx_usd_cny 换算，用户决策 2026-08-31）。"""
+    输出单位 = CNY（USD 单价 × meta.fx_usd_cny 换算，用户决策 2026-08-30）。"""
     usage = entry.get("usage") or {}
     model = entry.get("model") or ""
     prices = _prices_for(model)

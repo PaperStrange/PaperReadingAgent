@@ -1,7 +1,7 @@
 # 阶段 2：agents-infra（AgentOps 基础设施）—— 阶段卡
 
 > 归属：`docs/iteration/phases/agents-infra/`（全局视图见 `docs/iteration/ROADMAP.MD`）。
-> 用户批准的三阶段方案（2026-08-30）：① 调研+架构地基 → ② 五职能 spec（impact-assessment / code-review / doc-audit / lessons-learned / workspace-check 主代理手册；lessons-learned 于 2026-08-31 新增）+ 账本 + 跨 IDE 说明 → ③ 本地看板应用。
+> 用户批准的三阶段方案（2026-08-30）：① 调研+架构地基 → ② 五职能 spec（impact-assessment / code-review / doc-audit / lessons-learned / workspace-check 主代理手册；lessons-learned 于 2026-08-30 新增）+ 账本 + 跨 IDE 说明 → ③ 本地看板应用。
 
 | 项 | 内容 |
 |---|---|

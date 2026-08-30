@@ -65,7 +65,7 @@ metadata:
 ## 同步/完整性说明（仅 target=main 或涉及双分支时）
 - 需同步 main 的文件清单（必须/排除，精确到文件）
 - main 落后于 windows 的代码文件清单
-- **远程分支卫生**（2026-08-31 增查）：`git ls-remote --heads origin` 应仅 mac/main/windows——已合并 PR 的 `sync/*` 头分支是否已删除（残留 = major）
+- **远程分支卫生**（2026-08-30 增查）：`git ls-remote --heads origin` 应仅 mac/main/windows——已合并 PR 的 `sync/*` 头分支是否已删除（残留 = major）
 
 ## 一句话总结
 <技术账是否干净；本轮最值得注意的一个风险>
