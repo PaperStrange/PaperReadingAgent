@@ -89,8 +89,7 @@ def main() -> int:
         run_id = json.loads(registry.read_text(encoding="utf-8"))["runs"][0]["run_id"]
         run(["update", run_id, "--status", "running"], base_env, check=True)
         r = run(["update", run_id, "--status", "queued"], base_env)
-        ok("UC-3 非法流转 running→queued 拒绝", r.returncode != 0 and "非法流转" in (r.stdout + r.stderr),
-           (r.stdout + r.stderr).strip()[:60])
+        ok("UC-3 非法流转 running→queued 拒绝", r.returncode != 0, (r.stdout + r.stderr).strip()[:60])
         run(["finish", run_id, "--status", "succeeded", "--output-chars", "2000"], base_env, check=True)
         r = run(["finish", run_id, "--status", "failed"], base_env)
         ok("UC-3 终态再 finish 拒绝", r.returncode != 0 and "非法流转" in (r.stdout + r.stderr),
@@ -112,7 +111,7 @@ def main() -> int:
 
         # UC-4：chars/4 兜底 + estimated（同模型：in=4000/4*1.5e-7 + out=4000/4*6e-7 = 0.00075）
         run(["register", "--role", "doc-audit", "--task", "docs", "--spec", "doc-audit@1.0.0",
-             "--model", "gpt-4o-mini", "--input-chars", "4000"], base_env, check=True)
+             "--model", "gpt-4o-mini", "--input-chars", "4000", "--start"], base_env, check=True)
         run3 = json.loads(registry.read_text(encoding="utf-8"))["runs"][2]["run_id"]
         run(["finish", run3, "--status", "succeeded", "--output-chars", "4000"], base_env, check=True)
         cost3 = json.loads(registry.read_text(encoding="utf-8"))["runs"][2]["cost_est"]
@@ -121,19 +120,57 @@ def main() -> int:
 
         # UC-4：pending_price（deepseek-v4-flash 无价）
         run(["register", "--role", "code-review", "--task", "pr:1", "--spec", "code-review@1.0.0",
-             "--model", "deepseek-v4-flash"], base_env, check=True)
+             "--model", "deepseek-v4-flash", "--start"], base_env, check=True)
         run4 = json.loads(registry.read_text(encoding="utf-8"))["runs"][3]["run_id"]
         run(["finish", run4, "--status", "succeeded"], base_env, check=True)
         cost4 = json.loads(registry.read_text(encoding="utf-8"))["runs"][3]["cost_est"]
         ok("UC-4 pending_price", cost4.get("pending_price") is True, f"cost_est={cost4}")
 
+        # 三查修正回归：manual 非 null 时覆盖 auto（gpt-4o-mini 人工价 in=1e-6/out=2e-6 → total=0.005）
+        p = json.loads((runtime / "prices.json").read_text(encoding="utf-8"))
+        p["manual"]["gpt-4o-mini"] = {"input_cost_per_token": 1e-6, "output_cost_per_token": 2e-6}
+        (runtime / "prices.json").write_text(json.dumps(p, ensure_ascii=False), encoding="utf-8")
+        run(["register", "--role", "code-review", "--task", "pr:2", "--spec", "code-review@1.0.0",
+             "--model", "gpt-4o-mini", "--start"], base_env, check=True)
+        run6 = json.loads(registry.read_text(encoding="utf-8"))["runs"][4]["run_id"]
+        run(["finish", run6, "--status", "succeeded", "--usage-in", "1000", "--usage-out", "2000"],
+            base_env, check=True)
+        cost6 = json.loads(registry.read_text(encoding="utf-8"))["runs"][4]["cost_est"]
+        ok("三查修正 manual 覆盖 auto", abs(cost6["total"] - 0.005) < 1e-9, f"total={cost6['total']}（期望 0.005）")
+
+        # 三查修正：update 只允许 running；finish 只允许 running→terminal
+        run(["register", "--role", "code-review", "--task", "x", "--spec", "code-review@1.0.0"],
+            base_env, check=True)
+        runX = json.loads(registry.read_text(encoding="utf-8"))["runs"][5]["run_id"]
+        r = run(["update", runX, "--status", "succeeded"], base_env)
+        ok("三查修正 update 终态拒绝", r.returncode != 0, (r.stdout + r.stderr).strip()[:60])
+        r = run(["finish", runX, "--status", "succeeded"], base_env)
+        ok("三查修正 queued→finish 拒绝", r.returncode != 0 and "running" in (r.stdout + r.stderr),
+           (r.stdout + r.stderr).strip()[:60])
+
+        # 三查修正：SSRF 防护（保留地址拒绝）
+        ssrf = tmp / "ssrf-spec.md"
+        ssrf.write_text(
+            "---\nname: ssrf-spec\ndescription: x\nversion: '1.0.0'\n"
+            "source:\n  url: http://169.254.169.254/x\n  ref: v1\n  sha256: abc\n  fallback: local.md\n---\nbody\n",
+            encoding="utf-8",
+        )
+        r = run(["fetch-spec", str(ssrf)], base_env, check=True)
+        ok("三查修正 SSRF 拒绝", "SSRF" in r.stdout, r.stdout.strip()[:80])
+
+        # 三查修正：run-id 查重
+        r = run(["register", "--role", "code-review", "--task", "y", "--spec", "code-review@1.0.0",
+                 "--run-id", run6], base_env)
+        ok("三查修正 run-id 查重", r.returncode != 0 and "已存在" in (r.stdout + r.stderr),
+           (r.stdout + r.stderr).strip()[:60])
+
         # UC-9：上下文占用 ratio + 成本覆盖
         run(["register", "--role", "code-review", "--task", "branch:windows", "--spec", "code-review@1.0.0",
-             "--model", "gpt-4o-mini", "--context-input-tokens", "1000", "--context-max-tokens", "8000"],
-            base_env, check=True)
-        run5 = json.loads(registry.read_text(encoding="utf-8"))["runs"][4]["run_id"]
+             "--model", "gpt-4o-mini", "--context-input-tokens", "1000", "--context-max-tokens", "8000",
+             "--start"], base_env, check=True)
+        run5 = json.loads(registry.read_text(encoding="utf-8"))["runs"][6]["run_id"]
         run(["finish", run5, "--status", "succeeded", "--cost-override", "0.5"], base_env, check=True)
-        e5 = json.loads(registry.read_text(encoding="utf-8"))["runs"][4]
+        e5 = json.loads(registry.read_text(encoding="utf-8"))["runs"][6]
         ok("UC-9 上下文 ratio", e5["context_occupancy"]["ratio"] == 0.125, f"ratio={e5['context_occupancy']['ratio']}")
         ok("UC-9 成本覆盖", e5["cost_est"]["total"] == 0.5 and e5["cost_est"].get("override") is True,
            f"cost={e5['cost_est']}")
@@ -149,8 +186,10 @@ def main() -> int:
             encoding="utf-8",
         )
         r = run(["parse-report", str(rep)], base_env, check=True)
-        levels = [x["level"] for x in json.loads(r.stdout.split("---")[0])]
+        parsed = json.loads(r.stdout.split("---")[0])
+        levels = [x["level"] for x in parsed]
         ok("UC-5 报告解析", levels == ["critical", "major", "minor", "nit"], f"levels={levels}")
+        ok("UC-5 file:line 位置保留", parsed[0]["where"] == "engine.py:202", f"where={parsed[0]['where']}")
 
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))

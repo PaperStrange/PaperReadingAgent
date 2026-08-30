@@ -8,7 +8,7 @@
 | 阶段 | 目标 |
 |---|---|
 | 阶段 1 | 调研近半年 agent 最佳实践（star>1000 仓库）+ 架构地基设计（为新增 agent 与 paper-qa workflow 引用打基础） |
-| 阶段 2 | 四评审代理（按**职能**划分，用户意见①）spec 文件 + runtime 账本（registry.json + runs 报告）+ 跨 IDE 迁移说明（prompt_source 支持 GitHub raw skill.md）；**调研结论→用例表**（用户意见②）驱动开发验证 |
+| 阶段 2 | 三职能评审 spec（**按职能**划分，用户意见①：code-review / doc-audit / workspace-check 主代理手册）+ runtime 账本（registry.json + runs 报告）+ 跨 IDE 迁移说明（prompt_source 支持 GitHub raw skill.md）；**调研结论→用例表**（用户意见②）驱动开发验证 |
 | 阶段 3 | 本地看板应用（前端简约互联网风；后端 Next.js+**SQLite**（用户采纳调研建议，替代 MongoDB）；检索与数据更新快速响应）；支持 spec 在线编辑、skill URL 配置、runtime 状态/自报上下文/估算消费展示、memory 报告浏览 |
 
 > 项目管理：按 `1-WORKFLOW.MD` §4 走 Sprint（用户意见③）；PM 过程可 agent 固化的想法记入 backlog 备选卡 A-PM1~A-PM4。

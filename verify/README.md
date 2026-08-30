@@ -6,6 +6,7 @@
 |---|---|---|
 | `verify_smoke.py` | 8 项冒烟检查：paperqa 导入、后端 FastAPI 路由、RuntimeTracer、streamlit、litellm、PyMuPDF 页渲染、graphviz(py)、PDF 解析器自动发现 | 无 API 调用，纯离线；无需启动服务 |
 | `verify_prune_callbacks.py` | Sprint-5/M2：litellm 回调去重裁剪单元证据（超上限 32 项 → 去重保留最近 N；`PAPERQA_LITELLM_CALLBACK_LIMIT` 可覆盖默认 20） | 无 API 调用，纯离线 |
+| `verify_agentops.py` | Sprint-8/A-UC：AgentOps 账本 CLI 用例断言（UC-1/2/3/4/5/7/9/10 + 三查修正回归；隔离到临时 `AGENT_OPS_DIR`） | 无 API 调用，纯离线 |
 | `verify_index_health.py` | Sprint-7/M1：索引一致性三重探测（files.zip / index/meta.json / tantivy 段）合成形态 + 真实构建后篡改 meta.json → 整目录重建自愈 | 无 API key、无远程 LLM 调用（manifest 提供 citation；本地 ST 权重从 HF 缓存加载，首次需联网下载）；索引隔离到临时 `PQA_HOME` |
 | `verify_provider_switch.py` | 验证服务商切换（内置 4 家 + 自定义）：配置解析、密钥优先级、build_settings、**路由实证断言**（deepseek 真实 key 应 SUCCESS；dashscope/openai/openrouter/自定义 用占位 key 应拿到端点级拒绝=路由正确） | 联网；deepseek 真实 key（`.env` 或 `OPENAI_API_KEY`）；**真实 openrouter key 实测为用户资源门控**（占位 key 只证路由不证配额） |
 | `verify_e2e.py` | 启动真实后端（8787）→ 全链路 6 步，校验答案长度并保存结构化结果到 `verify_e2e_result.json` | 需要 `OPENAI_API_KEY`（DeepSeek）+ 本地 st- 向量模型；联网 |
@@ -27,6 +28,7 @@ $env:OPENAI_API_KEY = "<DeepSeek key>"
 $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 .\.venv\Scripts\python.exe .\verify\verify_smoke.py
 .\.venv\Scripts\python.exe .\verify\verify_prune_callbacks.py
+.\.venv\Scripts\python.exe .\verify\verify_agentops.py           # AgentOps 账本 CLI 用例断言（离线）
 .\.venv\Scripts\python.exe .\verify\verify_index_health.py
 .\.venv\Scripts\python.exe .\verify\verify_provider_switch.py   # 联网
 .\.venv\Scripts\python.exe .\verify\verify_e2e.py

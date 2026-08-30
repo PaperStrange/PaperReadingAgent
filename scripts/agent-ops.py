@@ -64,6 +64,9 @@ def _sha256(text: str) -> str:
 def _load_registry() -> dict:
     if REGISTRY_PATH.exists():
         data = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+        # review 修正（Sprint-8 三查）：存在但缺 integrity 键 = 手造文件 → 拒绝
+        if not data.get("integrity"):
+            raise SystemExit("registry.json 缺少完整性字段：疑似手工创建（防双写）。请用 agent-ops CLI 写入。")
     else:
         data = {"version": 1, "runs": []}
     # UC-7：加载时校验完整性（手改即拒，防双写）——必须在任何变更前检查
@@ -96,8 +99,12 @@ def _load_prices() -> dict:
 
 
 def _prices_for(model: str) -> dict | None:
+    """review 修正（Sprint-8 三查）：manual 非 null 时**覆盖** auto（README 契约），auto 为兜底。"""
     p = _load_prices()
-    return p.get("auto", {}).get(model) or p.get("manual", {}).get(model)
+    manual = p.get("manual", {}).get(model)
+    if manual:  # 非 null 的人工价优先
+        return manual
+    return p.get("auto", {}).get(model)
 
 
 def _estimate_cost(entry: dict) -> dict:
@@ -120,7 +127,7 @@ def _estimate_cost(entry: dict) -> dict:
         cost["input"] = (ic / _CHARS_PER_TOKEN) * (prices.get("input_cost_per_token") or 0)
         cost["output"] = (oc / _CHARS_PER_TOKEN) * (prices.get("output_cost_per_token") or 0)
         estimated = True
-    total = sum(v for k, v in cost.items() if k != "total")
+    total = sum(cost.values())
     return {"input": round(cost["input"], 8), "output": round(cost["output"], 8),
             "cache_read": round(cost["cache_read"], 8), "cache_write": round(cost["cache_write"], 8),
             "total": round(total, 8), "currency": "USD", "estimated": estimated,
@@ -129,6 +136,9 @@ def _estimate_cost(entry: dict) -> dict:
 
 def cmd_register(args: argparse.Namespace) -> None:
     data = _load_registry()
+    # review 修正（Sprint-8 三查）：显式 run_id 查重（_find_run 只命中第一条）
+    if any(r["run_id"] == args.run_id for r in data["runs"]):
+        raise SystemExit(f"run_id {args.run_id} 已存在，请更换")
     run_id = args.run_id or f"run-{_now()[:10]}-{args.role}-{len(data['runs']) + 1:03d}"
     entry = {
         "run_id": run_id,
@@ -171,13 +181,15 @@ def cmd_update(args: argparse.Namespace) -> None:
     data = _load_registry()
     r = _find_run(data, args.run_id)
     if args.status:
-        if args.status not in _STATUSES:
-            raise SystemExit(f"非法状态 {args.status}，可选 {sorted(_STATUSES)}")
+        # review 修正（Sprint-8 三查）：update 只能进入 running；终态一律走 finish
+        # （否则 update --status succeeded 会产出 ended_at/cost_est 缺失的畸形行）
+        if args.status != "running":
+            raise SystemExit("update 只允许 --status running；终态请用 finish 子命令")
         allowed = _TRANSITIONS.get(r["status"], set())
         if args.status not in allowed:
             raise SystemExit(f"非法流转 {r['status']} -> {args.status}（允许：{sorted(allowed) or '无'}）")
         r["status"] = args.status
-        if args.status == "running" and not r["started_at"]:
+        if not r["started_at"]:
             r["started_at"] = _now()
     _apply_usage(r, args)
     _save_registry(data)
@@ -189,8 +201,9 @@ def cmd_finish(args: argparse.Namespace) -> None:
     r = _find_run(data, args.run_id)
     if args.status not in _TERMINAL:
         raise SystemExit(f"finish 需要终态：{sorted(_TERMINAL)}")
-    if r["status"] not in ("queued", "running"):
-        raise SystemExit(f"非法流转 {r['status']} -> {args.status}")
+    # review 修正（Sprint-8 三查）：finish 仅允许 running -> terminal（queued 先 update running）
+    if r["status"] != "running":
+        raise SystemExit(f"非法流转 {r['status']} -> {args.status}（finish 仅允许 running -> terminal）")
     r["status"] = args.status
     r["ended_at"] = _now()
     if args.output_chars is not None:
@@ -206,7 +219,8 @@ def cmd_finish(args: argparse.Namespace) -> None:
             dest = RUNS_DIR / r["run_id"] / f"{r['role']}.report.md"
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(rel.read_text(encoding="utf-8"), encoding="utf-8")
-            r["result_files"] = [str(dest.relative_to(REPO_ROOT / "docs" / "agents"))]
+            # review 修正（Sprint-8 三查）：基准用 _AGENTS_BASE（AGENT_OPS_DIR 重定向时不再崩溃）
+            r["result_files"] = [str(dest.relative_to(_AGENTS_BASE))]
     if args.cost_override is not None:
         r["cost_est"] = {"total": args.cost_override, "currency": "USD", "estimated": False, "override": True}
     else:
@@ -262,14 +276,38 @@ def cmd_fetch_spec(args: argparse.Namespace) -> None:
     if not m:
         print(f"no source block in {p.name}; using local spec")
         return
-    src = dict(re.findall(r"^  (\w+):\s*(.+)$", m.group(0), re.M))
+    src = {
+        k.strip(): v.strip().strip('"').strip("'")
+        for k, v in (re.findall(r"^  (\w+):\s*(.+)$", m.group(0), re.M))
+    }
     url = src.get("url", "")
     want_sha = src.get("sha256", "")
     if args.offline or not url:
         print(f"WARN: offline/无 url → 回退本地 spec {p.name}")
         return
+    # review 修正（Sprint-8 三查）：SSRF 防护——仅 http/https + 拒绝私网/回环/链路本地/保留地址
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        print(f"WARN: 非法 scheme {parsed.scheme!r} → 回退本地 spec {p.name}")
+        return
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "agent-ops"})
+        import ipaddress
+
+        host = parsed.hostname or ""
+        ip = ipaddress.ip_address(host)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            print(f"WARN: 目标地址 {host} 为私网/保留地址（SSRF 防护）→ 回退本地 spec {p.name}")
+            return
+    except ValueError:
+        pass  # 域名形式：交给 DNS 解析（不额外校验）
+    ref = src.get("ref", "")
+    fetch_url = url.replace("{ref}", ref) if "{ref}" in url else url
+    if "{ref}" not in url and ref:
+        print(f"NOTE: ref={ref!r} 为声明性锁定（URL 未含 {{ref}} 占位），以 sha256 校验为准")
+    try:
+        req = urllib.request.Request(fetch_url, headers={"User-Agent": "agent-ops"})
         with urllib.request.urlopen(req, timeout=20) as resp:  # noqa: S310
             remote = resp.read().decode("utf-8")
     except Exception as exc:  # noqa: BLE001
@@ -278,15 +316,19 @@ def cmd_fetch_spec(args: argparse.Namespace) -> None:
     if _sha256(remote) != want_sha:
         print(f"WARN: sha256 校验不符 → 回退本地 spec {p.name}")
         return
-    print(f"OK: remote spec fetched & verified ({url} @ {src.get('ref', '?')})")
+    print(f"OK: remote spec fetched & verified ({fetch_url} @ {ref or '?'})")
 
 
 def cmd_parse_report(args: argparse.Namespace) -> None:
-    """UC-5：解析 spec 输出模板（`- critical <位置>：<问题>` 行）为结构化 JSON。"""
+    """UC-5：解析 spec 输出模板（`- critical <位置>：<问题>` 行）为结构化 JSON。
+
+    review 修正（Sprint-8 三查）：位置以**首个全角冒号**切分（ASCII `:` 保留在 where 内，
+    使 `engine.py:202` 这类 file:line 位置不被截断）。
+    """
     p = Path(args.report_file)
     items = []
     for line in p.read_text(encoding="utf-8").splitlines():
-        m = re.match(r"^\s*(?:\*|-)\s*\**(critical|major|minor|nit)\**[ \t]+([^：:]+)[：:]\s*(.+)$", line, re.I)
+        m = re.match(r"^\s*(?:\*|-)\s*\**(critical|major|minor|nit)\**[ \t]+([^：]+)[：]\s*(.+)$", line, re.I)
         if m:
             items.append({"level": m.group(1).lower(), "where": m.group(2).strip(), "text": m.group(3).strip()})
     print(json.dumps(items, ensure_ascii=False, indent=2))
@@ -319,6 +361,13 @@ def _derive_prices(args: argparse.Namespace | None = None) -> None:
 
 
 def main() -> int:
+    # review 修正（Sprint-8 三查）：跨 IDE 承诺——Windows 非 UTF-8 终端打印中文不乱码/不崩
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
     ap = argparse.ArgumentParser(description="AgentOps 账本 CLI")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -335,7 +384,7 @@ def main() -> int:
 
     p = sub.add_parser("update")
     p.add_argument("run_id")
-    p.add_argument("--status", choices=sorted(_STATUSES))
+    p.add_argument("--status", choices=["running"])  # 终态一律走 finish（三查修正）
     p.add_argument("--usage-in", type=int)
     p.add_argument("--usage-out", type=int)
     p.add_argument("--usage-cache-read", type=int)

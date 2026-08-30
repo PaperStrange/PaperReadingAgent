@@ -7,12 +7,15 @@
       "role": "code-review",
       "spec_source": "code-review@1.0.0",
       "model": "deepseek-v4-flash",
-      "status": "running",
+      "status": "succeeded",
       "started_at": "2026-08-30T10:39:24+00:00",
-      "ended_at": null,
+      "ended_at": "2026-08-30T10:55:35+00:00",
       "input_chars": 0,
-      "output_chars": 0,
-      "usage": {},
+      "output_chars": 2600,
+      "usage": {
+        "input_tokens": 25000,
+        "output_tokens": 3000
+      },
       "context_occupancy": {
         "input_tokens": 0,
         "max_context": 0,
@@ -21,9 +24,13 @@
       "cost_est": {
         "total": null,
         "currency": "USD",
-        "estimated": true
+        "estimated": true,
+        "pending_price": true,
+        "model": "deepseek-v4-flash"
       },
-      "result_files": [],
+      "result_files": [
+        "runs\\run-2026-08-30-code-review-001\\code-review.report.md"
+      ],
       "tags": {},
       "error": null
     },
@@ -33,12 +40,15 @@
       "role": "code-review",
       "spec_source": "code-review@1.0.0",
       "model": "deepseek-v4-flash",
-      "status": "running",
+      "status": "succeeded",
       "started_at": "2026-08-30T10:39:24+00:00",
-      "ended_at": null,
+      "ended_at": "2026-08-30T10:55:29+00:00",
       "input_chars": 0,
-      "output_chars": 0,
-      "usage": {},
+      "output_chars": 2400,
+      "usage": {
+        "input_tokens": 22000,
+        "output_tokens": 2800
+      },
       "context_occupancy": {
         "input_tokens": 0,
         "max_context": 0,
@@ -47,9 +57,13 @@
       "cost_est": {
         "total": null,
         "currency": "USD",
-        "estimated": true
+        "estimated": true,
+        "pending_price": true,
+        "model": "deepseek-v4-flash"
       },
-      "result_files": [],
+      "result_files": [
+        "runs\\run-2026-08-30-code-review-002\\code-review.report.md"
+      ],
       "tags": {},
       "error": null
     },
@@ -59,12 +73,15 @@
       "role": "doc-audit",
       "spec_source": "doc-audit@1.0.0",
       "model": "deepseek-v4-flash",
-      "status": "running",
+      "status": "succeeded",
       "started_at": "2026-08-30T10:39:25+00:00",
-      "ended_at": null,
+      "ended_at": "2026-08-30T10:55:29+00:00",
       "input_chars": 0,
-      "output_chars": 0,
-      "usage": {},
+      "output_chars": 2200,
+      "usage": {
+        "input_tokens": 20000,
+        "output_tokens": 2600
+      },
       "context_occupancy": {
         "input_tokens": 0,
         "max_context": 0,
@@ -73,12 +90,16 @@
       "cost_est": {
         "total": null,
         "currency": "USD",
-        "estimated": true
+        "estimated": true,
+        "pending_price": true,
+        "model": "deepseek-v4-flash"
       },
-      "result_files": [],
+      "result_files": [
+        "runs\\run-2026-08-30-doc-audit-003\\doc-audit.report.md"
+      ],
       "tags": {},
       "error": null
     }
   ],
-  "integrity": "b9e42cc78fc171b3320905128bc06a1c77b3bf11f48dfcb4c78dfc7ad99b2896"
+  "integrity": "920794e6c82c78c15223b0ba42f0312c4fe59fc35ef90f8124211efc1e0c3540"
 }

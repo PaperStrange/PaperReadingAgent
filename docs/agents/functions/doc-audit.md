@@ -23,7 +23,7 @@ metadata:
 
 ```json
 {"target": "working-tree | branch:windows | branch:main",
- "focus": ["links","stale-facts","contradictions","algorithm-drift","tables"],
+ "focus": ["links","stale-facts","contradictions","algorithm-drift","tables","knowledge"],
  "strictness": "normal | strict"}
 ```
 

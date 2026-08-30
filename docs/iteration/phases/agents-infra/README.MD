@@ -1,7 +1,7 @@
 # 阶段 2：agents-infra（AgentOps 基础设施）—— 阶段卡
 
 > 归属：`docs/iteration/phases/agents-infra/`（全局视图见 `docs/iteration/ROADMAP.MD`）。
-> 用户批准的三阶段方案（2026-08-30）：① 调研+架构地基 → ② 四评审代理 spec/账本/跨 IDE 说明 → ③ 本地看板应用。
+> 用户批准的三阶段方案（2026-08-30）：① 调研+架构地基 → ② 三职能 spec（code-review/doc-audit/workspace-check 主代理手册）+ 账本 + 跨 IDE 说明 → ③ 本地看板应用。
 
 | 项 | 内容 |
 |---|---|
@@ -19,6 +19,6 @@
 
 ## 阶段完成与归档约定
 
-- 阶段 2 完成：`docs/agents/` 四份 spec + `scripts/agent-ops.py` + `agents-dashboard/` 可运行、`1-WORKFLOW.MD` §4.2 三查改为引用固定 spec；
+- 阶段 2 完成：`docs/agents/functions/` 三职能 spec（workspace-check 为主代理手册）+ `scripts/agent-ops.py` + `1-WORKFLOW.MD` §4.2 三查改为引用固定 spec；
 - 阶段 3 完成：看板支持 spec 编辑 / skill URL 配置 / runtime 展示（自报+估算）/ memory 报告浏览，并跑通一次真实 fan-out 演示；
 - 完成后本目录归档封存，全局 `ROADMAP.MD` 状态更新。

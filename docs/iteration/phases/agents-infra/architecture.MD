@@ -1,7 +1,7 @@
 # AgentOps 架构地基设计（阶段 1 产出，完成）
 
 > 归属：`docs/iteration/phases/agents-infra/`（仅 windows 分支）。
-> 状态：**阶段 1 完成**——§1 现状约束、§2 四条调研线结论、§3 架构设计（§3.2/§3.3 部分为草稿级）、§4 已确认决策、§5 待决策。**待用户评审确认后进入阶段 2**。
+> 状态：**阶段 1 完成**——§1 现状约束、§2 五条调研线结论、§3 架构设计、§4 已确认决策、§5 待决策、§6 交付物、§7 用例表。**阶段 2（Sprint-8）进行中**（US-8.1~8.5 DONE，三查收尾）。
 
 ## 1. 现状与约束（已核实）
 
@@ -68,7 +68,7 @@
   4. UI 复用 shadcn-admin（satnaing/shadcn-admin，Vite 版布局范式）+ Tremor/Recharts（成本/状态图）+ TanStack Table（账本列表）。
 - 退档方案：Vite+React+Express+SQLite（shadcn-admin 原栈）；Docusaurus 仅作 memory 报告浏览辅助。
 
-**⚠️ 与用户原倾向（Next.js+MongoDB）的差异**：建议 MongoDB→SQLite，理由如上；**待用户确认**（D6 更新）。
+**⚠️ 与用户原倾向（Next.js+MongoDB）的差异**：建议 MongoDB→SQLite，理由如上；**已获用户确认采纳（2026-08-30，D6 更新）**。
 
 ### 2.3 多代理编排框架结论（子代理 230a3c0f）
 
@@ -106,7 +106,7 @@
 **任务参数（每次执行的任务输入）**：
 ```json
 {"target": "branch:windows | branch:main | pr:<n> | working-tree",
- "focus": ["correctness","security","ssot","compat","architecture"],  // 聚焦维度，空=全维度
+ "focus": ["<以各职能 spec 的 focus 枚举为准>"],  // code-review: correctness/security/ssot/compat/architecture/tech-debt；doc-audit: links/stale-facts/contradictions/algorithm-drift/tables/knowledge；空=全维度
  "strictness": "normal | strict"}
 ```
 
@@ -145,9 +145,9 @@ source:
 ```json
 {
   "run_id": "uuid",
-  "task_id": "str",
-  "role": "code-review-windows | code-review-main | doc-audit | ...",
-  "spec_source": "spec名@git-sha（或 github raw URL）",
+  "task_id": "branch:windows | branch:main | pr:<n> | working-tree",  // 分支/PR 走 task_id
+  "role": "code-review | doc-audit | workspace-check | ...",          // 职能名（非分支）
+  "spec_source": "spec名@version（或 github raw URL）",
   "model": "str",
   "status": "queued|running|succeeded|failed|cancelled",
   "started_at": "ISO8601",
@@ -156,8 +156,8 @@ source:
   "output_chars": 0,
   "usage": {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0},
   "context_occupancy": {"input_tokens": 0, "max_context": 0, "ratio": 0.0},
-  "cost_est": {"input": 0, "output": 0, "total": 0, "currency": "USD"},
-  "result_files": ["docs/agents/runs/<run_id>/<role>.report.md"],
+  "cost_est": {"total": 0, "currency": "USD", "estimated": false, "pending_price": false},
+  "result_files": ["runs/<run_id>/<role>.report.md"],
   "tags": {},
   "error": "str"
 }
@@ -180,7 +180,7 @@ source:
 **输入**：spec 文件（本地或 github raw 拉取，D5）+ 本轮上下文（分支/commit/工作区 diff 范围、评审重点）。
 **输出模板（所有评审代理统一）**：分级问题清单 `critical/major/minor/nit`（每条 = 文件:行 + 问题 + 建议修法 + 是否本轮必修）+ main 代理附同步文件清单 + 一句话总结。
 **分诊闭环**：主代理按 `1-WORKFLOW.MD` §4.4 分诊——必修 → 立即修 + 回归；建议修 → 回流 backlog 卡；pre-existing → 新卡登记；结论写入 Sprint 文档 §9（三查记录）。
-**账本**：`scripts/agent-ops.py` 子命令 `register/update/finish` 落 `docs/agents/runtime/registry.json` + `runs/<run_id>/<role>.report.md`（子代理报告的原文存档 = memory 浏览入口）。
+**账本**：`scripts/agent-ops.py` 8 子命令（register/update/finish/list/validate-spec/fetch-spec/parse-report/prices-derive）落 `docs/agents/runtime/registry.json` + `runs/<run_id>/<role>.report.md`（子代理报告的原文存档 = memory 浏览入口）。
 
 ### 3.4 看板技术栈与数据层（依据 §2.2；**数据层待用户确认**）
 
@@ -209,7 +209,7 @@ source:
 - ~~P1（核心）：数据层 MongoDB → SQLite~~ → **已确认采纳 SQLite（2026-08-30），D6 已更新**。
 - P2：看板端口与启动脚本（沿用 scripts/start-*.ps1 模式，建议端口 8600）。**环境已核实：8600 FREE；Node v23.10.0 / npm 10.9.2（Next.js 15 要求 Node≥18.18 ✓）**。
 - P3：registry.json 为唯一账本源（文件权威），SQLite 仅为派生索引——看板编辑 spec 直写文件、账本记录只经 agent-ops CLI 追加（避免双写）。默认按此执行，无异议即定。
-- P4：**用户要求先对阶段 1 设计提修改意见（2026-08-30）——待用户具体意见，收集后修订再进入阶段 2**。
+- ~~P4：用户要求先对阶段 1 设计提修改意见~~ → **已解决（2026-08-30）**：三条修改意见（①职能划分 ②用例表 ③Sprint 化）已全部落实并进入阶段 2（Sprint-8）。
 
 ### 5.1 阶段 3 技术风险预研（本轮已实测，附证据）
 
@@ -222,8 +222,8 @@ source:
 
 | 交付物 | 位置 | 验收标准 |
 |---|---|---|
-| 职能 spec（**按职能划分，用户意见①**：职能清单由 A-FN 调研定稿；如 code-review 职能以分支为任务参数，doc-audit 职能，workspace-check 为主代理手册） | `docs/agents/*.md` | frontmatter 超集 + body 五段式（角色/触发/步骤/输出模板/禁止）；可直接粘贴执行；同一职能可对多个任务参数执行 |
-| 账本 CLI | `scripts/agent-ops.py` | register/update/finish 三子命令；落 `docs/agents/runtime/registry.json`（§3.2 字段，含 task 参数）+ `runs/<run_id>/<role>.report.md` |
+| 职能 spec（**按职能划分，用户意见①**：职能清单由 A-FN 调研定稿；如 code-review 职能以分支为任务参数，doc-audit 职能，workspace-check 为主代理手册） | `docs/agents/functions/*.md` | frontmatter 超集 + body 五段式（角色/触发/步骤/输出模板/禁止）；可直接粘贴执行；同一职能可对多个任务参数执行 |
+| 账本 CLI | `scripts/agent-ops.py` | **8 子命令**（register/update/finish/list/validate-spec/fetch-spec/parse-report/prices-derive）；落 `docs/agents/runtime/registry.json`（§3.2 字段，含 task 参数）+ `runs/<run_id>/<role>.report.md` |
 | 价表 | `docs/agents/runtime/prices.json` | 由 LiteLLM 价表派生精简版（本项目用到的模型），可人工覆盖 |
 | 用例表 | `architecture.MD` §7（A-UC） | ≥10 条"调研结论→可测断言"用例，Sprint 开发逐条验证 |
 | 跨 IDE 迁移说明 | `docs/agents/README.md` | spec 如何在 DSH/Cursor/Claude Code/CI 引用；账本脚本任意 terminal 可用；source 块远程引用流程 |
@@ -243,13 +243,13 @@ source:
 
 | ID | 用例（可测断言） | 调研出处 | 验证方式 |
 |---|---|---|---|
-| UC-1 | `docs/agents/*.md` frontmatter 必填 `name`(=文件名)+`description`+`version` 且 name 唯一 | §2.4 SKILL.md/Claude subagents | `agent-ops validate-spec`（US-8.3/S8） |
+| UC-1 | `docs/agents/functions/*.md` frontmatter 必填 `name`(=文件名)+`description`+`version` 且 name 唯一 | §2.4 SKILL.md/Claude subagents | `agent-ops validate-spec`（US-8.3/S8） |
 | UC-2 | `source` 块含 `url+ref+sha256+fallback`；模拟拉取失败/校验不符 → 回退本地并告警 | §2.4 自研远程引用 + D5 | `agent-ops fetch-spec --offline` 断言（US-8.3/S8） |
 | UC-3 | registry 条目含 §3.2 全部字段；状态机 queued→running→succeeded/failed/cancelled 合法流转，非法流转被拒 | §2.1 Langfuse / §2.3 账本模型 | CLI 往返测试（US-8.4/S8） |
 | UC-4 | 成本估算 = usage×prices.json 单价（含 cache 分列）；无 usage 时 `chars/4` 兜底且 `estimated=true` | §2.1 LiteLLM 价表/双轨 | 给定输入输出断言计算值（US-8.4/S8） |
 | UC-5 | 报告解析器能从 spec 输出模板解析出 critical/major/minor/nit 条目（文件:行+建议+必修标记） | §2.3 类型化结果（Pydantic output_type） | 样例报告解析断言（US-8.4/S8） |
 | UC-6 | 同一 code-review 职能以 `task=branch:windows|main` 参数执行两次 → 两份报告 + 账本两条记录（task 区分） | §2.3 Send 并行 / 用户意见①职能化 | 真实 fan-out（S9 验收演示；S8 先以 dry-run 断言） |
-| UC-7 | registry.json 为唯一账本源：记录只能经 agent-ops CLI 追加，看板/脚本直改会被校验拒绝（防双写） | §2.2 Database-Backed Agents | CLI 追加 + 校验命令（US-8.4/S8；看板 S9） |
+| UC-7 | registry.json 为唯一账本源：记录只能经 agent-ops CLI 追加，看板/脚本直改会被校验拒绝（防双写） | §2.2 文件为源 / §2.3 账本模型 | CLI 追加 + 校验命令（US-8.4/S8；看板 S9） |
 | UC-8 | SQLite 派生索引与文件源一致：registry.json 变更后（chokidar）库内检索结果更新 | §2.2 文件为源、库为索引 | S9 看板集成测试 |
 | UC-9 | context_occupancy{input_tokens,max_context,ratio} 与 cost_est 在 finish 时可自报并可人工覆盖 | §2.1 自报+估算口径（D4） | CLI finish 参数断言（US-8.4/S8） |
 | UC-10 | prices.json 含自动提取条目（gpt-4o-mini、text-embedding-3-large 完整单价）+ 人工覆盖段（deepseek/qwen/openrouter 可空，估算标 `pending_price`） | §2.1/§5.1 价表预研 | 派生脚本 + 断言（US-8.4/S8） |

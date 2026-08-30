@@ -8,11 +8,11 @@
 
 | 卡号 | 主题 | 规模(点) | 状态 | 所属 Sprint | 来源/备注 |
 |---|---|---|---|---|---|
-| A-FN | **职能化 agent 划分**：按职能（非分支）定义评审代理，任务参数化（分支=任务输入）；补充调研业界职能划分最佳实践 | 2 | 计划中 | Sprint-8 | 用户修改意见①（2026-08-30） |
-| A-UC | **调研结论→用例表**：把四条调研线结论转成可测 use cases（验收断言），Sprint 开发时逐条验证实现遵循调研 | 2 | 计划中 | Sprint-8 | 用户修改意见②（2026-08-30） |
-| A-SPEC | 四职能 spec 文件（按 A-FN 定稿格式） | 3 | 候选 | Sprint-8 | 阶段 2 交付物 |
-| A-LEDGER | `scripts/agent-ops.py` 账本 CLI（register/update/finish）+ `registry.json` + `runs/` 报告 + `prices.json` | 3 | 候选 | Sprint-8 | 阶段 2 交付物（§3.2 字段） |
-| A-IDE | 跨 IDE 迁移说明（`docs/agents/README.md`）+ 1-WORKFLOW §4.2 三查引用更新 | 1 | 候选 | Sprint-8 | 阶段 2 交付物 |
+| A-FN | **职能化 agent 划分**：按职能（非分支）定义评审代理，任务参数化（分支=任务输入）；补充调研业界职能划分最佳实践 | 2 | ✅ 完成 | Sprint-8 | 用户修改意见①（2026-08-30） |
+| A-UC | **调研结论→用例表**：把四条调研线结论转成可测 use cases（验收断言），Sprint 开发时逐条验证实现遵循调研 | 2 | ✅ 完成 | Sprint-8 | 用户修改意见②（2026-08-30） |
+| A-SPEC | 三职能 spec 文件（code-review/doc-audit/workspace-check 主代理手册，按 A-FN 定稿格式） | 3 | ✅ 完成 | Sprint-8 | 阶段 2 交付物 |
+| A-LEDGER | `scripts/agent-ops.py` 账本 CLI（8 子命令）+ `registry.json` + `runs/` 报告 + `prices.json` | 3 | ✅ 完成 | Sprint-8 | 阶段 2 交付物（§3.2 字段） |
+| A-IDE | 跨 IDE 迁移说明（`docs/agents/README.md`）+ 1-WORKFLOW §4.2 三查引用更新 | 1 | ✅ 完成 | Sprint-8 | 阶段 2 交付物 |
 | A-DASH | 本地看板应用（Next.js+SQLite+shadcn/ui，六页面，端口 8600） | 8 | 候选 | Sprint-9（规划） | 阶段 3 交付物（§6） |
 
 ## 2. 维护卡 / PM 固化备选（用户意见③：可 agent 固化的项目管理过程）
