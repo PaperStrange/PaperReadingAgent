@@ -16,7 +16,7 @@
 | `docs/3-LEARNED.MD` | 开发经验教训、踩坑记录、验证记录、已知限制 |
 | `docs/4-ALGORITHM.MD` | **前后端决策逻辑与算法**：DSL 规则、决策表、UML 类图/时序图/状态机（每条规则标注代码位置，防漂移清单见其 §12） |
 | `docs/5-VERSIONS.MD` | **发版记录与版本号规范**（`年.月.日-v(R.R.R)`；首个版本在 roadmap 全部 Sprint 完成后发布） |
-| `docs/iteration/` | 敏捷迭代：`sprint/<日期>-sprint-N.md`（Sprint 计划/执行/Retro + **项目管理与关闭证据**）+ 迭代中新增的其它项目文档 |
+| `docs/iteration/` | 敏捷迭代：**`ROADMAP.MD`（全局 Now/Next/Later）** + `phases/<阶段>/{README,roadmap,backlog,分析文档}.MD`（分阶段管理，backlog 卡独立登记）+ `sprint/<日期>-sprint-N.md`（Sprint 计划/执行/Retro + **关闭证据**） |
 
 规则：
 

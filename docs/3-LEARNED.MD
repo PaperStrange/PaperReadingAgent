@@ -61,7 +61,7 @@
 - 解决：点击"Run All"等顶栏按钮走正常 click；节点内部 img 用 `page.evaluate(() => img.dispatchEvent(new MouseEvent('click',{bubbles:true})))` 派发；截图后用 `read_image` 逐张核对内容是否符合需求卡片。
 
 ### 1.13 依赖漂移教训升级：需要"框架适配层 + 版本检查"（Sprint-2 动机）
-- 回顾 1.5（fhlmi/litellm 大版本漂移）与 vendor 本地注入的维护痛点 → 决策：引入 `EngineAdapter` 接口、支持 pip 包注入与版本检查/回滚（见 `docs/iteration/refactor-analysis.MD` 主题 E1/E2，该文件**仅 windows 分支**维护）。
+- 回顾 1.5（fhlmi/litellm 大版本漂移）与 vendor 本地注入的维护痛点 → 决策：引入 `EngineAdapter` 接口、支持 pip 包注入与版本检查/回滚（见 `docs/iteration/phases/refactor-analysis/refactor-analysis.MD` 主题 E1/E2，`docs/iteration/` 仅 windows 分支维护）。
 - 教训：**版本 pin 不要散落在注释里**，要进可校验的配置/锁文件；框架升级必须有回归锚点。
 
 ### 1.14 pydantic `model_json_schema()` 在复杂类型上会整体失败 → 用 `model_fields` 逐段导航（US-2.1）
