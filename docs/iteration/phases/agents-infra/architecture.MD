@@ -182,6 +182,26 @@ source:
 ## 5. 待决策/讨论点（阶段 1 评审提交项）
 
 - ~~P1（核心）：数据层 MongoDB → SQLite~~ → **已确认采纳 SQLite（2026-08-30），D6 已更新**。
-- P2：看板端口与启动脚本（沿用 scripts/start-*.ps1 模式，建议端口 8600）。
+- P2：看板端口与启动脚本（沿用 scripts/start-*.ps1 模式，建议端口 8600）。**环境已核实：8600 FREE；Node v23.10.0 / npm 10.9.2（Next.js 15 要求 Node≥18.18 ✓）**。
 - P3：registry.json 为唯一账本源（文件权威），SQLite 仅为派生索引——看板编辑 spec 直写文件、账本记录只经 agent-ops CLI 追加（避免双写）。默认按此执行，无异议即定。
 - P4：**用户要求先对阶段 1 设计提修改意见（2026-08-30）——待用户具体意见，收集后修订再进入阶段 2**。
+
+## 6. 阶段交付物清单与验收标准（评审靶子，待用户修改意见）
+
+### 阶段 2（四评审代理 spec/账本/跨 IDE）
+
+| 交付物 | 位置 | 验收标准 |
+|---|---|---|
+| 4 份 spec（code-review-windows / code-review-main / doc-audit / workspace-check-主代理手册） | `docs/agents/*.md` | frontmatter 超集 + body 五段式（角色/触发/步骤/输出模板/禁止）；可直接粘贴执行 |
+| 账本 CLI | `scripts/agent-ops.py` | register/update/finish 三子命令；落 `docs/agents/runtime/registry.json`（§3.2 字段）+ `runs/<run_id>/<role>.report.md` |
+| 价表 | `docs/agents/runtime/prices.json` | 由 LiteLLM 价表派生精简版（本项目用到的模型），可人工覆盖 |
+| 跨 IDE 迁移说明 | `docs/agents/README.md` | spec 如何在 DSH/Cursor/Claude Code/CI 引用；账本脚本任意 terminal 可用；source 块远程引用流程 |
+| 实战验证 | 下一次三查 | 按 §3.3 触发分级执行：3 子代理并行 + 账本登记 + 分诊闭环，结果写入 Sprint §9 |
+
+### 阶段 3（本地看板）
+
+| 交付物 | 位置 | 验收标准 |
+|---|---|---|
+| 看板应用 | `agents-dashboard/`（Next.js App Router + Tailwind + shadcn/ui + better-sqlite3/Drizzle/FTS5 + chokidar） | 端口 8600；`scripts/start-agents-dashboard.ps1` 一键启动 |
+| 页面 | ① 概览（任务 runtime 状态）② 账本列表（检索/过滤/聚合，TanStack Table）③ spec 编辑（直写文件）④ skill URL 配置（source 块编辑）⑤ 成本/上下文（Tremor/Recharts，自报+估算标注）⑥ memory 报告浏览 | 每页有对应 CRUD/检索交互；数据来自文件真相源 + SQLite 派生索引 |
+| 验收演示 | 一次真实 fan-out | 看板完整呈现该次 fan-out 的 状态/自报上下文/估算成本/报告浏览 + spec 在线编辑生效 |
