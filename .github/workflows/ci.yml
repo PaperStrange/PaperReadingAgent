@@ -1,0 +1,87 @@
+name: CI (offline verify + builds)
+
+on:
+  push:
+    branches: [main, windows]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Offline suite + builds (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Python deps (pinned fhlmi/litellm + vendored paper-qa)
+        run: |
+          pip install "fhlmi==0.42.1" "litellm==1.76.1"
+          pip install -e ./paper-qa
+          pip install -e "./paper-qa/packages/paper-qa-pypdf[media]"
+          pip install -e ./paper-qa/packages/paper-qa-pymupdf
+          pip install -r requirements-windows.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Offline verify suite
+        env:
+          PYTHONUTF8: "1"
+          HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
+        run: |
+          python verify/verify_smoke.py
+          python verify/verify_prune_callbacks.py
+          python verify/verify_agentops.py
+          python verify/verify_index_health.py
+
+      - name: Build reactflow frontend
+        working-directory: paper-qa-script/reactflow-paperqa-prototype/frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build agents-dashboard
+        working-directory: agents-dashboard
+        run: |
+          npm ci
+          npm run build
+
+  e2e-optional:
+    # 真实 API 全链路：仅手动触发（workflow_dispatch），需配置仓库 secret DEEPSEEK_API_KEY
+    name: E2E with real API (manual only)
+    needs: verify
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      OPENAI_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install Python deps
+        run: |
+          pip install "fhlmi==0.42.1" "litellm==1.76.1"
+          pip install -e ./paper-qa
+          pip install -e "./paper-qa/packages/paper-qa-pypdf[media]"
+          pip install -e ./paper-qa/packages/paper-qa-pymupdf
+          pip install -r requirements-windows.txt
+      - name: Full pipeline e2e
+        env:
+          PYTHONUTF8: "1"
+          HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
+        run: python verify/verify_e2e.py

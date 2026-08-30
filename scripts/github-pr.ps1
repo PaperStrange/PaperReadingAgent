@@ -24,7 +24,8 @@ param(
     [int]$Number = 0,
     [string]$Title = "",
     [string]$Body = "",
-    [string]$Method = "merge"
+    [string]$Method = "merge",
+    [switch]$KeepBranch
 )
 
 $ErrorActionPreference = "Stop"
@@ -85,5 +86,15 @@ switch ($Action) {
         $payload = [ordered]@{ merge_method = $Method; commit_title = "Merge pull request #$Number from $Head" }
         $m = Invoke-GitHubJson -Uri "$Api/pulls/$Number/merge" -HttpMethod "Put" -Payload $payload
         Write-Output ("MERGED #{0}: {1}" -f $Number, $m.sha)
+        if (-not $KeepBranch) {
+            # layer-3 git hygiene (2026-08-31): delete the merged head branch locally + remotely.
+            # Remote deletion is a no-op if the repo setting auto-deleted it already.
+            $branch = ($Head -split "/", 2)[1]
+            if ($branch) {
+                git branch -D $branch 2>$null | Out-Null
+                git push origin --delete $branch 2>$null | Out-Null
+                Write-Output ("HEAD-BRANCH-DELETED {0}" -f $branch)
+            }
+        }
     }
 }
