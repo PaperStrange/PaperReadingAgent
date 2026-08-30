@@ -9,10 +9,12 @@
 | 影响范围评估（fan-out 第一道闸门） | [`functions/impact-assessment.md`](functions/impact-assessment.md) | `{change_set, scope_hint}` → 输出 A（核心功能覆盖率/11）、B（核心 API 覆盖率/8）、composite=(0.8A+0.2B)×100、**阈值 X=50** 两档 recommended_scope | 子代理（三查/review 前先跑） |
 | 代码审阅 | [`functions/code-review.md`](functions/code-review.md) | `{target: branch:windows\|branch:main\|pr:<n>\|working-tree, scope, focus, strictness}` | 子代理（每任务一次） |
 | 文档审计 | [`functions/doc-audit.md`](functions/doc-audit.md) | `{target, scope, focus, strictness}` | 子代理 |
+| 经验教训总结（Sprint 关闭前置必做） | [`functions/lessons-learned.md`](functions/lessons-learned.md) | `{sprint_doc, change_commits}` → 3-LEARNED 新条目草稿 + 分类索引更新建议（主代理审核回填） | 子代理（三查后、Close 前） |
 | 工作区核验 | [`functions/workspace-check.md`](functions/workspace-check.md) | — | **主代理执行**（D2：起服务/杀进程不子代理化） |
 
 - 同一职能对多个 target 各跑一次任务（如三查时 code-review 跑 windows+main 两任务），分支/PR 只是任务参数。
 - **审查范围不得默认收窄到 Sprint 交付物**（用户问题①）：一律先由 impact-assessment 评估——composite>50 → 全量档（整个代码库）；≤50 → 窄档（Sprint 修改文件 ∪ 核心文件区域），recommended_scope 作为 code-review/doc-audit 的 `scope` 入参。
+- **fan-out 顺序与运行条件（可调配置）**：Sprint 关闭流程五步定义在 [`fanout.json`](fanout.json)——`scope → doc-audit → code-review → lessons-learned → workspace-check`（条件/顺序/执行者可调）；用户可通过看板观察各 agent 对开发部署进度的影响并**随时调整顺序与运行判断条件**（1-WORKFLOW §4.1）。
 - 新增职能：在 `functions/` 新建 `<fn>.md`（frontmatter 超集 + 五段式），升 `version`，跑 `agent-ops validate-spec` 后上线（上线评估流程见阶段规划 backlog，后续迭代固化）。
 
 ## 2. 账本 CLI（`scripts/agent-ops.py`，纯 Python 标准库）
