@@ -67,19 +67,32 @@ API 服务层         FastAPI REST + SSE            薄：协议/路由/校验
 - **DI 替代全局可变状态**：`SESSIONS` 全局字典 → `SessionStore` 接口 + 内存实现，路由经依赖注入取得（为多 worker/多机铺路）。
 - **分层契约**：每层边界用 pydantic 类型表达（请求/响应/事件/配置），层间只依赖契约，不依赖实现。
 
-## 6. Sprint 序列（Roadmap）
+## 6. Sprint 序列（Roadmap —— 原始规划）
+
+> 本节为 2026-08-29 制定的**原始规划**，保持原样不动；实际执行情况见 §7「实际 Roadmap（执行实录）」。
 
 | Sprint | 目标 |
 |---|---|
-| **Sprint-2（本前置重构）** ✅ 已完成（2026-08-29） | 地基：配置 SSOT（策展 schema 生成器+覆盖层）、编排层解耦、事件模型、SessionStore、EngineAdapter 接口；全程行为不变（证据见 `sprint/2026-08-29-sprint-2.md` §7） |
-| Sprint-3 ✅ 已完成（2026-08-29） | B 数据源抽象（本地目录/URL/manifest/论文ID 多源）+ 前端切换 UI（证据与双分支 code review 见 `sprint/2026-08-29-sprint-3.md` §7/§9） |
-| Sprint-4 | C Agent 可观测闭环（结构化事件→时间线）+ 一手证据（原始错误/trace_id）→ 交付 E3 v1 **只读可视化**，验收后再迭代；**v1 需用户 review，通过后方可继续** |
+| **Sprint-2（前置重构）** | 地基：配置 SSOT（策展 schema 生成器+覆盖层）、编排层解耦、事件模型、SessionStore、EngineAdapter 接口；全程行为不变 |
+| Sprint-3 | B 数据源抽象（本地目录/URL/manifest/论文ID 多源）+ 前端切换 UI |
+| Sprint-4 | C Agent 可观测闭环（结构化事件→时间线）+ 一手证据（原始错误/trace_id）→ 交付 E3 v1 **只读可视化**，验收后再迭代 |
 | Sprint-5 | E1/E2 pip 注入 + 版本检查/更新/回滚 |
 | Sprint-6 | D 单机多 worker + 会话外置 + 网关分流；之后评估简单多机 |
 | Sprint-7+ | E3 可编辑工作流（编排 DSL/配置 + 执行器） |
 
-> Sprint-2 落地结果（分层映射）：`app/config_schema.py`（配置 SSOT）、`app/orchestration.py`（编排）、`app/engine.py`（引擎适配）、`app/events.py`（事件模型）、`app/session_store.py`（SessionStore）；`backend/main.py` 已瘦身为纯路由层（~186 行；路由数 7 条 → Sprint-4 新增 `/api/providers` 后为 8 条）。
-> Sprint-3 落地结果：`app/data_sources.py`（数据源领域模型）+ `app/remote_resolver.py`（arXiv/DOI/URL → `data/remote/<index_name>/` 暂存，复用索引/解析管线）+ 前端 `DataSourcePanel.jsx`（Config 节点切换 UI）；local 默认行为不变（回归为证）。
-> Sprint-4 落地结果（2026-08-30 体验修复与 provider 扩展，见 `sprint/2026-08-30-sprint-4.md`）：光标草稿态、`\\?\` 长路径/索引自愈、OpenRouter+自定义 provider、`/api/providers`、样式统一、ModelConfigPanel 交互面板。
->
-> **当前状态（2026-08-30）**：2026-08-30 已**插队完成 Sprint-4（体验修复 + provider 扩展，见 `sprint/2026-08-30-sprint-4.md`）**；下表的 Sprint-4（C/E3）及之后**顺延一个编号并全部 hold**；E3 工作流可视化 v1 交付后**需用户 review**（Q3 闸门）。双分支 code review 已完成，发现与修复闭环见 `sprint/2026-08-29-sprint-3.md` §9。
+## 7. 实际 Roadmap（执行实录，随迭代更新）
+
+> 与原始规划的对应关系在此维护；插队 Sprint 一律记录"插队"来源。E3 v1 交付后**需用户 review**（Q3 闸门）保持不变。
+
+| 实际 Sprint | 日期 | 内容（对应原始规划） | 状态 |
+|---|---|---|---|
+| Sprint-2 | 2026-08-29 | 前置重构（=原 Sprint-2）：分层/SSOT/事件/SessionStore/EngineAdapter，行为不变（证据 `sprint/2026-08-29-sprint-2.md`） | ✅ 完成 |
+| Sprint-3 | 2026-08-29 | B 数据源抽象（=原 Sprint-3）+ 双分支 code review（`sprint/2026-08-29-sprint-3.md`） | ✅ 完成 |
+| Sprint-4（插队） | 2026-08-30 | 体验修复 + provider 扩展（不在原始规划，用户实测驱动）：光标草稿态、`\\?\` 长路径/索引自愈、OpenRouter+自定义 provider、`/api/providers`、样式统一、ModelConfigPanel（`sprint/2026-08-30-sprint-4.md`） | ✅ 完成 |
+| Sprint-5（插队） | 2026-08-30 | 实战问题修复（不在原始规划）：自动重跑 config、retrieve 去重与来源标记、litellm 回调上限防护、SSE 断连静默、UI 三件套（`sprint/2026-08-30-sprint-5.md`） | ✅ 完成 |
+| 原 Sprint-4（C + E3 v1 只读可视化） | — | 结构化事件→时间线 + 工作流只读可视化 v1 | ⏸ hold（v1 需用户 review） |
+| 原 Sprint-5（E1/E2） | — | pip 注入 + 版本检查/更新/回滚 | ⏸ hold |
+| 原 Sprint-6（D） | — | 单机多 worker + 会话外置 + 网关分流 | ⏸ hold |
+| 原 Sprint-7+（E3 可编辑） | — | 编排 DSL/配置 + 执行器 | ⏸ hold |
+
+> 落地映射（分层）：`app/config_schema.py`（SSOT）、`app/orchestration.py`（编排）、`app/engine.py`（引擎适配）、`app/events.py`（事件）、`app/session_store.py`（会话）、`app/data_sources.py`+`app/remote_resolver.py`（数据源）、`app/embedding_recommender.py`（embedding 推荐）；`backend/main.py` 纯路由层（8 条 API 路由）；前端 `ModelConfigPanel.jsx`/`DataSourcePanel.jsx` 交互面板。

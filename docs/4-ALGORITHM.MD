@@ -298,20 +298,21 @@ sequenceDiagram
     end
     OR->>OR: paper_directory 存在?（否 → ValueError）
     opt build=true
-        OR->>FS: _heal_corrupt_index_files：files.zip 做 zlib 解压试读
-        alt 解压失败（zlib.error）
-            OR->>FS: 仅删除损坏的 files.zip（Tantivy 段不动）
+        OR->>FS: 一致性判定：目录指纹 marker 不一致 或 files.zip zlib 探针失败
+        alt 不一致/损坏
+            OR->>FS: 整目录删除 ~/.pqa/indexes/<name>/（含 Tantivy 段与 docs 存储）
         end
     end
     OR->>EN: get_directory_index(settings, build)
-    EN->>PQA: 读/建 Tantivy 索引（递归、files_filter、manifest 增强；缺 files.zip 时自动重建）
+    EN->>PQA: 读/建 Tantivy 索引（递归、files_filter、manifest 增强；目录被删则全量重建）
+    OR->>FS: build=true 成功 → 写目录指纹 marker（paper_dir_marker.txt）
     EN-->>OR: SearchIndex
     OR-->>OR: output{index_name, indexed_files, files[], remote_sources?}
 ```
 
-> 自愈采用**前置校验**而非"异常签名重试"（review 修正）：PDF 解析期的 zlib 错误与 files.zip 损坏的报错同源，靠异常文本无法区分，会误删健康索引；直接对 files.zip 做 zlib 试解压最精确。
-
-> 注意：异常签名检查会**递归展开 ExceptionGroup 子异常**（anyio TaskGroup 会包装），否则会漏判。
+> 自愈/一致性策略（Sprint-5 关闭二查修正）：**目录指纹 + 损坏探针 → 整目录重建**，而不是只删 files.zip——
+> 只删 files.zip 会让 Tantivy 段与 docs/ 存储残留旧引用（实测 query 报 `No such file .../docs/<hash>.zip`）；
+> 同目录同指纹保持增量（行为不变）。损坏探针用 zlib 试解压前置校验（不用异常签名重试，避免误伤 PDF 解析期错误）。
 
 ---
 
@@ -338,8 +339,9 @@ sequenceDiagram
 
 ### 8.1 节点状态机（前端展示，后端驱动）
 
-> US-5.4：每次 `run_step` 前置 `_prune_litellm_callbacks()`（去重并按注册序保留最近 20 个），
+> US-5.4：每次 `run_step` 前置 `prune_litellm_callbacks()`（engine 层，对 7 个列表含 `_async_*` 去重并保留最近 20 个），
 > 防 litellm Router 每次模型实例化注册 logger 累计到 MAX_CALLBACKS(30) 抛错。
+> Sprint-5 关闭二查：config 重跑时**失效下游会话状态**（search_index/candidate_paths/docs/evidence/answer），避免旧索引"绿成功"。
 
 ```mermaid
 stateDiagram-v2
@@ -549,11 +551,11 @@ classDiagram
 - [ ] D1：provider 注册表合并顺序 / 密钥链 / `/api/providers` 字段是否同步
 - [ ] D2：`make_settings` 每个 `params.get` 默认值与 schema `default` 一致；Windows `\\?\` 与 `files_filter` 未回退
 - [ ] D3：`embedding_local = startswith("st-")`；推荐器三级顺序、白名单、缓存 TTL、`PAPERQA_EMBED_RECOMMEND_LIVE`
-- [ ] D4：会话级 `data_source_params` 唯一来源；SSRF 校验（含重定向复检与 198.18/15 豁免）；200MB 上限；自愈 = files.zip 前置 zlib 试解压（非异常重试）
+- [ ] D4：会话级 `data_source_params` 唯一来源；SSRF 校验（含重定向复检与 198.18/15 豁免）；200MB 上限；自愈 = 目录指纹 + files.zip zlib 探针 → 整目录重建（同指纹增量）
 - [ ] D5：schema 新增字段同步 `validate_config` 分支与 KNOWN_RUNTIME_KEYS；影响提示
 - [ ] D6：六步前置条件/写回字段表
 - [ ] D7：草稿态聚焦保护、面板联动、Run All 拓扑（节点参数独立 → 会话级共享）；**更改配置后下游自动重跑 config**（stale 检查）
-- [ ] D6/D8：retrieve 去重与 `result` 标记；parse 单文件定位报错；`_prune_litellm_callbacks`（MAX_CALLBACKS 防护）；stream `is_disconnected` 静默退出
+- [ ] D6/D8：retrieve 去重与 `result` 标记；parse 单文件定位报错；`prune_litellm_callbacks`（engine 层，7 列表，MAX_CALLBACKS 防护）；config 重跑失效下游状态；stream `is_disconnected` 静默退出
 - [ ] D8：SSE 线协议字段（新增字段 = 新增兼容负担，须评估）
 - [ ] 本文相关 UML 图与真值表行序是否仍与代码短路顺序一致
 
