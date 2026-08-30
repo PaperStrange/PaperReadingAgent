@@ -4,11 +4,15 @@
   1) provider_config 配置解析（全注册表 provider 的模型/向量化/api_base）
   2) 密钥解析优先级（DEEPSEEK/DASHSCOPE/OPENAI/OPENROUTER_API_KEY 各取各的）
   3) 后端 build_settings 对全注册表生成正确 Settings
-  4) 实际连通性：deepseek 用真实 key 应成功；其余用占位 key
-     应"到达各自端点并返回该端点的错误"（证明 api_base 路由正确，即使 key 无效）。
+  4) 实际连通性（Sprint-7 M5 升级为**路由实证断言**）：
+     - deepseek 用真实 key 应 SUCCESS；
+     - 其余内置 provider 用占位 key 应 ERR 且为**端点级错误**（非连接类错误），
+       证明 api_base 路由正确（真实 key 实测为用户资源门控，见 README）；
+     - 自定义 provider（PAPERQA_PROVIDERS_JSON）同样断言路由正确。
 
 运行：
   .venv\\Scripts\\python.exe verify\\verify_provider_switch.py
+前提：联网；deepseek 真实 key（.env 或 OPENAI_API_KEY）。
 """
 from __future__ import annotations
 
@@ -26,6 +30,9 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from provider_config import PROVIDERS, get_provider_config, _load_dotenv  # noqa: E402
+
+# 连接类错误标记：占位 key 打到错误端点/断网时会出现这类错误，不能作为"路由正确"的证据
+_CONN_MARKERS = ("Connection error", "timed out", "getaddrinfo", "NameResolutionError", "connect")
 
 
 async def _completion(model: str, api_base: str | None, api_key: str) -> tuple[str, str]:
@@ -50,6 +57,13 @@ async def _completion(model: str, api_base: str | None, api_key: str) -> tuple[s
                 msg = msg[idx:]
                 break
         return "ERR", msg[:140].replace(api_key, "sk-***")
+
+
+def _assert_endpoint_error(p: str, status: str, msg: str) -> None:
+    """路由实证：占位 key 必须拿到端点级拒绝（非连接类错误）。"""
+    assert status == "ERR", f"{p}: 占位 key 应被端点拒绝，实际 {status}"
+    assert msg, f"{p}: 错误信息为空"
+    assert not any(m in msg for m in _CONN_MARKERS), f"{p}: 疑似连接类错误（端点不可达？）：{msg}"
 
 
 async def main() -> int:
@@ -85,7 +99,7 @@ async def main() -> int:
         )
         print(f"  {p:10s} llm={s.llm:40s} emb={s.embedding:36s} summary={s.summary_llm}")
 
-    print("\n== 4) 实际连通性（deepseek 用真实 key；其余用占位 key 验证路由）==")
+    print("\n== 4) 实际连通性（deepseek 真实 key；其余占位 key 断言路由）==")
     # 第 3 步 build_settings 会污染 OPENAI_API_KEY，先清除再从 .env 重新加载真实 key
     for k in ("DEEPSEEK_API_KEY", "DASHSCOPE_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"):
         os.environ.pop(k, None)
@@ -96,6 +110,28 @@ async def main() -> int:
         key = c["api_key"] if p == "deepseek" else "sk-invalid-placeholder"
         status, msg = await _completion(c["model"], c["api_base"], key)
         print(f"  {p:10s} {status:7s} {msg}")
+        if p == "deepseek":
+            assert status == "SUCCESS", f"deepseek 真实 key 应成功：{msg}"
+        else:
+            _assert_endpoint_error(p, status, msg)
+    print("PASS: deepseek 真实 SUCCESS；dashscope/openai/openrouter 占位 key 端点级拒绝（路由正确）")
+
+    print("\n== 5) 自定义 provider 路由实证（PAPERQA_PROVIDERS_JSON → api.deepseek.com）==")
+    # 自定义条目指向 DeepSeek 端点：占位 key 应拿到 DeepSeek 的 401（证明自定义注册表 → litellm 路由正确）
+    os.environ["PAPERQA_PROVIDERS_JSON"] = (
+        '{"cust-test": {"api_base": "https://api.deepseek.com", "model": "openai/deepseek-v4-flash", "key_envs": ["OPENAI_API_KEY"]}}'
+    )
+    try:
+        from provider_config import get_providers
+
+        assert "cust-test" in get_providers(), "自定义 provider 未注册"
+        c = get_provider_config("cust-test")
+        status, msg = await _completion(c["model"], c["api_base"], "sk-invalid-placeholder")
+        print(f"  cust-test {status:7s} {msg}")
+        _assert_endpoint_error("cust-test", status, msg)
+    finally:
+        os.environ.pop("PAPERQA_PROVIDERS_JSON", None)
+    print("PASS: 自定义 provider 占位 key 端点级拒绝（api_base 路由正确）")
     return 0
 
 

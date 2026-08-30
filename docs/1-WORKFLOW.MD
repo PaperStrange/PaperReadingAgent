@@ -178,12 +178,19 @@ $env:PAPERQA_PROVIDER = "deepseek"                  # 与服务商一致
 $env:DEEPSEEK_API_KEY = "<DeepSeek key>"             # 若 .env 已配置可跳过
 $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 .\.venv\Scripts\python.exe .\verify\verify_smoke.py             # 8 项冒烟（离线）
-.\.venv\Scripts\python.exe .\verify\verify_provider_switch.py   # 服务商切换/路由
+.\.venv\Scripts\python.exe .\verify\verify_prune_callbacks.py   # litellm 回调裁剪（离线）
+.\.venv\Scripts\python.exe .\verify\verify_index_health.py      # 索引三重探针 + 自愈（离线）
+.\.venv\Scripts\python.exe .\verify\verify_provider_switch.py   # 服务商切换/路由实证（联网）
 .\.venv\Scripts\python.exe .\verify\verify_e2e.py               # 全链路（真实 API）
+.\.venv\Scripts\python.exe .\verify\verify_agent.py             # Agent 流程 + 翻译（需 e2e 先跑过）
 .\.venv\Scripts\python.exe .\verify\verify_embed_load.py        # Embedding 三步
 .\.venv\Scripts\python.exe .\verify\verify_remote_e2e.py        # remote 数据源全链路（联网）
+.\.venv\Scripts\python.exe .\verify\eval_retrieve.py            # 检索质量小样本评测（F4）
 node .\verify\gui_check.mjs          # GUI 全链路（需前后端已启动）
 node .\verify\gui_check_remote.mjs   # GUI remote 数据源（需前后端 + 联网）
+node .\verify\gui_check_s4.mjs       # Sprint-4：光标/面板联动（需前后端已启动）
+node .\verify\gui_check_s5.mjs       # Sprint-5：自动重跑/双模式/计时冻结（需前后端已启动）
+node .\verify\gui_check_s7.mjs       # Sprint-7：多节点并发计时（需前后端已启动）
 ```
 
 详见 `verify/README.md` 与 `docs/3-LEARNED.MD` 的验证记录。

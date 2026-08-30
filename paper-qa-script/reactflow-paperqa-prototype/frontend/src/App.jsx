@@ -326,28 +326,57 @@ export default function App() {
   const activeStepIdRef = useRef(activeStepId);
   const lastRenderedStepRef = useRef(null);
 
-  // US-5.3：Function Subcanvas 当前步骤计时（运行中每 0.5s 刷新；完成/失败后冻结最终时长，下次运行才清除）
-  const lastRunningRef = useRef(null);
+  // US-5.3 + Sprint-7 M4：Function Subcanvas 步骤计时（运行中每 0.5s 刷新；完成/失败后冻结最终时长）。
+  // M4：多节点并发逐个展示（`stepA 3.2s · stepB 1.1s`）；以"计时起点表"为准遍历——
+  // 运行中→实时计时；已结束→冻结文案（先完成的节点不会被后续 tick 覆盖丢失，快速节点也不会漏）；
+  // 结束后删除起点（ref 不无界增长）；新一轮运行开始时清掉上一轮冻结。
+  const frozenTextRef = useRef(new Map()); // id -> 冻结文案（完成/失败）
+  const hadRunningRef = useRef(false);     // 上一 tick 是否有 running（新一轮运行判定）
   useEffect(() => {
     const iv = setInterval(() => {
-      const runningNode = nodesRef.current.find((n) => n.data?.status === "running");
-      const start = runningNode ? runStartTimesRef.current[runningNode.id] : 0;
-      if (runningNode && start) {
-        lastRunningRef.current = { id: runningNode.id, step: runningNode.data.step };
-        const s = (Date.now() - start) / 1000;
-        setSubTimerText(`${runningNode.data.step} 运行中 ${s.toFixed(1)}s`);
-      } else if (lastRunningRef.current) {
-        const finished = nodesRef.current.find((n) => n.id === lastRunningRef.current.id);
-        const st = finished?.data?.status;
-        if (st === "success" || st === "failed") {
-          const dur = finished?.data?.duration;
+      const byId = new Map(nodesRef.current.map((n) => [n.id, n]));
+      const running = nodesRef.current.filter((n) => n.data?.status === "running");
+      if (running.length && !hadRunningRef.current) {
+        frozenTextRef.current.clear(); // 新一轮运行开始：清掉上一轮全部冻结
+      }
+      hadRunningRef.current = running.length > 0;
+      const runningIds = new Set(running.map((n) => n.id));
+      const parts = [];
+      // 1) 有计时起点的节点：运行中→实时；已结束→冻结并清理起点；其余→清理残留
+      for (const id of Object.keys(runStartTimesRef.current)) {
+        const n = byId.get(id);
+        const start = runStartTimesRef.current[id];
+        if (!n) {
+          delete runStartTimesRef.current[id];
+          continue;
+        }
+        const st = n.data?.status;
+        if (st === "running") {
+          frozenTextRef.current.delete(id); // 重跑 → 清除旧冻结
+          const s = (Date.now() - start) / 1000;
+          parts.push(`${n.data.step} ${s.toFixed(1)}s`);
+        } else if (st === "success" || st === "failed") {
+          const dur = n.data.duration;
           const durText = typeof dur === "number" ? ` ${dur.toFixed(1)}s` : "";
-          setSubTimerText(
-            `${lastRunningRef.current.step} ${st === "success" ? "完成" : "失败"}${durText}`
+          frozenTextRef.current.set(
+            id,
+            `${n.data.step} ${st === "success" ? "完成" : "失败"}${durText}`
           );
-          lastRunningRef.current = null; // 冻结一次，下次运行再更新
+          delete runStartTimesRef.current[id];
+        } else {
+          delete runStartTimesRef.current[id]; // idle/stale 残留
         }
       }
+      // 2) 冻结文案（跳过正在运行的；节点被删除的丢弃）
+      for (const [id, text] of frozenTextRef.current) {
+        if (runningIds.has(id)) continue;
+        if (!byId.has(id)) {
+          frozenTextRef.current.delete(id);
+          continue;
+        }
+        parts.push(text);
+      }
+      if (parts.length) setSubTimerText(parts.join(" · "));
     }, 500);
     return () => clearInterval(iv);
   }, []);
