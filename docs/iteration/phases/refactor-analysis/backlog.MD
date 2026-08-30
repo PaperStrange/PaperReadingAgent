@@ -1,0 +1,38 @@
+# 阶段 backlog：refactor-analysis（卡独立管理）
+
+> 归属：`docs/iteration/phases/refactor-analysis/`。卡状态流转：`候选 → 计划中 → 完成 / 取消`；
+> 进入 Sprint 后由 Sprint 文档引用卡号（如 `F1`），本表仅维护卡级信息。
+> 启动判定引用 `1-WORKFLOW.MD` §4.4（Sprint/Bug/维护边界）。
+
+## 1. 功能卡
+
+| 卡号 | 主题 | 规模(点) | 状态 | 所属 Sprint | 来源/备注 |
+|---|---|---|---|---|---|
+| R-C | C Agent 可观测闭环 + E3 v1 只读可视化（原规划 Sprint-4） | 未估 | ⏸ hold | — | **E3 v1 交付需用户 review** |
+| R-E | E1/E2 pip 注入 + 版本检查/更新/回滚（原规划 Sprint-5） | 未估 | ⏸ hold | — | 依赖引擎适配层（已就绪） |
+| R-D | D 单机多 worker + 会话外置 + 网关分流（原规划 Sprint-6） | 未估 | ⏸ hold | — | 依赖会话外置化 |
+| R-E3 | E3 可编辑工作流（原规划 Sprint-7+） | 未估 | ⏸ hold | — | 依赖 R-C 验收 |
+| F1 | 检索体验与查询质量：多语检索 | 13 | ✅ 完成(v1) | Sprint-6 | v1=关键词重试+命中理由；后续：query 翻译/双语索引（F4 评测选型） |
+| F2 | 配置面板深化 + SSOT 驱动前端（/api/config_schema + 全字段交互 + 单一受控状态） | 未估 | 候选 | — | 评审 m1 欠账 + m10 遗留 |
+| F3 | Agent 接入后端 + 事件时间线雏形 | 未估 | 候选 | — | R-C 的前置步骤 |
+| F4 | 本地评测基准（检索/证据/答案三环） | 3(起步) | ✅ 起步 | Sprint-6 | `verify/eval_retrieve.py`；后续扩充语料 |
+
+## 2. 维护卡
+
+| 卡号 | 主题 | 规模(点) | 状态 | 来源 |
+|---|---|---|---|---|
+| M1 | 索引一致性增强：Tantivy 段损坏探测升级 | 3 | 候选 | Sprint-5 二查 |
+| M2 | `prune_litellm_callbacks` 上限配置化（env） | 1 | 候选 | Sprint-5 Retro |
+| M3 | staging 清理 UI/自动清理；DOI 源真实 `UNPAYWALL_EMAIL` 实测 | 3 | 候选 | Sprint-3 Retro |
+| M4 | 多节点并发计时显示；`runStartTimesRef` 清理 | 1 | 候选 | Sprint-5 二查 nit |
+| M5 | `verify_provider_switch` 对 openrouter/自定义真实连通实测；gui 依赖显式化 | 2 | 候选 | 三查建议修 |
+| M6 | 文档/知识管理例行勘误（随三查进行） | 1 | 持续 | — |
+
+## 3. 已完成归档（示例与速查）
+
+| 卡号 | 主题 | 完成 Sprint |
+|---|---|---|
+| R-A | 配置 SSOT + 策展 schema（原规划 Sprint-2 部分） | Sprint-2 |
+| R-B | 数据源抽象（原规划 Sprint-3） | Sprint-3 |
+| F-EXT1 | 体验修复 + provider 扩展（插队） | Sprint-4 |
+| F-EXT2 | 实战问题修复（插队） | Sprint-5 |
