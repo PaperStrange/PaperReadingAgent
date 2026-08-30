@@ -52,7 +52,7 @@ interface Agg {
 const fmt = (iso: string | null) => (iso ? iso.replace("T", " ").slice(0, 19) : "—");
 const costText = (c: RunRow["cost"]) =>
   typeof c?.total === "number"
-    ? `$${c.total.toFixed(6)}${c.estimated ? "~" : ""}`
+    ? `¥${c.total.toFixed(6)}${c.estimated ? "~" : ""}`
     : c?.pending_price
       ? "待价表"
       : "—";
@@ -157,7 +157,7 @@ export default function Home() {  const [agg, setAgg] = useState<Agg | null>(nul
           </Col>
           <Col xs={12} md={6}>
             <CardBox title="累计成本（自报+估算）">
-              <Statistic value={agg ? `$${agg.cost_total.toFixed(6)}` : "—"} valueStyle={{ fontSize: 16 }} />
+              <Statistic value={agg ? `¥${agg.cost_total.toFixed(6)}` : "—"} valueStyle={{ fontSize: 16 }} />
               {agg && agg.pending_price > 0 && (
                 <Typography.Text type="warning" style={{ fontSize: 12 }}>
                   {agg.pending_price} 条待价表（精确账单以服务商后台为准）

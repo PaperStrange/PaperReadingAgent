@@ -156,7 +156,7 @@ source:
   "output_chars": 0,
   "usage": {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0},
   "context_occupancy": {"input_tokens": 0, "max_context": 0, "ratio": 0.0},
-  "cost_est": {"total": 0, "currency": "USD", "estimated": false, "pending_price": false},
+  "cost_est": {"total": 0, "currency": "CNY", "estimated": false, "pending_price": false},
   "result_files": ["runs/<run_id>/<role>.report.md"],
   "tags": {},
   "error": "str"
