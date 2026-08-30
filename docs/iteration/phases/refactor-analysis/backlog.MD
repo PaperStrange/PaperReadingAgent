@@ -21,12 +21,14 @@
 
 | 卡号 | 主题 | 规模(点) | 状态 | 来源 |
 |---|---|---|---|---|
-| M1 | 索引一致性增强：Tantivy 段损坏探测升级 | 3 | 候选 | Sprint-5 二查 |
-| M2 | `prune_litellm_callbacks` 上限配置化（env） | 1 | 候选 | Sprint-5 Retro |
-| M3 | staging 清理 UI/自动清理；DOI 源真实 `UNPAYWALL_EMAIL` 实测 | 3 | 候选 | Sprint-3 Retro |
-| M4 | 多节点并发计时显示；`runStartTimesRef` 清理 | 1 | 候选 | Sprint-5 二查 nit |
-| M5 | `verify_provider_switch` 对 openrouter/自定义真实连通实测；gui 依赖显式化 | 2 | 候选 | 三查建议修 |
-| M6 | 文档/知识管理例行勘误（随三查进行） | 1 | 持续 | — |
+| M1 | 索引一致性增强：Tantivy 段损坏探测升级（files.zip + meta.json + tantivy open 三重探针） | 3 | ✅ 完成 | Sprint-7 | `verify/verify_index_health.py`（合成六形态 + 真实构建自愈） |
+| M2 | `prune_litellm_callbacks` 上限配置化（env `PAPERQA_LITELLM_CALLBACK_LIMIT`） | 1 | ✅ 完成 | Sprint-7 | `verify_prune_callbacks.py` 覆盖默认/覆盖/非法回落 |
+| M3 | staging 清理 UI/自动清理；DOI 源真实 `UNPAYWALL_EMAIL` 实测 | 3 | 候选（用户指示未处理） | — | **Sprint-7 保持未完成**：staging 清理 UI + 真实邮箱实测留待后续 |
+| M4 | 多节点并发计时显示；`runStartTimesRef` 清理 | 1 | ✅ 完成 | Sprint-7 | App.jsx subcanvas 计时聚合 + 结束清理；npm build 通过 |
+| M5 | `verify_provider_switch` 对 openrouter/自定义连通实测；gui 依赖显式化 | 2 | ✅ 完成 | Sprint-7 | 占位 key 端点级拒绝断言（路由实证）；**真实 openrouter key 实测=用户资源门控**；README 前提显式化 |
+| M6 | 文档/知识管理例行勘误（随三查进行） | 1 | 持续 | Sprint-7 | 本轮勘误：verify/README 表格列数错位、README/1-WORKFLOW 清单补全、4-ALGORITHM 行号锚点漂移等 |
+| M7 | 默认值漂移收敛：chunk/temperature 等默认值在 config_schema/App.jsx/provider_config/engine 重复 4 处（唯一真源原则） | 3 | 候选 | Sprint-7 全量 review | 与 F2（SSOT 驱动前端）同源，可并入 F2 |
+| M8 | remote_resolver SSRF DNS rebinding TOCTOU 强化（解析后 IP 复检） | 2 | 候选 | Sprint-7 全量 review | 理论性；现状已有逐跳重定向复检 + 内网段拒绝 |
 
 ### 2.1 与 hold 状态的关系
 

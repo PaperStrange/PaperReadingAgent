@@ -37,12 +37,15 @@ class RunEventBroker:
     """SSE 传输层：内存 pub/sub + 事件历史（订阅者先拿历史再收实时）。"""
 
     _MAX_HISTORY = 500  # 每个 (session_id, run_id) 的历史上限（review m8：防无界增长）
+    _MAX_KEYS = 200     # review 修正（Sprint-7）：历史键总数上限（旧会话/旧 run 不再有人订阅时淘汰）
 
     def __init__(self) -> None:
         self._history: dict[tuple[str, str], list[dict[str, Any]]] = {}
         self._subscribers: dict[tuple[str, str], set[asyncio.Queue]] = {}
 
     def publish(self, key: tuple[str, str], event: dict[str, Any]) -> None:
+        if key not in self._history and len(self._history) >= self._MAX_KEYS:
+            self._history.pop(next(iter(self._history)), None)
         history = self._history.setdefault(key, [])
         history.append(event)
         del history[: max(0, len(history) - self._MAX_HISTORY)]

@@ -25,6 +25,7 @@
 | Sprint-4（插队） | 2026-08-30 | 体验修复 + provider 扩展（不在原规划，用户实测驱动）：光标草稿态、`\\?\` 长路径/索引自愈、OpenRouter+自定义 provider、`/api/providers`、样式统一、ModelConfigPanel（`../sprint/2026-08-30-sprint-4.md`） | ✅ 完成 |
 | Sprint-5（插队） | 2026-08-30 | 实战问题修复（不在原规划）：自动重跑 config、retrieve 去重与来源标记、litellm 回调上限防护、SSE 断连静默、UI 三件套（`../sprint/2026-08-30-sprint-5.md`） | ✅ 完成 |
 | Sprint-6（新增候选 F1） | 2026-08-30 | 检索体验：多语检索 v1 + F4 评测基准起步（`../sprint/2026-08-30-sprint-6.md`） | ✅ 完成 |
+| Sprint-7（插队·维护批） | 2026-08-30 | 清技术账：M1 索引三重探针 / M2 回调上限 env 配置 / M4 并发计时+清理 / M5 verify 路由实证+gui 依赖显式化 / M6 文档勘误 + 关闭前全量 code review（`../sprint/2026-08-30-sprint-7.md`）；M3 按用户指示保持未完成 | ✅ 完成 |
 | 原 Sprint-4（C + E3 v1 只读可视化） | — | 结构化事件→时间线 + 工作流只读可视化 v1 | ⏸ hold（v1 需用户 review） |
 | 原 Sprint-5（E1/E2） | — | pip 注入 + 版本检查/更新/回滚 | ⏸ hold |
 | 原 Sprint-6（D） | — | 单机多 worker + 会话外置 + 网关分流 | ⏸ hold |

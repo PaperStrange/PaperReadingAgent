@@ -102,24 +102,49 @@ def _embed_cache_dir() -> Path:
     return d
 
 
+# review 修正（Sprint-7）：embed 缓存 TTL（过期视为未命中，仍会被后续写入覆盖）
+_EMBED_CACHE_TTL_S = 30 * 24 * 3600
+
+# review 修正（Sprint-7）：run_records 上限（会话内存态防无界增长）
+_MAX_RUN_RECORDS = 200
+
+
 def _index_dir(settings: Any) -> Path:
     return Path(settings.agent.index.index_directory) / (settings.agent.index.name or "")
 
 
 def _index_corrupt(settings: Any) -> bool:
-    """索引完整性探针（US-4.2 + Sprint-5 关闭修正）：files.zip 是 zlib 压缩对象存储。
+    """索引完整性探针（US-4.2 + Sprint-5 关闭修正 + Sprint-7 M1 升级）：三重探测。
 
-    仅做**只读校验**（解压失败=损坏），删除动作由调用方（整目录重建）完成；
+    1. files.zip：zlib 压缩对象存储（解压失败=损坏）；
+    2. index/meta.json：Tantivy 段目录标记（缺失/不可解析=半成品状态）；
+    3. tantivy Index.open + searcher()：真段损坏在此抛出（只读、懒加载，代价小）。
+
+    仅做**只读校验**，删除动作由调用方（整目录重建）完成；
     避免"只删 files.zip"后 Tantivy 段与 docs/ 存储残留旧引用导致 query 崩溃。
     """
-    zipf = _index_dir(settings) / "files.zip"
-    if not zipf.exists():
-        return False
-    try:
-        zlib.decompress(zipf.read_bytes())
-        return False
-    except zlib.error:
+    index_dir = _index_dir(settings)
+    zipf = index_dir / "files.zip"
+    if zipf.exists():
+        try:
+            zlib.decompress(zipf.read_bytes())
+        except zlib.error:
+            return True
+    # M1：Tantivy 段探测（meta.json 缺失即半成品；打开/建 searcher 失败即真段损坏）
+    meta = index_dir / "index" / "meta.json"
+    if not meta.exists():
         return True
+    try:
+        json.loads(meta.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return True
+    try:
+        from tantivy import Index
+
+        Index.open(path=str(meta.parent)).searcher()  # 段读取器加载，真损坏在此抛出
+    except Exception:
+        return True
+    return False
 
 
 def _paper_dir_fingerprint(settings: Any) -> str:
@@ -146,8 +171,11 @@ def _embed_cache_path(paper_dir: str, index_name: str, paths: list[str]) -> Path
 
 
 def _read_embed_cache(p: Path) -> dict[str, Any] | None:
+    """读缓存（review 修正 Sprint-7：过期 TTL 30 天，防 ~/.pqa/embed_cache 无界增长）。"""
     try:
         if p.exists():
+            if time.time() - p.stat().st_mtime > _EMBED_CACHE_TTL_S:
+                return None
             return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
         pass
@@ -578,6 +606,7 @@ class PipelineOrchestrator:
                     "timestamp": time.time(),
                 }
             )
+            del session.run_records[: max(0, len(session.run_records) - _MAX_RUN_RECORDS)]
             on_event(
                 StepEvent(
                     kind="step_done",
@@ -618,6 +647,7 @@ class PipelineOrchestrator:
                     "timestamp": time.time(),
                 }
             )
+            del session.run_records[: max(0, len(session.run_records) - _MAX_RUN_RECORDS)]
             on_event(
                 StepEvent(
                     kind="step_done",

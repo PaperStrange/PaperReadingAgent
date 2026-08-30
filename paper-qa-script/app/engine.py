@@ -21,18 +21,35 @@ from paperqa.settings import AgentSettings, IndexSettings, ParsingSettings
 from provider_config import get_provider_config
 
 
+def _litellm_callback_limit() -> int:
+    """M2（Sprint-7）：保留回调数上限——env `PAPERQA_LITELLM_CALLBACK_LIMIT` 覆盖默认 20，非法值回落默认。
+
+    review 修正：上限钳制到 litellm `LoggingCallbackManager.MAX_CALLBACKS(30)`——
+    设得比它大等于自拆 MAX_CALLBACKS 防护，prune 也失去意义。
+    """
+    try:
+        limit = int(os.environ.get("PAPERQA_LITELLM_CALLBACK_LIMIT", "20"))
+        if limit <= 0:
+            return 20
+        return min(limit, 30)
+    except (TypeError, ValueError):
+        return 20
+
+
 def prune_litellm_callbacks() -> None:
-    """引擎生命周期维护（US-5.4 + Sprint-5 关闭二查修正）。
+    """引擎生命周期维护（US-5.4 + Sprint-5 关闭二查修正 + Sprint-7 M2）。
 
     litellm 每次 Router 实例化（paperqa 每次模型创建）都会注册 logger，
     长期运行累计到 LoggingCallbackManager.MAX_CALLBACKS(30) 上限抛错；
-    这里去重并按注册序保留最近 20 个（含异步回调列表），死对象注册的旧回调自然被移除。
+    这里去重并按注册序保留最近 N 个（默认 20，env 可配，含异步回调列表），
+    死对象注册的旧回调自然被移除。
     放在 engine 层：它是对引擎全局状态的生命周期管理，不属于编排逻辑。
     """
     try:
         import litellm
     except Exception:
         return
+    limit = _litellm_callback_limit()
     for attr in (
         "callbacks",
         "success_callback",
@@ -45,7 +62,7 @@ def prune_litellm_callbacks() -> None:
         try:
             items = list(getattr(litellm, attr, None) or [])
             unique: list[Any] = list({id(x): x for x in items}.values())
-            setattr(litellm, attr, unique[-20:])
+            setattr(litellm, attr, unique[-limit:])
         except Exception:
             pass
 
@@ -130,6 +147,20 @@ class LocalVendorAdapter(EngineAdapter):
             except (TypeError, ValueError) as exc:
                 raise ValueError(f"参数 {key} 应为整数，收到 {params.get(key)!r}") from exc
 
+        def _as_bool(key: str, default: bool) -> bool:
+            """review 修正（Sprint-7）：布尔参数强转陷阱——bool("false") 是 True。
+            接受真 bool 或常见字符串 "true"/"false"/"1"/"0"/"yes"/"no"，其余回落默认。"""
+            raw = params.get(key, default)
+            if isinstance(raw, bool):
+                return raw
+            if isinstance(raw, str):
+                v = raw.strip().lower()
+                if v in {"true", "1", "yes", "on"}:
+                    return True
+                if v in {"false", "0", "no", "off"}:
+                    return False
+            return default
+
         # 密钥优先级：显式参数 → 服务商专属（resolve_key 内部含通用 OPENAI_API_KEY 兜底）→ 通用
         # （review 修正：原顺序把通用 OPENAI_API_KEY 排在 provider 专属之前，与文档/预期相反）
         api_key = (
@@ -159,7 +190,7 @@ class LocalVendorAdapter(EngineAdapter):
             paper_dir = str(remote_staging_dir(index_name))
         else:
             paper_dir = str(Path(params.get("paper_directory", "./data/pdf")).expanduser())
-        recurse_subdirectories = bool(params.get("recurse_subdirectories", True))
+        recurse_subdirectories = _as_bool("recurse_subdirectories", True)
         manifest_file = params.get("manifest_file") or None
         embedding_batch_size = _as_int("embedding_batch_size", 10)
         chunk_chars = _as_int("chunk_chars", 5000)
@@ -222,7 +253,7 @@ class LocalVendorAdapter(EngineAdapter):
                 {"batch_size": embedding_batch_size} if embedding_local else embedding_config
             ),
             parsing=ParsingSettings(
-                use_doc_details=bool(params.get("use_doc_details", False)),
+                use_doc_details=_as_bool("use_doc_details", False),
                 reader_config={
                     "chunk_chars": max(200, chunk_chars),
                     "overlap": max(0, chunk_overlap),
