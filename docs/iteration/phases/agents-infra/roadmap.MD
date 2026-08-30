@@ -23,6 +23,7 @@
 | 复合指标细化（用户问题①深化） | 2026-08-30 | 指标改为 **A+B 复合（权重 8:2）**：composite=(0.8A+0.2B)×100，阈值 **X=50** 两档（>50 全量代码库 / ≤50 Sprint 修改+核心文件区域，核心区域恒含）；impact-assessment spec **v1.2.0**；**双例子代理验证 PASS**（85.45→全量档、14.55→窄档，与修正 ground truth 一致） | ✅ 完成（PR #25 `0853f33`） |
 | 用户意见③（运行前自检/可配置参数/目录架构） | 2026-08-30 | ① impact-assessment **v1.2.0**：N_core/N_routes **运行前自检**（读仓库统计，不写死）；② 四个 spec 均加**可配置参数（编辑点）**节；③ `docs/agents/` → 顶层 **`agents/`**（项目级设置与 docs 平级，git mv + 全量引用更新）；④ 迁移后按新协议全项目文档审阅（impact-assessment 实战：composite=14.55 窄档 → doc-audit 8 条发现全部闭环） | ✅ 完成（PR #26 `8de9fb9`） |
 | Sprint-9（阶段 3 看板） | 2026-08-30（规划时间盒 08-31~09-01 未启用，实际当日完成；关闭 21:59:38 UTC+8） | A-DASH 看板应用（US-9.1~9.7 共 15 点：概览/API/在线编辑/成本页/报告页/截图验收/antd 换栈插卡）+ 真实 fan-out 关闭演练（fanout.json 五步，账本 run 008~012，impact 008 窄档 14.55、doc-audit 8×P1、code-review 2×P1 无 P0、lessons 1.31~1.34）；三查发现项全部闭环；CI 转绿（SCM 版本/pwsh bool/Graphviz/better-sqlite3 四连修）；PR #31 合并 main（cbf93ea，排除 docs/iteration/） | ✅ 完成 |
+| 分支保护（GitHub 安全提示跟进） | 2026-08-30 | 用户转达 GitHub 提示「main 未保护」→ 调研最佳实践并**已应用**：必需 PR 合并（0 approvals）+ 必需状态检查「Offline suite + builds (Windows)」+ enforce_admins + 禁 force push/删除；记录 backlog A-M10 与 1-WORKFLOW §3 | ✅ 完成 |
 
 ## 3. 落地映射
 

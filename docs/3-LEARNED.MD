@@ -158,7 +158,7 @@
 
 ### 1.30 Sprint-9 看板开发五教训 + CI/CD 与 git 卫生分层（Sprint-9 Day1）
 - 现象：① Next 16 与训练数据不同——scaffold 自带 AGENTS.md 指引读 `node_modules/next/dist/docs/`（路由 params 是 Promise、`next dev -p` 而非 `--port` 等 breaking changes）；② dev 模式长时间热更新后 `/_next/static/chunks` 403（客户端 JS 加载失败、页面不水合、列表空）→ 重启或**改生产构建**（验收/演示用 `next build + next start`）；③ FTS5 虚拟表**不支持 UPDATE**（`no such column: T.report_body`）→ 内容变更用 delete+reinsert；连字符检索（`code-review`）需**短语查询**（双引号包裹）；④ PS 控制台 GBK 再次搅乱中文 API 往返测试（文件被写坏，git 恢复）→ **API 往返测试必须走 UTF-8 客户端（Node）**；⑤ agents/ 迁移时 Copy-Item 计数 9≠10 暴露 3 条账本 run 与报告文件遗漏 → 按会话留存内容重建——**目录迁移必须逐文件计数核对**。
-- 决策：CI 做轻量（离线套件+双构建，push/PR 触发；真实 API e2e 仅 workflow_dispatch）；CD 不做（本地应用无部署目标）；git 卫生分四层——① spec 检查（workspace-check 远程分支 + code-review main 头分支删除）② 仓库 `delete_branch_on_merge`（对 API 合并**异步生效**，删已消失的 ref 报"failed to push some refs"=成功）③ helper merge 自动清理（`-C` 仓库根、跳过当前检出分支）④ 三查审计。
+- 决策：CI 做轻量（离线套件+双构建，push/PR 触发；真实 API e2e 仅 workflow_dispatch）；CD 不做（本地应用无部署目标）；git 卫生分四层——① spec 检查（workspace-check 远程分支 + code-review main 头分支删除）② 仓库 `delete_branch_on_merge`（对 API 合并**异步生效**，删已消失的 ref 报"failed to push some refs"=成功）③ helper merge 自动清理（`-C` 仓库根、跳过当前检出分支）④ 三查审计。**⑤ 分支保护（2026-08-30 补，GitHub 安全提示跟进 A-M10）**：`main` 必须经 PR 合并 + 必需状态检查「Offline suite + builds (Windows)」+ enforce_admins + 禁 force push/删除——平台规则先于工具与审计。
 - 教训：**新大版本框架先读它自带的 docs/AGENTS.md 再写码**；**长跑 dev server 出诡异 403 先切生产构建验证**（dev 模式不是验收环境）；**全文检索记得查询端转义/短语化**；**目录搬迁用文件计数做完整性验收**；**工具链自动化（CI/分支清理）要分层设计**——平台设置治本、工具兜底、spec 审计保底。
 
 ### 1.31 CI 首跑三坑：版本注入、pwsh 失败传播、冷 runner 环境差异（Sprint-9 CI）

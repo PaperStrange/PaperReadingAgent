@@ -34,6 +34,7 @@
 | A-M7 | **agent spec 模板**（用户 2026-08-30）：`agents/functions/_template-agent.md`——新增 agent 时复制填写；frontmatter 超集 + 五段式 + 可配置参数节 + 输出模板骨架；**spec 规范演进时模板必须同步更新**（与 A-PM4 上线评审联动） | 1 | 候选 | 用户 2026-08-30 |
 | A-M8 | **main 补齐 windows 历史分叉**（Sprint-9 二查 011 发现）：`paper-qa-script/app/*.py`、`provider_config.py`、`verify/verify_remote_e2e.py` 等核心代码在 windows↔main 存在既存分叉（历史工作项同步遗漏，非 Sprint-9 引入），需专项 PR 按工作项补齐（mac 分支以 main 为源） | 3 | 候选 | Sprint-9 三查（2026-08-30） |
 | A-M9 | better-sqlite3 v13 无预编译资产（release 0 assets、install script 恒走 node-gyp）：CI 已用 `--ignore-scripts` 绕过；若未来要跨机器可复现安装/上 mac，评估降级 v12.11.1（有 win32-x64 prebuild）或迁移 node:sqlite | 1 | 候选 | Sprint-9 CI（2026-08-30，3-LEARNED 1.31） |
+| A-M10 | **main 分支保护（GitHub 安全提示跟进，2026-08-30）**：调研最佳实践（[GitHub REST branch protection](https://docs.github.com/rest/branches/branch-protection)、[safeguard.sh 配置指南](https://safeguard.sh/resources/blog/how-to-configure-github-branch-protection-rules)）→ **已应用**：必需 PR 合并（0 approvals——单人/agent 流水线不卡人工评审）、必需状态检查「Offline suite + builds (Windows)」（CI 未绿 API 合并被拒，预期行为）、enforce_admins 开启、禁 force push / 禁删除（restrictions=null）。windows/mac 不保护（工作分支允许历史整理）。 | 1 | ✅ 完成 | GitHub 提示 2026-08-30 |
 
 > **阶段 2 待用户确认（2026-08-30 暂停）**：用户两个问题（① 审查范围影响评估 + 量化指标 ② 中间态/留证文件出库）已分别落地为 §8/impact-assessment 职能与 A-M6，处理后继续阶段 3（Sprint-9 看板）。
 
