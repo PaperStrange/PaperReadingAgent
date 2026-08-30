@@ -27,8 +27,9 @@
 | A-M2 | ~~评审 spec v1.1 timebox~~ → **已由用户问题①方案取代（2026-08-30）**：新增 impact-assessment 职能（`agents/functions/impact-assessment.md`），审查范围 = recommended_scope（**composite=(0.8A+0.2B)×100，X=50 两档**），不得默认收窄到 Sprint 交付物 | ✅ 完成 | Sprint-8 Retro / 用户问题① |
 | A-M3 | main 分支 docs/iteration 悬空引用清理（16 处 pre-existing 行内引用，main 评审发现） | 2 | 候选 | Sprint-8 二查 |
 | A-M4 | agent-ops fetch-spec 成功路径测试（sha256 命中/失配）+ 账本并发锁（last-writer-wins 边界） | 2 | 候选 | Sprint-8 二查 nit |
-| A-M5 | git/pwsh 环境 SOP：AMSI 崩溃重试、push/PR 前 fetch origin/main（过期引用致 cherry-pick 冲突） | 1 | 候选 | Sprint-8 三查过程 |
+| A-M5 | ~~git/pwsh 环境 SOP~~ → **已完成（2026-08-31）**：AMSI 崩溃重试、push/PR 前 fetch origin/main；**远程分支卫生**（PR 合并后删 `sync/*` 头分支）已补进 workspace-check §步骤3 与 code-review main 同步说明——2026-08-31 用户发现 7 条远程 sync 残留后一次性清理并制度化 | ✅ 完成 | Sprint-8 三查过程 / 用户 2026-08-31 |
 | A-M6 | ~~仓库留证文件出库（用户问题②）~~ → **已随 PR #24 完成**：registry.json/runs 报告/截图/静态分析产物 gitignore + 远程同步清理（`.gitignore` 现为 `agents/runtime/registry.json`、`agents/runs/`） | ✅ 完成 | 用户 2026-08-30 |
+| A-M7 | **agent spec 模板**（用户 2026-08-31）：`agents/functions/_template-agent.md`——新增 agent 时复制填写；frontmatter 超集 + 五段式 + 可配置参数节 + 输出模板骨架；**spec 规范演进时模板必须同步更新**（与 A-PM4 上线评审联动） | 1 | 候选 | 用户 2026-08-31 |
 
 > **阶段 2 待用户确认（2026-08-30 暂停）**：用户两个问题（① 审查范围影响评估 + 量化指标 ② 中间态/留证文件出库）已分别落地为 §8/impact-assessment 职能与 A-M6，处理后继续阶段 3（Sprint-9 看板）。
 
