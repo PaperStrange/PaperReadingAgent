@@ -1,0 +1,7 @@
+/* antd v6 自带 reset（经 @ant-design/nextjs-registry 注入）；此处仅保留全局兜底 */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}

@@ -89,13 +89,18 @@ switch ($Action) {
         $m = Invoke-GitHubJson -Uri "$Api/pulls/$Number/merge" -HttpMethod "Put" -Payload $payload
         Write-Output ("MERGED #{0}: {1}" -f $Number, $m.sha)
         if (-not $KeepBranch) {
-            # layer-3 git hygiene (2026-08-31): delete the merged head branch locally + remotely.
-            # Remote deletion is a no-op if the repo setting auto-deleted it already.
-            $branch = ($Head -split "/", 2)[1]
+            # layer-3 git hygiene (2026-08-31): cleanup the merged head branch.
+            # Repo setting delete_branch_on_merge also deletes it (async, API merges too),
+            # so "failed to push some refs" here means the ref is already gone = success.
+            # API head.label 为 "owner/branch"；直接 -Head 传入时整段即分支名（分支名本身可含 "/"）
+            $branch = if ($Head -match "^PaperStrange/") { $Head -replace "^PaperStrange/", "" } else { $Head }
             if ($branch) {
-                git -C $RepoRoot branch -D $branch 2>$null | Out-Null
-                git -C $RepoRoot push origin --delete $branch 2>$null | Out-Null
-                Write-Output ("HEAD-BRANCH-DELETED {0}" -f $branch)
+                git -C $RepoRoot push origin --delete $branch 2>&1 | Out-Null
+                $cur = ((git -C $RepoRoot symbolic-ref --short HEAD) 2>$null) -replace "\s", ""
+                if ($cur -ne $branch) {
+                    git -C $RepoRoot branch -D $branch 2>$null | Out-Null
+                }
+                Write-Output ("HEAD-BRANCH-CLEANUP-DONE {0}" -f $branch)
             }
         }
     }

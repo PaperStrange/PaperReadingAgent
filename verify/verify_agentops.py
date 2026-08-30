@@ -98,7 +98,7 @@ def main() -> int:
         ok("UC-3 终态再 running 拒绝", r.returncode != 0 and "非法流转" in (r.stdout + r.stderr),
            (r.stdout + r.stderr).strip()[:60])
 
-        # UC-4：usage×价表精确值（gpt-4o-mini: in=1.5e-7, out=6e-7）
+        # UC-4：usage×价表精确值（gpt-4o-mini: in=1.5e-7, out=6e-7；USD 0.00135 × fx 7.2 = CNY 0.00972）
         run(["register", "--role", "code-review", "--task", "branch:main", "--spec", "code-review@1.0.0",
              "--model", "gpt-4o-mini", "--start"], base_env, check=True)
         data = json.loads(registry.read_text(encoding="utf-8"))
@@ -106,17 +106,23 @@ def main() -> int:
         run(["finish", run2, "--status", "succeeded", "--usage-in", "1000", "--usage-out", "2000",
              "--output-chars", "100"], base_env, check=True)
         cost = json.loads(registry.read_text(encoding="utf-8"))["runs"][1]["cost_est"]
-        ok("UC-4 价表精确值", abs(cost["total"] - 0.00135) < 1e-9 and not cost["estimated"],
-           f"total={cost['total']}（期望 0.00135）")
+        ok("UC-4 价表精确值（CNY）", abs(cost["total"] - 0.00972) < 1e-9 and not cost["estimated"]
+           and cost["currency"] == "CNY",
+           f"total={cost['total']}（期望 0.00972）")
+        # review 修正（Sprint-9 三查 P1）：分项同为 CNY（×fx），且分项之和 = total
+        ok("UC-4 分项 CNY（input/output）",
+           abs(cost["input"] - 0.00108) < 1e-9 and abs(cost["output"] - 0.00864) < 1e-9
+           and abs(cost["input"] + cost["output"] - cost["total"]) < 1e-9,
+           f"input={cost['input']} output={cost['output']} total={cost['total']}")
 
-        # UC-4：chars/4 兜底 + estimated（同模型：in=4000/4*1.5e-7 + out=4000/4*6e-7 = 0.00075）
+        # UC-4：chars/4 兜底 + estimated（USD 0.00075 × 7.2 = CNY 0.0054）
         run(["register", "--role", "doc-audit", "--task", "docs", "--spec", "doc-audit@1.0.0",
              "--model", "gpt-4o-mini", "--input-chars", "4000", "--start"], base_env, check=True)
         run3 = json.loads(registry.read_text(encoding="utf-8"))["runs"][2]["run_id"]
         run(["finish", run3, "--status", "succeeded", "--output-chars", "4000"], base_env, check=True)
         cost3 = json.loads(registry.read_text(encoding="utf-8"))["runs"][2]["cost_est"]
-        ok("UC-4 chars/4 兜底", cost3["estimated"] and abs(cost3["total"] - 0.00075) < 1e-9,
-           f"total={cost3['total']} estimated={cost3['estimated']}（期望 0.00075）")
+        ok("UC-4 chars/4 兜底（CNY）", cost3["estimated"] and abs(cost3["total"] - 0.0054) < 1e-9,
+           f"total={cost3['total']} estimated={cost3['estimated']}（期望 0.0054）")
 
         # UC-4：pending_price（deepseek-v4-flash 无价）
         run(["register", "--role", "code-review", "--task", "pr:1", "--spec", "code-review@1.0.0",
@@ -126,7 +132,7 @@ def main() -> int:
         cost4 = json.loads(registry.read_text(encoding="utf-8"))["runs"][3]["cost_est"]
         ok("UC-4 pending_price", cost4.get("pending_price") is True, f"cost_est={cost4}")
 
-        # 三查修正回归：manual 非 null 时覆盖 auto（gpt-4o-mini 人工价 in=1e-6/out=2e-6 → total=0.005）
+        # 三查修正回归：manual 非 null 时覆盖 auto（人工价 in=1e-6/out=2e-6 → USD 0.005 × 7.2 = CNY 0.036）
         p = json.loads((runtime / "prices.json").read_text(encoding="utf-8"))
         p["manual"]["gpt-4o-mini"] = {"input_cost_per_token": 1e-6, "output_cost_per_token": 2e-6}
         (runtime / "prices.json").write_text(json.dumps(p, ensure_ascii=False), encoding="utf-8")
@@ -136,7 +142,7 @@ def main() -> int:
         run(["finish", run6, "--status", "succeeded", "--usage-in", "1000", "--usage-out", "2000"],
             base_env, check=True)
         cost6 = json.loads(registry.read_text(encoding="utf-8"))["runs"][4]["cost_est"]
-        ok("三查修正 manual 覆盖 auto", abs(cost6["total"] - 0.005) < 1e-9, f"total={cost6['total']}（期望 0.005）")
+        ok("三查修正 manual 覆盖 auto（CNY）", abs(cost6["total"] - 0.036) < 1e-9, f"total={cost6['total']}（期望 0.036）")
 
         # 三查修正：update 只允许 running；finish 只允许 running→terminal
         run(["register", "--role", "code-review", "--task", "x", "--spec", "code-review@1.0.0"],
@@ -162,6 +168,12 @@ def main() -> int:
         r = run(["register", "--role", "code-review", "--task", "y", "--spec", "code-review@1.0.0",
                  "--run-id", run6], base_env)
         ok("三查修正 run-id 查重", r.returncode != 0 and "已存在" in (r.stdout + r.stderr),
+           (r.stdout + r.stderr).strip()[:60])
+
+        # review 修正（Sprint-9 三查 P2）：run-id 字符集校验（将成为 runs/ 下目录名）
+        r = run(["register", "--role", "code-review", "--task", "z", "--spec", "code-review@1.0.0",
+                 "--run-id", "../evil"], base_env)
+        ok("三查修正 run-id 字符集", r.returncode != 0 and "非法字符" in (r.stdout + r.stderr),
            (r.stdout + r.stderr).strip()[:60])
 
         # UC-9：上下文占用 ratio + 成本覆盖
