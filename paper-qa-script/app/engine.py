@@ -104,9 +104,12 @@ class LocalVendorAdapter(EngineAdapter):
         api_key = params.get("api_key") or os.getenv("OPENAI_API_KEY") or provider_cfg["api_key"]
         api_base = params.get("api_base") or provider_cfg["api_base"]
         model = params.get("model") or provider_cfg["model"]
-        vision_model = provider_cfg["vision_model"]
+        # 视觉/增强模型可显式覆盖（默认随 provider；如 provider=openai + model=gpt-5 时同步指定）
+        vision_model = params.get("vision_model") or provider_cfg["vision_model"]
         embedding_model = params.get("embedding_model") or provider_cfg["embedding"]
-        embedding_local = bool(provider_cfg["embedding_local"]) and embedding_model.startswith("st-")
+        # st- 前缀 = 本地/远程 HuggingFace SentenceTransformer 模型（首次自动下载），
+        # 不依赖 provider 是否有 embedding API；其它名走 litellm API（paperqa 约定）
+        embedding_local = embedding_model.startswith("st-")
         temperature = _as_float("temperature", 0.1)
         index_name = params.get("index_name", "debug_index")
         data_source = (params.get("data_source") or "local").lower()
