@@ -16,6 +16,10 @@ __MACOSX/
 data/parsed/*.jsonl
 # Sprint-3 远程源下载暂存（运行时生成，不入库）
 data/remote/
+# Sprint-4 用户自定义 provider（模板 providers.example.json 入库）
+paper-qa-script/providers.json
+# 用户本地论文目录（实测数据，不入库）
+data/arxiv_pdf_sep/
 tmp.log
 
 # --- secrets (use .env.example as template) ---

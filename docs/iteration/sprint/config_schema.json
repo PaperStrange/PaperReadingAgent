@@ -8,17 +8,12 @@
         {
           "key": "provider",
           "label": "模型服务商",
-          "type": "enum",
-          "hint": "deepseek/dashscope/openai 三选一",
+          "type": "string",
+          "hint": "内置 deepseek/dashscope/openai/openrouter；可自定义（providers.json / PAPERQA_PROVIDERS_JSON），见 /api/providers",
           "impacts": [
             "更换服务商将替换 LLM/向量化/API Base 的默认值"
           ],
           "readonly": false,
-          "options": [
-            "deepseek",
-            "dashscope",
-            "openai"
-          ],
           "default": "deepseek"
         },
         {
@@ -135,6 +130,17 @@
             10000
           ],
           "default": 250
+        },
+        {
+          "key": "recurse_subdirectories",
+          "label": "递归子目录",
+          "type": "boolean",
+          "hint": "索引时是否递归 paper_directory 下的嵌套文件夹（默认开；支持工作区外绝对路径与 Windows 长路径）",
+          "impacts": [
+            "修改后需重建索引才生效"
+          ],
+          "readonly": false,
+          "default": true
         },
         {
           "key": "use_doc_details",
