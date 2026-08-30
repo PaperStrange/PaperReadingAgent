@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "comment": "Sprint 关闭流程（三查 + 经验教训）的 fan-out 顺序与运行条件——可调配置（看板可编辑，用户可按进度观察调整顺序/条件）。workspace-check 固定主代理执行（D2）。",
+  "sprint_close_pipeline": [
+    {
+      "order": 1,
+      "step": "scope",
+      "role": "impact-assessment",
+      "spec": "impact-assessment",
+      "task": { "change_set": "auto" },
+      "condition": "always",
+      "executor": "subagent"
+    },
+    {
+      "order": 2,
+      "step": "doc-audit",
+      "role": "doc-audit",
+      "spec": "doc-audit",
+      "task": { "target": "working-tree", "scope": "recommended_scope" },
+      "condition": "always",
+      "executor": "subagent"
+    },
+    {
+      "order": 3,
+      "step": "code-review",
+      "role": "code-review",
+      "spec": "code-review",
+      "tasks": [
+        { "target": "branch:windows", "scope": "recommended_scope" },
+        { "target": "branch:main", "scope": "recommended_scope" }
+      ],
+      "condition": "code_changed",
+      "executor": "subagent"
+    },
+    {
+      "order": 4,
+      "step": "lessons",
+      "role": "lessons-learned",
+      "spec": "lessons-learned",
+      "task": { "sprint_doc": "auto" },
+      "condition": "sprint_close",
+      "executor": "subagent"
+    },
+    {
+      "order": 5,
+      "step": "workspace-check",
+      "role": "workspace-check",
+      "spec": "workspace-check",
+      "condition": "always",
+      "executor": "main-agent"
+    }
+  ]
+}

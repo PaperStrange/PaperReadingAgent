@@ -23,6 +23,8 @@
 | A-PM2 | Sprint 文档模板生成 agent：planning→燃尽→Retro 自动起草（人审后入库） | 2 | 候选（备选） | 用户 2026-08-30 |
 | A-PM3 | 调研结论→用例生成 agent 固化（A-UC 的方法论沉淀） | 2 | 候选（备选） | 用户 2026-08-30 |
 | A-PM4 | 新 agent 上线评审 agent（职能粒度/权限/spec 合规检查） | 2 | 候选（备选） | 用户 2026-08-30 |
+| A-PM5 | ~~经验教训总结 agent~~ → **已落地（2026-08-31）**：`agents/functions/lessons-learned.md` 职能，Sprint 关闭前置必做（1-WORKFLOW §4.1）；主代理审核回填 3-LEARNED | ✅ 完成 | 用户 2026-08-31 |
+| A-FANOUT | 看板 fan-out 配置页：可视化编辑 `agents/fanout.json`（五步顺序/运行条件/执行者可调），供用户观察 agent 对开发部署进度影响并调整 | 2 | 候选 | 用户 2026-08-31（随 Sprint-9 后续） |
 | A-M1 | 价表人工覆盖段填充（deepseek/qwen/openrouter 单价，来自服务商页面） | 1 | 候选 | 阶段 1 预研 |
 | A-M2 | ~~评审 spec v1.1 timebox~~ → **已由用户问题①方案取代（2026-08-30）**：新增 impact-assessment 职能（`agents/functions/impact-assessment.md`），审查范围 = recommended_scope（**composite=(0.8A+0.2B)×100，X=50 两档**），不得默认收窄到 Sprint 交付物 | ✅ 完成 | Sprint-8 Retro / 用户问题① |
 | A-M3 | main 分支 docs/iteration 悬空引用清理（16 处 pre-existing 行内引用，main 评审发现） | 2 | 候选 | Sprint-8 二查 |
