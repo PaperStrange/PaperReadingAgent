@@ -65,8 +65,7 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: "warning",
 };
 
-export default function Home() {
-  const [agg, setAgg] = useState<Agg | null>(null);
+export default function Home() {  const [agg, setAgg] = useState<Agg | null>(null);
   const [rows, setRows] = useState<RunRow[]>([]);
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState("");
@@ -117,17 +116,15 @@ export default function Home() {
         </Button>
       </Header>
       <Content style={{ padding: 24 }}>
-        <Row gutter={[16, 16]}>
+        {/* align=stretch + 卡片 height:100% → 四卡始终等高，任意一张变高其余立即跟随（自适应） */}
+        <Row gutter={[16, 16]} align="stretch">
           <Col xs={12} md={6}>
-            <Card styles={{ body: { minHeight: 210, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" } }}>
-              <Statistic title="总 Run 数" value={agg?.total ?? 0} />
-            </Card>
+            <CardBox title="总 Run 数">
+              <Statistic value={agg?.total ?? 0} valueStyle={{ fontSize: 20 }} />
+            </CardBox>
           </Col>
           <Col xs={12} md={6}>
-            <Card
-              title="状态分布"
-              styles={{ body: { minHeight: 210, display: "flex", alignItems: "center", justifyContent: "center" } }}
-            >
+            <CardBox title="状态分布">
               {agg ? (
                 <DonutChart
                   center={String(agg.total)}
@@ -140,13 +137,10 @@ export default function Home() {
               ) : (
                 <Typography.Text type="secondary">—</Typography.Text>
               )}
-            </Card>
+            </CardBox>
           </Col>
           <Col xs={12} md={6}>
-            <Card
-              title="职能分布"
-              styles={{ body: { minHeight: 210, display: "flex", alignItems: "center", justifyContent: "center" } }}
-            >
+            <CardBox title="职能分布">
               {agg ? (
                 <DonutChart
                   center={String(agg.total)}
@@ -159,21 +153,17 @@ export default function Home() {
               ) : (
                 <Typography.Text type="secondary">—</Typography.Text>
               )}
-            </Card>
+            </CardBox>
           </Col>
           <Col xs={12} md={6}>
-            <Card styles={{ body: { minHeight: 210, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" } }}>
-              <Statistic
-                title="累计成本（自报+估算）"
-                value={agg ? `$${agg.cost_total.toFixed(6)}` : "—"}
-                valueStyle={{ fontSize: 16 }}
-              />
+            <CardBox title="累计成本（自报+估算）">
+              <Statistic value={agg ? `$${agg.cost_total.toFixed(6)}` : "—"} valueStyle={{ fontSize: 16 }} />
               {agg && agg.pending_price > 0 && (
                 <Typography.Text type="warning" style={{ fontSize: 12 }}>
                   {agg.pending_price} 条待价表（精确账单以服务商后台为准）
                 </Typography.Text>
               )}
-            </Card>
+            </CardBox>
           </Col>
         </Row>
 
@@ -229,5 +219,29 @@ export default function Home() {
         </Typography.Text>
       </Content>
     </Layout>
+  );
+}
+
+/** 等高概览卡：标题入 body、Card 100% 高度随 Col 拉伸——四卡始终等高（自适应） */
+function CardBox({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <Card
+      style={{ height: "100%" }}
+      styles={{
+        body: {
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+        },
+      }}
+    >
+      <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+        {title}
+      </Typography.Text>
+      {children}
+    </Card>
   );
 }
