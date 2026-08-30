@@ -326,16 +326,27 @@ export default function App() {
   const activeStepIdRef = useRef(activeStepId);
   const lastRenderedStepRef = useRef(null);
 
-  // US-5.3：Function Subcanvas 当前步骤计时（运行中每 0.5s 刷新；完成/失败即停）
+  // US-5.3：Function Subcanvas 当前步骤计时（运行中每 0.5s 刷新；完成/失败后冻结最终时长，下次运行才清除）
+  const lastRunningRef = useRef(null);
   useEffect(() => {
     const iv = setInterval(() => {
       const runningNode = nodesRef.current.find((n) => n.data?.status === "running");
       const start = runningNode ? runStartTimesRef.current[runningNode.id] : 0;
       if (runningNode && start) {
+        lastRunningRef.current = { id: runningNode.id, step: runningNode.data.step };
         const s = (Date.now() - start) / 1000;
         setSubTimerText(`${runningNode.data.step} 运行中 ${s.toFixed(1)}s`);
-      } else {
-        setSubTimerText("");
+      } else if (lastRunningRef.current) {
+        const finished = nodesRef.current.find((n) => n.id === lastRunningRef.current.id);
+        const st = finished?.data?.status;
+        if (st === "success" || st === "failed") {
+          const dur = finished?.data?.duration;
+          const durText = typeof dur === "number" ? ` ${dur.toFixed(1)}s` : "";
+          setSubTimerText(
+            `${lastRunningRef.current.step} ${st === "success" ? "完成" : "失败"}${durText}`
+          );
+          lastRunningRef.current = null; // 冻结一次，下次运行再更新
+        }
       }
     }, 500);
     return () => clearInterval(iv);

@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from app.config_schema import validate_config
 from app.data_sources import parse_remote_sources, validate_source_specs
 from app.embedding_recommender import RECOMMENDER
-from app.engine import ENGINE, EngineAdapter
+from app.engine import ENGINE, EngineAdapter, prune_litellm_callbacks
 from app.events import FunctionTraceEvent, StepEvent
 from app.remote_resolver import resolve_remote_sources
 from app.session_store import SessionState, SessionStore
@@ -101,25 +101,42 @@ def _embed_cache_dir() -> Path:
     return d
 
 
-def _heal_corrupt_index_files(settings: Any) -> bool:
-    """索引自愈（US-4.2）：paperqa 的 files.zip 是 zlib 压缩的对象存储——解压失败即损坏。
+def _index_dir(settings: Any) -> Path:
+    return Path(settings.agent.index.index_directory) / (settings.agent.index.name or "")
 
-    只删损坏的 files.zip（build=true 时 get_directory_index 会重建），
-    不碰 Tantivy 段文件；用前置校验而非异常重试，避免误伤 PDF 解析期的 zlib 错误。
+
+def _index_corrupt(settings: Any) -> bool:
+    """索引完整性探针（US-4.2 + Sprint-5 关闭修正）：files.zip 是 zlib 压缩对象存储。
+
+    仅做**只读校验**（解压失败=损坏），删除动作由调用方（整目录重建）完成；
+    避免"只删 files.zip"后 Tantivy 段与 docs/ 存储残留旧引用导致 query 崩溃。
     """
+    zipf = _index_dir(settings) / "files.zip"
+    if not zipf.exists():
+        return False
     try:
-        index_dir = Path(settings.agent.index.index_directory)
-        zipf = index_dir / (settings.agent.index.name or "") / "files.zip"
-        if not zipf.exists():
-            return False
         zlib.decompress(zipf.read_bytes())
         return False
     except zlib.error:
-        try:
-            zipf.unlink(missing_ok=True)  # noqa: B023
-        except Exception:
-            pass
         return True
+
+
+def _paper_dir_fingerprint(settings: Any) -> str:
+    return hashlib.sha1(
+        str(settings.agent.index.paper_directory).encode("utf-8")
+    ).hexdigest()
+
+
+def _write_index_marker(settings: Any) -> None:
+    """记录本次构建所用的 paper_directory 指纹：目录切换时据此整目录重建。"""
+    try:
+        index_dir = _index_dir(settings)
+        index_dir.mkdir(parents=True, exist_ok=True)
+        (index_dir / "paper_dir_marker.txt").write_text(
+            _paper_dir_fingerprint(settings), encoding="utf-8"
+        )
+    except Exception:
+        pass
 
 
 def _embed_cache_path(paper_dir: str, index_name: str, paths: list[str]) -> Path:
@@ -143,23 +160,6 @@ def _write_embed_cache(p: Path, data: dict[str, Any]) -> None:
         pass
 
 
-def _prune_litellm_callbacks() -> None:
-    """US-5.4：litellm 每次 Router 实例化都会注册 logger（paperqa 每次模型创建），
-    长期运行会累计到 MAX_CALLBACKS(30) 上限而抛错；这里在每次步骤执行前
-    去重并按 id 保序裁剪（保留最近 20 个），死对象注册的旧回调自然被移除。"""
-    try:
-        import litellm
-    except Exception:
-        return
-    for attr in ("callbacks", "success_callback", "failure_callback", "input_callback"):
-        try:
-            items = list(getattr(litellm, attr, None) or [])
-            unique: list[Any] = list({id(x): x for x in items}.values())
-            setattr(litellm, attr, unique[-20:])
-        except Exception:
-            pass
-
-
 class PipelineOrchestrator:
     """六步流水线编排器：DI 注入 engine 与 store（路由层组装）。"""
 
@@ -174,7 +174,7 @@ class PipelineOrchestrator:
         on_event: Callable[[dict[str, Any]], None],
     ) -> StepResponse:
         """执行一个步骤，返回 StepResponse；过程事件经 on_event 发布（SSE 接线由 API 层完成）。"""
-        _prune_litellm_callbacks()  # US-5.4
+        prune_litellm_callbacks()  # US-5.4（引擎层生命周期维护，见 app/engine.py）
         session: SessionState = self._store.get_or_create(req.session_id)
         run_id = req.run_id or f"run-{uuid.uuid4().hex[:10]}"
         step = req.step
@@ -216,6 +216,13 @@ class PipelineOrchestrator:
                         settings_params["embedding_model"] = embedding_rec.model
 
                     session.settings = self._engine.make_settings(settings_params)
+                    # 二查修正（Sprint-5 关闭）：配置重跑 = 下游状态全部失效，
+                    # 避免"改目录后 load_index 绿成功但用旧索引/旧 docs"的陈旧误导
+                    session.search_index = None
+                    session.candidate_paths = []
+                    session.docs = None
+                    session.evidence_session = None
+                    session.answer_session = None
                     # US-3.3：数据源参数存入会话（load_index 步骤读取；Run All 时各节点参数独立）
                     session.data_source_params = {
                         k: req.params.get(k)
@@ -267,13 +274,27 @@ class PipelineOrchestrator:
                             f"论文目录不存在：{paper_dir_str}（请检查 paper_directory 参数；"
                             "remote 模式请先在 config 节点配置数据源）"
                         )
-                    # US-4.2：索引损坏自愈——精确校验 files.zip（zlib 对象存储），坏则删，
-                    # build=true 时自动重建。不用"异常签名重试"（review：会误伤 PDF 解析期的 zlib 错误）
+                    # Sprint-5 关闭二查修正：目录指纹不一致或 files.zip 损坏 → 整目录重建。
+                    # 仅删 files.zip 会让 Tantivy 段/docs 存储残留旧引用（query 报 No such file）；
+                    # 同目录同指纹时保持增量（行为不变）。
                     if build:
-                        _heal_corrupt_index_files(session.settings)
+                        index_dir = _index_dir(session.settings)
+                        marker = index_dir / "paper_dir_marker.txt"
+                        current_fp = ""
+                        try:
+                            current_fp = marker.read_text(encoding="utf-8").strip()
+                        except Exception:
+                            pass
+                        fingerprint = _paper_dir_fingerprint(session.settings)
+                        if current_fp != fingerprint or _index_corrupt(session.settings):
+                            import shutil
+
+                            shutil.rmtree(index_dir, ignore_errors=True)
                     session.search_index = await self._engine.get_directory_index(
                         settings=session.settings, build=build
                     )
+                    if build:
+                        _write_index_marker(session.settings)
                     index_files = await session.search_index.index_files
                     output = {
                         "index_name": session.search_index.index_name,

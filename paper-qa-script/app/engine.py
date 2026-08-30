@@ -21,6 +21,35 @@ from paperqa.settings import AgentSettings, IndexSettings, ParsingSettings
 from provider_config import get_provider_config
 
 
+def prune_litellm_callbacks() -> None:
+    """引擎生命周期维护（US-5.4 + Sprint-5 关闭二查修正）。
+
+    litellm 每次 Router 实例化（paperqa 每次模型创建）都会注册 logger，
+    长期运行累计到 LoggingCallbackManager.MAX_CALLBACKS(30) 上限抛错；
+    这里去重并按注册序保留最近 20 个（含异步回调列表），死对象注册的旧回调自然被移除。
+    放在 engine 层：它是对引擎全局状态的生命周期管理，不属于编排逻辑。
+    """
+    try:
+        import litellm
+    except Exception:
+        return
+    for attr in (
+        "callbacks",
+        "success_callback",
+        "failure_callback",
+        "input_callback",
+        "_async_input_callback",
+        "_async_success_callback",
+        "_async_failure_callback",
+    ):
+        try:
+            items = list(getattr(litellm, attr, None) or [])
+            unique: list[Any] = list({id(x): x for x in items}.values())
+            setattr(litellm, attr, unique[-20:])
+        except Exception:
+            pass
+
+
 class EngineAdapter(ABC):
     """paperqa 引擎能力抽象。方法签名与语义对齐 paperqa 调用（详见各方法 docstring）。"""
 
