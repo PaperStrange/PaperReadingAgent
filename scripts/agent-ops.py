@@ -107,13 +107,22 @@ def _prices_for(model: str) -> dict | None:
     return p.get("auto", {}).get(model)
 
 
+def _fx_usd_cny() -> float:
+    """用户决策（2026-08-30）：价格以 RMB 计。价表单价为 USD/token，按 meta.fx_usd_cny 换算（可人工覆盖）。"""
+    try:
+        return float(_load_prices().get("meta", {}).get("fx_usd_cny", 7.2))
+    except (TypeError, ValueError):
+        return 7.2
+
+
 def _estimate_cost(entry: dict) -> dict:
-    """UC-4：usage x 价表；无 usage 用 chars/4 兜底；无价表标 pending_price。"""
+    """UC-4：usage x 价表；无 usage 用 chars/4 兜底；无价表标 pending_price。
+    输出单位 = CNY（USD 单价 × meta.fx_usd_cny 换算，用户决策 2026-08-30）。"""
     usage = entry.get("usage") or {}
     model = entry.get("model") or ""
     prices = _prices_for(model)
     if not prices:
-        return {"total": None, "currency": "USD", "estimated": True, "pending_price": True, "model": model}
+        return {"total": None, "currency": "CNY", "estimated": True, "pending_price": True, "model": model}
     cost = {
         "input": (usage.get("input_tokens") or 0) * (prices.get("input_cost_per_token") or 0),
         "output": (usage.get("output_tokens") or 0) * (prices.get("output_cost_per_token") or 0),
@@ -127,11 +136,11 @@ def _estimate_cost(entry: dict) -> dict:
         cost["input"] = (ic / _CHARS_PER_TOKEN) * (prices.get("input_cost_per_token") or 0)
         cost["output"] = (oc / _CHARS_PER_TOKEN) * (prices.get("output_cost_per_token") or 0)
         estimated = True
-    total = sum(cost.values())
-    return {"input": round(cost["input"], 8), "output": round(cost["output"], 8),
-            "cache_read": round(cost["cache_read"], 8), "cache_write": round(cost["cache_write"], 8),
-            "total": round(total, 8), "currency": "USD", "estimated": estimated,
-            "pending_price": False, "model": model}
+    fx = _fx_usd_cny()
+    # review 修正（Sprint-9 三查 P1）：分项同样 ×fx 转 CNY，保证分项之和 = total（此前分项仍为 USD、对象级却标 CNY，口径不一致）
+    cny = {k: round(v * fx, 8) for k, v in cost.items()}
+    return {**cny, "total": round(sum(cny.values()), 8), "currency": "CNY",
+            "estimated": estimated, "pending_price": False, "model": model}
 
 
 def cmd_register(args: argparse.Namespace) -> None:
@@ -140,6 +149,9 @@ def cmd_register(args: argparse.Namespace) -> None:
     if any(r["run_id"] == args.run_id for r in data["runs"]):
         raise SystemExit(f"run_id {args.run_id} 已存在，请更换")
     run_id = args.run_id or f"run-{_now()[:10]}-{args.role}-{len(data['runs']) + 1:03d}"
+    # review 修正（Sprint-9 三查 P2）：run-id 将成为 runs/ 下的目录名，限字符集防路径穿越
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", run_id):
+        raise SystemExit(f"run_id 含非法字符（仅允许字母数字 . _ -）：{run_id!r}")
     entry = {
         "run_id": run_id,
         "task_id": args.task or "",
@@ -158,7 +170,7 @@ def cmd_register(args: argparse.Namespace) -> None:
             "ratio": round((args.context_input_tokens / args.context_max_tokens), 4)
             if args.context_input_tokens and args.context_max_tokens else 0.0,
         },
-        "cost_est": {"total": None, "currency": "USD", "estimated": True},
+        "cost_est": {"total": None, "currency": "CNY", "estimated": True},
         "result_files": [],
         "tags": {},
         "error": None,
@@ -222,7 +234,7 @@ def cmd_finish(args: argparse.Namespace) -> None:
             # review 修正（Sprint-8 三查）：基准用 _AGENTS_BASE（AGENT_OPS_DIR 重定向时不再崩溃）
             r["result_files"] = [str(dest.relative_to(_AGENTS_BASE))]
     if args.cost_override is not None:
-        r["cost_est"] = {"total": args.cost_override, "currency": "USD", "estimated": False, "override": True}
+        r["cost_est"] = {"total": args.cost_override, "currency": "CNY", "estimated": False, "override": True}
     else:
         r["cost_est"] = _estimate_cost(r)
     _save_registry(data)
@@ -354,7 +366,8 @@ def _derive_prices(args: argparse.Namespace | None = None) -> None:
                             "cache_read_input_token_cost", "cache_creation_input_token_cost")}
     else:
         print("WARN: 未找到 litellm 价表，仅保留人工覆盖段")
-    out = {"auto": auto, "manual": prices.get("manual", {})}
+    out = {"auto": auto, "manual": prices.get("manual", {}),
+           "meta": prices.get("meta", {"currency": "USD", "fx_usd_cny": 7.2})}
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     PRICES_PATH.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"prices.json 已派生：auto={sorted(auto)} manual={sorted(out['manual'])}")

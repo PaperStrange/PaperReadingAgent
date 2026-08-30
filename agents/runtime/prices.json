@@ -21,5 +21,9 @@
     "qwen-omni-turbo": null,
     "text-embedding-v4": null,
     "openrouter/auto": null
+  },
+  "meta": {
+    "currency": "USD",
+    "fx_usd_cny": 7.2
   }
 }

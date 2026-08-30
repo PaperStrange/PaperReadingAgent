@@ -43,7 +43,7 @@
 - 远程：`https://github.com/PaperStrange/PaperReadingAgent.git`
 - 分支：`main`（跨平台融合/集成分支）｜`mac`（macOS 原版）｜`windows`（Windows 移植版）
 - 约定：`windows` / `mac` 各自改动后，通过 **Pull Request 合并到 `main`**；每类工作一个提交，提交信息用 `type: 说明`（如 `fix:` / `docs:` / `feat:`）。
-- **PR 工具**：创建/更新/合并 PR 一律用 `scripts\github-pr.ps1`（create/patch/merge/get 子命令，UTF-8 安全）。**禁止**直接用 `Invoke-RestMethod` 传中文字符串 Body（PS 5.1 会按 GBK 编码 → GitHub 乱码，见 `3-LEARNED.MD` 1.18）。
+- **PR 工具**：创建/更新/合并 PR 一律用 `scripts\github-pr.ps1`（create/patch/merge/get 子命令，UTF-8 安全）。**禁止**直接用 `Invoke-RestMethod` 传中文字符串 Body（PS 5.1 会按 GBK 编码 → GitHub 乱码，见 `3-LEARNED.MD` 1.18）。**（Windows-only；mac 侧等价用 `gh pr create/patch/merge` 或 Web UI，中文 Body 注意 UTF-8。）**
 
 ## 4. Sprint（迭代）项目管理与关闭标准
 
@@ -54,14 +54,16 @@
 
 `Plan（目标+Backlog+验收标准+**时间盒**）` → `Dev（按 US 拆解实现，**开卡/推进/关卡**）` → `Verify（可运行验证）` → **`三查（固定动作）`** → **`经验教训总结（关闭前置必做）`** → **`Close（关闭评审）`**。
 
-**时间盒与过程监管（2026-08-30 用户要求制度化）**：
+**时间盒与过程监管（2026-08-30 用户要求制度化；2026-08-30 补充自主开卡制）**：
 - 每个 Sprint 在 Planning 时**声明时间范围**（起止日/小时）与预估工时；无时间盒不开卡。
 - **燃尽图随每张卡推进更新**（每完成/关闭一卡记一个里程碑与剩余点），而非关闭时一次性补图——供项目经理（用户）随时监管进度。
+- **自主开卡制（2026-08-30 用户确认）**：时间盒与 Sprint 计划批准后，主代理**自行开卡/推进/关卡，无需逐卡确认**；汇报频率 = 里程碑摘要（每完成一组卡或每 N 点一次），用户通过看板/燃尽图随时抽查。
+- **例外仍需确认**：阻塞超时 / 砍范围 / 插新卡 / 方向或样式级决策 / 时间盒调整；其余执行细节自主。
 - 过程中**一次开一张卡**并推进到 DONE（或明确 BLOCKED + 理由）；Sprint 超时未完成 → 与用户确认**续期 / 拆卡 / 砍范围**三选一，不得无声延期。
 - 卡的状态流转与验收证据同步写入 Sprint 文档 §3/§5/§7，用户可随时审计。
 
-**经验教训总结（2026-08-31 用户要求固化，关闭前置必做）**：
-- 三查完成、PR 合并后、**Close 之前**必须执行——由 `agents/functions/lessons-learned.md` 职能（子代理）产出 3-LEARNED 新条目草稿 + 分类索引更新建议，主代理审核后回填；无真教训可明说"本轮无需新增"，但**步骤不可跳过**。
+**经验教训总结（2026-08-30 用户要求固化，关闭前置必做）**：
+- 一查/二查（文档/代码审查）完成、**Close 之前**必须执行（fan-out 五步第 4 步，先于三查环境核验）——由 `agents/functions/lessons-learned.md` 职能（子代理）产出 3-LEARNED 新条目草稿 + 分类索引更新建议，主代理审核后回填；无真教训可明说"本轮无需新增"，但**步骤不可跳过**。
 - **fan-out 顺序与运行条件为可调配置**：关闭流程五步（scope→doc-audit→code-review→lessons→workspace-check）定义在 `agents/fanout.json`（条件/顺序/执行者可调，看板可编辑）——用户可通过看板观察 agent 执行对功能开发部署进度的影响，并据此调整顺序与运行判断条件。
 
 ### 4.2 Sprint 关闭：必须有足够 solid 的证据 + 理由
@@ -71,14 +73,16 @@
 #### 三查（每个 Sprint 关闭前的固定动作，2026-08-30 起制度化；Sprint-8 起按职能 spec fan-out）
 
 > 执行方式：按 `agents/functions/` 固定 spec 派出子代理（prompt 零漂移），每任务经 `scripts/agent-ops.py` 记账（register→finish，见 `agents/README.md`）；报告用 `parse-report` 结构化后按 §4.4 分诊闭环。
-> **执行顺序（用户问题①修正，2026-08-30）**：先跑 **impact-assessment（影响范围评估，新子代理）**——复合指标 `(0.8×A + 0.2×B)×100`（A=核心功能覆盖率/11、B=核心 API 覆盖率/8），**阈值 X=50**：`>50` → 全量档（整个代码库）；`≤50` → 窄档（Sprint 修改文件 ∪ 核心文件区域）。再按该范围执行一查/二查——**审查范围不得默认收窄到 Sprint 交付物**，偏离 recommended_scope 须在 Sprint §9 记录理由。
+> **执行顺序（用户问题①修正，2026-08-30）**：先跑 **impact-assessment（影响范围评估，新子代理）**——复合指标 `(0.8×A + 0.2×B)×100`（A=核心功能覆盖率/12、B=核心 API 覆盖率/8），**阈值 X=50**：`>50` → 全量档（整个代码库）；`≤50` → 窄档（Sprint 修改文件 ∪ 核心文件区域）。再按该范围执行一查/二查——**审查范围不得默认收窄到 Sprint 交付物**，偏离 recommended_scope 须在 Sprint §9 记录理由。
 
 | # | 检查 | 内容 | 执行者（spec） |
 |---|---|---|---|
-| 〇查 范围 | **影响范围评估**（fan-out 第一道闸门） | 变更模块归类 → A（11 项核心功能触达）/B（8 条路由触达）→ composite（阈值 X=50）→ 两档 recommended_scope | 子代理 `functions/impact-assessment.md` × 1 任务 |
+| 〇查 范围 | **影响范围评估**（fan-out 第一道闸门） | 变更模块归类 → A（12 项核心功能触达）/B（8 条路由触达）→ composite（阈值 X=50）→ 两档 recommended_scope | 子代理 `functions/impact-assessment.md` × 1 任务 |
 | 一查 文档 | 文档一致性审计（范围 = 〇查 recommended_scope） | 死链/陈旧事实/跨文档矛盾/缺失知识；**4-ALGORITHM.MD 逐条对照代码**（其 §12 防漂移清单） | 子代理 `functions/doc-audit.md` × 1 任务（target=working-tree，scope 入参） |
 | 二查 代码 | windows + main 双分支 code review（范围 = 〇查 recommended_scope） | 正确性/安全/SSOT/兼容性/架构分层；main 侧重合并完整性与悬空引用 | 子代理 `functions/code-review.md` × 2 任务（target=branch:windows、branch:main 并行，scope 入参） |
 | 三查 环境 | 工作区与功能完整性 | `git status` 零残留、本地已合并分支清理、.gitignore 覆盖、端口卫生、回归（smoke/e2e/新增端点/GUI）全绿 | **主代理** `functions/workspace-check.md`（起服务/杀进程不子代理化） |
+
+> 经验教训总结（lessons-learned）为 fan-out 五步第 4 步（在一查/二查之后、三查环境核验之前执行），见 §4.1 与 `agents/fanout.json`；不入上表（三查固定动作之外的关闭前置步骤）。
 
 > 三查可委托评审代理并行执行；**发现项必须修复闭环后（修复 → 回归 → 文档同步 → PR 同步 main）才允许 Close**；结论写入该 Sprint 文档的「评审/同步记录」节。
 
@@ -207,6 +211,10 @@ node .\verify\gui_check_remote.mjs   # GUI remote 数据源（需前后端 + 联
 node .\verify\gui_check_s4.mjs       # Sprint-4：光标/面板联动（需前后端已启动）
 node .\verify\gui_check_s5.mjs       # Sprint-5：自动重跑/双模式/计时冻结（需前后端已启动）
 node .\verify\gui_check_s7.mjs       # Sprint-7：多节点并发计时（需前后端已启动）
+node .\verify\gui_check_dashboard.mjs         # 看板概览页截图（需 agents-dashboard 已启动，8600）
+node .\verify\gui_check_dashboard2.mjs        # 看板 spec 编辑页截图（需 agents-dashboard 已启动）
+node .\verify\gui_check_dashboard_costs.mjs   # 看板成本/上下文页截图（需 agents-dashboard 已启动）
+node .\verify\gui_check_dashboard_report.mjs  # 看板报告浏览页截图（需 agents-dashboard 已启动）
 ```
 
 详见 `verify/README.md` 与 `docs/3-LEARNED.MD` 的验证记录。

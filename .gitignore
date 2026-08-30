@@ -6,7 +6,10 @@ node_modules/
 dist/
 .venv/
 venv/
+.next/
 .DS_Store
+# 看板运行时数据（SQLite 派生索引，文件真相源在 agents/）
+agents-dashboard/data/
 
 # --- macOS AppleDouble junk ---
 ._*

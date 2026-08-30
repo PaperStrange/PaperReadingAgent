@@ -23,12 +23,21 @@ jobs:
           python-version: "3.13"
 
       - name: Install Python deps (pinned fhlmi/litellm + vendored paper-qa)
+        env:
+          # vendored paper-qa 无 .git 元数据，setuptools-scm 需显式版本
+          SETUPTOOLS_SCM_PRETEND_VERSION: "2026.1.6.dev10+g36348d0ca"
+          PYTHONUTF8: "1"
         run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           pip install "fhlmi==0.42.1" "litellm==1.76.1"
           pip install -e ./paper-qa
           pip install -e "./paper-qa/packages/paper-qa-pypdf[media]"
           pip install -e ./paper-qa/packages/paper-qa-pymupdf
           pip install -r requirements-windows.txt
+
+      - name: Install Graphviz (verify_smoke renders DOT via local Graphviz; cold runner lacks dot)
+        run: choco install graphviz -y --no-progress
 
       - uses: actions/setup-node@v4
         with:
@@ -39,6 +48,8 @@ jobs:
           PYTHONUTF8: "1"
           HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
         run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           python verify/verify_smoke.py
           python verify/verify_prune_callbacks.py
           python verify/verify_agentops.py
@@ -52,8 +63,11 @@ jobs:
 
       - name: Build agents-dashboard
         working-directory: agents-dashboard
+        # --ignore-scripts：better-sqlite3 v13 无预编译产物（GitHub release 0 assets），
+        # 默认 npm ci 会走 node-gyp 源码编译，冷 runner 无可用 VS/SDK 必失败；
+        # 原生绑定仅运行时需要（本地开发机已具备），CI 只验证 Next 构建（3-LEARNED 1.31）。
         run: |
-          npm ci
+          npm ci --ignore-scripts
           npm run build
 
   e2e-optional:
@@ -74,7 +88,12 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install Python deps
+        env:
+          SETUPTOOLS_SCM_PRETEND_VERSION: "2026.1.6.dev10+g36348d0ca"
+          PYTHONUTF8: "1"
         run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           pip install "fhlmi==0.42.1" "litellm==1.76.1"
           pip install -e ./paper-qa
           pip install -e "./paper-qa/packages/paper-qa-pypdf[media]"
