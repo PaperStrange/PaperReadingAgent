@@ -32,6 +32,8 @@
 | A-M5 | ~~git/pwsh 环境 SOP~~ → **已完成（2026-08-31）**：AMSI 崩溃重试、push/PR 前 fetch origin/main；**远程分支卫生**（PR 合并后删 `sync/*` 头分支）已补进 workspace-check §步骤3 与 code-review main 同步说明——2026-08-31 用户发现 7 条远程 sync 残留后一次性清理并制度化 | ✅ 完成 | Sprint-8 三查过程 / 用户 2026-08-31 |
 | A-M6 | ~~仓库留证文件出库（用户问题②）~~ → **已随 PR #24 完成**：registry.json/runs 报告/截图/静态分析产物 gitignore + 远程同步清理（`.gitignore` 现为 `agents/runtime/registry.json`、`agents/runs/`） | ✅ 完成 | 用户 2026-08-30 |
 | A-M7 | **agent spec 模板**（用户 2026-08-31）：`agents/functions/_template-agent.md`——新增 agent 时复制填写；frontmatter 超集 + 五段式 + 可配置参数节 + 输出模板骨架；**spec 规范演进时模板必须同步更新**（与 A-PM4 上线评审联动） | 1 | 候选 | 用户 2026-08-31 |
+| A-M8 | **main 补齐 windows 历史分叉**（Sprint-9 二查 011 发现）：`paper-qa-script/app/*.py`、`provider_config.py`、`verify/verify_remote_e2e.py` 等核心代码在 windows↔main 存在既存分叉（历史工作项同步遗漏，非 Sprint-9 引入），需专项 PR 按工作项补齐（mac 分支以 main 为源） | 3 | 候选 | Sprint-9 三查（2026-08-31） |
+| A-M9 | better-sqlite3 v13 无预编译资产（release 0 assets、install script 恒走 node-gyp）：CI 已用 `--ignore-scripts` 绕过；若未来要跨机器可复现安装/上 mac，评估降级 v12.11.1（有 win32-x64 prebuild）或迁移 node:sqlite | 1 | 候选 | Sprint-9 CI（2026-08-31，3-LEARNED 1.31） |
 
 > **阶段 2 待用户确认（2026-08-30 暂停）**：用户两个问题（① 审查范围影响评估 + 量化指标 ② 中间态/留证文件出库）已分别落地为 §8/impact-assessment 职能与 A-M6，处理后继续阶段 3（Sprint-9 看板）。
 
