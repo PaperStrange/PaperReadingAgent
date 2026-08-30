@@ -18,7 +18,7 @@
 | 实际 | 日期 | 内容 | 状态 |
 |---|---|---|---|
 | 阶段 1（调研+架构） | 2026-08-30 | 四条调研线（编排框架/skill 约定/可观测成本/看板栈）→ `architecture.MD` §1~§6；D6 MongoDB→SQLite（用户确认） | ✅ 完成（用户评审：三条修改意见 ①职能划分 ②用例表 ③Sprint 化） |
-| Sprint-8（阶段1修订+阶段2） | 2026-08-30 | 职能化划分补充调研 + A-FN/A-UC/A-SPEC/A-LEDGER/A-IDE（`../sprint/2026-08-30-sprint-8.md`）；US-8.1~8.5 DONE，US-8.6 三查 fan-out 与 PR 收尾中（重试评审代理在途） | 🟢 进行中 |
+| Sprint-8（阶段1修订+阶段2） | 2026-08-30 | 职能化划分补充调研 + A-FN/A-UC/A-SPEC/A-LEDGER/A-IDE（`../sprint/2026-08-30-sprint-8.md`）；US-8.1~8.6 全部 DONE；三查按新协议 fan-out（2 code-review 任务 + 1 doc-audit，账本登记），发现项全部闭环；PR #23（`3d58081`） | ✅ 完成 |
 | Sprint-9（阶段 3 看板） | 规划中 | A-DASH 看板应用 + 真实 fan-out 验收演示 | ⬜ 待启动 |
 
 ## 3. 落地映射
