@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { App, Alert, Button, Input, Layout, List, Space, Typography } from "antd";
+import { CheckOutlined, SaveOutlined } from "@ant-design/icons";
+
+const { Content, Header, Sider } = Layout;
 
 interface Spec {
   name: string;
@@ -8,10 +12,11 @@ interface Spec {
 }
 
 export default function SpecsPage() {
+  const { message } = App.useApp();
   const [specs, setSpecs] = useState<Spec[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
   const [content, setContent] = useState("");
-  const [message, setMessage] = useState("");
+  const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -22,7 +27,7 @@ export default function SpecsPage() {
 
   const open = async (name: string) => {
     setCurrent(name);
-    setMessage("");
+    setFeedback(null);
     const d = await fetch(`/api/specs/${encodeURIComponent(name)}`).then((r) => r.json());
     setContent(d.content ?? "");
   };
@@ -30,7 +35,6 @@ export default function SpecsPage() {
   const save = async () => {
     if (!current) return;
     setBusy(true);
-    setMessage("");
     try {
       const r = await fetch("/api/specs", {
         method: "PUT",
@@ -38,7 +42,8 @@ export default function SpecsPage() {
         body: JSON.stringify({ name: current, content }),
       });
       const d = await r.json();
-      setMessage(d.ok ? `已保存 ${current}` : `保存失败：${d.error}`);
+      setFeedback(d.ok ? { ok: true, text: `已保存 ${current}` } : { ok: false, text: `保存失败：${d.error}` });
+      if (d.ok) message.success("已写入 agents/functions/（文件真相源）");
     } finally {
       setBusy(false);
     }
@@ -47,7 +52,7 @@ export default function SpecsPage() {
   const validate = async () => {
     if (!current) return;
     setBusy(true);
-    setMessage("校验中…");
+    setFeedback(null);
     try {
       const r = await fetch("/api/specs/validate", {
         method: "POST",
@@ -55,68 +60,84 @@ export default function SpecsPage() {
         body: JSON.stringify({ name: current, content }),
       });
       const d = await r.json();
-      setMessage(d.ok ? `✅ ${d.message}` : `❌ ${d.message}`);
+      setFeedback({ ok: d.ok, text: d.message });
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-8 space-y-6">
-      <header className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">职能 spec 编辑（直写 agents/functions/）</h1>
-        <a href="/" className="rounded-md border border-zinc-200 px-3 py-1 text-sm hover:bg-zinc-50">
+    <Layout style={{ minHeight: "100vh" }}>
+      <Header
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          background: "#fff",
+          borderBottom: "1px solid #f0f0f0",
+        }}
+      >
+        <Typography.Title level={4} style={{ margin: 0 }}>
+          职能 spec 编辑（直写 agents/functions/）
+        </Typography.Title>
+        <a href="/" style={{ fontSize: 13 }}>
           ← 看板
         </a>
-      </header>
-
-      <section className="grid gap-6 md:grid-cols-[220px_1fr]">
-        <aside className="space-y-1">
-          {specs.map((s) => (
-            <button
-              key={s.name}
-              onClick={() => void open(s.name)}
-              className={`block w-full rounded-md px-3 py-2 text-left text-sm ${
-                current === s.name ? "bg-zinc-900 text-white" : "hover:bg-zinc-100"
-              }`}
-            >
-              <div className="font-medium">{s.name}</div>
-              <div className="text-xs opacity-70">v{s.version}</div>
-            </button>
-          ))}
-        </aside>
-
-        <section className="space-y-3">
+      </Header>
+      <Layout>
+        <Sider width={230} theme="light" style={{ borderRight: "1px solid #f0f0f0", padding: 12 }}>
+          <List
+            size="small"
+            dataSource={specs}
+            renderItem={(s) => (
+              <List.Item
+                onClick={() => void open(s.name)}
+                style={{
+                  cursor: "pointer",
+                  padding: "8px 12px",
+                  borderRadius: 6,
+                  background: current === s.name ? "#e6f4ff" : undefined,
+                }}
+              >
+                <List.Item.Meta title={s.name} description={`v${s.version}`} />
+              </List.Item>
+            )}
+          />
+        </Sider>
+        <Content style={{ padding: 24 }}>
           {current ? (
-            <>
-              <div className="flex gap-2">
-                <button onClick={() => void save()} disabled={busy} className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm text-white disabled:opacity-50">
+            <Space direction="vertical" style={{ width: "100%" }} size="middle">
+              <Space wrap>
+                <Button type="primary" icon={<SaveOutlined />} loading={busy} onClick={() => void save()}>
                   保存（直写文件）
-                </button>
-                <button onClick={() => void validate()} disabled={busy} className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm disabled:opacity-50">
+                </Button>
+                <Button icon={<CheckOutlined />} loading={busy} onClick={() => void validate()}>
                   validate-spec 校验
-                </button>
-                <span className="self-center text-xs text-zinc-400">
-                  source 块（skill URL/ref/sha256/fallback）直接编辑下方 frontmatter 即可
-                </span>
-              </div>
-              {message && (
-                <div className={`rounded-md px-3 py-2 text-sm ${message.startsWith("❌") ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"}`}>
-                  {message}
-                </div>
+                </Button>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  source 块（skill URL/ref/sha256/fallback）直接编辑下方 frontmatter
+                </Typography.Text>
+              </Space>
+              {feedback && (
+                <Alert
+                  type={feedback.ok ? "success" : "error"}
+                  message={feedback.text}
+                  showIcon
+                />
               )}
-              <textarea
+              <Input.TextArea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 spellCheck={false}
-                className="h-[70vh] w-full rounded-lg border border-zinc-200 p-4 font-mono text-xs leading-relaxed"
+                autoSize={false}
+                style={{ height: "calc(100vh - 260px)", fontFamily: "monospace", fontSize: 12 }}
               />
-            </>
+            </Space>
           ) : (
-            <div className="py-20 text-center text-zinc-400">从左侧选择要编辑的职能 spec</div>
+            <Typography.Text type="secondary">从左侧选择要编辑的职能 spec</Typography.Text>
           )}
-        </section>
-      </section>
-    </main>
+        </Content>
+      </Layout>
+    </Layout>
   );
 }

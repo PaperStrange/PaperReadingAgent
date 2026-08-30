@@ -33,8 +33,8 @@ await page.waitForTimeout(800);
 await page.screenshot({ path: path.resolve(_here, "dashboard-specs.png"), fullPage: false });
 console.log("SHOT dashboard-specs.png");
 
-// 打开 impact-assessment spec
-await page.click("aside button:has-text('impact-assessment')");
+// 打开 impact-assessment spec（antd List.Item）
+await page.locator(".ant-list-item", { hasText: "impact-assessment" }).first().click();
 await page.waitForTimeout(800);
 await page.screenshot({ path: path.resolve(_here, "dashboard-specs-editor.png"), fullPage: false });
 console.log("SHOT dashboard-specs-editor.png");
