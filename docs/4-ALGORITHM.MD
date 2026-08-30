@@ -34,7 +34,7 @@
 ```
 
 - `:=` 左边即"真值来源"；`|` 的先后顺序**即优先级**，与代码 `or` 链/if-else 一一对应。
-- 条件里的字段名与 config 参数同名（`paperqa-script/app/config_schema.py` 为唯一真源）。
+- 条件里的字段名与 config 参数同名（`paper-qa-script/app/config_schema.py` 为唯一真源）。
 - 规则标注 `[文件·函数]` 指向实现；真值表行序 = 代码判定顺序。
 
 ---
@@ -68,18 +68,27 @@ REGISTRY :=
 
 - 内置 4 家：`deepseek / dashscope / openai / openrouter`（OpenRouter 为通用网关，`model=openrouter/auto` 智能路由）。
 - 自定义条目字段与默认值（缺失字段补齐 `_CUSTOM_DEFAULTS`）：`api_base=None, model=必填, vision_model="", embedding=st-multi-qa-MiniLM-L6-cos-v1, embedding_local=True, has_embedding_api=False, key_envs=("OPENAI_API_KEY",), thinking_disabled=False`。
-- 名称一律 `strip().lower()`；`model` 缺失直接报错（配置期失败，快速暴露）。
+- 名称一律 `strip().lower()`；单个自定义条目非法（如缺 `model`）**只跳过该条目**，不拖垮注册表（review 修正）。
 
 ### 3.2 密钥解析（DSL）
 
 ```text
-API_KEY(provider) :=
-    env[key_envs[0]] 非空 -> env[key_envs[0]]      // 专属 key（如 DEEPSEEK_API_KEY）
-  | env[key_envs[1]] 非空 -> env[key_envs[1]]      // 次选（如 OPENAI_API_KEY）
-  | env[OPENAI_API_KEY] 非空 -> env[OPENAI_API_KEY] // 通用兜底
-  | ""                                            // 空 → make_settings 报"api_key is required"
-    [provider_config.py·resolve_key；.env 由 _load_dotenv 先导入且不覆盖已有环境变量]
+// 实际顺序（engine.make_settings 与 provider_config.resolve_key 合并后的净效果）：
+API_KEY :=
+    params.api_key 非空          -> params.api_key            // 显式参数最高
+  | resolve_key(provider) 非空   -> 专属链（见下）            // provider_cfg["api_key"]
+  | env[OPENAI_API_KEY] 非空    -> env[OPENAI_API_KEY]       // 保险兜底（通常已被 resolve_key 覆盖）
+  | 报错 "api_key is required"                                [engine.py·104-113]
+
+resolve_key(provider) :=
+    env[key_envs[0]] 非空 -> 该值      // 专属 key（DEEPSEEK/DASHSCOPE/OPENAI/OPENROUTER_API_KEY）
+  | env[key_envs[1]] 非空 -> 该值      // 次选（deepseek/openrouter 亦接受 OPENAI_API_KEY）
+  | env[OPENAI_API_KEY] 非空 -> 该值  // 通用兜底
+  | ""                                 [provider_config.py·resolve_key]
 ```
+
+- `.env`（`paper-qa-script/.env`）由 `_load_dotenv` 先并入 `os.environ`（**不覆盖已设变量**），故不单独成级。
+- ⚠️ 2026-08-30 review 修正：旧代码把 `env[OPENAI_API_KEY]` 排在 `provider_cfg["api_key"]` 之前，导致同时设置专属+通用 key 时取到通用——现已改为上述顺序并有实测用例锁定（`sk-DS-1` 优先于 `sk-GEN-1`）。
 
 ```mermaid
 flowchart LR
@@ -104,9 +113,9 @@ flowchart LR
 provider_cfg := get_provider_config(params.provider)      // 未知 provider 此处即报错
 
 api_key   := params.api_key 非空 -> params.api_key
-           | env[OPENAI_API_KEY] 非空 -> env[OPENAI_API_KEY]
-           | provider_cfg.api_key
-           | 报错 "api_key is required"                    [engine.py·104-134]
+           | provider_cfg.api_key 非空 -> provider_cfg.api_key   // resolve_key：专属→通用
+           | env[OPENAI_API_KEY] 非空 -> env[OPENAI_API_KEY]     // 保险兜底
+           | 报错 "api_key is required"                    [engine.py·104-113]
 
 api_base  := params.api_base 非空 -> params.api_base | provider_cfg.api_base
 model     := params.model   非空 -> params.model   | provider_cfg.model
@@ -241,7 +250,7 @@ LOAD_INDEX :=
         -> build = bool(params.build, 默认 true)
         -> 论文目录存在?（不存在 → "论文目录不存在：…"）
         -> get_directory_index(settings, build)
-           （异常含损坏签名 → 删 index_dir/*.zip 重建一次，见 6.3）
+           （build=true 时先做 files.zip 完整性前置校验，坏则删——见 6.3）
 ```
 
 ### 6.2 远程源解析（`app/remote_resolver.py`）
@@ -270,7 +279,7 @@ RESOLVE_ONE(spec) :=
 | 单源失败 + 其它成功 | 该源 `status=failed, error=明细`，继续 |
 | 全部失败 | 整个 load_index 报错（列出每个源的错误） |
 | 同名非空文件已存在 | `status=cached`（不重复下载） |
-| HF/arXiv/Unpaywall 任一超时(30s) | 该源 `failed`（"网络超时，请重试或检查网络"） |
+| arXiv/Unpaywall/直链 任一超时(30s) | 该源 `failed`（"网络超时，请重试或检查网络"） |
 
 ### 6.3 索引构建与自愈（load_index 完整时序）
 
@@ -288,15 +297,19 @@ sequenceDiagram
         RS-->>OR: RemoteResolveReport（下载到 data/remote/<name>/）
     end
     OR->>OR: paper_directory 存在?（否 → ValueError）
-    OR->>EN: get_directory_index(settings, build)
-    EN->>PQA: 读/建 Tantivy 索引（递归、files_filter、manifest 增强）
-    alt 抛异常且签名含 zlib/decompress/truncated/incorrect header/Failed to load index file
-        OR->>FS: 删除 ~/.pqa/indexes/<name>/*.zip
-        OR->>EN: 重试 get_directory_index 一次
+    opt build=true
+        OR->>FS: _heal_corrupt_index_files：files.zip 做 zlib 解压试读
+        alt 解压失败（zlib.error）
+            OR->>FS: 仅删除损坏的 files.zip（Tantivy 段不动）
+        end
     end
+    OR->>EN: get_directory_index(settings, build)
+    EN->>PQA: 读/建 Tantivy 索引（递归、files_filter、manifest 增强；缺 files.zip 时自动重建）
     EN-->>OR: SearchIndex
     OR-->>OR: output{index_name, indexed_files, files[], remote_sources?}
 ```
+
+> 自愈采用**前置校验**而非"异常签名重试"（review 修正）：PDF 解析期的 zlib 错误与 files.zip 损坏的报错同源，靠异常文本无法区分，会误删健康索引；直接对 files.zip 做 zlib 试解压最精确。
 
 > 注意：异常签名检查会**递归展开 ExceptionGroup 子异常**（anyio TaskGroup 会包装），否则会漏判。
 
@@ -343,10 +356,10 @@ stateDiagram-v2
 |---|---|---|---|---|
 | config | 无 | 推荐注入 → make_settings | `settings`, `data_source_params` | paper_directory/index_name/llm/embedding/config_notes[/embedding_resolved] |
 | load_index | settings 非空 | 远程解析(remote) → 目录存在检查 → 索引(自愈) | `search_index` | index_name/indexed_files/files[/remote_sources] |
-| retrieve | search_index 非空 | query_index；query 缺省取 upstream.question 或 "PaperQA"；top_n 默认 5 | `candidate_paths` | query/candidate_count/candidate_paths |
-| parse_chunk_embed | settings、search_index 非空 | 见 8.3 三分支 | `docs` | docs_count/texts_count/per_file/sample_texts/loaded[/regen] |
+| retrieve | search_index 非空 | query_index；query 缺省取 upstream.question 或 "PaperQA"；top_n 默认 5；**空结果回退取 `index_files.keys()[:top_n]`** | `candidate_paths` | query/candidate_count/candidate_paths |
+| parse_chunk_embed | settings、search_index 非空 | 见 8.3 三分支；**无 candidate_paths 时默认取索引前 5 篇** | `docs` | docs_count/texts_count/per_file/sample_texts/loaded[/regen] |
 | evidence | docs、settings 非空 | `aget_evidence`；question 缺省 upstream 或 "什么是PaperQA？" | `evidence_session` | question/contexts_count/context_ids |
-| answer | docs、settings、evidence_session 非空 | `aquery` | `answer_session` | answer/references/used_contexts/answer_available_fields |
+| answer | docs、settings、evidence_session 非空 | `aquery`；**文本回退链 answer → formatted_answer → raw_answer** | `answer_session` | answer/references/used_contexts/answer_available_fields |
 
 失败时：`StepResponse.ok=false, error=str(exc)`，run_records 追加失败记录，SSE 发 `step_done{ok:false}`；**不中断会话**，用户修正后可重跑。
 
@@ -413,7 +426,7 @@ sequenceDiagram
     participant BE as 后端
 
     U->>A: 点击 Run All (Left-to-Right)
-    A->>A: 按边拓扑排序 n1..n6
+    A->>A: 按节点 position.x 从左到右排序（n1..n6）
     loop 每个节点
         A->>FE: runSingleNode(nid, {markDependents:false})
         FE->>BE: POST /api/run_step（携带该节点自身 params）
@@ -435,7 +448,7 @@ sequenceDiagram
 - **线协议字段（兼容约束，改动须比对）**：
   - `function_trace`：`{kind,session_id,run_id,step,call_id,parent_call_id,depth,task_id,func,started_at,status,duration_s,args,result,result_payload,args_payload,error}`（`model_dump(exclude={ts,trace_id})`，仅 paperqa.* 函数）
   - `step_done` 成功：`{kind,session_id,run_id,step,ok,duration_s,function_count}`；失败另加 `error`（`exclude={ts,trace_id,output[,error]}`）
-- `RunEventBroker` 历史每键上限 500 条；`run_step` 响应体与 `run_records` 里的 `input_snapshot` 经 `_redact_secrets` 脱敏（api_key/token/password/secret/authorization → `***`）。
+- `RunEventBroker` 历史每键上限 500 条；`run_step` 响应体与 `run_records` 里的 `input_snapshot` 经 `_redact_secrets` 脱敏（api_key/apikey/token/password/secret/authorization → `***`）。
 
 ---
 
@@ -520,7 +533,7 @@ classDiagram
 - [ ] D1：provider 注册表合并顺序 / 密钥链 / `/api/providers` 字段是否同步
 - [ ] D2：`make_settings` 每个 `params.get` 默认值与 schema `default` 一致；Windows `\\?\` 与 `files_filter` 未回退
 - [ ] D3：`embedding_local = startswith("st-")`；推荐器三级顺序、白名单、缓存 TTL、`PAPERQA_EMBED_RECOMMEND_LIVE`
-- [ ] D4：会话级 `data_source_params` 唯一来源；SSRF 校验（含重定向复检与 198.18/15 豁免）；200MB 上限；自愈签名含 ExceptionGroup 展开
+- [ ] D4：会话级 `data_source_params` 唯一来源；SSRF 校验（含重定向复检与 198.18/15 豁免）；200MB 上限；自愈 = files.zip 前置 zlib 试解压（非异常重试）
 - [ ] D5：schema 新增字段同步 `validate_config` 分支与 KNOWN_RUNTIME_KEYS；影响提示
 - [ ] D6：六步前置条件/写回字段表
 - [ ] D7：草稿态聚焦保护、面板联动、Run All 拓扑（节点参数独立 → 会话级共享）

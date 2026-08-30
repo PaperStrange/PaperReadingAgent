@@ -32,20 +32,17 @@ export default function ModelConfigPanel({ params, apiBase, onChange }) {
 
   const onProviderChange = (name) => {
     const info = providers.find((p) => p.name === name);
-    const patch = { provider: name };
+    const next = { ...(params || {}), provider: name };
     if (info) {
-      patch.api_base = info.api_base || "";
-      patch.model = info.model || "";
-      patch.vision_model = info.vision_model || "";
+      next.api_base = info.api_base || "";
+      next.model = info.model || "";
+      next.vision_model = info.vision_model || "";
       if (info.has_embedding_api && info.embedding) {
-        patch.embedding_model = info.embedding; // 有 API → 服务商策展模型
+        next.embedding_model = info.embedding; // 有 API → 服务商策展模型
       } else {
-        delete patch.embedding_model; // 无 API → 交给后端自动选择 HF 多语言热门模型
-        patch.embedding_model = null; // 显式删除（下方 delete）
+        delete next.embedding_model; // 无 API → 交给后端自动选择 HF 多语言热门模型
       }
     }
-    const next = { ...(params || {}), ...patch };
-    if (patch.embedding_model === null) delete next.embedding_model;
     onChange(JSON.stringify(next, null, 2));
   };
 

@@ -112,12 +112,19 @@ def _normalize_entry(name: str, entry: dict) -> dict:
 
 
 def get_providers() -> dict[str, dict]:
-    """内置 + 自定义 provider 注册表（自定义可覆盖内置同名项）。"""
+    """内置 + 自定义 provider 注册表（自定义可覆盖内置同名项）。
+
+    review 修正：单个自定义条目缺 model 等非法配置**只跳过该条目**，
+    不拖垮整个注册表（/api/providers 与所有 config 步骤保持可用）。
+    """
     registry: dict[str, dict] = {k: dict(v) for k, v in PROVIDERS.items()}
     for name, entry in _load_custom_providers().items():
         if not isinstance(entry, dict):
             continue
-        registry[str(name).strip().lower()] = _normalize_entry(str(name).strip().lower(), entry)
+        try:
+            registry[str(name).strip().lower()] = _normalize_entry(str(name).strip().lower(), entry)
+        except ValueError:
+            continue  # 非法自定义条目：跳过（请求该 provider 时会报"未知服务商"并列出可用项）
     return registry
 
 
