@@ -77,7 +77,12 @@ switch ($Action) {
     }
     "merge" {
         if ($Number -le 0) { throw "merge requires -Number" }
-        $payload = [ordered]@{ merge_method = $Method; commit_title = "Merge pull request #$Number from PaperStrange/$Head" }
+        if (-not $Head) {
+            # fetch the PR to build a complete merge commit title
+            $prInfo = Invoke-GitHubJson -Uri "$Api/pulls/$Number" -HttpMethod "Get"
+            $Head = $prInfo.head.label
+        }
+        $payload = [ordered]@{ merge_method = $Method; commit_title = "Merge pull request #$Number from $Head" }
         $m = Invoke-GitHubJson -Uri "$Api/pulls/$Number/merge" -HttpMethod "Put" -Payload $payload
         Write-Output ("MERGED #{0}: {1}" -f $Number, $m.sha)
     }
