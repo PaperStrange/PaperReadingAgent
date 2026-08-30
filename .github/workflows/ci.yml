@@ -29,6 +29,7 @@ jobs:
           PYTHONUTF8: "1"
         run: |
           $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           pip install "fhlmi==0.42.1" "litellm==1.76.1"
           pip install -e ./paper-qa
           pip install -e "./paper-qa/packages/paper-qa-pypdf[media]"
@@ -45,7 +46,7 @@ jobs:
           HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
         run: |
           $ErrorActionPreference = "Stop"
-          $PSNativeCommandUseErrorActionPreference = "True"
+          $PSNativeCommandUseErrorActionPreference = $true
           python verify/verify_smoke.py
           python verify/verify_prune_callbacks.py
           python verify/verify_agentops.py
@@ -81,7 +82,12 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install Python deps
+        env:
+          SETUPTOOLS_SCM_PRETEND_VERSION: "2026.1.6.dev10+g36348d0ca"
+          PYTHONUTF8: "1"
         run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           pip install "fhlmi==0.42.1" "litellm==1.76.1"
           pip install -e ./paper-qa
           pip install -e "./paper-qa/packages/paper-qa-pypdf[media]"
