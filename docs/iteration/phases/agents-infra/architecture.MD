@@ -186,6 +186,11 @@ source:
 - P3：registry.json 为唯一账本源（文件权威），SQLite 仅为派生索引——看板编辑 spec 直写文件、账本记录只经 agent-ops CLI 追加（避免双写）。默认按此执行，无异议即定。
 - P4：**用户要求先对阶段 1 设计提修改意见（2026-08-30）——待用户具体意见，收集后修订再进入阶段 2**。
 
+### 5.1 阶段 3 技术风险预研（本轮已实测，附证据）
+
+- **better-sqlite3 原生模块**：在 Node v23.10.0 上 `npm install better-sqlite3@13.0.3`（prebuilt，3s 装完）+ FTS5 实测（word/phrase/AND 查询均命中）→ **风险清除**；`engines: node>=22` 与本机匹配。
+- **价表来源**：litellm 1.76.1 在 venv 内捆绑 `model_prices_and_context_window_backup.json`（1533 个模型，可离线读取）——`gpt-4o-mini`、`text-embedding-3-large` 有完整单价（in/out/cache）；**deepseek 系列 / qwen-omni-turbo / text-embedding-v4 / openrouter/auto 无条目** → `prices.json` 需人工覆盖段（由服务商页面填入），派生脚本只自动提取有单价的模型。
+
 ## 6. 阶段交付物清单与验收标准（评审靶子，待用户修改意见）
 
 ### 阶段 2（四评审代理 spec/账本/跨 IDE）
