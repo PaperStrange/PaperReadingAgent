@@ -78,7 +78,7 @@ API_KEY :=
     params.api_key 非空          -> params.api_key            // 显式参数最高
   | resolve_key(provider) 非空   -> 专属链（见下）            // provider_cfg["api_key"]
   | env[OPENAI_API_KEY] 非空    -> env[OPENAI_API_KEY]       // 保险兜底（通常已被 resolve_key 覆盖）
-  | 报错 "api_key is required"                                [engine.py·104-113]
+  | 报错 "api_key is required"                                [engine.py::make_settings]
 
 resolve_key(provider) :=
     env[key_envs[0]] 非空 -> 该值      // 专属 key（DEEPSEEK/DASHSCOPE/OPENAI/OPENROUTER_API_KEY）
@@ -115,12 +115,12 @@ provider_cfg := get_provider_config(params.provider)      // 未知 provider 此
 api_key   := params.api_key 非空 -> params.api_key
            | provider_cfg.api_key 非空 -> provider_cfg.api_key   // resolve_key：专属→通用
            | env[OPENAI_API_KEY] 非空 -> env[OPENAI_API_KEY]     // 保险兜底
-           | 报错 "api_key is required"                    [engine.py·104-113]
+           | 报错 "api_key is required"                    [engine.py::make_settings]
 
 api_base  := params.api_base 非空 -> params.api_base | provider_cfg.api_base
 model     := params.model   非空 -> params.model   | provider_cfg.model
 vision_model := params.vision_model 非空 -> 该值 | provider_cfg.vision_model 非空 -> 该值 | model
-            // OpenRouter 等未定义 vision 时回落 model，保证含图片上下文可用          [engine.py·104-112]
+            // OpenRouter 等未定义 vision 时回落 model，保证含图片上下文可用          [engine.py::make_settings]
 
 embedding_model := params.embedding_model 非空 -> 该值 | provider_cfg.embedding
 embedding_local := embedding_model.startswith("st-")      // paperqa 约定：st- = SentenceTransformer
@@ -161,7 +161,7 @@ EFFECTIVE_EMBEDDING(params) :=
       // 显式手动选择永远优先；不触发推荐
   | RECOMMENDER.recommend(params.provider)    -> {model: rec.model, source: rec.source}
       // 未显式指定 → 自动推荐（config 步骤注入 settings_params 后再 make_settings）
-      [orchestration.py·run_step(config) 168-199]
+      [orchestration.py::run_step(config)]
 ```
 
 ### 5.2 推荐器内部决策（`app/embedding_recommender.py::DefaultEmbeddingRecommender`）
@@ -240,7 +240,7 @@ sequenceDiagram
 
 ```text
 DATA_SOURCE := session.data_source_params  // config 步骤写入会话的唯一来源（Run All 各节点参数独立）
-    [orchestration.py·run_step(config) 179-183 写入；load_index 206-208 读取]
+    [orchestration.py::run_step(config) 写入；run_step(load_index) 读取]
 
 LOAD_INDEX :=
     data_source = "remote"
@@ -298,7 +298,7 @@ sequenceDiagram
     end
     OR->>OR: paper_directory 存在?（否 → ValueError）
     opt build=true
-        OR->>FS: 一致性判定：目录指纹 marker 不一致 或 files.zip zlib 探针失败
+        OR->>FS: 一致性判定：目录指纹 marker 不一致 或 三重损坏探针命中
         alt 不一致/损坏
             OR->>FS: 整目录删除 ~/.pqa/indexes/<name>/（含 Tantivy 段与 docs 存储）
         end
@@ -310,9 +310,13 @@ sequenceDiagram
     OR-->>OR: output{index_name, indexed_files, files[], remote_sources?}
 ```
 
-> 自愈/一致性策略（Sprint-5 关闭二查修正）：**目录指纹 + 损坏探针 → 整目录重建**，而不是只删 files.zip——
+> 自愈/一致性策略（Sprint-5 关闭二查修正 + Sprint-7 M1 升级）：**目录指纹 + 三重损坏探针 → 整目录重建**，而不是只删 files.zip——
 > 只删 files.zip 会让 Tantivy 段与 docs/ 存储残留旧引用（实测 query 报 `No such file .../docs/<hash>.zip`）；
-> 同目录同指纹保持增量（行为不变）。损坏探针用 zlib 试解压前置校验（不用异常签名重试，避免误伤 PDF 解析期错误）。
+> 同目录同指纹保持增量（行为不变）。**三重探针（`_index_corrupt`）**：
+> ① files.zip zlib 试解压（Sprint-5，不用异常签名重试，避免误伤 PDF 解析期错误）；
+> ② `index/meta.json` 存在且可解析（缺失/非法 = 半成品状态，M1 新增）；
+> ③ `tantivy.Index.open(path).searcher()` 只读打开（真段损坏在此抛出；懒加载代价小，M1 新增）。
+> 证据：`verify/verify_index_health.py`（合成六形态 + 真实构建→篡改 meta.json→整目录重建自愈）。
 
 ---
 
@@ -339,7 +343,8 @@ sequenceDiagram
 
 ### 8.1 节点状态机（前端展示，后端驱动）
 
-> US-5.4：每次 `run_step` 前置 `prune_litellm_callbacks()`（engine 层，对 7 个列表含 `_async_*` 去重并保留最近 20 个），
+> US-5.4：每次 `run_step` 前置 `prune_litellm_callbacks()`（engine 层，对 7 个列表含 `_async_*` 去重并保留最近 N 个；
+> N 默认 20，`PAPERQA_LITELLM_CALLBACK_LIMIT` 环境变量可覆盖，非法值回落 20——Sprint-7 M2），
 > 防 litellm Router 每次模型实例化注册 logger 累计到 MAX_CALLBACKS(30) 抛错。
 > Sprint-5 关闭二查：config 重跑时**失效下游会话状态**（search_index/candidate_paths/docs/evidence/answer），避免旧索引"绿成功"。
 
@@ -551,12 +556,12 @@ classDiagram
 - [ ] D1：provider 注册表合并顺序 / 密钥链 / `/api/providers` 字段是否同步
 - [ ] D2：`make_settings` 每个 `params.get` 默认值与 schema `default` 一致；Windows `\\?\` 与 `files_filter` 未回退
 - [ ] D3：`embedding_local = startswith("st-")`；推荐器三级顺序、白名单、缓存 TTL、`PAPERQA_EMBED_RECOMMEND_LIVE`
-- [ ] D4：会话级 `data_source_params` 唯一来源；SSRF 校验（含重定向复检与 198.18/15 豁免）；200MB 上限；自愈 = 目录指纹 + files.zip zlib 探针 → 整目录重建（同指纹增量）
+- [ ] D4：会话级 `data_source_params` 唯一来源；SSRF 校验（含重定向复检与 198.18/15 豁免）；200MB 上限；自愈 = 目录指纹 + **三重损坏探针（files.zip zlib / index/meta.json / tantivy open+searcher）** → 整目录重建（同指纹增量；Sprint-7 M1 升级）
 - [ ] D5：schema 新增字段同步 `validate_config` 分支与 KNOWN_RUNTIME_KEYS；影响提示
 - [ ] D6：六步前置条件/写回字段表
 - [ ] D7：草稿态聚焦保护、面板联动、Run All 拓扑（节点参数独立 → 会话级共享）；**更改配置后下游自动重跑 config**（stale 检查）
-- [ ] D6/D8：retrieve 去重与 `result` 标记；**多语检索 v1（CJK 零命中 → 英文关键词重试，query_used/query_strategy(direct|keyword_retry|fallback_first_n)/hit_note）**；parse 单文件定位报错；`prune_litellm_callbacks`（engine 层，7 列表，MAX_CALLBACKS 防护）；config 重跑失效下游状态；stream `is_disconnected` 静默退出
+- [ ] D6/D8：retrieve 去重与 `result` 标记；**多语检索 v1（CJK 零命中 → 英文关键词重试，query_used/query_strategy(direct|keyword_retry|fallback_first_n)/hit_note）**；parse 单文件定位报错；`prune_litellm_callbacks`（engine 层，7 列表，MAX_CALLBACKS 防护，上限 env 可配 `PAPERQA_LITELLM_CALLBACK_LIMIT`）；config 重跑失效下游状态；stream `is_disconnected` 静默退出
 - [ ] D8：SSE 线协议字段（新增字段 = 新增兼容负担，须评估）
 - [ ] 本文相关 UML 图与真值表行序是否仍与代码短路顺序一致
 
-> 更新历史：2026-08-30 初版（覆盖 Sprint-2 分层、Sprint-3 数据源、Sprint-4 体验/嵌入推荐/provider 扩展）。
+> 更新历史：2026-08-30 初版（覆盖 Sprint-2 分层、Sprint-3 数据源、Sprint-4 体验/嵌入推荐/provider 扩展）；同日后追加 Sprint-5 一致性自愈/Sprint-6 多语检索/Sprint-7 M1 三重探针 + M2 回调上限配置化。

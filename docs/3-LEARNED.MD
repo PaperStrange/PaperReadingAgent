@@ -12,13 +12,13 @@
 | 分类 | 条目 |
 |---|---|
 | 🖥️ 平台/环境（Windows·PowerShell·端口·编码） | 1.6、1.7、1.8、1.9、1.11、1.18、1.20 |
-| 🧩 框架/服务商（paperqa·litellm·模型） | 1.1、1.2、1.3、1.4、1.14 |
+| 🧩 框架/服务商（paperqa·litellm·模型） | 1.1、1.2、1.3、1.4、1.14、1.25 |
 | 📦 依赖与版本管理 | 1.5、1.13 |
 | 🎨 前端与测试驱动（React·Playwright） | 1.10、1.12、1.19（光标部分） |
 | 🛡️ 安全与防护 | 1.16、1.17、§4 整改表 |
 | 🏗️ 工程方法（分层/一致性/自愈） | 1.15、1.17、1.19（长路径/注册表可扩展）、1.21、1.22 |
 | 🔎 检索与算法改进 | 1.21（来源标记）、1.23 |
-| 📋 项目管理与流程 | 1.17（评审闭环）、1.24、`1-WORKFLOW.MD` §4.4 |
+| 📋 项目管理与流程 | 1.17（评审闭环）、1.24、1.26、`1-WORKFLOW.MD` §4.4 |
 
 ### 1.1 DeepSeek 无 embedding API → 本地向量化
 - 现象：DeepSeek 平台只提供 `deepseek-v4-flash / -pro / -flash-vision-exp`，无 embedding 端点。
@@ -132,6 +132,16 @@
 - 解决（借鉴 Now/Next/Later + 滚动式规划 + 规划分层）：全局 `docs/iteration/ROADMAP.MD`（三档）↔ 阶段 `phases/<阶段>/{README,roadmap,backlog}.MD`（原规划冻结 + 实际实录 + 卡独立登记）；`1-WORKFLOW.MD` §4.4 制定 Sprint/Bug/维护判定五问 + 严重度分诊 + ~20% 非计划工作预算；分析文档回归纯分析定位。
 - 教训：**文档职责要跟着项目生命周期走**——"分析文档"不该长期承载"规划文档"职责；**分级规划**（全局主题级 ↔ 阶段 roadmap ↔ Sprint 细节）比一份越滚越大的 roadmap 更抗漂移；**历史文档（原规划）冻结不重写，执行情况另册实录**。
 
+### 1.25 索引构建的两个坑：TaskGroup 掩埋子异常；aadd 引用推断是隐藏的 LLM 调用（Sprint-7 M1）
+- 现象：M1 离线验证脚本真实构建索引时报 `unhandled errors in a TaskGroup (1 sub-exception)`，编排层只透出这句话，**真因被 TaskGroup 掩埋**；去掉封装直接调 `get_directory_index` 复现，真因是 `Docs.aadd` 对首块文本做 **citation 推断 LLM 调用**（`citation_prompt`），占位 key → 401。
+- 解决：① 诊断方法——**报错被 TaskGroup 聚合时，剥掉编排层直接复现拿完整 traceback**（别猜）；② 离线化——`aadd` 的 citation 调用可用 **manifest（CSV：file_location,citation,title）** 提供 citation 跳过（结构化提取另受 `use_doc_details` 门控，默认 False 不触发）；PDF 图片还会触发视觉增强 LLM，改用**无图 txt 语料**即可零 LLM 构建（索引探针/指纹/files.zip 逻辑与文件类型无关）。`verify/verify_index_health.py` 因此完全离线。
+- 教训：**"构建索引"不是纯本地操作**——paperqa 的 `aadd` 默认会对每个文件做 LLM 引用推断（PDF 还有图片视觉增强），离线测试/无 key 场景必须显式提供 citation（manifest）或换无图语料；**框架把异常包进 TaskGroup 时，验证脚本要保留"直连复现"路径**。
+
+### 1.26 维护批清技术账：把"建议修"沉淀为可执行的维护卡 + 关闭前全量 review（Sprint-7 PM 实践）
+- 现象：历次 Sprint Retro/三查的"建议修/后续"散落各处，长期不做会累积成隐蔽技术账；用户要求"清完无遗漏"。
+- 解决：backlog 维护卡 M1~M6 独立登记（来源标注 Sprint-5/6 Retro 与三查），用户批准后打包成插队 Sprint-7 一次性清零（M3 按用户指示保留未完成，卡上注明）；每个卡配**可复现 verify 证据**（index_health/prune_callbacks/provider_switch 升级），Sprint 关闭前再跑一次 windows+main 全量 code review 兜底。
+- 教训：**三查的"建议修"必须回流 backlog 卡**，否则就是纸面闭环；**清账 Sprint 的 DoD 是"卡清零 + verify 证据入库 + 全量 review 无遗漏"**，而不是"看起来都改了"。
+
 ## 2. 验证记录（Windows，实际执行）
 
 ### 2.1 冒烟（`verify/verify_smoke.py`）—— 8/8 通过
@@ -171,6 +181,16 @@
 | `verify_remote_e2e.py` | remote+arXiv：下载 1.78MB → 索引 1 文件 → retrieve 1 候选 → evidence 9 contexts → answer 1663 字符 |
 | `gui_check.mjs` | GUI Run All 六步 → 答案含 Skarlinski（截图 `us2-06.png`） |
 | `gui_check_remote.mjs` | 面板切 remote + arXiv → Run All → 答案含 PaperQA2（截图 `us3-remote.png`） |
+
+### 2.6 Sprint-7 维护批验证（`verify/`）
+
+| 脚本 | 结果（最近一次实测） |
+|---|---|
+| `verify_index_health.py`（M1 新增） | 合成六形态探针全对 + 真实构建（txt+manifest，零 LLM）→ 篡改 meta.json 判损坏 → load_index 整目录重建自愈 → 探针 False；`paper_dir_marker.txt` 指纹写入确认 |
+| `verify_prune_callbacks.py`（M2 升级） | 默认 20 / env=5 → 5 / env=abc,0 → 回落 20 / env=40 → 钳制 30，全部 PASS |
+| `verify_provider_switch.py`（M5 升级） | deepseek 真实 SUCCESS；dashscope/openai/openrouter/自定义 占位 key 端点级拒绝（非连接类错误断言）→ 路由实证 PASS |
+| `gui_check_s7.mjs`（M4 新增） | 并发 parse+retrieve 双节点计时 `A X.Xs · B Y.Ys` + 先完成节点冻结不被覆盖 + 完成后冻结（截图 `gui_check_s7*.png`） |
+| `verify_e2e.py` | Sprint-7 改动后全链路六步 PASS（parse 30.3s / evidence 15.7s / answer 1502 字符；既有健康索引未被三重探针误判重建） |
 
 ## 3. 已知限制
 
