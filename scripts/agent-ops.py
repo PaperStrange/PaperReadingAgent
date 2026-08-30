@@ -137,11 +137,10 @@ def _estimate_cost(entry: dict) -> dict:
         cost["output"] = (oc / _CHARS_PER_TOKEN) * (prices.get("output_cost_per_token") or 0)
         estimated = True
     fx = _fx_usd_cny()
-    total_usd = sum(cost.values())
-    return {"input": round(cost["input"], 8), "output": round(cost["output"], 8),
-            "cache_read": round(cost["cache_read"], 8), "cache_write": round(cost["cache_write"], 8),
-            "total": round(total_usd * fx, 8), "currency": "CNY", "estimated": estimated,
-            "pending_price": False, "model": model}
+    # review 修正（Sprint-9 三查 P1）：分项同样 ×fx 转 CNY，保证分项之和 = total（此前分项仍为 USD、对象级却标 CNY，口径不一致）
+    cny = {k: round(v * fx, 8) for k, v in cost.items()}
+    return {**cny, "total": round(sum(cny.values()), 8), "currency": "CNY",
+            "estimated": estimated, "pending_price": False, "model": model}
 
 
 def cmd_register(args: argparse.Namespace) -> None:
@@ -150,6 +149,9 @@ def cmd_register(args: argparse.Namespace) -> None:
     if any(r["run_id"] == args.run_id for r in data["runs"]):
         raise SystemExit(f"run_id {args.run_id} 已存在，请更换")
     run_id = args.run_id or f"run-{_now()[:10]}-{args.role}-{len(data['runs']) + 1:03d}"
+    # review 修正（Sprint-9 三查 P2）：run-id 将成为 runs/ 下的目录名，限字符集防路径穿越
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", run_id):
+        raise SystemExit(f"run_id 含非法字符（仅允许字母数字 . _ -）：{run_id!r}")
     entry = {
         "run_id": run_id,
         "task_id": args.task or "",

@@ -92,7 +92,8 @@ switch ($Action) {
             # layer-3 git hygiene (2026-08-31): cleanup the merged head branch.
             # Repo setting delete_branch_on_merge also deletes it (async, API merges too),
             # so "failed to push some refs" here means the ref is already gone = success.
-            $branch = ($Head -split "/", 2)[1]
+            # API head.label 为 "owner/branch"；直接 -Head 传入时整段即分支名（分支名本身可含 "/"）
+            $branch = if ($Head -match "^PaperStrange/") { $Head -replace "^PaperStrange/", "" } else { $Head }
             if ($branch) {
                 git -C $RepoRoot push origin --delete $branch 2>&1 | Out-Null
                 $cur = ((git -C $RepoRoot symbolic-ref --short HEAD) 2>$null) -replace "\s", ""

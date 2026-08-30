@@ -20,6 +20,10 @@
 | `gui_check_s4.mjs` | Sprint-4：光标不跳末尾 + provider 下拉联动（openrouter/deepseek 自动带出） | 同 `gui_check.mjs` |
 | `gui_check_s5.mjs` | Sprint-5：自动重跑 config、retrieve 双模式标记、计时冻结、复制报错按钮（7 项断言） | 同 `gui_check.mjs` |
 | `gui_check_s7.mjs` | Sprint-7 M4：多节点并发计时显示（retrieve+evidence 并发 → `A X.Xs · B Y.Ys`）+ 完成后冻结 | 同 `gui_check.mjs` |
+| `gui_check_dashboard.mjs` | Sprint-9：看板概览页截图（状态卡片/环形图/账本列表） | agents-dashboard 已启动（8600，生产模式）；Playwright Chromium 已安装 |
+| `gui_check_dashboard2.mjs` | Sprint-9：看板 spec 编辑页截图 | 同 `gui_check_dashboard.mjs` |
+| `gui_check_dashboard_costs.mjs` | Sprint-9：看板成本/上下文页截图（CNY 合计、pending 标注、上下文占用） | 同 `gui_check_dashboard.mjs` |
+| `gui_check_dashboard_report.mjs` | Sprint-9：看板报告浏览页截图（run 详情 + 报告全文） | 同 `gui_check_dashboard.mjs` |
 
 运行示例：
 
@@ -38,6 +42,10 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 node .\verify\gui_check.mjs          # GUI（需先启动前后端）
 node .\verify\gui_check_remote.mjs   # GUI remote 数据源（需先启动前后端 + 联网）
 node .\verify\gui_check_s7.mjs       # Sprint-7 M4 并发计时（需先启动前后端）
+node .\verify\gui_check_dashboard.mjs         # Sprint-9 看板概览页截图（需 agents-dashboard 已启动）
+node .\verify\gui_check_dashboard2.mjs        # Sprint-9 看板 spec 页截图（需 agents-dashboard 已启动）
+node .\verify\gui_check_dashboard_costs.mjs   # Sprint-9 看板成本页截图（需 agents-dashboard 已启动）
+node .\verify\gui_check_dashboard_report.mjs  # Sprint-9 看板报告页截图（需 agents-dashboard 已启动）
 ```
 
 已知差异：graphviz 已自动发现（冒烟第 7 项扫描常见安装目录）；仅当系统完全未安装 Graphviz 时才报 `ExecutableNotFound`（可选安装，见 `docs/3-LEARNED.MD` 验证记录）。

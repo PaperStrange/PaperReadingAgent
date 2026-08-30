@@ -6,10 +6,10 @@
 
 | 职能 | spec | 任务输入（参数化） | 执行方式 |
 |---|---|---|---|
-| 影响范围评估（fan-out 第一道闸门） | [`functions/impact-assessment.md`](functions/impact-assessment.md) | `{change_set, scope_hint}` → 输出 A（核心功能覆盖率/11）、B（核心 API 覆盖率/8）、composite=(0.8A+0.2B)×100、**阈值 X=50** 两档 recommended_scope | 子代理（三查/review 前先跑） |
+| 影响范围评估（fan-out 第一道闸门） | [`functions/impact-assessment.md`](functions/impact-assessment.md) | `{change_set, scope_hint}` → 输出 A（核心功能覆盖率/12）、B（核心 API 覆盖率/8）、composite=(0.8A+0.2B)×100、**阈值 X=50** 两档 recommended_scope | 子代理（三查/review 前先跑） |
 | 代码审阅 | [`functions/code-review.md`](functions/code-review.md) | `{target: branch:windows\|branch:main\|pr:<n>\|working-tree, scope, focus, strictness}` | 子代理（每任务一次） |
 | 文档审计 | [`functions/doc-audit.md`](functions/doc-audit.md) | `{target, scope, focus, strictness}` | 子代理 |
-| 经验教训总结（Sprint 关闭前置必做） | [`functions/lessons-learned.md`](functions/lessons-learned.md) | `{sprint_doc, change_commits}` → 3-LEARNED 新条目草稿 + 分类索引更新建议（主代理审核回填） | 子代理（三查后、Close 前） |
+| 经验教训总结（Sprint 关闭前置必做） | [`functions/lessons-learned.md`](functions/lessons-learned.md) | `{sprint_doc, change_commits}` → 3-LEARNED 新条目草稿 + 分类索引更新建议（主代理审核回填） | 子代理（一查/二查后、workspace-check 前；fan-out 第 4 步） |
 | 工作区核验 | [`functions/workspace-check.md`](functions/workspace-check.md) | — | **主代理执行**（D2：起服务/杀进程不子代理化） |
 
 - 同一职能对多个 target 各跑一次任务（如三查时 code-review 跑 windows+main 两任务），分支/PR 只是任务参数。
@@ -46,4 +46,4 @@ spec 是纯 markdown（body = 可直接粘贴的完整 prompt），账本是纯 
 
 ## 4. 三查 fan-out（制度化后）
 
-Sprint 关闭三查 = `code-review` × 2 任务（branch:windows、branch:main）+ `doc-audit` × 1 任务并行，主代理执行 `workspace-check` 手册；每任务一个账本 run（register→finish），报告 `parse-report` 结构化后按 `1-WORKFLOW.MD` §4.4 分诊闭环，结论写入 Sprint 文档 §9。
+Sprint 关闭三查 = 〇查 `impact-assessment`（先跑，出 recommended_scope）→ `code-review` × 2 任务（branch:windows、branch:main）与 `doc-audit` × 1 任务并行 → `lessons-learned`（fan-out 第 4 步）→ 主代理执行 `workspace-check`；每任务一个账本 run（register→finish），报告 `parse-report` 结构化后按 `1-WORKFLOW.MD` §4.4 分诊闭环，结论写入 Sprint 文档 §9。

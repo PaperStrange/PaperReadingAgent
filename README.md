@@ -228,7 +228,13 @@ node .\verify\gui_check_remote.mjs    # GUI remote 数据源（需前后端已�
 node .\verify\gui_check_s4.mjs        # Sprint-4：光标/面板联动（需前后端已启动）
 node .\verify\gui_check_s5.mjs        # Sprint-5：自动重跑/双模式标记/计时冻结（需前后端已启动）
 node .\verify\gui_check_s7.mjs        # Sprint-7：多节点并发计时（需前后端已启动）
+node .\verify\gui_check_dashboard.mjs         # Sprint-9：看板概览页截图（需 agents-dashboard 已启动，8600）
+node .\verify\gui_check_dashboard2.mjs        # Sprint-9：看板 spec 页截图（需 agents-dashboard 已启动）
+node .\verify\gui_check_dashboard_costs.mjs   # Sprint-9：看板成本页截图（需 agents-dashboard 已启动）
+node .\verify\gui_check_dashboard_report.mjs  # Sprint-9：看板报告页截图（需 agents-dashboard 已启动）
 ```
+
+> 上述命令为 **Windows 示例**（`.\.venv\Scripts\python.exe` 是 Windows venv 路径）；mac 等价为 `.venv/bin/python`。
 
 `verify_e2e.py` 期望输出（节选）：
 

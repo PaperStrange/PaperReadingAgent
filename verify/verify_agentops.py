@@ -109,6 +109,11 @@ def main() -> int:
         ok("UC-4 价表精确值（CNY）", abs(cost["total"] - 0.00972) < 1e-9 and not cost["estimated"]
            and cost["currency"] == "CNY",
            f"total={cost['total']}（期望 0.00972）")
+        # review 修正（Sprint-9 三查 P1）：分项同为 CNY（×fx），且分项之和 = total
+        ok("UC-4 分项 CNY（input/output）",
+           abs(cost["input"] - 0.00108) < 1e-9 and abs(cost["output"] - 0.00864) < 1e-9
+           and abs(cost["input"] + cost["output"] - cost["total"]) < 1e-9,
+           f"input={cost['input']} output={cost['output']} total={cost['total']}")
 
         # UC-4：chars/4 兜底 + estimated（USD 0.00075 × 7.2 = CNY 0.0054）
         run(["register", "--role", "doc-audit", "--task", "docs", "--spec", "doc-audit@1.0.0",
@@ -163,6 +168,12 @@ def main() -> int:
         r = run(["register", "--role", "code-review", "--task", "y", "--spec", "code-review@1.0.0",
                  "--run-id", run6], base_env)
         ok("三查修正 run-id 查重", r.returncode != 0 and "已存在" in (r.stdout + r.stderr),
+           (r.stdout + r.stderr).strip()[:60])
+
+        # review 修正（Sprint-9 三查 P2）：run-id 字符集校验（将成为 runs/ 下目录名）
+        r = run(["register", "--role", "code-review", "--task", "z", "--spec", "code-review@1.0.0",
+                 "--run-id", "../evil"], base_env)
+        ok("三查修正 run-id 字符集", r.returncode != 0 and "非法字符" in (r.stdout + r.stderr),
            (r.stdout + r.stderr).strip()[:60])
 
         # UC-9：上下文占用 ratio + 成本覆盖

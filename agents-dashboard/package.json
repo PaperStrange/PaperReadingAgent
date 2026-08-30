@@ -13,7 +13,6 @@
     "antd": "^6.6.2",
     "better-sqlite3": "^13.0.3",
     "chokidar": "^5.0.0",
-    "drizzle-orm": "^0.45.2",
     "next": "16.3.3",
     "react": "19.2.8",
     "react-dom": "19.2.8"

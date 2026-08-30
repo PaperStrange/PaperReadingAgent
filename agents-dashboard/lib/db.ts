@@ -4,6 +4,8 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 
+// 启动 cwd 约定：须在 agents-dashboard/ 下启动（start 脚本已 Push-Location）。
+// AGENT_OPS_DIR 显式设置时优先；getDb() 会校验目录存在并给出明确报错。
 const REPO_ROOT = path.resolve(process.cwd(), "..");
 const AGENTS_DIR = process.env.AGENT_OPS_DIR || path.join(REPO_ROOT, "agents");
 const REGISTRY_PATH = path.join(AGENTS_DIR, "runtime", "registry.json");
@@ -71,6 +73,8 @@ function openDb(): Database.Database {
 }
 
 function reportBody(runId: string): string {
+  // 路径穿越防护（review 修正 Sprint-9 三查）：runId 必须是纯目录名
+  if (!runId || path.basename(runId) !== runId || runId.includes("..")) return "";
   const dir = path.join(RUNS_DIR, runId);
   if (!fs.existsSync(dir)) return "";
   return fs
@@ -145,6 +149,11 @@ export function reindex(): { count: number; indexed_at: string } {
 }
 
 export function getDb(): Database.Database {
+  if (!fs.existsSync(AGENTS_DIR)) {
+    throw new Error(
+      `AGENT_OPS_DIR 不存在：${AGENTS_DIR}。请在 agents-dashboard/ 目录下启动（start 脚本已处理），或显式设置 AGENT_OPS_DIR。`
+    );
+  }
   if (!global.__agentopsDb) {
     global.__agentopsDb = openDb();
     reindex();
@@ -159,8 +168,13 @@ function startWatcher(): void {
   watcherStarted = true;
   // 延迟加载 chokidar，避免在无文件变更时引入开销
   import("chokidar").then(({ default: chokidar }) => {
-    const targets = [REGISTRY_PATH, RUNS_DIR].filter((p) => fs.existsSync(p));
-    const watcher = chokidar.watch(targets, { ignoreInitial: true, awaitWriteFinish: { stabilityThreshold: 500 } });
+    // review 修正（Sprint-9 三查 P2）：监听 AGENTS_DIR 整目录（而非仅现存文件），
+    // 新机首次启动时 runtime/、runs/ 尚不存在，后续落盘也能触发增量 reindex；排除 functions/（spec 编辑与账本无关）。
+    const watcher = chokidar.watch(AGENTS_DIR, {
+      ignoreInitial: true,
+      ignored: (p: string) => p.split(path.sep).includes("functions"),
+      awaitWriteFinish: { stabilityThreshold: 500 },
+    });
     let t: NodeJS.Timeout | null = null;
     const kick = () => {
       if (t) clearTimeout(t);
@@ -301,6 +315,7 @@ export function aggregates(): {
     if (cost.estimated) estimated_count++;
     by_model[r.model || "未知模型"] = m;
   }
+  // fallback 与 scripts/agent-ops.py 默认值一致；真相源 = agents/runtime/prices.json 的 meta.fx_usd_cny
   let fx_usd_cny = 7.2;
   const pricesPath = path.join(AGENTS_DIR, "runtime", "prices.json");
   if (fs.existsSync(pricesPath)) {
