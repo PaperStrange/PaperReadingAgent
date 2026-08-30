@@ -361,7 +361,7 @@ stateDiagram-v2
 |---|---|---|---|---|
 | config | 无 | 推荐注入 → make_settings | `settings`, `data_source_params` | paper_directory/index_name/llm/embedding/config_notes[/embedding_resolved] |
 | load_index | settings 非空 | 远程解析(remote) → 目录存在检查 → 索引(自愈) | `search_index` | index_name/indexed_files/files[/remote_sources] |
-| retrieve | search_index 非空 | query_index；query 缺省取 upstream.question 或 "PaperQA"；top_n 默认 5；**结果按命中顺序去重**；**零命中回退取 `index_files.keys()[:top_n]`，输出 `result=fallback_first_n`（命中时 `ranked`）** | `candidate_paths` | query/candidate_count/candidate_paths/result |
+| retrieve | search_index 非空 | query_index；query 缺省取 upstream.question 或 "PaperQA"；top_n 默认 5；**结果按命中顺序去重**；**含 CJK 的 query 零命中 → 提取 `[A-Za-z][A-Za-z0-9\-]{2,}` 英文关键词重试（多语检索 v1，零成本）**；仍零命中 → 回退取 `index_files.keys()[:top_n]`；输出 `query_used`/`query_strategy`（direct\|keyword_retry\|fallback_first_n）/`result`（ranked\|fallback_first_n）/`hit_note` 命中理由 | `candidate_paths` | query/query_used/query_strategy/candidate_count/candidate_paths/result/hit_note |
 | parse_chunk_embed | settings、search_index 非空 | 见 8.3 三分支；**无 candidate_paths 时默认取索引前 5 篇**；**单文件失败给定位信息**（"解析文件失败：<p>…若文件不存在：核对论文目录并重跑 Config → load_index"） | `docs` | docs_count/texts_count/per_file/sample_texts/loaded[/regen] |
 | evidence | docs、settings 非空 | `aget_evidence`；question 缺省 upstream 或 "什么是PaperQA？" | `evidence_session` | question/contexts_count/context_ids |
 | answer | docs、settings、evidence_session 非空 | `aquery`；**文本回退链 answer → formatted_answer → raw_answer** | `answer_session` | answer/references/used_contexts/answer_available_fields |
@@ -555,7 +555,7 @@ classDiagram
 - [ ] D5：schema 新增字段同步 `validate_config` 分支与 KNOWN_RUNTIME_KEYS；影响提示
 - [ ] D6：六步前置条件/写回字段表
 - [ ] D7：草稿态聚焦保护、面板联动、Run All 拓扑（节点参数独立 → 会话级共享）；**更改配置后下游自动重跑 config**（stale 检查）
-- [ ] D6/D8：retrieve 去重与 `result` 标记；parse 单文件定位报错；`prune_litellm_callbacks`（engine 层，7 列表，MAX_CALLBACKS 防护）；config 重跑失效下游状态；stream `is_disconnected` 静默退出
+- [ ] D6/D8：retrieve 去重与 `result` 标记；**多语检索 v1（CJK 零命中 → 英文关键词重试，query_used/query_strategy(direct|keyword_retry|fallback_first_n)/hit_note）**；parse 单文件定位报错；`prune_litellm_callbacks`（engine 层，7 列表，MAX_CALLBACKS 防护）；config 重跑失效下游状态；stream `is_disconnected` 静默退出
 - [ ] D8：SSE 线协议字段（新增字段 = 新增兼容负担，须评估）
 - [ ] 本文相关 UML 图与真值表行序是否仍与代码短路顺序一致
 
