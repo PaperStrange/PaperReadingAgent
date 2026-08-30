@@ -89,6 +89,7 @@ resolve_key(provider) :=
 
 - `.env`（`paper-qa-script/.env`）由 `_load_dotenv` 先并入 `os.environ`（**不覆盖已设变量**），故不单独成级。
 - ⚠️ 2026-08-30 review 修正：旧代码把 `env[OPENAI_API_KEY]` 排在 `provider_cfg["api_key"]` 之前，导致同时设置专属+通用 key 时取到通用——现已改为上述顺序并有实测用例锁定（`sk-DS-1` 优先于 `sk-GEN-1`）。
+- ⚠️ 2026-08-30 Sprint-7 修正：`make_settings` **不再把解析出的 api_key 写回 `os.environ["OPENAI_API_KEY"]`**（paperqa 不读该环境变量，key 全部经 litellm_params 显式携带）——否则同进程 deepseek→openai 切换时通用变量被 deepseek key 污染。回归：`verify_provider_switch` 3b（sentinel 断言）+ `verify_e2e_openai.py` Phase 2。
 
 ```mermaid
 flowchart LR

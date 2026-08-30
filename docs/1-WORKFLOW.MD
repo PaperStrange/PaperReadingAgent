@@ -182,6 +182,7 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 .\.venv\Scripts\python.exe .\verify\verify_index_health.py      # 索引三重探针 + 自愈（离线）
 .\.venv\Scripts\python.exe .\verify\verify_provider_switch.py   # 服务商切换/路由实证（联网）
 .\.venv\Scripts\python.exe .\verify\verify_e2e.py               # 全链路（真实 API）
+.\.venv\Scripts\python.exe .\verify\verify_e2e_openai.py        # OpenAI provider+embedding 全流程（账户需余额）
 .\.venv\Scripts\python.exe .\verify\verify_agent.py             # Agent 流程 + 翻译（需 e2e 先跑过）
 .\.venv\Scripts\python.exe .\verify\verify_embed_load.py        # Embedding 三步
 .\.venv\Scripts\python.exe .\verify\verify_remote_e2e.py        # remote 数据源全链路（联网）
