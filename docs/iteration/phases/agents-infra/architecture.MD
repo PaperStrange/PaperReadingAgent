@@ -32,6 +32,19 @@
 | skill/spec 文件约定（SKILL.md、AGENTS.md、子代理定义） | `d89be0c2` | ✅ 已返回（见 §2.4） |
 | LLM 可观测与成本估算（数据模型、单价估算） | `06b68f0f` | ✅ 已返回（见 §2.1） |
 | 本地看板技术栈（Next.js+MongoDB vs 轻量替代） | `70891874` | ✅ 已返回（见 §2.2） |
+| 职能/能力划分（用户意见①补充调研） | `e0d54678` | ✅ 已返回（见 §2.5） |
+
+### 2.5 职能划分结论（子代理 e0d54678，用户意见①）
+
+- **业界共识：按职能（角色/能力）划分，不按目标对象（分支）划分**——用户的直觉与主流一致。
+- Anthropic 多代理研究系统：Lead（只编排）+ Researcher/Data Analyst/Report Writer，粒度 = "一个职能 = 一个产出物 + 一套专属工具"；命名动名词（-er）。
+- Claude Code 官方：subagent 应"单一、定义清晰的任务"（narrowly scoped）。
+- SKILL.md 粒度哲学：**skill = 窄而深的一项可复用过程能力；职能（spec）= 角色，skill = 任务**，一职能引用多 skill。
+- **CodeRabbit**：一个 `code-reviewer` 职能，内部 安全/质量/最佳实践/性能/bug 五维度 = "职能内部任务"——直接印证"一职能多任务"；评审 agent 不按分支/语言拆，分支只是输入参数。
+- **OpenHands microagents 三层模型（最贴合）**：knowledge（关键词触发窄能力）/ task（多步闭环工作流）/ repository（repo.md 常驻 = 目标对象参数）——**把"分支"下沉为 task 输入，而非职能维度**。
+- MetaGPT/CrewAI：角色=职能（PM/架构师/QA），一个 agent 一个职责、避免重叠。
+
+**采纳**（§3.1）：职能清单起步 3 个 `code-review` / `doc-audit` / `workspace-check`（主代理手册），预留 `test-audit` / `security-review` / `api-contract-review`；任务参数化 `{target 分支/PR, focus 维度, strictness}`；文件关系 = 职能 spec 一职能一文件（`docs/agents/functions/<fn>.md`），任务 skill 按需窄化拆分（先内置为职能 spec 的维度清单）。
 
 ### 2.1 可观测性与成本追踪结论（子代理 06b68f0f）
 
@@ -84,13 +97,24 @@
 
 ## 3. 架构设计（合成完毕，待用户评审）
 
-### 3.1 agent 定义格式（依据 §2.3/§2.4 定稿）
+### 3.1 agent 定义格式（依据 §2.3/§2.4/§2.5 定稿，Sprint-8 US-8.1）
 
-文件：`docs/agents/<role>.md`（阶段 2 起步；未来可升级为 `<name>/SKILL.md` 目录形式保持兼容）。
+**划分原则（用户意见① + §2.5 调研）**：按**职能**划分，不按分支——"团队中一个角色的一个闭环工作流 = 一个职能"；一个职能执行多个任务；任务 = skill（窄而深）或直接是职能 spec 内的维度清单；**分支/PR 下沉为任务参数（target）**。
+
+**职能清单（起步）**：`code-review`、`doc-audit`、`workspace-check`（主代理手册，不子代理化）；预留 `test-audit` / `security-review` / `api-contract-review`。
+
+**任务参数（每次执行的任务输入）**：
+```json
+{"target": "branch:windows | branch:main | pr:<n> | working-tree",
+ "focus": ["correctness","security","ssot","compat","architecture"],  // 聚焦维度，空=全维度
+ "strictness": "normal | strict"}
+```
+
+文件：`docs/agents/functions/<fn>.md`（阶段 2 起步；未来任务窄化可拆 `<fn>/<task>.SKILL.md`）。
 
 ```markdown
 ---
-name: code-review-windows            # 必填，= 文件名
+name: code-review                    # 必填，= 文件名
 description: 何时用 + 做什么（一句话，供自动委派/看板展示）
 version: "1.0.0"                     # 推荐（OpenHands 范式；改 prompt 必升版本）
 model: ""                            # 推荐；空 = 编排方默认
@@ -106,7 +130,8 @@ source:
 
 # 角色
 # 触发（何时用）
-# 步骤（检查清单）
+# 任务输入（target/focus/strictness 参数说明）
+# 步骤（检查清单，含默认维度）
 # 输出模板（critical/major/minor/nit + 文件:行 + 建议修法 + 是否本轮必修）
 # 禁止（只报真实问题等）
 ```
@@ -148,8 +173,8 @@ source:
 **触发分级**：
 | 场景 | 子代理组合 | 说明 |
 |---|---|---|
-| Sprint 关闭三查 | `code-review-windows` + `code-review-main` + `doc-audit` 三并行 | 环境核验留主代理（D2） |
-| Bug/日常维护（≤2h 直接修） | 1 个 `code-review-windows` 或主代理自查 | 避免小事大动干戈 |
+| Sprint 关闭三查 | `code-review` 职能 × 2 任务（target=branch:windows、branch:main）+ `doc-audit` 职能 × 1 任务，并行 | 环境核验留主代理（D2）；职能化划分（§2.5） |
+| Bug/日常维护（≤2h 直接修） | 1 个 `code-review` 任务或主代理自查 | 避免小事大动干戈 |
 | 并行开发（模式 A） | 每张不相交卡 1 个实现子代理 | 前置：Sprint 文档含**文件所有权地图**，无交集才并行 |
 
 **输入**：spec 文件（本地或 github raw 拉取，D5）+ 本轮上下文（分支/commit/工作区 diff 范围、评审重点）。
