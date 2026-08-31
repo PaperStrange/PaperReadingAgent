@@ -1,7 +1,7 @@
 ---
 name: code-review
-description: 代码审阅职能：对指定分支/PR/工作区做正确性、安全、SSOT 一致性、兼容性、架构分层与技术债全维度审查，输出分级问题清单。
-version: "1.0.0"
+description: 代码审阅职能：对指定分支/PR/工作区做正确性、安全（含锁文件隐私泄露扫描）、SSOT 一致性、兼容性、架构分层与技术债全维度审查，输出分级问题清单。
+version: "1.1.0"
 model: ""
 tools: []
 metadata:
@@ -45,7 +45,7 @@ metadata:
 # 步骤（默认全维度检查清单）
 
 1. **正确性**：新逻辑是否满足验收标准；边界/竞态/资源生命周期（定时器、ref、文件句柄、缓存上限）；快速路径（<500ms 轮询盲区这类时序问题）；异常吞噬（`except: pass`）是否掩盖真因。
-2. **安全**：密钥/脱敏/SSRF/路径（Windows `\\?\` 长路径）/CORS/注入；新增网络面（下载、上传、SSE）逐一过。
+2. **安全**：密钥/脱敏/SSRF/路径（Windows `\\?\` 长路径）/CORS/注入；新增网络面（下载、上传、SSE）逐一过。**锁文件/依赖清单隐私泄露扫描**：package-lock.json / uv.lock / poetry.lock 等的 `resolved`/`url` 字段必须**全部为公共 registry**（npmjs.org / files.pythonhosted.org 等），且全文件无凭证模式（`ghp_*`/`sk-*`/`xox*`/`AKIA*`/`PRIVATE KEY`/`_authToken`/`password:`）、无内网域名/私有 IP（10./172.16-31./192.168.）、无机器路径（`C:\Users\` 等）——任何命中 = major（npm 依赖下载 URL 泄密是真实攻击面，见 [Cortex 规则](https://cortex-docs.paloaltonetworks.com/appsec-rules/ci-cd-security/dependency-chains/appsec-cicd-161) 与 [OSSF npm 最佳实践](https://raw.githubusercontent.com/ossf/package-manager-best-practices/f51988aee8a9a1ab0436bbba61c1e94d7270683a/published/npm.md)）。
 3. **SSOT 与一致性**：配置/常量/默认值是否多处漂移；代码与 `docs/2-ARCHITECTURE.MD`、`docs/4-ALGORITHM.MD`（含 §12 防漂移清单）是否一致；verify 脚本清单是否同步。
 4. **兼容性**：Windows 编码/路径/进程退出码；跨 provider（deepseek/openai 等）切换；上游 pin 版本（fhlmi/litellm）。
 5. **架构分层**：编排/引擎/路由/前端边界是否仍清晰；改动是否引入跨层耦合或写死（如把解析结果写回全局环境变量这类共享状态污染）。
