@@ -129,7 +129,7 @@
 
 ### 1.24 项目管理文档治理：两级 roadmap + 阶段 backlog 卡独立管理（PM 实践）
 - 现象：roadmap 只挂在 `refactor-analysis.MD`（分析文档）里，重构收口后规划无处安放；Sprint/Bug/维护边界靠感觉。
-- 解决（借鉴 Now/Next/Later + 滚动式规划 + 规划分层）：全局 `docs/iteration/ROADMAP.MD`（三档）↔ 阶段 `phases/<阶段>/{README,roadmap,backlog}.MD`（原规划冻结 + 实际实录 + 卡独立登记）；`1-WORKFLOW.MD` §4.4 制定 Sprint/Bug/维护判定五问 + 严重度分诊 + ~20% 非计划工作预算；分析文档回归纯分析定位。
+- 解决（借鉴 Now/Next/Later + 滚动式规划 + 规划分层）：全局 `docs/iteration/ROADMAP.MD`（三档，**仅 windows 分支维护**）↔ 阶段 `phases/<阶段>/{README,roadmap,backlog}.MD`（原规划冻结 + 实际实录 + 卡独立登记）；`1-WORKFLOW.MD` §4.4 制定 Sprint/Bug/维护判定五问 + 严重度分诊 + ~20% 非计划工作预算；分析文档回归纯分析定位。
 - 教训：**文档职责要跟着项目生命周期走**——"分析文档"不该长期承载"规划文档"职责；**分级规划**（全局主题级 ↔ 阶段 roadmap ↔ Sprint 细节）比一份越滚越大的 roadmap 更抗漂移；**历史文档（原规划）冻结不重写，执行情况另册实录**。
 
 ### 1.25 索引构建的两个坑：TaskGroup 掩埋子异常；aadd 引用推断是隐藏的 LLM 调用（Sprint-7 M1）

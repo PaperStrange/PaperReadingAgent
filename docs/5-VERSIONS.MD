@@ -1,7 +1,7 @@
 # 5-VERSIONS.MD —— 发版记录与版本号规范
 
 > **定位**：记录每次发版的版本号、内容范围与证据；发版只在此文档登记，README/Release 引用本表。
-> **首个版本发布时机**：完成阶段 roadmap 记录的全部 Sprint 后**第一次发版**（全局视图 `docs/iteration/ROADMAP.MD`，阶段 roadmap `docs/iteration/phases/refactor-analysis/roadmap.MD`；当前尚未发布，见 §3）。
+> **首个版本发布时机**：完成阶段 roadmap 记录的全部 Sprint 后**第一次发版**（全局视图 `docs/iteration/ROADMAP.MD`、阶段 roadmap `docs/iteration/phases/refactor-analysis/roadmap.MD`——**均仅 windows 分支维护，main 分支无此文件**；当前尚未发布，见 §3）。
 
 ## 1. 版本号规范
 
