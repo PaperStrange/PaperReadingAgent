@@ -216,7 +216,7 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 .\.venv\Scripts\python.exe .\verify\verify_smoke.py             # 8 项冒烟（离线）
 .\.venv\Scripts\python.exe .\verify\verify_prune_callbacks.py   # litellm 回调裁剪（离线）
 .\.venv\Scripts\python.exe .\verify\verify_agentops.py          # AgentOps 账本 CLI 用例断言（离线）
-.\.venv\Scripts\python.exe .\verify\verify_config_schema.py    # 配置 SSOT 一致性 + M7 默认值收敛（离线）
+.\.venv\Scripts\python.exe .\verify\verify_config_schema.py    # 配置 SSOT 一致性 + M7 零硬编码 + Settings 升级基线（离线）
 .\.venv\Scripts\python.exe .\verify\verify_index_health.py      # 索引三重探针 + 自愈（离线）
 .\.venv\Scripts\python.exe .\verify\verify_provider_switch.py   # 服务商切换/路由实证（联网）
 .\.venv\Scripts\python.exe .\verify\verify_e2e.py               # 全链路（真实 API，本地目录）
@@ -235,7 +235,7 @@ node .\verify\gui_check_dashboard2.mjs        # Sprint-9：看板 spec 页截图
 node .\verify\gui_check_dashboard_costs.mjs   # Sprint-9：看板成本页截图（需 agents-dashboard 已启动）
 node .\verify\gui_check_dashboard_report.mjs  # Sprint-9：看板报告页截图（需 agents-dashboard 已启动）
 node .\verify\gui_check_dashboard_fanout.mjs   # Sprint-10：看板 fan-out 配置页截图（需 agents-dashboard 已启动）
-node .\verify\gui_check_config_schema.mjs      # Sprint-11/12：schema 清单/全字段表单截图 + 字段级校验（需前后端已启动）
+node .\verify\gui_check_config_schema.mjs      # Sprint-11/12/13：schema 清单/全字段表单截图 + 字段级校验 + defaults-derived（需前后端已启动）
 ```
 
 > 上述命令为 **Windows 示例**（`.\.venv\Scripts\python.exe` 是 Windows venv 路径）；mac 等价为 `.venv/bin/python`。
@@ -323,7 +323,7 @@ node .\verify\gui_check_config_schema.mjs      # Sprint-11/12：schema 清单/�
 
 **Embedding 智能默认（`embedding_model` 缺省时自动生效，均可手动覆盖）**：
 
-> 注意：前端 Config 节点**默认参数已显式填 `st-multi-qa-MiniLM-L6-cos-v1`**——此时不触发智能推荐；在面板选「Embedding → 自动」或删除 JSON 中的 `embedding_model` 后，才按以下规则自动选择。
+> 注意：前端 Config 节点**默认值由 `/api/config_schema` 派生**（Sprint-13 起前端零硬编码）——默认填 `st-multi-qa-MiniLM-L6-cos-v1`，此时不触发智能推荐；在 SchemaForm 中**删除 `embedding_model` 的值（留空）**后，才按以下规则自动选择。
 
 - 服务商**有** embedding API（openai/dashscope）→ 自动用其最新策展模型（openai=`text-embedding-3-large`，dashscope=`openai/text-embedding-v4`）。
 - 服务商**无** embedding API（deepseek）→ 自动查询 HuggingFace 下载量最高且**兼容中文**的 SentenceTransformer 模型（当前为 `paraphrase-multilingual-MiniLM-L12-v2`，4600 万+ 下载），首次自动下载；结果缓存 24h，离线/超时回落 `st-multi-qa-MiniLM-L6-cos-v1`（设 `PAPERQA_EMBED_RECOMMEND_LIVE=0` 可关闭在线查询）。

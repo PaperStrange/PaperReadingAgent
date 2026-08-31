@@ -201,7 +201,7 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 .\.venv\Scripts\python.exe .\verify\verify_smoke.py             # 8 项冒烟（离线）
 .\.venv\Scripts\python.exe .\verify\verify_prune_callbacks.py   # litellm 回调裁剪（离线）
 .\.venv\Scripts\python.exe .\verify\verify_agentops.py          # AgentOps 账本 CLI 用例断言（离线）
-.\.venv\Scripts\python.exe .\verify\verify_config_schema.py     # 配置 SSOT 一致性 + M7 默认值收敛（离线）
+.\.venv\Scripts\python.exe .\verify\verify_config_schema.py     # 配置 SSOT 一致性 + M7 零硬编码 + Settings 升级基线（离线）
 .\.venv\Scripts\python.exe .\verify\verify_index_health.py      # 索引三重探针 + 自愈（离线）
 .\.venv\Scripts\python.exe .\verify\verify_provider_switch.py   # 服务商切换/路由实证（联网）
 .\.venv\Scripts\python.exe .\verify\verify_e2e.py               # 全链路（真实 API）
@@ -220,7 +220,7 @@ node .\verify\gui_check_dashboard2.mjs        # 看板 spec 编辑页截图（�
 node .\verify\gui_check_dashboard_costs.mjs   # 看板成本/上下文页截图（需 agents-dashboard 已启动）
 node .\verify\gui_check_dashboard_report.mjs  # 看板报告浏览页截图（需 agents-dashboard 已启动）
 node .\verify\gui_check_dashboard_fanout.mjs   # 看板 fan-out 配置页截图（需 agents-dashboard 已启动）
-node .\verify\gui_check_config_schema.mjs      # Sprint-11/12：schema 清单/全字段表单截图 + 字段级校验（需前后端已启动）
+node .\verify\gui_check_config_schema.mjs      # Sprint-11/12/13：schema 清单/全字段表单截图 + 字段级校验 + defaults-derived（需前后端已启动）
 ```
 
 详见 `verify/README.md` 与 `docs/3-LEARNED.MD` 的验证记录。
