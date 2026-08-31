@@ -1,6 +1,20 @@
 {
-  "version": 1,
-  "comment": "Sprint 关闭流程（三查 + 经验教训）的 fan-out 顺序与运行条件——可调配置（看板可编辑，用户可按进度观察调整顺序/条件）。workspace-check 固定主代理执行（D2）。",
+  "version": 2,
+  "comment": "Agent fan-out pipelines as adjustable config (dashboard-editable). Two pipelines: planning_pipeline (research before planning, auto-triggered) and sprint_close_pipeline (three-check + lessons). Conditions/order/executors are adjustable; the user watches agent impact on dev progress via the dashboard. workspace-check stays with the main agent (D2).",
+  "planning_pipeline": [
+    {
+      "order": 1,
+      "step": "research",
+      "role": "tech-research",
+      "spec": "tech-research",
+      "task": {
+        "trigger": "auto-detect: task input contains research-required keywords (see tech-research spec Trigger section) or an explicit research request",
+        "inject": "research report is injected into the planning context BEFORE task decomposition"
+      },
+      "condition": "research_required",
+      "executor": "subagent"
+    }
+  ],
   "sprint_close_pipeline": [
     {
       "order": 1,

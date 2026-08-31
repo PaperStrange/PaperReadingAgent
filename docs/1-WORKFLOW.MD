@@ -55,6 +55,8 @@
 
 `Plan（目标+Backlog+验收标准+**时间盒**）` → `Dev（按 US 拆解实现，**开卡/推进/关卡**）` → `Verify（可运行验证）` → **`三查（固定动作）`** → **`经验教训总结（关闭前置必做）`** → **`Close（关闭评审）`**。
 
+**调研前置（2026-08-30 用户要求）**：任务输入含调研要求（research/调研/选型/对比/评估/最佳实践等关键词，完整规则见 `agents/functions/tech-research.md` Trigger 节）时，**先自动跑 tech-research 深度调研**——多来源对比分析（≥3 来源/论断 + 对比矩阵 + 结论建议），把调研报告注入上下文，**再开始规划任务**；不得"搜几个网页就下结论"。流程定义在 `agents/fanout.json` 的 `planning_pipeline`（条件/顺序可调）。
+
 **时间盒与过程监管（2026-08-30 用户要求制度化；2026-08-30 补充自主开卡制）**：
 - 每个 Sprint 在 Planning 时**声明时间范围**（起止日/小时）与预估工时；无时间盒不开卡。
 - **燃尽图随每张卡推进更新**（每完成/关闭一卡记一个里程碑与剩余点），而非关闭时一次性补图——供项目经理（用户）随时监管进度。
@@ -74,11 +76,11 @@
 #### 三查（每个 Sprint 关闭前的固定动作，2026-08-30 起制度化；Sprint-8 起按职能 spec fan-out）
 
 > 执行方式：按 `agents/functions/` 固定 spec 派出子代理（prompt 零漂移），每任务经 `scripts/agent-ops.py` 记账（register→finish，见 `agents/README.md`）；报告用 `parse-report` 结构化后按 §4.4 分诊闭环。
-> **执行顺序（用户问题①修正，2026-08-30）**：先跑 **impact-assessment（影响范围评估，新子代理）**——复合指标 `(0.8×A + 0.2×B)×100`（A=核心功能覆盖率/12、B=核心 API 覆盖率/8），**阈值 X=50**：`>50` → 全量档（整个代码库）；`≤50` → 窄档（Sprint 修改文件 ∪ 核心文件区域）。再按该范围执行一查/二查——**审查范围不得默认收窄到 Sprint 交付物**，偏离 recommended_scope 须在 Sprint §9 记录理由。
+> **执行顺序（用户问题①修正，2026-08-30）**：先跑 **impact-assessment（影响范围评估，新子代理）**——复合指标 `(0.8×A + 0.2×B)×100`（A=核心功能覆盖率/13、B=核心 API 覆盖率/8），**阈值 X=50**：`>50` → 全量档（整个代码库）；`≤50` → 窄档（Sprint 修改文件 ∪ 核心文件区域）。再按该范围执行一查/二查——**审查范围不得默认收窄到 Sprint 交付物**，偏离 recommended_scope 须在 Sprint §9 记录理由。
 
 | # | 检查 | 内容 | 执行者（spec） |
 |---|---|---|---|
-| 〇查 范围 | **影响范围评估**（fan-out 第一道闸门） | 变更模块归类 → A（12 项核心功能触达）/B（8 条路由触达）→ composite（阈值 X=50）→ 两档 recommended_scope | 子代理 `functions/impact-assessment.md` × 1 任务 |
+| 〇查 范围 | **影响范围评估**（fan-out 第一道闸门） | 变更模块归类 → A（13 项核心功能触达）/B（8 条路由触达）→ composite（阈值 X=50）→ 两档 recommended_scope | 子代理 `functions/impact-assessment.md` × 1 任务 |
 | 一查 文档 | 文档一致性审计（范围 = 〇查 recommended_scope） | 死链/陈旧事实/跨文档矛盾/缺失知识；**4-ALGORITHM.MD 逐条对照代码**（其 §12 防漂移清单） | 子代理 `functions/doc-audit.md` × 1 任务（target=working-tree，scope 入参） |
 | 二查 代码 | windows + main 双分支 code review（范围 = 〇查 recommended_scope） | 正确性/安全/SSOT/兼容性/架构分层；main 侧重合并完整性与悬空引用 | 子代理 `functions/code-review.md` × 2 任务（target=branch:windows、branch:main 并行，scope 入参） |
 | 三查 环境 | 工作区与功能完整性 | `git status` 零残留、本地已合并分支清理、.gitignore 覆盖、端口卫生、回归（smoke/e2e/新增端点/GUI）全绿 | **主代理** `functions/workspace-check.md`（起服务/杀进程不子代理化） |
