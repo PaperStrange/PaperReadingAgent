@@ -13,7 +13,7 @@
 | 工作区核验 | [`functions/workspace-check.md`](functions/workspace-check.md) | — | **主代理执行**（D2：起服务/杀进程不子代理化） |
 
 - 同一职能对多个 target 各跑一次任务（如三查时 code-review 跑 windows+main 两任务），分支/PR 只是任务参数。
-- **审查范围不得默认收窄到 Sprint 交付物**（用户问题①）：一律先由 impact-assessment 评估——composite>50 → 全量档（整个代码库）；≤50 → 窄档（Sprint 修改文件 ∪ 核心文件区域），recommended_scope 作为 code-review/doc-audit 的 `scope` 入参。
+- **审查范围不得默认收窄到 Sprint 交付物**：一律先由 impact-assessment 评估——composite>50 → 全量档（整个代码库）；≤50 → 窄档（Sprint 修改文件 ∪ 核心文件区域），recommended_scope 作为 code-review/doc-audit 的 `scope` 入参。
 - **fan-out 顺序与运行条件（可调配置）**：Sprint 关闭流程五步定义在 [`fanout.json`](fanout.json)——`scope → doc-audit → code-review → lessons-learned → workspace-check`（条件/顺序/执行者可调）；用户可通过看板观察各 agent 对开发部署进度的影响并**随时调整顺序与运行判断条件**（1-WORKFLOW §4.1）。
 - 新增职能：在 `functions/` 新建 `<fn>.md`（frontmatter 超集 + 五段式），升 `version`，跑 `agent-ops validate-spec` 后上线（上线评估流程见阶段规划 backlog，后续迭代固化）。
 
@@ -21,12 +21,12 @@
 
 ```powershell
 # 一个子代理 run 的完整生命周期（任何编排方/IDE terminal 都能执行）：
-.\.venv\Scripts\python.exe .\scripts\agent-ops.py register --role code-review --task branch:windows --spec "code-review@1.0.0" --model deepseek-v4-flash --start
+.\.venv\Scripts\python.exe .\scripts\agent-ops.py register --role code-review --task branch:windows --spec "code-review@1.1.0" --model deepseek-v4-flash --start
 .\.venv\Scripts\python.exe .\scripts\agent-ops.py finish <run_id> --status succeeded --usage-in 10000 --usage-out 2000 --output-chars 3000 --result-file path/to/report.md
 .\.venv\Scripts\python.exe .\scripts\agent-ops.py list --role code-review
 ```
 
-- 账本 = 文件真相源：`runtime/registry.json`（append + sha256 完整性校验，手改即拒——防双写；**本地实时态，gitignore 不入库**——用户问题②）；`runs/<run_id>/<role>.report.md` 为报告存档（memory 浏览入口，**本地留证不入库**）；`runtime/prices.json` 为价表（auto 段由 litellm 价表派生，manual 段人工覆盖且**非 null 时优先于 auto**，`null` = 待填价 → 估算标 `pending_price`，**配置文件，入库**）。
+- 账本 = 文件真相源：`runtime/registry.json`（append + sha256 完整性校验，手改即拒——防双写；**本地实时态，gitignore 不入库**）；`runs/<run_id>/<role>.report.md` 为报告存档（memory 浏览入口，**本地留证不入库**）；`runtime/prices.json` 为价表（auto 段由 litellm 价表派生，manual 段人工覆盖且**非 null 时优先于 auto**，`null` = 待填价 → 估算标 `pending_price`，**配置文件，入库**）。
 - 成本估算：`usage × 单价`（含 cache 分列）；无 usage 时 `chars/4` 兜底并标 `estimated`；**单位 = CNY（用户决策 2026-08-30）**——价表单价为 USD/token，按 `prices.json meta.fx_usd_cny`（默认 7.2，可人工改）换算；口径 = **自报+估算**，精确账单以服务商后台为准。
 - 其余子命令：`update`（进入 running + 补 usage）、`validate-spec`（spec frontmatter 校验）、`fetch-spec`（source 块远程拉取：url+ref+sha256 校验、仅 http/https 且拒绝私网/保留地址，失败/`--offline` 回退本地）、`parse-report`（critical/major/minor/nit 结构化，位置含 file:line）、`prices-derive`（价表再派生，保留 manual）。
 
