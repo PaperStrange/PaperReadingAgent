@@ -70,9 +70,9 @@ npm run dev
 
 You can run a single node manually or click `Run All (Left-to-Right)`.
 
-## Config 数据源面板（Sprint-3）
+## Config 数据源（Sprint-3；Sprint-12 起并入 SchemaForm「数据源」分组）
 
-Config 节点顶部有「数据源」面板（`DataSourcePanel.jsx`）：
+Config 节点的全字段表单（`SchemaForm.jsx`，由 `/api/config_schema` 驱动）含「数据源」分组：
 
 - `local`（默认）：使用 `paper_directory` 本地论文目录。
 - `remote`：URL / arXiv ID / DOI 列表逐行填写 → 统一下载到 `data/remote/<index_name>/`
