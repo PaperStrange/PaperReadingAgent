@@ -52,3 +52,6 @@ docs/iteration/sprint/config_schema.json
 # 截图留证（本地留存，不入库）
 docs/iteration/sprint/*.png
 verify/*.png
+
+# DSH skills
+.agents
