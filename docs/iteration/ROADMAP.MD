@@ -10,18 +10,18 @@
 
 | 阶段 | 入口 | 状态 | 当前 Sprint 序列 |
 |---|---|---|---|
-| **refactor-analysis（代码重构）** | [`phases/refactor-analysis/README.MD`](phases/refactor-analysis/README.MD) | 🟢 进行中（**Now 档唯一 active 阶段**） | Sprint-2 ✅ · Sprint-3 ✅ · 插队 Sprint-4 ✅ · 插队 Sprint-5 ✅ · Sprint-6(F1) ✅ · 插队 Sprint-7(维护批) ✅ · Sprint-10（收口+跨平台债）✅ · **Sprint-11（F2 阶段 A，进行中）** |
+| **refactor-analysis（代码重构）** | [`phases/refactor-analysis/README.MD`](phases/refactor-analysis/README.MD) | 🟢 进行中（**Now 档唯一 active 阶段**） | Sprint-2 ✅ · Sprint-3 ✅ · 插队 Sprint-4 ✅ · 插队 Sprint-5 ✅ · Sprint-6(F1) ✅ · 插队 Sprint-7(维护批) ✅ · Sprint-10（收口+跨平台债）✅ · Sprint-11（F2 阶段 A）✅ · **Sprint-12（F2 阶段 B，关闭中）** |
 | **agents-infra（AgentOps 基础设施）** | [`phases/agents-infra/README.MD`](phases/agents-infra/README.MD) | ✅ **已归档封存（2026-08-31，只读）** | 阶段1 ✅ · Sprint-8 ✅（PR #23）· Sprint-9 ✅（PR #31 cbf93ea）；剩余卡迁出至 refactor-analysis M9~M14 |
 
 - 阶段内 roadmap（原规划冻结 + 实际实录）：[`phases/refactor-analysis/roadmap.MD`](phases/refactor-analysis/roadmap.MD)
-- 阶段内 backlog 卡：F1✅(v1)/**F2（进行中：阶段 A=Sprint-11）**/F3/F4✅(起步)、R-C/R-E/R-D/R-E3（hold）、M1~M8（M1/M2/M4/M5✅、M3 用户指示未处理、M6 持续、**M7 已并入 F2**、M8 候选）+ **M9~M14（agents-infra 收口迁入）**
+- 阶段内 backlog 卡：F1✅(v1)/**F2（进行中：阶段 A=Sprint-11 ✅、阶段 B=Sprint-12 ✅、阶段 C=Sprint-13 待续）**/F3/F4✅(起步)、R-C/R-E/R-D/R-E3（hold）、M1~M8（M1/M2/M4/M5✅、M3 用户指示未处理、M6 持续、**M7 已并入 F2**、M8 候选）+ **M9~M14（agents-infra 收口迁入）**
 
 ## Next（已确定方向的候选，主题级）
 
 | 主题 | 说明 | 依赖 |
 |---|---|---|
 | F1 后续 | query 翻译/双语索引（用 F4 评测选型） | F4 基准扩充 |
-| F2 阶段 B/C（Sprint-12/13） | 全字段交互 + impacts 切换前提示 + 完全 schema 驱动 + 同步脚本 | 阶段 A 完成 |
+| F2 阶段 C（Sprint-13） | 节点默认值 schema 派生 + Settings 升级同步脚本 + 收口 + F2 用户验收 | 阶段 B 完成 |
 | F3 Agent 接入 + 时间线雏形 | R-C 前置步骤 | 事件模型（已就绪） |
 | R-C（解冻候选） | C 可观测 + E3 v1 只读可视化 | ⏸ hold：用户 review 闸门（backlog 卡 R-C） |
 
