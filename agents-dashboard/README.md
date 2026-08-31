@@ -6,7 +6,7 @@
 ## 1. 技术栈
 
 - Next.js 16（App Router）+ antd 6.6.2（AntdRegistry + zhCN）
-- better-sqlite3（FTS5 全文检索，包内自带 N-API 预编译产物，安装无需本机编译工具链）
+- better-sqlite3（FTS5 全文检索；v13 起 N-API 预编译随包分发，安装无需本机编译工具链）
 - chokidar（监听 `agents/` 文件变更 → SQLite 增量索引）
 - 生产模式运行（`next build` + `next start`）
 
@@ -26,7 +26,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-agents-dashboard.ps1
 
 ```powershell
 cd agents-dashboard
-npm ci --ignore-scripts        # --ignore-scripts：跳过 better-sqlite3 的 node-gyp 步骤（见 §6）
+npm ci --ignore-scripts        # --ignore-scripts 为防御性开关（v13 无 install script，见 §6）
 npm run build
 npx next start -H 127.0.0.1 -p 8600
 ```
@@ -91,4 +91,4 @@ agents-dashboard/
 - **dev 模式静态 chunk 403**：Next 16 dev 长时间热更新后 `/_next/static/chunks` 可能 403 → 使用生产构建（本 README 两种方式均为生产模式）。
 - **成本口径**：`pending_price` = 该模型无单价（deepseek/qwen/openrouter 待人工填 `agents/runtime/prices.json` manual 段）；成本单位 CNY（USD 单价 × `meta.fx_usd_cny`），自报+估算口径，精确账单以服务商后台为准。
 - **防双写**：看板只写 spec 文件；账本记录只经 agent-ops CLI 追加（registry 带完整性校验）。
-- **依赖锁文件**：`package-lock.json` 所有 `resolved` 均指向公共 npmjs registry，无内部源/凭证（评审检查项，见 `agents/functions/code-review.md`）。
+- **依赖锁文件**：`package-lock.json` 所有 `resolved` 均指向公共 npmjs registry，无内部源/凭证（评审检查项，见 `agents/functions/code-review.md`）；better-sqlite3 v13 无 install script、N-API 预编译随包分发（`prebuilds/`，ABI 无关、覆盖 win32/darwin/linux），安装无需编译工具链；CI 的 `--ignore-scripts` 为防御性空操作（选型调研见 3-LEARNED 1.31 与 `agents/runs/run-2026-08-31-tech-research-014/`）。
