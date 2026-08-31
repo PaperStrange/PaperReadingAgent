@@ -431,6 +431,11 @@ EMBEDDING_MODEL（Sprint-12 SchemaForm）:=
     params.embedding_model 为空 -> 显示 schema 默认/placeholder（后端 recommender 自动选择，校验 hints 提示"多语言"）
     填值                        -> 手动覆盖（st- HF 模型 / litellm API 向量名）
     // Sprint-4~11 曾用「自动/手动」独立切换控件，Sprint-12 起改为"留空=自动、填值=手动"
+
+INITIAL_DEFAULTS（Sprint-13，前端零硬编码）:=
+    n1 初始 params = {}（无手写字面量）
+    挂载时 GET /api/config_schema -> 收集各字段 default -> 仅当 n1 params 仍为空时应用
+    // 默认值唯一真源 = config_schema；用户已改动则不覆盖 [App.jsx makeNode("n1") + schemaDefaults effect]
 ```
 
 - providers 列表来自 `GET /api/providers`（组件挂载时拉取，失败静默保留空列表）。
@@ -561,7 +566,7 @@ classDiagram
 - [ ] D4：会话级 `data_source_params` 唯一来源；SSRF 校验（含重定向复检与 198.18/15 豁免）；200MB 上限；自愈 = 目录指纹 + **三重损坏探针（files.zip zlib / index/meta.json / tantivy open+searcher）** → 整目录重建（同指纹增量；Sprint-7 M1 升级）
 - [ ] D5：schema 新增字段同步 `validate_config` 分支与 KNOWN_RUNTIME_KEYS；影响提示
 - [ ] D6：六步前置条件/写回字段表
-- [ ] D7：草稿态聚焦保护、面板联动、Run All 拓扑（节点参数独立 → 会话级共享）；**更改配置后下游自动重跑 config**（stale 检查）
+- [ ] D7：草稿态聚焦保护、面板联动、Run All 拓扑（节点参数独立 → 会话级共享）；**更改配置后下游自动重跑 config**（stale 检查）；**Config 节点初始默认值 schema 派生 + 前端零硬编码（16 键）**
 - [ ] D6/D8：retrieve 去重与 `result` 标记；**多语检索 v1（CJK 零命中 → 英文关键词重试，query_used/query_strategy(direct|keyword_retry|fallback_first_n)/hit_note）**；parse 单文件定位报错；`prune_litellm_callbacks`（engine 层，7 列表，MAX_CALLBACKS 防护，上限 env 可配 `PAPERQA_LITELLM_CALLBACK_LIMIT`）；config 重跑失效下游状态；stream `is_disconnected` 静默退出
 - [ ] D8：SSE 线协议字段（新增字段 = 新增兼容负担，须评估）
 - [ ] 本文相关 UML 图与真值表行序是否仍与代码短路顺序一致

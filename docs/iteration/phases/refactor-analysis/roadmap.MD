@@ -29,6 +29,7 @@
 | Sprint-10（收口+跨平台债） | 2026-08-31 | agents-infra 阶段归档封存（剩余卡迁出 M9~M14）；A-M8 分叉核查（三点差分假象 → 双向差分仅 4 个 mac .sh 有意分叉）；A-M3 悬空引用；A-M9 better-sqlite3 决策（维持 v13）；A-FANOUT 看板 fan-out 配置页（`../sprint/2026-08-31-sprint-10.md`） | ✅ 完成 |
 | Sprint-11（F2 阶段 A） | 2026-08-31 | 配置 SSOT 端点（`/api/config_schema` + `/api/config/validate`，路由 8→10、impact spec v1.4.0）；M7 默认值收敛锁（verify_config_schema 104 断言）；前端 schema 只读清单（`../sprint/2026-08-31-sprint-11.md`） | ✅ 完成 |
 | Sprint-12（F2 阶段 B） | 2026-08-31 | SchemaForm 全字段交互表单（23 字段类型控件/防抖字段级校验/impacts 切换前可见/provider 联动），取代 ModelConfigPanel/DataSourcePanel/SchemaFieldList；gui_check_s4/remote 选择器更新（`../sprint/2026-08-31-sprint-12.md`） | ✅ 完成 |
+| Sprint-13（F2 阶段 C） | 2026-08-31 | 手写字面量退役（n1 默认值 schema 派生 + 前端零硬编码 16 键）、Settings 升级基线护栏（77 路径 + CI 比对 + --regen-baseline）、三查收口 + F2 用户验收清单（`../sprint/2026-08-31-sprint-13.md`） | ✅ 完成 |
 | 原 Sprint-4（C + E3 v1 只读可视化） | — | 结构化事件→时间线 + 工作流只读可视化 v1 | ⏸ hold（v1 需用户 review） |
 | 原 Sprint-5（E1/E2） | — | pip 注入 + 版本检查/更新/回滚 | ⏸ hold |
 | 原 Sprint-6（D） | — | 单机多 worker + 会话外置 + 网关分流 | ⏸ hold |
