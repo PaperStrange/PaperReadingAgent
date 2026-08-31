@@ -63,9 +63,9 @@ jobs:
 
       - name: Build agents-dashboard
         working-directory: agents-dashboard
-        # --ignore-scripts：better-sqlite3 v13 无预编译产物（GitHub release 0 assets），
-        # 默认 npm ci 会走 node-gyp 源码编译，冷 runner 无可用 VS/SDK 必失败；
-        # 原生绑定仅运行时需要（本地开发机已具备），CI 只验证 Next 构建（3-LEARNED 1.31）。
+        # --ignore-scripts：防御性开关（Sprint-10 调研纠偏，3-LEARNED 1.31）——better-sqlite3 v13
+        # 无 install script，N-API 预编译随 npm 包分发（prebuilds/ 运行时直载，ABI 无关）；
+        # 当前依赖树无任何 install script，此旗标为显式拒绝安装期脚本的无害空操作，保留。
         run: |
           npm ci --ignore-scripts
           npm run build
