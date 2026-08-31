@@ -267,7 +267,7 @@ source:
 
 | 方案 | 定义 | 计算 | 优点 | 缺点 |
 |---|---|---|---|---|
-| **A 核心功能覆盖率** | 触达的核心功能数 / 11 项核心功能清单（**v1.2.1 起 12 项**：增 #12 AgentOps 看板） | 模块→功能映射表 | 与"项目核心功能"直接对齐；可审计 | 清单需维护（每季度复核一次） |
+| **A 核心功能覆盖率** | 触达的核心功能数 / 11 项核心功能清单（**v1.2.1 起 12 项**：增 #12 AgentOps 看板；**v1.3.0 起 13 项**：增 #13 tech-research 深度调研） | 模块→功能映射表 | 与"项目核心功能"直接对齐；可审计 | 清单需维护（每季度复核一次） |
 | **B 核心 API 覆盖率** | 触达的 API 路由数 / 8 | 路由↔宿主模块映射表 | 最易算、零歧义 | 只覆盖后端路由 |
 | C 风险加权文件覆盖率 | Σ(受审文件权重) / Σ(核心文件权重) | 权重表 | 细粒度 | 权重主观、难复现 |
 | D 回归证据覆盖率 | 本轮回归脚本数 / 受影响模块关联脚本数 | 模块↔verify 映射 | 直接对验收充分性 | 度量对象不同（验证充分性） |
@@ -282,7 +282,7 @@ source:
 
 ### 8.3 落地
 
-- 职能 spec v1.2.1：`agents/functions/impact-assessment.md`（12 项核心功能 + 8 条路由↔宿主映射 + 复合公式 + 两档规则 + 核心文件区域清单（代码区/文档区）+ 输出模板含 A/B/composite/tier/recommended_scope；v1.2.1 增 #12 AgentOps 看板并重定位 reactflow 宿主路径）；
+- 职能 spec v1.3.0：`agents/functions/impact-assessment.md`（13 项核心功能 + 8 条路由↔宿主映射 + 复合公式 + 两档规则 + 核心文件区域清单（代码区/文档区）+ 输出模板含 A/B/composite/tier/recommended_scope；v1.2.1 增 #12 AgentOps 看板并重定位 reactflow 宿主路径，v1.3.0 增 #13 tech-research 并全英文化）；
 - fan-out 顺序：**impact-assessment（先）→ 按 recommended_scope 执行 code-review ×2 + doc-audit → workspace-check（主代理）**；范围默认取 recommended_scope，偏离需在 Sprint §9 记录理由；
 - code-review/doc-audit spec 的"范围限定"段引用 impact-assessment 输出（task 输入含 `scope` 字段）；
 - **验证方式（双例，用户确认）**：两组合成变更集跑真实子代理，对比预计算 ground truth（高影响例 → 期望全量档；低影响例 → 期望窄档），结果记录于 §8.4 并账本登记。

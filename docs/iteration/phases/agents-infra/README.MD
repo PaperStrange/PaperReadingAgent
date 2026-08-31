@@ -1,7 +1,7 @@
 # 阶段 2：agents-infra（AgentOps 基础设施）—— 阶段卡
 
 > 归属：`docs/iteration/phases/agents-infra/`（全局视图见 `docs/iteration/ROADMAP.MD`）。
-> 用户批准的三阶段方案（2026-08-30）：① 调研+架构地基 → ② 五职能 spec（impact-assessment / code-review / doc-audit / lessons-learned / workspace-check 主代理手册；lessons-learned 于 2026-08-30 新增）+ 账本 + 跨 IDE 说明 → ③ 本地看板应用。
+> 用户批准的三阶段方案（2026-08-30）：① 调研+架构地基 → ② 六职能 spec（tech-research / impact-assessment / code-review / doc-audit / lessons-learned / workspace-check 主代理手册；lessons-learned 与 tech-research 均于 2026-08-30 新增）+ 账本 + 跨 IDE 说明 → ③ 本地看板应用。
 
 | 项 | 内容 |
 |---|---|
@@ -19,6 +19,6 @@
 
 ## 阶段完成与归档约定
 
-- 阶段 2 完成：`agents/functions/` 五职能 spec（impact-assessment 闸门 + code-review/doc-audit/lessons-learned + workspace-check 主代理手册）+ `scripts/agent-ops.py` + `1-WORKFLOW.MD` §4.2 三查改为引用固定 spec；
+- 阶段 2 完成：`agents/functions/` 六职能 spec（tech-research 调研前置 + impact-assessment 闸门 + code-review/doc-audit/lessons-learned + workspace-check 主代理手册）+ `scripts/agent-ops.py` + `1-WORKFLOW.MD` §4.2 三查改为引用固定 spec；
 - 阶段 3 完成：看板支持 spec 编辑 / skill URL 配置 / runtime 展示（自报+估算）/ memory 报告浏览，并跑通一次真实 fan-out 演示；
 - 完成后本目录归档封存，全局 `ROADMAP.MD` 状态更新。

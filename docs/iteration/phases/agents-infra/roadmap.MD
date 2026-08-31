@@ -25,6 +25,7 @@
 | Sprint-9（阶段 3 看板） | 2026-08-30（规划时间盒 08-31~09-01 未启用，实际当日完成；关闭 21:59:38 UTC+8） | A-DASH 看板应用（US-9.1~9.7 共 15 点：概览/API/在线编辑/成本页/报告页/截图验收/antd 换栈插卡）+ 真实 fan-out 关闭演练（fanout.json 五步，账本 run 008~012，impact 008 窄档 14.55、doc-audit 8×P1、code-review 2×P1 无 P0、lessons 1.31~1.34）；三查发现项全部闭环；CI 转绿（SCM 版本/pwsh bool/Graphviz/better-sqlite3 四连修）；PR #31 合并 main（cbf93ea，排除 docs/iteration/） | ✅ 完成 |
 | 分支保护（GitHub 安全提示跟进） | 2026-08-30 | 用户转达 GitHub 提示「main 未保护」→ 调研最佳实践并**已应用**：必需 PR 合并（0 approvals）+ 必需状态检查「Offline suite + builds (Windows)」+ enforce_admins + 禁 force push/删除；记录 backlog A-M10 与 1-WORKFLOW §3 | ✅ 完成 |
 | Sprint-9 验收整改（用户发现 2 问题） | 2026-08-30 | ① 文档审计：agents-dashboard/README 对照根 README 补齐（启动步骤/AGENTS.md+CLAUDE.md 用途/故障排查/锁文件说明），README 一律只记最新结果（迁移叙事移除、agents/README 过程引用清理）② 安全审计：package-lock.json 隐私扫描（实测全公共 npmjs registry、无凭证）→ **agent spec 升级固化**：doc-audit v1.1.0（+readme-completeness/+final-state-only）、code-review v1.1.0（+锁文件隐私泄露扫描） | ✅ 完成 |
+| 调研 agent + spec 全英文化（用户 2 要求） | 2026-08-30 | ① 新增 **tech-research 职能**（任务含调研要求自动启用 → 深度调研 ≥3 来源/论断+对比矩阵 → 报告注入上下文后再规划；`fanout.json` 增 `planning_pipeline` 可调配置）+ `_template-agent.md` 模板（A-M7 ✅）② `functions/*.md` 全量英文化（框架不变、措辞参考 `.agents/skills/` 官方 SKILL.md）：doc-audit/code-review v1.2.0、impact-assessment v1.3.0（N_core 13，增 #13）、lessons-learned/workspace-check v1.1.0；报告仍中文；run-id 改网络时间口径（开发机时钟偏移处理） | ✅ 完成 |
 
 ## 3. 落地映射
 
