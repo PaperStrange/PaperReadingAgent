@@ -20,8 +20,8 @@ const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1700, height: 1000 } });
 await page.goto("http://127.0.0.1:5173", { waitUntil: "networkidle" });
 
-// 1) 面板切 remote
-await page.locator(".ds-select").selectOption("remote");
+// 1) 面板切 remote（Sprint-12 起 selector 指向 SchemaForm 的数据源下拉）
+await page.locator(".ds-select.schema-field-datasource").selectOption("remote");
 // 2) 第二个列表（arXiv ID）填 2409.13740
 await page.locator(".ds-textarea").nth(1).fill("2409.13740");
 await page.waitForTimeout(300);

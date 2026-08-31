@@ -49,7 +49,7 @@
 | D4 | 数据源 | local 还是 remote？远程怎么解析？长路径？索引坏了？ | `app/orchestration.py::run_step(load_index)` + `app/data_sources.py` + `app/remote_resolver.py` |
 | D5 | 校验与提示 | 哪些配置非法？给什么提示？ | `app/config_schema.py::validate_config` |
 | D6 | 六步流水线 | 每步前置条件？写回什么状态？ | `app/orchestration.py::run_step` |
-| D7 | 前端决策 | 节点状态如何迁移？编辑为何不跳光标？面板如何联动？ | `frontend/src/App.jsx`、`FlowNode.jsx`、`ModelConfigPanel.jsx`、`DataSourcePanel.jsx`、`SchemaFieldList.jsx` |
+| D7 | 前端决策 | 节点状态如何迁移？编辑为何不跳光标？面板如何联动？ | `frontend/src/App.jsx`、`FlowNode.jsx`、`SchemaForm.jsx` |
 | D8 | 事件与 SSE | 事件何时发、字段是什么？ | `app/events.py` + `app/orchestration.py` + `backend/main.py::RunEventBroker` |
 
 ---

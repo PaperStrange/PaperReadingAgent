@@ -1,9 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Handle, Position } from "reactflow";
-import DataSourcePanel from "./DataSourcePanel";
 import JsonTree from "./JsonTree";
-import ModelConfigPanel from "./ModelConfigPanel";
-import SchemaFieldList from "./SchemaFieldList";
+import SchemaForm from "./SchemaForm";
 
 function functionTraceList(trace) {
   const ordered = [...(trace || [])].sort(
@@ -92,18 +90,7 @@ export default function FlowNode({ id, data }) {
       </div>
 
       {isConfigStep ? (
-        <>
-          <ModelConfigPanel
-            params={params}
-            apiBase={data.apiBase}
-            onChange={(text) => onChangeParams(id, text)}
-          />
-          <DataSourcePanel
-            params={params}
-            onChange={(text) => onChangeParams(id, text)}
-          />
-          <SchemaFieldList params={params} apiBase={data.apiBase} />
-        </>
+        <SchemaForm params={params} apiBase={data.apiBase} onChange={(text) => onChangeParams(id, text)} />
       ) : null}
 
       <textarea
