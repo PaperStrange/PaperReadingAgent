@@ -1,13 +1,16 @@
-"""Sprint-11 US-11.1/11.2：配置 SSOT 一致性断言（离线可跑）。
+"""Sprint-11/13 配置 SSOT 一致性断言（离线可跑）。
 
-锁定三件事（F2 阶段 A + M7 默认值漂移收敛）：
+锁定（F2 阶段 A + C）：
 1. get_config_schema() 结构完整：version=1、7 分组、字段必含 key/label/type、关键字段默认值正确；
 2. assert_schema_consistency() 无 pydantic_path 漂移；
 3. validate_config() 的 errors/warnings/hints 行为（非法 enum/范围外/未知参数/远程源未切 remote）；
-4. M7 收敛：前端 App.jsx 配置节点默认值（正则抽取源码字面量）与 schema 默认值一致；
-   provider_config 的 deepseek 条目 api_base/model 与 schema 默认一致。
+4. **M7 收敛（Sprint-13 US-13.1 版）**：前端 App.jsx Config 节点**零硬编码**（16 个配置键不得以字面量出现在 n1 块）；
+   provider_config 的 deepseek 条目 api_base/model 与 schema 默认一致（provider 默认值的 SSOT 归属）；
+5. **Settings 升级护栏（Sprint-13 US-13.2）**：Settings 全字段路径与基线快照 `verify/settings_baseline.json` 比对——
+   升级 paperqa 后出现新增/删除字段时 FAIL 并打印 diff（提示重新策展 GROUPS 后 `--regen-baseline` 重建基线）。
 
 运行：.venv\\Scripts\\python.exe verify\\verify_config_schema.py（纯离线）
+重建基线：.venv\\Scripts\\python.exe verify\\verify_config_schema.py --regen-baseline
 """
 from __future__ import annotations
 
@@ -15,11 +18,13 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 PQA_SCRIPT = ROOT / "paper-qa-script"
 BACKEND = PQA_SCRIPT / "reactflow-paperqa-prototype" / "backend"
 APP_JSX = PQA_SCRIPT / "reactflow-paperqa-prototype" / "frontend" / "src" / "App.jsx"
+BASELINE_PATH = ROOT / "verify" / "settings_baseline.json"
 
 for _p in (str(PQA_SCRIPT), str(BACKEND)):
     if _p not in sys.path:
@@ -38,8 +43,37 @@ def ok(name: str, cond: bool, detail: str = "") -> None:
     print(f"PASS: {name} {detail}")
 
 
+# 前端零硬编码清单（Sprint-13 US-13.1）：这些键的默认值一律来自 schema，不得以字面量出现在 App.jsx n1
+CONFIG_KEYS = (
+    "provider", "api_base", "model", "vision_model", "embedding_model",
+    "paper_directory", "index_name", "data_source", "manifest_file",
+    "embedding_batch_size", "chunk_chars", "chunk_overlap", "temperature",
+    "source_urls", "source_arxiv_ids", "source_dois",
+)
+
+
+def collect_settings_paths(node: Any, prefix: str = "", depth: int = 0) -> list[str]:
+    """递归收集 Settings 的 pydantic 字段点路径（BaseModel 分支下钻，深度上限 4）。"""
+    from pydantic import BaseModel
+
+    from app.config_schema import _unwrap_model_type
+
+    out: list[str] = []
+    if depth > 4 or not (isinstance(node, type) and issubclass(node, BaseModel)):
+        return out
+    for name, field in node.model_fields.items():
+        path = f"{prefix}.{name}" if prefix else name
+        sub = _unwrap_model_type(field.annotation)
+        if sub is not None:
+            out.extend(collect_settings_paths(sub, path, depth + 1))
+        else:
+            out.append(path)
+    return sorted(out)
+
+
 def main() -> int:
     from app.config_schema import get_config_schema, validate_config, assert_schema_consistency  # noqa: E402
+    from paperqa.settings import Settings  # noqa: E402
     from provider_config import PROVIDERS  # noqa: E402
 
     schema = get_config_schema()
@@ -55,7 +89,6 @@ def main() -> int:
             flat[f["key"]] = f
     ok("schema 字段总数", len(flat) == 23, f"fields={len(flat)}")
 
-    # 关键字段默认值（app 有效默认）
     expect_defaults = {
         "provider": "deepseek", "model": "openai/deepseek-v4-flash",
         "embedding_model": "st-multi-qa-MiniLM-L6-cos-v1",
@@ -71,7 +104,6 @@ def main() -> int:
     problems = assert_schema_consistency()
     ok("pydantic_path 一致性", problems == [], f"problems={problems}")
 
-    # validate_config 行为
     r = validate_config({"data_source": "nope"})
     ok("非法 enum → errors", r["errors"] and "取值非法" in r["errors"][0], str(r))
     r = validate_config({"temperature": 5})
@@ -83,52 +115,37 @@ def main() -> int:
     r = validate_config({"temperature": 0.1})
     ok("合法值 → 无 errors", r["errors"] == [], str(r))
 
-    # M7 收敛：前端 App.jsx n1 节点默认值（源码字面量抽取，剔除注释行）与 schema 一致
+    # M7（Sprint-13 版）：前端零硬编码
     appjs = APP_JSX.read_text(encoding="utf-8")
     block = appjs[appjs.index('makeNode("n1"'):]
     block = block[: block.index("}),")]
-    block = "\n".join(
-        ln for ln in block.splitlines() if not ln.lstrip().startswith("//")
-    )
-    frontend_vals: dict[str, object] = {}
-    for key in ("provider", "api_base", "model", "embedding_model", "paper_directory",
-                "index_name", "data_source", "manifest_file", "embedding_batch_size",
-                "chunk_chars", "chunk_overlap", "temperature",
-                "source_urls", "source_arxiv_ids", "source_dois"):
-        m = re.search(rf"\b{key}:\s*(\"([^\"]*)\"|\[|\d+(?:\.\d+)?|true|false)", block)
-        if not m:
-            ok(f"App.jsx n1 含 {key}", False, "未匹配")
-            continue
-        if m.group(1).startswith('"'):
-            frontend_vals[key] = m.group(2)
-        elif m.group(1) == "[":
-            frontend_vals[key] = []  # 空列表字段
-        elif m.group(1) in ("true", "false"):
-            frontend_vals[key] = m.group(1) == "true"
-        else:
-            frontend_vals[key] = float(m.group(1)) if "." in m.group(1) else int(m.group(1))
+    block_no_comments = "\n".join(ln for ln in block.splitlines() if not ln.lstrip().startswith("//"))
+    for key in CONFIG_KEYS:
+        hardcoded = re.search(rf"\b{key}\s*:", block_no_comments)
+        ok(f"M7 前端零硬编码 {key}", hardcoded is None,
+           ("App.jsx n1 含字面量（默认值唯一真源应为 schema）" if hardcoded else f"n1 无 {key} 字面量"))
 
-    # api_base 是 provider 预填值：与 provider_config deepseek 条目一致（不属于 schema 默认值）
     ds = PROVIDERS.get("deepseek", {})
-    ok("M7 api_base = provider_config deepseek", frontend_vals.get("api_base") == ds.get("api_base"),
-       f"front={frontend_vals.get('api_base')!r} provider={ds.get('api_base')!r}")
-
-    for key, val in expect_defaults.items():
-        if key in ("provider", "model", "embedding_model", "paper_directory", "index_name", "data_source"):
-            ok(f"M7 前端默认值 {key} == SSOT", frontend_vals.get(key) == val,
-               f"front={frontend_vals.get(key)!r} ssot={val!r}")
-        else:
-            # number/bool 字段：前端字面量数值应与 schema 默认一致
-            ok(f"M7 前端默认值 {key} == SSOT", frontend_vals.get(key) == val,
-               f"front={frontend_vals.get(key)!r} ssot={val!r}")
-    ok("M7 空列表字段", frontend_vals.get("manifest_file") == "", f"manifest={frontend_vals.get('manifest_file')!r}")
-    for key in ("source_urls", "source_arxiv_ids", "source_dois"):
-        ok(f"M7 空列表字段 {key}", frontend_vals.get(key) == [],
-           f"front={frontend_vals.get(key)!r} expect=[]")
-
-    # provider_config 与 schema 的 provider/model 默认一致性
+    ok("provider_config deepseek api_base 存在", bool(ds.get("api_base")), f"api_base={ds.get('api_base')!r}")
     ok("provider_config deepseek model == schema", ds.get("model") == "openai/deepseek-v4-flash",
        f"provider_model={ds.get('model')!r}")
+
+    # Settings 升级护栏（US-13.2）
+    if "--regen-baseline" in sys.argv:
+        current = collect_settings_paths(Settings)
+        BASELINE_PATH.write_text(
+            json.dumps({"fields": current, "note": "由 verify_config_schema.py --regen-baseline 生成（Settings 全字段路径基线）"},
+                       ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(f"baseline regenerated: {len(current)} field paths -> {BASELINE_PATH}")
+        return 0
+    current = collect_settings_paths(Settings)
+    baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))["fields"]
+    added = [p for p in current if p not in baseline]
+    removed = [p for p in baseline if p not in current]
+    ok("Settings 字段基线一致（升级护栏）", added == [] and removed == [],
+       f"added={added[:10]} removed={removed[:10]}（paperqa 升级后请重新策展 GROUPS 并 --regen-baseline）")
 
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
