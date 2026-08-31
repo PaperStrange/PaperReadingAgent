@@ -78,5 +78,5 @@
     "texts_index_mmr_lambda",
     "verbosity"
   ],
-  "note": "由 verify_config_schema.py --regen-baseline 生成（Settings 全字段路径基线）"
+  "note": "由 verify_config_schema.py --regen-baseline 生成（Settings BaseModel 分支字段路径，深度≤4；容器内字段不在基线范围内）"
 }
