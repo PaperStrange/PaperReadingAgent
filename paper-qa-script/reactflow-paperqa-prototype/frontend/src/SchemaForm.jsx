@@ -57,26 +57,33 @@ export default function SchemaForm({ params, apiBase, onChange }) {
   useEffect(() => () => timerRef.current && clearTimeout(timerRef.current), []);
 
   // US-12.2：防抖校验（编辑后 600ms 调 validate 端点）；update 与 provider 联动共用
+  // 027 加固：请求序号守卫（仅最新请求可写状态）+ r.ok 检查 + validate 请求体剔除 api_key
+  const requestIdRef = useRef(0);
   const scheduleValidate = (snapshot) => {
     if (timerRef.current) clearTimeout(timerRef.current);
+    const rid = ++requestIdRef.current;
     timerRef.current = setTimeout(async () => {
       setValidating(true);
       try {
+        const body = { ...(snapshot || {}) };
+        delete body.api_key; // 校验端点不读密钥，避免明文传输（027 minor）
         const r = await fetch(`${apiBase}/api/config/validate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ params: snapshot }),
+          body: JSON.stringify({ params: body }),
         });
+        if (!r.ok) throw new Error("HTTP " + r.status);
         const d = await r.json();
+        if (rid !== requestIdRef.current) return; // 已有更新请求在途，丢弃过期响应
         setValidate({
           errors: Array.isArray(d?.errors) ? d.errors : [],
           warnings: Array.isArray(d?.warnings) ? d.warnings : [],
           hints: Array.isArray(d?.hints) ? d.hints : [],
         });
       } catch {
-        setValidate({ errors: [], warnings: [], hints: [] });
+        if (rid === requestIdRef.current) setValidate({ errors: [], warnings: [], hints: [] });
       } finally {
-        setValidating(false);
+        if (rid === requestIdRef.current) setValidating(false);
       }
     }, DEBOUNCE_MS);
   };
@@ -115,7 +122,8 @@ export default function SchemaForm({ params, apiBase, onChange }) {
   if (!schema) return <div className="config-panel schema-form">配置 schema 加载中…</div>;
 
   const fieldError = (key) =>
-    validate.errors.filter((e) => e.includes(`(${key})`) || e.includes(`${key}`)).join("；");
+    // 027 nit：仅保留带括号的精确匹配（后端错误文案恒含 ($key)），去掉子串误匹配兜底
+    validate.errors.filter((e) => e.includes(`(${key})`)).join("；");
 
   const renderControl = (f) => {
     const key = f.key;
@@ -131,6 +139,7 @@ export default function SchemaForm({ params, apiBase, onChange }) {
         <select
           className="ds-select schema-field-provider"
           value={params?.provider || ""}
+          disabled={readonly}
           onChange={(e) => onProviderChange(e.target.value)}
         >
           <option value="">未选择</option>
@@ -152,6 +161,7 @@ export default function SchemaForm({ params, apiBase, onChange }) {
             value={hasValue ? String(cur) : ""}
             placeholder={ph}
             autoComplete="off"
+            disabled={readonly}
             onChange={(e) => update({ [key]: e.target.value })}
           />
         );
@@ -193,7 +203,12 @@ export default function SchemaForm({ params, apiBase, onChange }) {
             className="ds-textarea"
             value={toText(cur)}
             disabled={readonly}
-            placeholder={ph}
+            // 027 nit：默认空列表时 placeholder 优先显示用法提示（hint）而非"默认：[]"
+            placeholder={
+              f.default === undefined || (Array.isArray(f.default) && f.default.length === 0)
+                ? f.hint || ""
+                : ph
+            }
             onChange={(e) => update({ [key]: linesToArr(e.target.value) })}
           />
         );
@@ -215,6 +230,8 @@ export default function SchemaForm({ params, apiBase, onChange }) {
                 const next = { ...(params || {}) };
                 delete next[key];
                 onChange(JSON.stringify(next, null, 2));
+                // 027 minor：空值删除同样触发重校验，避免旧字段级错误残留
+                scheduleValidate(next);
                 return;
               }
               const n = Number(raw);
@@ -283,7 +300,7 @@ export default function SchemaForm({ params, apiBase, onChange }) {
                       ))}
                     </div>
                   )}
-                  {f.hint && !f.impacts?.length && (
+                  {f.hint && (
                     <div className="ds-hint">{f.hint}</div>
                   )}
                   {err && <div className="schema-field-err">{err}</div>}
