@@ -24,7 +24,7 @@
 
 ## 3. 首个版本 v1.0.0 的范围与进度（roadmap 全景）
 
-| 主题 | 内容 | 状态（2026-08-30） |
+| 主题 | 内容 | 状态（2026-08-31） |
 |---|---|---|
 | A 配置模型 SSOT | 策展 schema + `validate_config` + 前端展示（config_notes/影响提示） | ✅ Sprint-2 完成 |
 | 分层地基 | 编排/引擎适配/事件模型/SessionStore（行为不变） | ✅ Sprint-2 完成 |
@@ -33,6 +33,7 @@
 | 实战修复（插队） | 自动重跑 config、retrieve 来源标记、litellm 回调防护、SSE 断连静默、UI 三件套 | ✅ Sprint-5（插队）完成 |
 | F1 检索体验（新增候选） | 多语检索 v1（CJK 零命中关键词重试 + 命中理由）+ F4 评测基准起步 | ✅ Sprint-6 完成（v1） |
 | 维护批清账（插队） | M1 索引三重探针 / M2 回调上限 env 配置 / M4 并发计时与清理 / M5 verify 路由实证 + gui 依赖显式化 / M6 文档勘误 + **全量 code review（windows+main）清技术账** | ✅ Sprint-7（插队）完成；M3 按用户指示留待后续 |
+| F2 配置面板深化（新增候选） | 阶段 A=SSOT 地基（`/api/config_schema` + `/api/config/validate` 端点、M7 默认值收敛锁、前端 schema 只读清单） | 🟢 阶段 A = Sprint-11 进行中；阶段 B/C 待续 |
 | C 可观测 + E3 v1 | Agent 结构化事件→时间线 + 工作流**只读可视化 v1** | ⏸ hold（**v1 需用户 review 后方可迭代**） |
 | E1/E2 框架适配 | pip 注入 + 版本检查/更新/回滚 | ⏸ hold |
 | D 基础设施 | 单机多 worker + 会话外置 + 网关分流 | ⏸ hold |

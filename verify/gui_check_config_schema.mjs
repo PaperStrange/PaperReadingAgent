@@ -13,19 +13,21 @@ const require = createRequire(path.join(_frontendNm, "noop.js"));
 const { chromium } = require("playwright");
 
 const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 
-await page.goto("http://127.0.0.1:5173/", { waitUntil: "networkidle" });
-// 等待 schema 清单渲染（标题出现）
-await page.waitForSelector(".schema-title", { timeout: 15000 });
-await page.waitForTimeout(800);
-await page.screenshot({ path: path.resolve(_here, "f2-config-schema.png"), fullPage: false });
-console.log("SHOT f2-config-schema.png");
+  await page.goto("http://127.0.0.1:5173/", { waitUntil: "networkidle" });
+  // 等待 schema 清单渲染（标题出现）
+  await page.waitForSelector(".schema-title", { timeout: 15000 });
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: path.resolve(_here, "f2-config-schema.png"), fullPage: false });
+  console.log("SHOT f2-config-schema.png");
 
-// 展开 Embedding 分组再截一张
-await page.locator("details.schema-group summary", { hasText: "Embedding" }).first().click().catch(() => {});
-await page.waitForTimeout(500);
-await page.screenshot({ path: path.resolve(_here, "f2-config-schema-embedding.png"), fullPage: false });
-console.log("SHOT f2-config-schema-embedding.png");
-
-await browser.close();
+  // 展开 Embedding 分组再截一张
+  await page.locator("details.schema-group summary", { hasText: "Embedding" }).first().click().catch(() => {});
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: path.resolve(_here, "f2-config-schema-embedding.png"), fullPage: false });
+  console.log("SHOT f2-config-schema-embedding.png");
+} finally {
+  await browser.close();
+}
