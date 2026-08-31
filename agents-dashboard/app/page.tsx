@@ -111,9 +111,13 @@ export default function Home() {  const [agg, setAgg] = useState<Agg | null>(nul
         <Typography.Title level={4} style={{ margin: 0 }}>
           AgentOps 看板
         </Typography.Title>
-        <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>
-          刷新
-        </Button>
+        <Space size="middle">
+          <a href="/specs" style={{ fontSize: 13 }}>spec 编辑</a>
+          <a href="/fanout" style={{ fontSize: 13 }}>fan-out 配置</a>
+          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>
+            刷新
+          </Button>
+        </Space>
       </Header>
       <Content style={{ padding: 24 }}>
         {/* align=stretch + 卡片 height:100% → 四卡始终等高，任意一张变高其余立即跟随（自适应） */}
