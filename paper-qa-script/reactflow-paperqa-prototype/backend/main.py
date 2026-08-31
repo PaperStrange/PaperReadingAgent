@@ -125,7 +125,8 @@ class ConfigValidateRequest(BaseModel):
 @app.post("/api/config/validate")
 async def config_validate(req: ConfigValidateRequest) -> dict[str, list[str]]:
     # Sprint-11 US-11.1：提示性校验（errors/warnings/hints，不改变 build_settings 行为）
-    return validate_config(req.params or {})
+    # 非 dict 请求体由 Pydantic 422 拦截，此处 params 恒为 dict
+    return validate_config(req.params)
 
 
 @app.post("/api/translate_preview")

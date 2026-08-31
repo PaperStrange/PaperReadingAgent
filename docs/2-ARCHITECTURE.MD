@@ -125,7 +125,7 @@ PaperReading-Windows/
 │   └── reactflow-paperqa-prototype/
 │       ├── backend/main.py             # FastAPI 路由层（Sprint-2 解耦后：10 条 API 路由 + RunEventBroker/SSE + 组合根）
 │       ├── backend/requirements.txt
-│       └── frontend/                   # React+Vite（App.jsx / FlowNode.jsx / ModelConfigPanel.jsx / DataSourcePanel.jsx / FunctionTraceNode.jsx / JsonTree.jsx）
+│       └── frontend/                   # React+Vite（App.jsx / FlowNode.jsx / ModelConfigPanel.jsx / DataSourcePanel.jsx / SchemaFieldList.jsx / FunctionTraceNode.jsx / JsonTree.jsx）
 ├── src/                       # ACL/ICLR/NeurIPS 语料采集
 ├── data/pdf/PaperQA2.pdf      # 示例论文
 ├── data/remote/               # Sprint-3 远程源下载暂存（.gitignore 忽略，运行时生成）
@@ -146,7 +146,7 @@ PaperReading-Windows/
 - **app/events.py / app/session_store.py**：统一事件模型（StepEvent/FunctionTraceEvent/AgentActionEvent/…）；`SessionStore` 接口 + `MemorySessionStore`。
 - **app/data_sources.py / app/remote_resolver.py**（Sprint-3 主题 B）：数据源领域模型与远程源解析——`data_source` 模式（local 默认 / remote 下载暂存）；URL/arXiv/DOI 经 `resolve_remote_sources` 统一下载到 `data/remote/<index_name>/`（幂等、逐源失败明细），复用现有索引/解析管线；`manifest_file` 元数据增强生效。**安全**：下载前 SSRF 校验（仅公网 http/https、拒绝内网/本机地址、重定向逐跳复检）、单文件 200MB 上限 + 流式临时文件；编排层对 `input_snapshot`/`run_records` 做 api_key 脱敏。
 - **App.jsx**（1000+ 行）：节点状态机（idle/running/success/failed/stale）；`runSingleNode`（EventSource 收流 + POST）；上下游拓扑（`getUpstreamIds/getDownstreamIds`）；`buildFunctionSubgraphForStep`（调用树布局：深度分组、列宽 340、软碰撞避让、最多 140 调用）；`runAllSequential`；**subcanvas 计时**（多节点并发逐个显示 + 完成冻结 + 计时起点随节点结束清理，Sprint-7 M4）。
-- **FlowNode.jsx / ModelConfigPanel.jsx / DataSourcePanel.jsx / FunctionTraceNode.jsx / JsonTree.jsx**：步骤节点卡片（参数 JSON 编辑——本地草稿态防光标跳、Run/Run Upstream/Run From Here、快照、trace 列表）；Config 节点「模型配置」面板（provider 下拉联动 /api/providers 自动带出 api_base/model/vision/embedding）+「数据源」切换面板（local/remote、URL/arXiv/DOI 列表、manifest 路径）；函数节点卡片（文本全文/中文翻译按钮/图片预览）；JSON 树渲染。**样式规范（Sprint-4）**：节点内 block 标题一律 `.node-block-title`、字段标签一律 `.ds-label`、说明文字 `.ds-sub/.ds-hint`，新面板必须复用。
+- **FlowNode.jsx / ModelConfigPanel.jsx / DataSourcePanel.jsx / SchemaFieldList.jsx / FunctionTraceNode.jsx / JsonTree.jsx**：步骤节点卡片（参数 JSON 编辑——本地草稿态防光标跳、Run/Run Upstream/Run From Here、快照、trace 列表）；Config 节点「模型配置」面板（provider 下拉联动 /api/providers 自动带出 api_base/model/vision/embedding）+「数据源」切换面板（local/remote、URL/arXiv/DOI 列表、manifest 路径）+「配置唯一真源」分组只读清单（Sprint-11 拉取 /api/config_schema，类型/默认值/影响提示/当前值高亮，降级不影响现有面板）；函数节点卡片（文本全文/中文翻译按钮/图片预览）；JSON 树渲染。**样式规范（Sprint-4）**：节点内 block 标题一律 `.node-block-title`、字段标签一律 `.ds-label`、说明文字 `.ds-sub/.ds-hint`，新面板必须复用。
 - **runtime_trace.py**：`RuntimeTracer`（19 个显式 TARGETS + 8 个 MODULE_TARGETS 全量函数 + 可选 lmi embed）；上下文栈基于 contextvars；`_make_chunk` 的 result 载荷含 text_full/text_preview/media 信息/页码预览（fitz 渲染，0.45 缩放，≤400KB）。
 - **streamlit_paperqa_app.py**：`SessionLogHandler`、`_reset_litellm_logging_worker`（修复跨 event loop 队列问题）、`run_coro`、透明流水线（5 节点计时）、DOT 生成与 graphviz 渲染/下载。
 

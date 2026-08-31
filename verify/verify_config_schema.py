@@ -93,7 +93,8 @@ def main() -> int:
     frontend_vals: dict[str, object] = {}
     for key in ("provider", "api_base", "model", "embedding_model", "paper_directory",
                 "index_name", "data_source", "manifest_file", "embedding_batch_size",
-                "chunk_chars", "chunk_overlap", "temperature"):
+                "chunk_chars", "chunk_overlap", "temperature",
+                "source_urls", "source_arxiv_ids", "source_dois"):
         m = re.search(rf"\b{key}:\s*(\"([^\"]*)\"|\[|\d+(?:\.\d+)?|true|false)", block)
         if not m:
             ok(f"App.jsx n1 含 {key}", False, "未匹配")
@@ -121,6 +122,9 @@ def main() -> int:
             ok(f"M7 前端默认值 {key} == SSOT", frontend_vals.get(key) == val,
                f"front={frontend_vals.get(key)!r} ssot={val!r}")
     ok("M7 空列表字段", frontend_vals.get("manifest_file") == "", f"manifest={frontend_vals.get('manifest_file')!r}")
+    for key in ("source_urls", "source_arxiv_ids", "source_dois"):
+        ok(f"M7 空列表字段 {key}", frontend_vals.get(key) == [],
+           f"front={frontend_vals.get(key)!r} expect=[]")
 
     # provider_config 与 schema 的 provider/model 默认一致性
     ok("provider_config deepseek model == schema", ds.get("model") == "openai/deepseek-v4-flash",
