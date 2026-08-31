@@ -218,6 +218,7 @@ node .\verify\gui_check_dashboard.mjs         # 看板概览页截图（需 agen
 node .\verify\gui_check_dashboard2.mjs        # 看板 spec 编辑页截图（需 agents-dashboard 已启动）
 node .\verify\gui_check_dashboard_costs.mjs   # 看板成本/上下文页截图（需 agents-dashboard 已启动）
 node .\verify\gui_check_dashboard_report.mjs  # 看板报告浏览页截图（需 agents-dashboard 已启动）
+node .\verify\gui_check_dashboard_fanout.mjs   # 看板 fan-out 配置页截图（需 agents-dashboard 已启动）
 ```
 
 详见 `verify/README.md` 与 `docs/3-LEARNED.MD` 的验证记录。
