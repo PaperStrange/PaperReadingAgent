@@ -62,9 +62,10 @@ export default function FanoutPage() {
   };
 
   const validate = () => {
-    fetch("/api/fanout", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content }) })
+    // POST = dry-run 校验（不写入），与保存（PUT 直写）语义分离（017 major 修复）
+    fetch("/api/fanout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content }) })
       .then((r) => r.json())
-      .then((d) => setFeedback({ ok: d.ok, text: d.ok ? "结构校验通过（未写入）" : `校验失败：${d.error}` }));
+      .then((d) => setFeedback({ ok: d.ok, text: d.ok ? "结构校验通过（dry-run，未写入任何文件）" : `校验失败：${d.error}` }));
   };
 
   const renderSteps = (title: string, steps?: FanoutStep[]) => (
