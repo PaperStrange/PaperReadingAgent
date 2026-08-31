@@ -13,7 +13,7 @@
 | 经验教训总结（Sprint 关闭前置必做） | [`functions/lessons-learned.md`](functions/lessons-learned.md) | `{sprint_doc, change_commits}` → 3-LEARNED 新条目草稿 + 分类索引更新建议（主代理审核回填） | 子代理（一查/二查后、workspace-check 前；fan-out 第 4 步） |
 | 工作区核验 | [`functions/workspace-check.md`](functions/workspace-check.md) | — | **主代理执行**（D2：起服务/杀进程不子代理化） |
 
-> **spec 语言约定（用户要求 2026-08-30）**：`functions/*.md` 正文为**英文**（规避跨环境解码乱码——PS 5.1/GBK 曾把无 BOM UTF-8 中文按 ANSI 误读）；**报告输出仍为中文**（项目文档语言，spec 输出模板中已注明）。spec 措辞风格参考 `.agents/skills/` 官方 SKILL.md（imperative、checklist、Sources of truth）。
+> **spec 语言约定（用户要求 2026-08-30；tech-research 首跑调研实证）**：`functions/*.md` 正文为**英文**——① 编码健壮性：PS 5.1 无 BOM 时按 ANSI 误读非 ASCII（[微软官方文档](https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_character_encoding)；同型事故 [codex#29085](https://github.com/openai/codex/issues/29085)、[spec-kit#4359](https://github.com/github/spec-kit/issues/4359)），英文/纯 ASCII 从机制上根除 mojibake，且不加 BOM（微软明确"避免 UTF-8 BOM"）；② 生态惯例：Agent Skills 规范 `name` 字段本就限 ASCII，[anthropics/skills](https://github.com/anthropics/skills) 等官方库全部英文。**报告输出仍为中文**（项目文档语言）；**Trigger 段触发关键词保留中英双语**（匹配对象是中文任务文本）。措辞参考 `.agents/skills/` 官方 SKILL.md（imperative、checklist、Sources of truth）。
 
 - 同一职能对多个 target 各跑一次任务（如三查时 code-review 跑 windows+main 两任务），分支/PR 只是任务参数。
 - **调研前置（用户要求 2026-08-30）**：任务输入含调研要求（research/调研/选型/对比/评估/最佳实践等关键词，完整规则见 tech-research spec Trigger 节）时，**先自动跑 tech-research 深度调研**（不是几个网页搜索就下结论），把调研报告注入上下文，**再开始规划任务**；流程定义在 [`fanout.json`](fanout.json) 的 `planning_pipeline`。
