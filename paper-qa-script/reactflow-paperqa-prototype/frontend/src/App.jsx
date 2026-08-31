@@ -61,32 +61,8 @@ function mergeFunctionTrace(prevTrace, nextTrace) {
 }
 
 const initialNodesRaw = [
-  makeNode("n1", "1) Config", "config", 20, 40, {
-    api_key: "",
-    // 服务商：deepseek | dashscope | openai（api_base/model/embedding 显式填写时优先）
-    provider: "deepseek",
-    // [macOS original] api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    api_base: "https://api.deepseek.com",
-    // [macOS original] model: "openai/qwen-omni-turbo",
-    model: "openai/deepseek-v4-flash",
-    // [macOS original] embedding_model: "openai/text-embedding-v4",
-    // DeepSeek has no embedding API -> local SentenceTransformer embedding
-    embedding_model: "st-multi-qa-MiniLM-L6-cos-v1",
-    // [macOS original] paper_directory: "/Volumes/Extreme SSD/vscode_projects/PaperReading/data/pdf",
-    // relative to the backend process cwd (start backend from the repo root)
-    paper_directory: "data/pdf",
-    index_name: "debug_index",
-    // 数据源（Sprint-3）：local=本地目录（默认）；remote=URL/arXiv/DOI 下载到 data/remote/<index_name>/
-    data_source: "local",
-    source_urls: [],
-    source_arxiv_ids: [],
-    source_dois: [],
-    manifest_file: "",
-    embedding_batch_size: 10,
-    chunk_chars: 5000,
-    chunk_overlap: 250,
-    temperature: 0.1,
-  }),
+  // Sprint-13 US-13.1（F2 阶段 C）：Config 节点初始参数不再手写——挂载时从 /api/config_schema 派生默认值（见下方 schemaDefaults effect）
+  makeNode("n1", "1) Config", "config", 20, 40, {}),
   makeNode("n2", "2) Load Index", "load_index", 480, 40, {
     build: true,
   }),
@@ -420,6 +396,35 @@ export default function App() {
     },
     [setNodes]
   );
+
+  // Sprint-13 US-13.1（F2 阶段 C）：Config 节点初始默认值由 schema 派生——页面挂载时拉取
+  // /api/config_schema，把各字段 default 应用到 n1（仅当用户尚未改动 params 时），手写字面量退役。
+  useEffect(() => {
+    let alive = true;
+    fetch(`${apiBase}/api/config_schema`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!alive || !Array.isArray(d?.groups)) return;
+        const defaults = {};
+        for (const g of d.groups) {
+          for (const f of g.fields || []) {
+            if (f.default !== undefined && f.default !== null) defaults[f.key] = f.default;
+          }
+        }
+        applyNodesUpdate((nds) =>
+          nds.map((n) => {
+            if (n.id !== "n1") return n;
+            // 用户已改动（params 非空）则不覆盖
+            if (n.data?.params && Object.keys(n.data.params).length > 0) return n;
+            return { ...n, data: { ...n.data, params: defaults } };
+          })
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [apiBase, applyNodesUpdate]);
 
   const applyEdgesUpdate = useCallback(
     (updater) => {

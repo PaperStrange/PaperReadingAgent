@@ -19,6 +19,10 @@ try {
   await page.goto("http://127.0.0.1:5173/", { waitUntil: "networkidle" });
   await page.waitForSelector(".schema-form-title", { timeout: 15000 });
   await page.waitForTimeout(1200);
+  // US-13.1：节点默认值由 schema 派生（无手写）——JSON 编辑区应含 schema 默认值
+  const json0 = await page.locator(".node-textarea").first().inputValue();
+  const derived = json0.includes("st-multi-qa-MiniLM-L6-cos-v1") && json0.includes('"chunk_chars": 5000');
+  console.log("US-13.1 defaults-derived-from-schema:", derived ? "PASS" : "FAIL " + json0.slice(0, 120));
   await page.screenshot({ path: path.resolve(_here, "f2-schema-form.png"), fullPage: false });
   console.log("SHOT f2-schema-form.png");
 

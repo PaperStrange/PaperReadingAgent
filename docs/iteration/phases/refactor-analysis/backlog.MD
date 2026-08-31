@@ -13,7 +13,7 @@
 | R-D | D 单机多 worker + 会话外置 + 网关分流（原规划 Sprint-6） | 未估 | ⏸ hold | — | 依赖会话外置化 |
 | R-E3 | E3 可编辑工作流（原规划 Sprint-7+） | 未估 | ⏸ hold | — | 依赖 R-C 验收 |
 | F1 | 检索体验与查询质量：多语检索 | 13 | ✅ 完成(v1) | Sprint-6 | v1=关键词重试+命中理由；后续：query 翻译/双语索引（F4 评测选型） |
-| F2 | 配置面板深化 + SSOT 驱动前端（/api/config_schema + 全字段交互 + 单一受控状态） | 16（分阶段：A 5 + B 6 + C 5） | 🟢 进行中（阶段 A ✅ = Sprint-11；阶段 B ✅ = Sprint-12；阶段 C = Sprint-13） | — | 评审 m1 欠账 + m10 遗留；M7 并入；阶段拆解见 Sprint-11 §0 |
+| F2 | 配置面板深化 + SSOT 驱动前端（/api/config_schema + 全字段交互 + 单一受控状态） | 16（分阶段：A 5 + B 6 + C 5） | 🟢 进行中（阶段 A ✅ = Sprint-11；阶段 B ✅ = Sprint-12；**阶段 C = Sprint-13**） | — | 评审 m1 欠账 + m10 遗留；M7 并入；阶段拆解见 Sprint-11 §0 |
 | F3 | Agent 接入后端 + 事件时间线雏形 | 未估 | 候选 | — | R-C 的前置步骤 |
 | F4 | 本地评测基准（检索/证据/答案三环） | 3(起步) | ✅ 起步 | Sprint-6 | `verify/eval_retrieve.py`；后续扩充语料 |
 
