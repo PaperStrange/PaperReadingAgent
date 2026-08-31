@@ -40,6 +40,7 @@
 | [`verify/README.md`](verify/README.md) | 验收脚本（`verify_smoke/e2e/agent/provider_switch/embed_load/remote_e2e/prune_callbacks/index_health/agentops` + `eval_retrieve` + `gui_check*.mjs`）使用说明 |
 | [`agents/README.md`](agents/README.md) | **项目级 AgentOps 设置**（与 docs 平级）：职能 spec（`agents/functions/`）、runtime 账本、跨 IDE 迁移说明、三查 fan-out 协议 |
 | [`agents-dashboard/README.md`](agents-dashboard/README.md) | AgentOps 本地看板（阶段 3）：概览/账本检索/spec 编辑与校验 API、运行与数据源、已知边界 |
+| [`agents-dashboard/docs/antd-reference.md`](agents-dashboard/docs/antd-reference.md) | antd 官方资料本地存档（changelog / migration-v6 / use-with-next，看板 UI 设计规范依据） |
 | `docs/iteration/` | 迭代管理（**仅 windows 分支维护**，不进 main/mac）：`ROADMAP.MD` 全局三档路线图、`phases/<阶段>/` 分阶段 roadmap+backlog、`sprint/` Sprint 记录 |
 | [`paper-qa-script/reactflow-paperqa-prototype/README.md`](paper-qa-script/reactflow-paperqa-prototype/README.md) | ReactFlow 前端 + FastAPI 后端原型说明 |
 | [`paper-qa-script/paperqa_system_report.md`](paper-qa-script/paperqa_system_report.md) | paperqa 源码静态分析报告（371 个函数、入口签名、调用路径） |

@@ -71,7 +71,7 @@ agents-dashboard/
 | `/api/specs` | GET/PUT | 列表 / 保存（直写文件，白名单校验 + 路径越界防护） |
 | `/api/specs/:name` | GET | 读取 spec 内容（仅 *.md，无扩展名自动补） |
 | `/api/specs/validate` | POST | 调 `scripts/agent-ops.py validate-spec` 校验所见内容 |
-| `/api/fanout` | GET/PUT | 读取 / 保存 `agents/fanout.json`（结构校验：两条流水线 + 每步必备字段 + order 连续） |
+| `/api/fanout` | GET/PUT/POST | 读取 / 保存 / dry-run 校验 `agents/fanout.json`（结构校验：两条非空流水线 + 每步必备字段 + order 连续） |
 
 ## 5. 与项目其它部分的关系
 
