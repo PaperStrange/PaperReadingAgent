@@ -1,7 +1,7 @@
 """Smoke verification for the Windows-ported codebase (8 checks, offline).
 
 Checks: paperqa package imports, backend main.py loads its FastAPI app
-(8 API routes incl. /api/providers), runtime_trace targets, streamlit/litellm imports,
+(10 API routes incl. /api/providers, /api/config_schema, /api/config/validate), runtime_trace targets, streamlit/litellm imports,
 PyMuPDF page preview (used by runtime_trace), graphviz dot auto-discovery,
 and the local paper reader parses PaperQA2.pdf.
 Run: .venv\\Scripts\\python.exe verify_smoke.py

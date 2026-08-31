@@ -8,12 +8,12 @@ A minimal prototype showing:
 
 ## Structure
 
-- `backend/main.py`: FastAPI 路由层（8 条 API 路由 + SSE 事件传输 + 组合根）。
+- `backend/main.py`: FastAPI 路由层（10 条 API 路由 + SSE 事件传输 + 组合根）。
 - `paper-qa-script/app/`: 分层实现（编排 `orchestration.py`、引擎适配 `engine.py`、
   配置 SSOT `config_schema.py`、事件模型 `events.py`、会话 `session_store.py`、
   数据源 `data_sources.py` + 远程解析 `remote_resolver.py` + embedding 推荐 `embedding_recommender.py`）。
 - `frontend/`: React + Vite + React Flow UI（`src/App.jsx`、`FlowNode.jsx`、
-  `ModelConfigPanel.jsx`、`DataSourcePanel.jsx`、`FunctionTraceNode.jsx`、`JsonTree.jsx`）。
+  `ModelConfigPanel.jsx`、`DataSourcePanel.jsx`、`SchemaFieldList.jsx`、`FunctionTraceNode.jsx`、`JsonTree.jsx`）。
 
 <!--
 ## Backend run (macOS original)

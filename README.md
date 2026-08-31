@@ -37,7 +37,7 @@
 | [`docs/3-LEARNED.MD`](docs/3-LEARNED.MD) | 开发经验教训：踩坑记录、验证记录、已知限制 |
 | [`docs/4-ALGORITHM.MD`](docs/4-ALGORITHM.MD) | **前后端决策逻辑与算法**：DSL 规则 + 决策表 + UML（类图/时序图/状态机），每条规则标注代码位置 |
 | [`docs/5-VERSIONS.MD`](docs/5-VERSIONS.MD) | **发版记录与版本号规范**（`年.月.日-v(R.R.R)`；首个版本在 roadmap 全部 Sprint 完成后发布） |
-| [`verify/README.md`](verify/README.md) | 验收脚本（`verify_smoke/e2e/agent/provider_switch/embed_load/remote_e2e/prune_callbacks/index_health/agentops` + `eval_retrieve` + `gui_check*.mjs`）使用说明 |
+| [`verify/README.md`](verify/README.md) | 验收脚本（`verify_smoke/e2e/agent/provider_switch/embed_load/remote_e2e/prune_callbacks/index_health/agentops/config_schema` + `eval_retrieve` + `gui_check*.mjs`）使用说明 |
 | [`agents/README.md`](agents/README.md) | **项目级 AgentOps 设置**（与 docs 平级）：职能 spec（`agents/functions/`）、runtime 账本、跨 IDE 迁移说明、三查 fan-out 协议 |
 | [`agents-dashboard/README.md`](agents-dashboard/README.md) | AgentOps 本地看板（阶段 3）：概览/账本检索/spec 编辑与校验 API、运行与数据源、已知边界 |
 | [`agents-dashboard/docs/antd-reference.md`](agents-dashboard/docs/antd-reference.md) | antd 官方资料本地存档（changelog / migration-v6 / use-with-next，看板 UI 设计规范依据） |
@@ -216,6 +216,7 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 .\.venv\Scripts\python.exe .\verify\verify_smoke.py             # 8 项冒烟（离线）
 .\.venv\Scripts\python.exe .\verify\verify_prune_callbacks.py   # litellm 回调裁剪（离线）
 .\.venv\Scripts\python.exe .\verify\verify_agentops.py          # AgentOps 账本 CLI 用例断言（离线）
+.\.venv\Scripts\python.exe .\verify\verify_config_schema.py    # 配置 SSOT 一致性 + M7 默认值收敛（离线）
 .\.venv\Scripts\python.exe .\verify\verify_index_health.py      # 索引三重探针 + 自愈（离线）
 .\.venv\Scripts\python.exe .\verify\verify_provider_switch.py   # 服务商切换/路由实证（联网）
 .\.venv\Scripts\python.exe .\verify\verify_e2e.py               # 全链路（真实 API，本地目录）
@@ -234,6 +235,7 @@ node .\verify\gui_check_dashboard2.mjs        # Sprint-9：看板 spec 页截图
 node .\verify\gui_check_dashboard_costs.mjs   # Sprint-9：看板成本页截图（需 agents-dashboard 已启动）
 node .\verify\gui_check_dashboard_report.mjs  # Sprint-9：看板报告页截图（需 agents-dashboard 已启动）
 node .\verify\gui_check_dashboard_fanout.mjs   # Sprint-10：看板 fan-out 配置页截图（需 agents-dashboard 已启动）
+node .\verify\gui_check_config_schema.mjs      # Sprint-11：Config 节点 schema 清单截图（需前后端已启动）
 ```
 
 > 上述命令为 **Windows 示例**（`.\.venv\Scripts\python.exe` 是 Windows venv 路径）；mac 等价为 `.venv/bin/python`。

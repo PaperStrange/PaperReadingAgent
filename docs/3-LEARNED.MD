@@ -203,7 +203,7 @@
 | 检查 | 结果 |
 |---|---|
 | paperqa 导入 v2026.1.6.dev10+g36348d0ca | ✅ |
-| backend/main.py 加载（FastAPI 8 条 API 路由） | ✅ |
+| backend/main.py 加载（FastAPI 8 条 API 路由；**Sprint-11 起 10 条**） | ✅ |
 | RuntimeTracer（19 个显式目标） | ✅ |
 | streamlit 1.62.0 | ✅ |
 | litellm | ✅ |
