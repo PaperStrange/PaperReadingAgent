@@ -232,6 +232,7 @@ node .\verify\gui_check_dashboard.mjs         # Sprint-9：看板概览页截图
 node .\verify\gui_check_dashboard2.mjs        # Sprint-9：看板 spec 页截图（需 agents-dashboard 已启动）
 node .\verify\gui_check_dashboard_costs.mjs   # Sprint-9：看板成本页截图（需 agents-dashboard 已启动）
 node .\verify\gui_check_dashboard_report.mjs  # Sprint-9：看板报告页截图（需 agents-dashboard 已启动）
+node .\verify\gui_check_dashboard_fanout.mjs   # Sprint-10：看板 fan-out 配置页截图（需 agents-dashboard 已启动）
 ```
 
 > 上述命令为 **Windows 示例**（`.\.venv\Scripts\python.exe` 是 Windows venv 路径）；mac 等价为 `.venv/bin/python`。
