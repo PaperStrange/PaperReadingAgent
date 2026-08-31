@@ -1,7 +1,7 @@
 ---
 name: impact-assessment
 description: Impact-scope assessment agent, the first gate of the fan-out pipeline: self-checks the core-function count and API-route count at runtime, classifies the change set into modules, computes A, B and the composite metric (default weights 0.8:0.2, threshold X=50), and outputs a two-tier review-scope decision. Review scope must never default to the sprint deliverables.
-version: "1.3.0"
+version: "1.4.0"
 model: ""
 tools: []
 metadata:
@@ -33,14 +33,14 @@ You are the **impact-scope assessor** (first gate of the fan-out). Assess only: 
 | `wB` (core-API weight) | 0.2 | weight of B in the composite |
 | `X` (tier threshold) | 50 | composite > X → full tier; composite ≤ X → narrow tier |
 | Core-function list | 13 items (table below) | reviewed quarterly; runtime self-check wins over the table — report any mismatch |
-| Route ↔ host map | 8 routes (table below) | runtime self-check of the route count; mismatch → warn and list the diff |
+| Route ↔ host map | 10 routes (table below) | runtime self-check of the route count; mismatch → warn and list the diff |
 | Core region list | code area / docs area (tables below) | narrow tier always includes all of it |
 
 # Steps
 
 1. **Runtime self-check (mandatory — never hardcode the numbers)**:
    - **Core-function count**: for each item in the core-function list, verify the host module exists in the repo (file exists + key symbol exists, e.g. `PipelineOrchestrator` class, `@app.get` decorators). A missing/renamed module voids that item; `N_core` is the **actual valid count**, and the report warns about the discrepancy.
-   - **API-route count**: open `paper-qa-script/reactflow-paperqa-prototype/backend/main.py` and count the actual route decorators (`@app.get`/`@app.post`, etc.) and paths; `N_routes` is the **actual counted value** (≠8 → warn and list the diff).
+   - **API-route count**: open `paper-qa-script/reactflow-paperqa-prototype/backend/main.py` and count the actual route decorators (`@app.get`/`@app.post`, etc.) and paths; `N_routes` is the **actual counted value** (≠10 → warn and list the diff).
    - Write the self-check conclusion into the report (`N_core`, `N_routes`, differences vs the lists).
 2. **Inventory the change set**: group changed files by module.
 3. **Compute A**: judge each core function as touched per the map; `A = touched / N_core(self-checked)`.
@@ -56,7 +56,7 @@ You are the **impact-scope assessor** (first gate of the fan-out). Assess only: 
 | 1 | Six-step pipeline | paper-qa-script/app/orchestration.py | `class PipelineOrchestrator` |
 | 2 | Config SSOT | paper-qa-script/app/config_schema.py | `validate_config` |
 | 3 | Engine adapter | paper-qa-script/app/engine.py | `class EngineAdapter` |
-| 4 | 8 API routes + SSE + Broker | paper-qa-script/reactflow-paperqa-prototype/backend/main.py | `class RunEventBroker`, `@app.get` |
+| 4 | 10 API routes + SSE + Broker | paper-qa-script/reactflow-paperqa-prototype/backend/main.py | `class RunEventBroker`, `@app.get` |
 | 5 | Provider registry | paper-qa-script/provider_config.py | `PROVIDERS` |
 | 6 | Data sources (3 modes) + SSRF | paper-qa-script/app/data_sources.py / app/remote_resolver.py | `parse_remote_sources` / `resolve_remote_sources` |
 | 7 | Retrieval quality | paper-qa-script/app/orchestration.py (retrieve section) | `keyword_retry` |
@@ -67,15 +67,15 @@ You are the **impact-scope assessor** (first gate of the fan-out). Assess only: 
 | 12 | AgentOps dashboard (Next.js) | agents-dashboard/ | `app/page.tsx`, `app/api/*/route.ts` |
 | 13 | Deep research (planning pre-step) | agents/functions/tech-research.md | `tech-research.md` |
 
-# Core API Route ↔ Host Map (8 routes; runtime self-check of the total)
+# Core API Route ↔ Host Map (10 routes; runtime self-check of the total)
 
 | Route | Host module |
 |---|---|
-| /api/health, /api/new_session, /api/reset_session, /api/session_records/{id}, /api/stream/{sid}/{rid}, /api/translate_preview, /api/run_step (definition), /api/providers (definition) | paper-qa-script/reactflow-paperqa-prototype/backend/main.py (touching it → B=1.0, conservative) |
+| /api/health, /api/new_session, /api/reset_session, /api/session_records/{id}, /api/stream/{sid}/{rid}, /api/translate_preview, /api/run_step (definition), /api/providers (definition), /api/config_schema (Sprint-11), /api/config/validate (Sprint-11) | paper-qa-script/reactflow-paperqa-prototype/backend/main.py (touching it → B=1.0, conservative) |
 | /api/run_step (execution logic) | paper-qa-script/app/orchestration.py (only this → 1/N_routes) |
 | /api/providers (registry) | paper-qa-script/provider_config.py (only this → 1/N_routes) |
 
-> Note: `agents-dashboard/app/api/*` are Next.js presentation-layer routes — they do **not** count toward B (B counts only the 8 core FastAPI routes).
+> Note: `agents-dashboard/app/api/*` are Next.js presentation-layer routes — they do **not** count toward B (B counts only the 10 core FastAPI routes).
 
 # Core Region List (narrow tier always includes all; edit point)
 

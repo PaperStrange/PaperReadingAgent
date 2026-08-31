@@ -53,6 +53,7 @@ jobs:
           python verify/verify_smoke.py
           python verify/verify_prune_callbacks.py
           python verify/verify_agentops.py
+          python verify/verify_config_schema.py
           python verify/verify_index_health.py
 
       - name: Build reactflow frontend

@@ -7,7 +7,7 @@
 | 职能 | spec | 任务输入（参数化） | 执行方式 |
 |---|---|---|---|
 | 深度技术调研（规划前置，自动触发） | [`functions/tech-research.md`](functions/tech-research.md) | `{question, context, depth}` → 多来源深度调研报告（≥3 来源/论断 + 对比矩阵 + 结论建议） | 子代理——**任务含调研要求（关键词见 spec Trigger）时自动启用，报告注入上下文后才开始规划** |
-| 影响范围评估（fan-out 第一道闸门） | [`functions/impact-assessment.md`](functions/impact-assessment.md) | `{change_set, scope_hint}` → 输出 A（核心功能覆盖率/13）、B（核心 API 覆盖率/8）、composite=(0.8A+0.2B)×100、**阈值 X=50** 两档 recommended_scope | 子代理（三查/review 前先跑） |
+| 影响范围评估（fan-out 第一道闸门） | [`functions/impact-assessment.md`](functions/impact-assessment.md) | `{change_set, scope_hint}` → 输出 A（核心功能覆盖率/13）、B（核心 API 覆盖率/10）、composite=(0.8A+0.2B)×100、**阈值 X=50** 两档 recommended_scope | 子代理（三查/review 前先跑） |
 | 代码审阅 | [`functions/code-review.md`](functions/code-review.md) | `{target: branch:windows\|branch:main\|pr:<n>\|working-tree, scope, focus, strictness}` | 子代理（每任务一次） |
 | 文档审计 | [`functions/doc-audit.md`](functions/doc-audit.md) | `{target, scope, focus, strictness}` | 子代理 |
 | 经验教训总结（Sprint 关闭前置必做） | [`functions/lessons-learned.md`](functions/lessons-learned.md) | `{sprint_doc, change_commits}` → 3-LEARNED 新条目草稿 + 分类索引更新建议（主代理审核回填） | 子代理（一查/二查后、workspace-check 前；fan-out 第 4 步） |
