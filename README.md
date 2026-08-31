@@ -95,7 +95,7 @@ git clone -b windows https://github.com/PaperStrange/PaperReadingAgent.git
 cd PaperReadingAgent          # 进入仓库根目录，后文用 <ROOT> 表示
 ```
 
-> 若已在本机 `D:\All-Downloads\PaperReading\PaperReading-Windows`，直接把该目录当作 `<ROOT>` 即可。
+> 若已在本机克隆过本仓库，直接把你的克隆目录当作 `<ROOT>` 即可（本文档不假定任何机器专属路径）。
 
 ### 第 1 步：安装 Python 依赖
 
