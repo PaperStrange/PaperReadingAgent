@@ -408,7 +408,8 @@ export default function App() {
         const defaults = {};
         for (const g of d.groups) {
           for (const f of g.fields || []) {
-            if (f.default !== undefined && f.default !== null) defaults[f.key] = f.default;
+            // 032 minor：readonly 字段（🔒 由框架默认固定）不注入 params，避免校验冗余警告
+            if (f.default !== undefined && f.default !== null && !f.readonly) defaults[f.key] = f.default;
           }
         }
         applyNodesUpdate((nds) =>

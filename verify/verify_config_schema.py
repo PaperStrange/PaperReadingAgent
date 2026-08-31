@@ -43,13 +43,8 @@ def ok(name: str, cond: bool, detail: str = "") -> None:
     print(f"PASS: {name} {detail}")
 
 
-# 前端零硬编码清单（Sprint-13 US-13.1）：这些键的默认值一律来自 schema，不得以字面量出现在 App.jsx n1
-CONFIG_KEYS = (
-    "provider", "api_base", "model", "vision_model", "embedding_model",
-    "paper_directory", "index_name", "data_source", "manifest_file",
-    "embedding_batch_size", "chunk_chars", "chunk_overlap", "temperature",
-    "source_urls", "source_arxiv_ids", "source_dois",
-)
+# 前端零硬编码清单（Sprint-13 US-13.1；032 加固：守卫键集合从 schema 派生，与 GROUPS 单一真源，杜绝手维护清单盲区）
+CONFIG_KEYS = None  # 运行时由 get_config_schema() 派生（全部字段 key）
 
 
 def collect_settings_paths(node: Any, prefix: str = "", depth: int = 0) -> list[str]:
@@ -115,12 +110,13 @@ def main() -> int:
     r = validate_config({"temperature": 0.1})
     ok("合法值 → 无 errors", r["errors"] == [], str(r))
 
-    # M7（Sprint-13 版）：前端零硬编码
+    # M7（Sprint-13 版）：前端零硬编码——守卫键集合 = schema 全部字段 key（单一真源）
+    # 块抽取假设：n1 为首个 makeNode，定界为 "makeNode(\"n1\"" 起至首个 "})," 止（n1 params 内不得嵌套对象，032 nit 记录）
     appjs = APP_JSX.read_text(encoding="utf-8")
     block = appjs[appjs.index('makeNode("n1"'):]
     block = block[: block.index("}),")]
     block_no_comments = "\n".join(ln for ln in block.splitlines() if not ln.lstrip().startswith("//"))
-    for key in CONFIG_KEYS:
+    for key in sorted(flat.keys()):
         hardcoded = re.search(rf"\b{key}\s*:", block_no_comments)
         ok(f"M7 前端零硬编码 {key}", hardcoded is None,
            ("App.jsx n1 含字面量（默认值唯一真源应为 schema）" if hardcoded else f"n1 无 {key} 字面量"))
@@ -134,7 +130,7 @@ def main() -> int:
     if "--regen-baseline" in sys.argv:
         current = collect_settings_paths(Settings)
         BASELINE_PATH.write_text(
-            json.dumps({"fields": current, "note": "由 verify_config_schema.py --regen-baseline 生成（Settings 全字段路径基线）"},
+            json.dumps({"fields": current, "note": "由 verify_config_schema.py --regen-baseline 生成（Settings BaseModel 分支字段路径，深度≤4；容器内字段不在基线范围内）"},
                        ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
