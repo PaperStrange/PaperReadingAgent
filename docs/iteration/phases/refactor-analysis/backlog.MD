@@ -13,7 +13,7 @@
 | R-D | D 单机多 worker + 会话外置 + 网关分流（原规划 Sprint-6） | 未估 | ⏸ hold | — | 依赖会话外置化 |
 | R-E3 | E3 可编辑工作流（原规划 Sprint-7+） | 未估 | ⏸ hold | — | 依赖 R-C 验收 |
 | F1 | 检索体验与查询质量：多语检索 | 13 | ✅ 完成(v1) | Sprint-6 | v1=关键词重试+命中理由；后续：query 翻译/双语索引（F4 评测选型） |
-| F2 | 配置面板深化 + SSOT 驱动前端（/api/config_schema + 全字段交互 + 单一受控状态） | 未估 | 候选 | — | 评审 m1 欠账 + m10 遗留 |
+| F2 | 配置面板深化 + SSOT 驱动前端（/api/config_schema + 全字段交互 + 单一受控状态） | 16（分阶段：A 5 + B 6 + C 5） | 🟢 进行中（阶段 A = Sprint-11） | — | 评审 m1 欠账 + m10 遗留；M7 并入；阶段拆解见 Sprint-11 §0 |
 | F3 | Agent 接入后端 + 事件时间线雏形 | 未估 | 候选 | — | R-C 的前置步骤 |
 | F4 | 本地评测基准（检索/证据/答案三环） | 3(起步) | ✅ 起步 | Sprint-6 | `verify/eval_retrieve.py`；后续扩充语料 |
 
@@ -27,7 +27,7 @@
 | M4 | 多节点并发计时显示；`runStartTimesRef` 清理 | 1 | ✅ 完成 | Sprint-7 | App.jsx subcanvas 计时聚合 + 结束清理；npm build 通过 |
 | M5 | `verify_provider_switch` 对 openrouter/自定义连通实测；gui 依赖显式化 | 2 | ✅ 完成 | Sprint-7 | 占位 key 端点级拒绝断言（路由实证）；**真实 openrouter key 实测=用户资源门控**；README 前提显式化 |
 | M6 | 文档/知识管理例行勘误（随三查进行） | 1 | 持续 | Sprint-7 | 本轮勘误：verify/README 表格列数错位、README/1-WORKFLOW 清单补全、4-ALGORITHM 行号锚点漂移等 |
-| M7 | 默认值漂移收敛：chunk/temperature 等默认值在 config_schema/App.jsx/provider_config/engine 重复 4 处（唯一真源原则） | 3 | 候选 | Sprint-7 全量 review | 与 F2（SSOT 驱动前端）同源，可并入 F2 |
+| M7 | 默认值漂移收敛：chunk/temperature 等默认值在 config_schema/App.jsx/provider_config/engine 重复 4 处（唯一真源原则） | 3 | 计划中（并入 F2 阶段 A = Sprint-11 US-11.2） | Sprint-7 全量 review | 与 F2（SSOT 驱动前端）同源，已并入 F2 |
 | M8 | remote_resolver SSRF DNS rebinding TOCTOU 强化（解析后 IP 复检） | 2 | 候选 | Sprint-7 全量 review | 理论性；现状已有逐跳重定向复检 + 内网段拒绝 |
 | M9 | 价表人工覆盖段填充（deepseek/qwen/openrouter 单价）——原 agents-infra A-M1 迁入 | 1 | 候选 | 阶段 1 预研 | **需用户提供服务商真实单价**；填后看板成本口径完整 |
 | M10 | fetch-spec 成功路径测试（sha256 命中/失配）+ 账本并发锁——原 agents-infra A-M4 迁入 | 2 | 候选 | Sprint-8 二查 nit | |

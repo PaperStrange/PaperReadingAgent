@@ -33,4 +33,4 @@
 
 ## 3. 落地映射（分层）
 
-`app/config_schema.py`（SSOT）、`app/orchestration.py`（编排）、`app/engine.py`（引擎适配）、`app/events.py`（事件）、`app/session_store.py`（会话）、`app/data_sources.py`+`app/remote_resolver.py`（数据源）、`app/embedding_recommender.py`（embedding 推荐）；`backend/main.py` 纯路由层（8 条 API 路由）；前端 `ModelConfigPanel.jsx`/`DataSourcePanel.jsx` 交互面板。
+`app/config_schema.py`（SSOT）、`app/orchestration.py`（编排）、`app/engine.py`（引擎适配）、`app/events.py`（事件）、`app/session_store.py`（会话）、`app/data_sources.py`+`app/remote_resolver.py`（数据源）、`app/embedding_recommender.py`（embedding 推荐）；`backend/main.py` 纯路由层（10 条 API 路由）；前端 `ModelConfigPanel.jsx`/`DataSourcePanel.jsx`/`SchemaFieldList.jsx` 交互面板。

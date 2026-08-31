@@ -123,7 +123,7 @@ PaperReading-Windows/
 │   │   ├── data_sources.py             # 数据源领域模型（SourceKind/SourceSpec/RemoteSourceConfig，纯校验无 IO）
 │   │   └── remote_resolver.py          # 远程源解析器（arXiv API/Unpaywall DOI/直链 → data/remote/<index_name>/ 暂存）
 │   └── reactflow-paperqa-prototype/
-│       ├── backend/main.py             # FastAPI 路由层（Sprint-2 解耦后：8 条 API 路由 + RunEventBroker/SSE + 组合根）
+│       ├── backend/main.py             # FastAPI 路由层（Sprint-2 解耦后：10 条 API 路由 + RunEventBroker/SSE + 组合根）
 │       ├── backend/requirements.txt
 │       └── frontend/                   # React+Vite（App.jsx / FlowNode.jsx / ModelConfigPanel.jsx / DataSourcePanel.jsx / FunctionTraceNode.jsx / JsonTree.jsx）
 ├── src/                       # ACL/ICLR/NeurIPS 语料采集
@@ -139,7 +139,7 @@ PaperReading-Windows/
 
 ## 4. 文件级职责
 
-- **backend/main.py**（路由层，Sprint-2 US-2.2 解耦后纯路由）：FastAPI app + CORS、8 条 API 路由（Sprint-4 新增 `GET /api/providers` 脱敏注册表）、`RunEventBroker`/SSE 传输（历史 500 条/键 + 键总数上限，Sprint-7 追加）、组合根（`SESSIONS`=MemorySessionStore、`ORCHESTRATOR`=make_orchestrator）；`build_settings()` 保留为 `ENGINE.make_settings` 薄包装（模型配置真源在 `app/engine.py` + `provider_config.py`）。
+- **backend/main.py**（路由层，Sprint-2 US-2.2 解耦后纯路由）：FastAPI app + CORS、10 条 API 路由（Sprint-4 新增 `GET /api/providers` 脱敏注册表；Sprint-11 新增 `GET /api/config_schema`、`POST /api/config/validate` 配置 SSOT 端点）、`RunEventBroker`/SSE 传输（历史 500 条/键 + 键总数上限，Sprint-7 追加）、组合根（`SESSIONS`=MemorySessionStore、`ORCHESTRATOR`=make_orchestrator）；`build_settings()` 保留为 `ENGINE.make_settings` 薄包装（模型配置真源在 `app/engine.py` + `provider_config.py`）。
 - **app/orchestration.py**（编排层）：`PipelineOrchestrator.run_step`——六步流水线（config→load_index→retrieve→parse_chunk_embed→evidence→answer）、`StepRequest/StepResponse`、embed 缓存、`RuntimeTracer(on_event=…)` 接线；实时事件经 `on_event` 回调交路由层发布（SSE 消息由 `app/events` 模型构造，线协议兼容）。**增量**：config 步骤 embedding 推荐注入 + 重跑失效下游状态；load_index 目录存在检查与**索引一致性**（目录指纹 marker + **三重损坏探针**：files.zip zlib / index/meta.json / tantivy open+searcher → 整目录重建，Sprint-7 M1 升级）；retrieve 多语检索 v1（CJK 零命中关键词重试 + query_strategy/hit_note）。
 - **app/engine.py**（引擎适配层）：`EngineAdapter` 接口（config/index/query/add_doc/evidence/answer/run_agent/version）+ `LocalVendorAdapter` 透传现有 paperqa 调用；`make_settings` 含密钥优先级（显式→专属→通用）、**Windows `\\?\` 长路径前缀（UNC 转 `\\?\UNC\`）**、隐藏目录过滤、`recurse_subdirectories` 参数。**多 provider 共存（Sprint-7）**：不把解析出的 key 写回 `OPENAI_API_KEY`（key 一律经 litellm_params 显式携带；防 deepseek→openai 切换污染）。**生命周期维护**：`prune_litellm_callbacks`（7 列表去重保留最近 N，`PAPERQA_LITELLM_CALLBACK_LIMIT` 可配、默认 20，Sprint-7 M2）。
 - **app/config_schema.py**（配置唯一真源）：策展七组 schema（LLM/Embedding/Parsing/Agent/Answer/数据源/Index）+ 从 `Settings.model_fields` 自动提取默认值 + `validate_config`（errors/warnings/hints）；`python -m app.config_schema` 生成 `config_schema.json`。

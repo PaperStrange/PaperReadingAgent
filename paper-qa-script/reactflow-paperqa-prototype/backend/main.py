@@ -5,7 +5,7 @@
 - 六步流水线编排 → `app.orchestration.PipelineOrchestrator`；
 - paperqa 引擎调用 → `app.engine.EngineAdapter`；
 - 事件模型 → `app.events`；配置 SSOT → `app.config_schema`。
-- 8 条 API 路由（Sprint-4 新增 /api/providers）与线上协议（run_step 请求/响应、SSE 消息字段）与拆分前完全一致。
+- 10 条 API 路由（Sprint-4 新增 /api/providers；Sprint-11 新增 /api/config_schema、/api/config/validate）与线上协议（run_step 请求/响应、SSE 消息字段）与拆分前完全一致。
 """
 import sys
 import uuid
@@ -30,6 +30,7 @@ if str(_ROOT_SCRIPT_DIR) not in sys.path:
 from app.engine import ENGINE  # noqa: E402
 from app.orchestration import StepRequest, StepResponse, make_orchestrator  # noqa: E402
 from app.session_store import MemorySessionStore, SessionState  # noqa: E402
+from app.config_schema import get_config_schema, validate_config  # noqa: E402
 from provider_config import list_providers_safe  # noqa: E402
 
 
@@ -109,6 +110,22 @@ async def health() -> dict[str, str]:
 async def providers() -> dict[str, Any]:
     # Sprint-4 US-4.3：provider 注册表（内置 + 自定义），供前端下拉；绝不包含密钥
     return {"providers": list_providers_safe()}
+
+
+@app.get("/api/config_schema")
+async def config_schema() -> dict[str, Any]:
+    # Sprint-11 US-11.1（F2 阶段 A）：配置唯一真源（app.config_schema）的对外形态——前端由它驱动表单
+    return get_config_schema()
+
+
+class ConfigValidateRequest(BaseModel):
+    params: dict[str, Any]
+
+
+@app.post("/api/config/validate")
+async def config_validate(req: ConfigValidateRequest) -> dict[str, list[str]]:
+    # Sprint-11 US-11.1：提示性校验（errors/warnings/hints，不改变 build_settings 行为）
+    return validate_config(req.params or {})
 
 
 @app.post("/api/translate_preview")

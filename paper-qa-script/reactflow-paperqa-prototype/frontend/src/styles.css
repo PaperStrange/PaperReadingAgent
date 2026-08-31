@@ -211,6 +211,58 @@ body,
   color: #64748b;
 }
 
+/* Sprint-11 US-11.3：配置唯一真源 schema 只读清单 */
+.schema-list {
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 6px;
+  background: #f8fafc;
+  font-size: 11px;
+  max-width: 560px;
+}
+.schema-list .schema-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.schema-list .schema-error {
+  color: #b45309;
+}
+.schema-list details.schema-group {
+  margin-top: 4px;
+}
+.schema-list details.schema-group summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+.schema-list table.schema-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4px;
+}
+.schema-list .schema-table td {
+  padding: 2px 6px;
+  border-bottom: 1px solid #e2e8f0;
+  vertical-align: top;
+}
+.schema-list .schema-key code {
+  font-size: 10px;
+}
+.schema-list .schema-type {
+  white-space: nowrap;
+  color: #64748b;
+}
+.schema-list .schema-row-current {
+  background: #eef6ff;
+}
+.schema-list .schema-row-current .schema-default {
+  color: #0369a1;
+  font-weight: 500;
+}
+.schema-list .schema-hint {
+  color: #64748b;
+}
+
 .node-actions {
   margin-top: 6px;
   display: flex;

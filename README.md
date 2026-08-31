@@ -216,6 +216,7 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 .\.venv\Scripts\python.exe .\verify\verify_smoke.py             # 8 项冒烟（离线）
 .\.venv\Scripts\python.exe .\verify\verify_prune_callbacks.py   # litellm 回调裁剪（离线）
 .\.venv\Scripts\python.exe .\verify\verify_agentops.py          # AgentOps 账本 CLI 用例断言（离线）
+.\.venv\Scripts\python.exe .\verify\verify_config_schema.py    # 配置 SSOT 一致性 + M7 默认值收敛（离线）
 .\.venv\Scripts\python.exe .\verify\verify_index_health.py      # 索引三重探针 + 自愈（离线）
 .\.venv\Scripts\python.exe .\verify\verify_provider_switch.py   # 服务商切换/路由实证（联网）
 .\.venv\Scripts\python.exe .\verify\verify_e2e.py               # 全链路（真实 API，本地目录）
@@ -234,6 +235,7 @@ node .\verify\gui_check_dashboard2.mjs        # Sprint-9：看板 spec 页截图
 node .\verify\gui_check_dashboard_costs.mjs   # Sprint-9：看板成本页截图（需 agents-dashboard 已启动）
 node .\verify\gui_check_dashboard_report.mjs  # Sprint-9：看板报告页截图（需 agents-dashboard 已启动）
 node .\verify\gui_check_dashboard_fanout.mjs   # Sprint-10：看板 fan-out 配置页截图（需 agents-dashboard 已启动）
+node .\verify\gui_check_config_schema.mjs      # Sprint-11：Config 节点 schema 清单截图（需前后端已启动）
 ```
 
 > 上述命令为 **Windows 示例**（`.\.venv\Scripts\python.exe` 是 Windows venv 路径）；mac 等价为 `.venv/bin/python`。

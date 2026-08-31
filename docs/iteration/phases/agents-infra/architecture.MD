@@ -282,7 +282,7 @@ source:
 
 ### 8.3 落地
 
-- 职能 spec v1.3.0：`agents/functions/impact-assessment.md`（13 项核心功能 + 8 条路由↔宿主映射 + 复合公式 + 两档规则 + 核心文件区域清单（代码区/文档区）+ 输出模板含 A/B/composite/tier/recommended_scope；v1.2.1 增 #12 AgentOps 看板并重定位 reactflow 宿主路径，v1.3.0 增 #13 tech-research 并全英文化）；
+- 职能 spec v1.4.0：`agents/functions/impact-assessment.md`（13 项核心功能 + 10 条路由↔宿主映射 + 复合公式 + 两档规则 + 核心文件区域清单（代码区/文档区）+ 输出模板含 A/B/composite/tier/recommended_scope；v1.2.1 增 #12 AgentOps 看板并重定位 reactflow 宿主路径，v1.3.0 增 #13 tech-research 并全英文化，v1.4.0 路由 8→10（Sprint-11 config_schema 端点））；
 - fan-out 顺序：**impact-assessment（先）→ 按 recommended_scope 执行 code-review ×2 + doc-audit → workspace-check（主代理）**；范围默认取 recommended_scope，偏离需在 Sprint §9 记录理由；
 - code-review/doc-audit spec 的"范围限定"段引用 impact-assessment 输出（task 输入含 `scope` 字段）；
 - **验证方式（双例，用户确认）**：两组合成变更集跑真实子代理，对比预计算 ground truth（高影响例 → 期望全量档；低影响例 → 期望窄档），结果记录于 §8.4 并账本登记。
