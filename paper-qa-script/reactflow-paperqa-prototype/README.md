@@ -13,7 +13,7 @@ A minimal prototype showing:
   配置 SSOT `config_schema.py`、事件模型 `events.py`、会话 `session_store.py`、
   数据源 `data_sources.py` + 远程解析 `remote_resolver.py` + embedding 推荐 `embedding_recommender.py`）。
 - `frontend/`: React + Vite + React Flow UI（`src/App.jsx`、`FlowNode.jsx`、
-  `ModelConfigPanel.jsx`、`DataSourcePanel.jsx`、`SchemaFieldList.jsx`、`FunctionTraceNode.jsx`、`JsonTree.jsx`）。
+  `SchemaForm.jsx`、`FunctionTraceNode.jsx`、`JsonTree.jsx`）。
 
 <!--
 ## Backend run (macOS original)

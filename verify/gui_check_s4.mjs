@@ -46,16 +46,16 @@ console.log("US-4.1 continuous edit:", afterSecond.includes("XY") ? "PASS" : "FA
 await page.evaluate(() => document.querySelector(".node-textarea").blur());
 await page.waitForTimeout(300);
 
-// ---- US-4.5：provider 下拉联动（evaluate 派发 input+change 事件） ----
+// ---- US-4.5：provider 下拉联动（Sprint-12 起 selector 指向 SchemaForm，evaluate 派发 input+change 事件） ----
 const options = await page.evaluate(() =>
-  Array.from(document.querySelectorAll(".config-panel .ds-select option")).map((o) => o.textContent)
+  Array.from(document.querySelectorAll(".ds-select.schema-field-provider option")).map((o) => o.textContent)
 );
 console.log("US-4.5 select options:", options.join(","));
 console.log("US-4.5 has openrouter:", options.some((o) => o.includes("openrouter")) ? "PASS" : "FAIL");
 
 const setSelect = async (value) => {
   await page.evaluate((v) => {
-    const el = document.querySelector(".config-panel .ds-select");
+    const el = document.querySelector(".ds-select.schema-field-provider");
     const setter = Object.getOwnPropertyDescriptor(
       window.HTMLSelectElement.prototype,
       "value"
@@ -64,7 +64,7 @@ const setSelect = async (value) => {
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }, value);
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(2000); // 防抖校验 600ms + fetch
 };
 
 await setSelect("openrouter");
@@ -86,7 +86,7 @@ console.log(
   json2.provider === "deepseek" && !("embedding_model" in json2) ? "PASS" : "FAIL"
 );
 const hintText = await page.evaluate(() => {
-  const el = document.querySelector(".config-panel .ds-hint");
+  const el = document.querySelector(".schema-msg-hint");
   return el ? el.textContent : "";
 });
 console.log("US-4.5 auto hint:", (hintText || "").includes("多语言") ? "PASS" : "FAIL");
