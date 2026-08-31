@@ -916,7 +916,7 @@ export default function App() {
       ...node,
       data: {
         ...node.data,
-        apiBase, // Sprint-4：ModelConfigPanel 拉取 /api/providers 用
+        apiBase, // Sprint-4 起注入；Sprint-12 起由 SchemaForm 拉取 /api/providers 与 /api/config_schema 用
         onChangeParams: (id, text) => {
           const parsed = safeParseJson(text);
           if (!parsed.ok) {

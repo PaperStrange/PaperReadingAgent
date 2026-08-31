@@ -220,7 +220,7 @@ node .\verify\gui_check_dashboard2.mjs        # 看板 spec 编辑页截图（�
 node .\verify\gui_check_dashboard_costs.mjs   # 看板成本/上下文页截图（需 agents-dashboard 已启动）
 node .\verify\gui_check_dashboard_report.mjs  # 看板报告浏览页截图（需 agents-dashboard 已启动）
 node .\verify\gui_check_dashboard_fanout.mjs   # 看板 fan-out 配置页截图（需 agents-dashboard 已启动）
-node .\verify\gui_check_config_schema.mjs      # Config 节点 schema 清单截图（需前后端已启动）
+node .\verify\gui_check_config_schema.mjs      # Sprint-11/12：schema 清单/全字段表单截图 + 字段级校验（需前后端已启动）
 ```
 
 详见 `verify/README.md` 与 `docs/3-LEARNED.MD` 的验证记录。

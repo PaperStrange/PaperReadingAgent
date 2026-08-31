@@ -196,7 +196,7 @@ curl.exe http://127.0.0.1:8787/api/health
 ### 第 7 步：跑通第一个问答
 
 1. 浏览器打开 http://127.0.0.1:5173 。
-2. 点击左侧 **1) Config** 节点，确认参数（也可用顶部「模型配置」面板下拉选择，自动带出相关字段）：
+2. 点击左侧 **1) Config** 节点，确认参数（也可用节点内**全字段配置表单**（SchemaForm，schema 驱动）下拉/输入选择，自动带出相关字段）：
    - `api_key`（留空则用 `.env`）、`provider`（deepseek/dashscope/openai/openrouter 或自定义）、
      `paper_directory`（默认 `data/pdf`，相对后端工作目录）、
    - `model` / `embedding_model`（默认随 provider 自动填充，见文末「模型服务商切换」）。
@@ -235,7 +235,7 @@ node .\verify\gui_check_dashboard2.mjs        # Sprint-9：看板 spec 页截图
 node .\verify\gui_check_dashboard_costs.mjs   # Sprint-9：看板成本页截图（需 agents-dashboard 已启动）
 node .\verify\gui_check_dashboard_report.mjs  # Sprint-9：看板报告页截图（需 agents-dashboard 已启动）
 node .\verify\gui_check_dashboard_fanout.mjs   # Sprint-10：看板 fan-out 配置页截图（需 agents-dashboard 已启动）
-node .\verify\gui_check_config_schema.mjs      # Sprint-11：Config 节点 schema 清单截图（需前后端已启动）
+node .\verify\gui_check_config_schema.mjs      # Sprint-11/12：schema 清单/全字段表单截图 + 字段级校验（需前后端已启动）
 ```
 
 > 上述命令为 **Windows 示例**（`.\.venv\Scripts\python.exe` 是 Windows venv 路径）；mac 等价为 `.venv/bin/python`。
@@ -301,7 +301,7 @@ node .\verify\gui_check_config_schema.mjs      # Sprint-11：Config 节点 schem
 
 ## 模型服务商切换
 
-统一通过环境变量 `PAPERQA_PROVIDER`（或 Config 节点「模型配置」面板的 Provider 下拉框）切换服务商：
+统一通过环境变量 `PAPERQA_PROVIDER`（或 Config 节点全字段配置表单（SchemaForm）的 Provider 下拉框）切换服务商：
 
 | 服务商 | LLM / 视觉模型 | 向量化 | API Base |
 |---|---|---|---|

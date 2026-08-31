@@ -49,7 +49,7 @@
 | D4 | 数据源 | local 还是 remote？远程怎么解析？长路径？索引坏了？ | `app/orchestration.py::run_step(load_index)` + `app/data_sources.py` + `app/remote_resolver.py` |
 | D5 | 校验与提示 | 哪些配置非法？给什么提示？ | `app/config_schema.py::validate_config` |
 | D6 | 六步流水线 | 每步前置条件？写回什么状态？ | `app/orchestration.py::run_step` |
-| D7 | 前端决策 | 节点状态如何迁移？编辑为何不跳光标？面板如何联动？ | `frontend/src/App.jsx`、`FlowNode.jsx`、`ModelConfigPanel.jsx`、`DataSourcePanel.jsx`、`SchemaFieldList.jsx` |
+| D7 | 前端决策 | 节点状态如何迁移？编辑为何不跳光标？面板如何联动？ | `frontend/src/App.jsx`、`FlowNode.jsx`、`SchemaForm.jsx` |
 | D8 | 事件与 SSE | 事件何时发、字段是什么？ | `app/events.py` + `app/orchestration.py` + `backend/main.py::RunEventBroker` |
 
 ---
@@ -408,13 +408,13 @@ DRAFT_STATE(textarea) :=
 
 > 修复前：textarea 受控于格式化 JSON，父组件每次回写 → 光标跳末尾。修复后聚焦期间外部更新不打断输入（Playwright `gui_check_s4.mjs` 有光标位置回归）。
 
-### 9.2 面板联动（ModelConfigPanel）
+### 9.2 面板联动（SchemaForm）
 
 ```text
 AUTO_CONFIG_RERUN（US-5.1）:=   // runSingleNode(非 config 节点) 首步
     非 config 节点 且 config 节点 status = "stale"
         -> 先 runSingleNode(config)（markDependents=false）；失败则中止本节点
-    // 面板/JSON 改参 → onChangeParams 使 config 置 stale → 下游直接运行时自动先重跑 config，
+    // 表单/JSON 改参 → onChangeParams 使 config 置 stale → 下游直接运行时自动先重跑 config，
     // 保证 paper_directory/模型/embedding 等与当前配置一致（修复"改目录后 load_index 仍旧目录"）
 ```
 
@@ -425,15 +425,16 @@ ON_PROVIDER_CHANGE(name) :=
     info.has_embedding_api = true  -> patch.embedding_model = info.embedding
     info.has_embedding_api = false -> delete params.embedding_model   // 交给后端 recommender（自动）
     写回 onChange(JSON.stringify(next))                               // 与 JSON 编辑区同一数据通路
+    随后 scheduleValidate(next)（防抖 600ms 调 /api/config/validate）  // Sprint-12 起
 
-EMBEDDING_SELECT :=
-    params.embedding_model 不存在 -> 显示「自动（按 provider 判断）」+ 提示文案
-    存在                        -> 显示「手动」+ 文本框
-    切到自动 -> delete embedding_model；切到手动 -> 写入 provider 默认或 st- 兜底
+EMBEDDING_MODEL（Sprint-12 SchemaForm）:=
+    params.embedding_model 为空 -> 显示 schema 默认/placeholder（后端 recommender 自动选择，校验 hints 提示"多语言"）
+    填值                        -> 手动覆盖（st- HF 模型 / litellm API 向量名）
+    // Sprint-4~11 曾用「自动/手动」独立切换控件，Sprint-12 起改为"留空=自动、填值=手动"
 ```
 
 - providers 列表来自 `GET /api/providers`（组件挂载时拉取，失败静默保留空列表）。
-- DataSourcePanel 同模式：local/remote 切换、逐行列表 `linesToArr`、manifest 输入；显示值统一 `toText()` 归一化（字符串/数组均安全）。
+- SchemaForm 数据源组同模式：local/remote 切换、逐行列表 `linesToArr`、manifest 输入；显示值统一 `toText()` 归一化（字符串/数组均安全）——`linesToArr`/`toText` 现实现于 `SchemaForm.jsx`。
 
 ### 9.3 Run All 拓扑执行
 

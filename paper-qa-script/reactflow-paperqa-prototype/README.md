@@ -13,7 +13,7 @@ A minimal prototype showing:
   配置 SSOT `config_schema.py`、事件模型 `events.py`、会话 `session_store.py`、
   数据源 `data_sources.py` + 远程解析 `remote_resolver.py` + embedding 推荐 `embedding_recommender.py`）。
 - `frontend/`: React + Vite + React Flow UI（`src/App.jsx`、`FlowNode.jsx`、
-  `ModelConfigPanel.jsx`、`DataSourcePanel.jsx`、`SchemaFieldList.jsx`、`FunctionTraceNode.jsx`、`JsonTree.jsx`）。
+  `SchemaForm.jsx`、`FunctionTraceNode.jsx`、`JsonTree.jsx`）。
 
 <!--
 ## Backend run (macOS original)
@@ -70,9 +70,9 @@ npm run dev
 
 You can run a single node manually or click `Run All (Left-to-Right)`.
 
-## Config 数据源面板（Sprint-3）
+## Config 数据源（Sprint-3；Sprint-12 起并入 SchemaForm「数据源」分组）
 
-Config 节点顶部有「数据源」面板（`DataSourcePanel.jsx`）：
+Config 节点的全字段表单（`SchemaForm.jsx`，由 `/api/config_schema` 驱动）含「数据源」分组：
 
 - `local`（默认）：使用 `paper_directory` 本地论文目录。
 - `remote`：URL / arXiv ID / DOI 列表逐行填写 → 统一下载到 `data/remote/<index_name>/`

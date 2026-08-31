@@ -1,5 +1,5 @@
-// Sprint-11 US-11.3 截图：Config 节点的"配置唯一真源"分组字段清单（只读视图）。
-// 前提：后端 8787 已启动（/api/config_schema 就绪）、前端 5173 已启动；playwright 取前端 node_modules。
+// Sprint-12（F2 阶段 B）Config 节点全字段表单截图 + 字段级校验证据。
+// 前提：后端 8787（/api/config_schema + /api/config/validate 就绪）、前端 5173 已启动；playwright 取前端 node_modules。
 import { createRequire } from "module";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -17,17 +17,27 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 
   await page.goto("http://127.0.0.1:5173/", { waitUntil: "networkidle" });
-  // 等待 schema 清单渲染（标题出现）
-  await page.waitForSelector(".schema-title", { timeout: 15000 });
-  await page.waitForTimeout(800);
-  await page.screenshot({ path: path.resolve(_here, "f2-config-schema.png"), fullPage: false });
-  console.log("SHOT f2-config-schema.png");
+  await page.waitForSelector(".schema-form-title", { timeout: 15000 });
+  await page.waitForTimeout(1200);
+  await page.screenshot({ path: path.resolve(_here, "f2-schema-form.png"), fullPage: false });
+  console.log("SHOT f2-schema-form.png");
 
-  // 展开 Embedding 分组再截一张
-  await page.locator("details.schema-group summary", { hasText: "Embedding" }).first().click().catch(() => {});
-  await page.waitForTimeout(500);
-  await page.screenshot({ path: path.resolve(_here, "f2-config-schema-embedding.png"), fullPage: false });
-  console.log("SHOT f2-config-schema-embedding.png");
+  // 字段级校验证据：把 temperature 置为非法值（5），等防抖校验后截图错误态
+  await page.evaluate(() => {
+    const inputs = Array.from(document.querySelectorAll(".schema-field input[type=number]"));
+    const el = inputs.find((i) => {
+      const row = i.closest(".schema-field");
+      return row && row.querySelector(".ds-label")?.textContent?.includes("温度");
+    });
+    if (!el) return;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+    setter.call(el, "5");
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await page.waitForTimeout(2500); // 防抖 600ms + 请求
+  await page.screenshot({ path: path.resolve(_here, "f2-schema-form-validation.png"), fullPage: false });
+  console.log("SHOT f2-schema-form-validation.png");
 } finally {
   await browser.close();
 }

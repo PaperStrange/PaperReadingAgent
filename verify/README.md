@@ -26,7 +26,7 @@
 | `gui_check_dashboard_costs.mjs` | Sprint-9：看板成本/上下文页截图（CNY 合计、pending 标注、上下文占用） | 同 `gui_check_dashboard.mjs` |
 | `gui_check_dashboard_report.mjs` | Sprint-9：看板报告浏览页截图（run 详情 + 报告全文） | 同 `gui_check_dashboard.mjs` |
 | `gui_check_dashboard_fanout.mjs` | Sprint-10：看板 fan-out 配置页截图（两条流水线可视化 + JSON 编辑器） | 同 `gui_check_dashboard.mjs` |
-| `gui_check_config_schema.mjs` | Sprint-11：Config 节点"配置唯一真源"分组字段清单截图 | 后端 8787 + 前端 5173 已启动；Playwright Chromium 已安装 |
+| `gui_check_config_schema.mjs` | Sprint-11/12：Config 节点 schema 清单/全字段表单截图 + 字段级校验证据（非法温度值 → 错误态） | 后端 8787 + 前端 5173 已启动；Playwright Chromium 已安装 |
 
 运行示例：
 

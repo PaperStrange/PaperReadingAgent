@@ -263,6 +263,68 @@ body,
   color: #64748b;
 }
 
+/* Sprint-12（F2 阶段 B）：schema 驱动全字段表单 */
+.schema-form .schema-form-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.schema-form .schema-error {
+  color: #b45309;
+}
+.schema-form details.schema-group {
+  margin-top: 4px;
+}
+.schema-form details.schema-group summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+.schema-form .schema-fields {
+  padding-left: 8px;
+}
+.schema-form .schema-field {
+  margin-top: 4px;
+  padding: 2px 4px;
+}
+.schema-form .schema-field-error {
+  border-left: 3px solid #ef4444;
+  background: #fef2f2;
+}
+.schema-form .schema-field .schema-field-err {
+  color: #dc2626;
+  font-size: 11px;
+}
+.schema-form .schema-impact {
+  color: #b45309;
+}
+.schema-form .schema-msg {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.schema-form .schema-msg-warn {
+  background: #fef9c3;
+  color: #854d0e;
+}
+.schema-form .schema-msg-hint {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.schema-form .ds-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.schema-form .ds-textarea {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
 .node-actions {
   margin-top: 6px;
   display: flex;
