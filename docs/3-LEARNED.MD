@@ -16,9 +16,9 @@
 | 📦 依赖与版本管理 | 1.5、1.13 |
 | 🎨 前端与测试驱动（React·Playwright） | 1.10、1.12、1.19（光标部分）、1.37 |
 | 🛡️ 安全与防护 | 1.16、1.17、1.33、§4 整改表 |
-| 🏗️ 工程方法（分层/一致性/自愈） | 1.15、1.17、1.19（长路径/注册表可扩展）、1.21、1.22、1.28、1.32、1.35 |
+| 🏗️ 工程方法（分层/一致性/自愈） | 1.15、1.17、1.19（长路径/注册表可扩展）、1.21、1.22、1.28、1.32、1.35、1.39 |
 | 🔎 检索与算法改进 | 1.21（来源标记）、1.23 |
-| 📋 项目管理与流程 | 1.17（评审闭环）、1.24、1.26、1.28（AgentOps 工程化）、1.29、1.30、1.34、1.36、`1-WORKFLOW.MD` §4.4 |
+| 📋 项目管理与流程 | 1.17（评审闭环）、1.24、1.26、1.28（AgentOps 工程化）、1.29、1.30、1.34、1.36、1.38、`1-WORKFLOW.MD` §4.4 |
 
 ### 1.1 DeepSeek 无 embedding API → 本地向量化
 - 现象：DeepSeek 平台只提供 `deepseek-v4-flash / -pro / -flash-vision-exp`，无 embedding 端点。
@@ -50,6 +50,7 @@
 ### 1.7 `npm run dev -- --host ...` 在 Windows 上参数透传失败
 - 现象：vite 绑定到 IPv6 localhost 且根路径 404。
 - 解决：`start-frontend.ps1` 直接调用 `node_modules\.bin\vite.cmd --host 127.0.0.1 --port 5173 --strictPort`。
+- **第二根因（Sprint-11 复现）**：vite 从**仓库根**启动（未 `Set-Location`/`Push-Location` 到 frontend 目录）→ 找不到 index.html → `/` 404、页面空白——临时命令/手动启动必须显式 cwd（或 `vite --root <frontend>`）；`start-frontend.ps1` 已含 cwd 处理，临时启动一律走脚本。
 
 ### 1.8 Graphviz 二进制缺失（可选）
 - 现象：`graphviz` Python 包就绪但无系统 `dot`，SVG/PNG 下载按钮报 `ExecutableNotFound`。
@@ -196,6 +197,16 @@
 - 现象：fan-out 配置页"校验"按钮复用 PUT 写端点——校验通过后无条件 `fs.writeFileSync` 直写 `agents/fanout.json`（SSOT 配置），UI 却标"结构校验通过（未写入）"：点"校验"会静默覆盖配置（017 major）。
 - 解决：新增 POST dry-run 校验端点；"校验（dry-run）"与"保存"双按钮契约分离；`verify-fanout-api.mjs` 回归实测（dry-run 不写文件、往返字节一致）。
 - 教训：**只读预览/校验类按钮必须与保存端点分离（dry-run 端点 + 写端点），严禁复用写端点却标注"未写入"——任何"未写入"文案都要有"确实没写"的端点语义背书。**
+
+### 1.38 数字/常量级联同步的 grep 三覆盖：双语 + 大小写不敏感 + 代码注释/裸数字（Sprint-11；1.34/1.36 深化）
+- 现象：Sprint-11 把 API 路由 8→10 后按 1.34 做了"全库 grep 同步"（中文关键词），doc-audit 021 仍抓出 2 must-fix：`verify_smoke.py:4` 英文 docstring 仍写 "8 API routes"（中文模式不命中英文注释）；agents-infra architecture.MD:271 的 B 公式分母仍是裸数字 8（不带"条/路由"字样）。另有 5 should-fix（示例分母、文件清单、ROADMAP/5-VERSIONS 状态）。
+- 解决：commit 30ce5cd 修复 docstring、公式分母并重算示例（13/10），补齐 SchemaFieldList 文件清单与 ROADMAP/5-VERSIONS 全景。
+- 教训：**数字/常量级联同步的 grep 必须三覆盖——① 双语：中文"8 条"与英文 "8 routes / 8 API routes"都搜；② 大小写不敏感（衔接 1.36）；③ 全文件类型 + 裸数字：.py 注释/docstring 与公式分母这类不带单位的数字也要搜**——单一语言、单一文件类型、带单位关键词的 grep，"全库同步"结论必被英文注释与裸数字公式打脸。
+
+### 1.39 收敛锁的"抽取清单"与"断言清单"必须同源：单一 key 列表驱动（Sprint-11）
+- 现象：M7 收敛锁（verify_config_schema.py）首版把比对字段手写在两处（正则抽取 key 列表 + 断言块），漏掉 3 个 source_* 空列表默认值——若其漂移断言不会报错（假绿），与"前端默认值 ⊆ 且 = SSOT"的表述略有夸大；022 抓出。
+- 解决：把 3 个 source_* 补进抽取 key 列表 + 3 条 `== []` 断言（101→104）；"写断言却没加抽取 key"时因 `get(key)=None` 立即 FAIL，暴露缺口而非假绿。
+- 教训：**"两份清单逐项比对"的收敛锁/一致性校验，抽取清单与断言清单必须由同一个 key 列表派生（单一真源），并加"抽取集 ⊇ 断言集"自检**——字段集合只声明一次，漏项才会被断言自己报错暴露。
 
 ## 2. 验证记录（Windows，实际执行）
 
