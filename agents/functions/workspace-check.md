@@ -1,60 +1,60 @@
 ---
 name: workspace-check
-description: 工作区与功能完整性核验手册（主代理执行，不子代理化）：git 状态零残留、分支/端口卫生、.gitignore 覆盖、回归套件全绿。
-version: "1.0.0"
+description: Workspace & functional-integrity verification handbook (executed by the main agent, never delegated): zero git residue, branch/port hygiene, .gitignore coverage, regression suite all green.
+version: "1.1.0"
 model: ""
 tools: []
 metadata:
   tags: [review, workspace, manual]
-  note: 本职能由主代理执行（D2 决策：涉及起服务/杀进程等高风险操作，不交给子代理）
+  note: Executed by the main agent (decision D2: starting services / killing processes are high-risk operations, never delegated to a subagent)
 ---
 
-# 角色
+# Role
 
-你是主代理的**环境核验执行手册**（不是子代理 prompt——本职能保留在主代理，见 §3.3 触发分级 D2）。
+You are the main agent's **environment-verification handbook** — not a subagent prompt. This function stays with the main agent (see trigger-tier decision D2).
 
-# 触发
+# Trigger
 
-- Sprint 关闭三查（"三查"）；
-- 任何"我改完了，收尾吧"的时刻。
+- Sprint close three-check (the "third check");
+- Any "I'm done, wrap it up" moment.
 
-# 可配置参数（编辑点：调整只改本节，不改正文规则）
+# Configurable Parameters (edit point: adjust only this section, never the body rules)
 
-| 参数 | 当前值 | 说明 |
+| Parameter | Current value | Meaning |
 |---|---|---|
-| 端口清单 | 5173（前端）、8787（后端）、8501（Streamlit）、8600（agents 看板，阶段 3） | §步骤 3 检查的端口 |
-| 回归脚本（离线） | verify_smoke / verify_prune_callbacks / verify_agentops / verify_index_health | 无 API、无网络 |
-| 回归脚本（联网） | verify_provider_switch / verify_e2e / verify_e2e_openai / eval_retrieve | 需真实 key（e2e_openai 需账户余额） |
-| 回归脚本（GUI） | gui_check*.mjs | 需前后端已启动 + Playwright |
+| Port list | 5173 (frontend), 8787 (backend), 8501 (Streamlit), 8600 (agents dashboard, phase 3) | ports checked in step 4 |
+| Regression scripts (offline) | verify_smoke / verify_prune_callbacks / verify_agentops / verify_index_health | no API, no network |
+| Regression scripts (online) | verify_provider_switch / verify_e2e / verify_e2e_openai / eval_retrieve | real key required (e2e_openai needs account balance) |
+| Regression scripts (GUI) | gui_check*.mjs | requires frontend+backend running + Playwright |
 
-# 步骤（固定顺序）
+# Steps (fixed order)
 
-1. **工作区零残留**：`git status --short` 逐条核对——每个改动文件都应属于本轮改动清单；意外残留（临时文件、生成物、未登记的截图）逐一处理（入库 or gitignore or 删除）。
-2. **分支卫生（本地）**：本地分支只剩 main/windows（+ 当前 sync 分支）；过期 sync 分支删除；`git log --oneline -3` 确认 HEAD 与计划一致。
-3. **分支卫生（远程，2026-08-30 用户发现盲区后新增）**：`git ls-remote --heads origin` 应为 `mac/main/windows` 三条——**每个已合并 PR 的 `sync/*` 头分支必须删除**（`git push origin --delete <branch>`）；若启用仓库"合并后自动删头分支"设置则自动满足，仍需复查。
-4. **端口卫生**：`Get-NetTCPConnection -LocalPort 5173,8787,8501,8600 -State Listen` 全 FREE；若占用 → 按 SOP 定位 PID + `Get-CimInstance Win32_Process` 核对命令行确认是本项目进程 → **只对确认的 PID** `Stop-Process`（绝不按进程名批量杀，见 3-LEARNED 1.11/1.20）→ 复查 FREE。
-5. **.gitignore 覆盖**：`git status --porcelain --ignored` 抽查生成物（__pycache__/.venv/node_modules/.next/agents-dashboard/data/data/remote/verify/*.log/*_result.json）是否被正确忽略。
-6. **回归套件**（按改动范围选取）：
-   - 离线：`verify_smoke.py`、`verify_prune_callbacks.py`、`verify_index_health.py`、`verify_agentops.py`；
-   - 联网：`verify_provider_switch.py`、`verify_e2e.py`、`eval_retrieve.py`、`verify_e2e_openai.py`（需账户余额）；
-   - GUI（需前后端已启动）：`gui_check*.mjs`；
-   - 前端/看板：`npm run build`（agents-dashboard 同）。
-   逐项记录 PASS/FAIL 与输出摘要。
-7. **收尾**：停掉本轮启动的 dev server 并复查端口；把结论（改动清单 + 回归输出）写入 Sprint 文档 §9。
+1. **Zero workspace residue**: check `git status --short` line by line — every changed file must belong to this round's change list; unexpected residue (temp files, artifacts, unregistered screenshots) is handled explicitly (commit or gitignore or delete).
+2. **Branch hygiene (local)**: local branches are main/windows (+ the current sync branch); stale sync branches deleted; `git log --oneline -3` confirms HEAD matches the plan.
+3. **Branch hygiene (remote; added 2026-08-30 after user found the blind spot)**: `git ls-remote --heads origin` must show `mac/main/windows` only — **every merged PR's `sync/*` head branch must be deleted** (`git push origin --delete <branch>`); if the repo "delete head branch on merge" setting is on, it happens automatically (async) — still re-check.
+4. **Port hygiene**: `Get-NetTCPConnection -LocalPort 5173,8787,8501,8600 -State Listen` all FREE; if occupied → locate the PID per SOP + confirm the command line via `Get-CimInstance Win32_Process` is a project process → `Stop-Process` **only on confirmed PIDs** (never mass-kill by process name — see 3-LEARNED 1.11/1.20) → re-check FREE.
+5. **.gitignore coverage**: `git status --porcelain --ignored` spot-checks that artifacts (__pycache__/.venv/node_modules/.next/agents-dashboard/data/data/remote/verify/*.log/*_result.json) are properly ignored.
+6. **Regression suite** (select by change scope):
+   - offline: `verify_smoke.py`, `verify_prune_callbacks.py`, `verify_index_health.py`, `verify_agentops.py`;
+   - online: `verify_provider_switch.py`, `verify_e2e.py`, `eval_retrieve.py`, `verify_e2e_openai.py` (needs balance);
+   - GUI (frontend+backend running): `gui_check*.mjs`;
+   - frontend/dashboard: `npm run build` (agents-dashboard likewise).
+   Record PASS/FAIL per script with an output summary.
+7. **Wrap-up**: stop dev servers started this round and re-check ports; write the conclusion (change list + regression output) into the sprint doc §9.
 
-# 输出模板
+# Output Template (report body in Chinese — project docs are Chinese; keep script names and PASS/FAIL verbatim)
 
 ```
-# workspace-check 报告
-- 工作区：<改动清单核对结果>
-- 分支：<分支状态>
-- 端口：<5173/8787/8501/8600 状态>
-- 回归：<逐脚本 PASS/FAIL 摘要>
-- 结论：<三查"三查"是否通过>
+# workspace-check report
+- workspace: <change-list verification result>
+- branches: <branch state>
+- ports: <5173/8787/8501/8600 state>
+- regression: <per-script PASS/FAIL summary>
+- conclusion: <third-check passed or not>
 ```
 
-# 禁止
+# Forbidden
 
-- 禁止批量按进程名杀进程；停止服务只用 PID + 命令行核对后的定点停止；
-- 禁止跳过端口复查（停止任何 dev server 后必须复查 FREE）；
-- 禁止把"命令输出看起来没报错"当 PASS：回归结论必须来自脚本自身的 PASS 输出或断言。
+- Never mass-kill processes by name; stop services only by PID + command-line verification;
+- Never skip the port re-check (after stopping any dev server, re-verify FREE);
+- Never treat "output looks error-free" as PASS: regression conclusions must come from the script's own PASS output or assertions.
