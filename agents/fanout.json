@@ -1,6 +1,6 @@
 {
-  "version": 2,
-  "comment": "Agent fan-out pipelines as adjustable config (dashboard-editable). Two pipelines: planning_pipeline (research before planning, auto-triggered) and sprint_close_pipeline (three-check + lessons). Conditions/order/executors are adjustable; the user watches agent impact on dev progress via the dashboard. workspace-check stays with the main agent (D2).",
+  "version": 3,
+  "comment": "Agent fan-out pipelines as adjustable config (dashboard-editable). Two pipelines: planning_pipeline (research before planning, auto-triggered) and sprint_close_pipeline (three-check + lessons). Conditions/order/executors are adjustable; the user watches agent impact on dev progress via the dashboard. workspace-check stays with the main agent (D2). v3: research step injects pre-research notes (docs/iteration/pre-research/, windows-only) as tech-research context when the task matches a note.",
   "planning_pipeline": [
     {
       "order": 1,
@@ -9,7 +9,8 @@
       "spec": "tech-research",
       "task": {
         "trigger": "auto-detect: task input contains research-required keywords (see tech-research spec Trigger section) or an explicit research request",
-        "inject": "research report is injected into the planning context BEFORE task decomposition"
+        "inject": "research report is injected into the planning context BEFORE task decomposition",
+        "pre_research": "if the task matches a note in docs/iteration/pre-research/ (by its injection-guide keywords), inject that note as the tech-research 'context' input and into the planning context — recorded user decisions are the baseline; contradictions must be surfaced as reversal proposals, never silently switched (1-WORKFLOW.MD §4.4)"
       },
       "condition": "research_required",
       "executor": "subagent"
