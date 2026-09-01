@@ -51,6 +51,10 @@
 |---|---|
 | 2026-08-31 | 采纳范围：**继续探讨，暂不开卡**；时机：继续讨论 |
 | 2026-08-31 | **预研结果（含用户选择/确认）必须作为进入规划管线调研时的上下文**——避免方案路线决策在后续流程中重复出现/前后矛盾 → 落地为 `1-WORKFLOW.MD` §4.4「预研上下文传递」+ tech-research spec v1.1.0 + fanout.json v3 |
+| 2026-08-31 | **D1 范围 = A（W1+W2+W3，不含 cron）** |
+| 2026-08-31 | **D2 provider e2e 去漂移本次不做** → 另立候选卡 TG-4 |
+| 2026-08-31 | **D3（W4 未来参数预决）**：每周一次、单轮预算上限 ¥10；**上限必须可配置（config/env 驱动，不得写死文件）** → 候选卡 TG-5 设计约束 |
+| 2026-08-31 | **D4 时点 = 现在开卡（候选态）** → 卡入 `phases/testing-governance/backlog.MD`（TG-1~TG-5），ROADMAP Next 档登记 |
 
 ## 6. 注入指引（供 planning_pipeline / tech-research）
 
@@ -58,21 +62,17 @@
 - 开卡时卡片必须链接本笔记；tech-research 以本笔记为基线：不重复调研已决路线（P1–P4 菜单与推荐、明确不做项），不静默改向；发现矛盾 → 以"翻案建议"交用户裁决。
 - 待续事项：P3 的每跑成本精确估算；P1–P4 的验收标准细化；provider e2e 三脚本去漂移（参数化共享基座）可并入测试治理工作项。
 
-## 7. 初稿方案（2026-08-31，待用户确认）
+## 7. 初稿方案（2026-08-31 已确认，开卡候选）
 
 按 `1-WORKFLOW.MD` §4.4 判定：涉及 DoD/三查规则变更 + 跨脚本治理 + CI 流程变化 → **新 Sprint**。
 
 | 工作项 | 内容（P 对应 §3 方案菜单） | 规模 | 验收标准草案 |
 |---|---|---|---|
 | W1 | P1 成文规则：DoD 增补"用户可见功能必须同 PR 交付 verify case + 矩阵登记"；三查核查项 | 1 点 | ① 规则文本入 §4.2/§4.4；② 反例演练：构造缺 case 的改动被三查拦下并留证据 |
-| W2 | P2 覆盖矩阵 SSOT：脚本头部元数据声明 + `verify_matrix.py` derive/check + `verify/TEST-MATRIX.MD` + CI 离线断言 + 全量脚本登记；**并入 provider e2e 三脚本去漂移（参数化共享基座，修复 verify_e2e_openai 潜在 1.46 bug）** | 4 点 | ① 矩阵生成且 check 模式 CI 断言"矩阵==脚本元数据"；② 全部 verify 脚本登记（tier/provider/估时）；③ 三脚本共享基座后 dashscope+deepseek 双跑绿 |
+| W2 | P2 覆盖矩阵 SSOT：脚本头部元数据声明 + `verify_matrix.py` derive/check + `verify/TEST-MATRIX.MD` + CI 离线断言 + 全量脚本登记（provider e2e 去漂移已按 D2 拆出，见 TG-4） | 4 点 | ① 矩阵生成且 check 模式 CI 断言"矩阵==脚本元数据"；② 全部 verify 脚本登记（tier/provider/估时） |
 | W3 | P4 ATDD case-first：功能卡模板增"验收 case"节（实现前先写步骤+断言） | 1 点 | ① 下一张新功能卡含验收 case 且实现前写好；② 实现后跑绿留证据 |
 | W4 | P3 分层 runner + 定时回归：tier 标签 + `run_suite` 一键离线/联网子集 + cron 夜间全量联网套件（fail-closed） | 3 点 | ① run_suite 离线/联网子集可用；② 首次夜间全量跑绿且预算内 |
 
 合计 9 点 ≈ 1 个 sprint（含 20% 非计划缓冲）。
 
-**决策点（待拍板）**：
-- D1 范围：A=W1+W2+W3（制度+矩阵+case-first，无 cron）／B=W1–W4 全量
-- D2 provider e2e 去漂移并入 W2（建议：是）
-- D3 若选 B：cron 频率（建议每周一次）与单轮成本上限（待开卡时按最近实测 usage 精确估算，粗估 ¥2~8/轮）
-- D4 时点：F2 验收后开 sprint／现在开卡（候选态）
+**决策结果（2026-08-31 已拍板，见 §5）**：D1=A（W1+W2+W3）；D2 去漂移单独立卡 TG-4；D3 预决 W4 参数（每周一次、¥10/轮、上限必须可配置）入 TG-5 设计约束；D4 现在开卡候选态 → `phases/testing-governance/backlog.MD`（TG-1~TG-5）。

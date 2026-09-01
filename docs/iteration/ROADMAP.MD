@@ -23,6 +23,7 @@
 | F1 后续 | query 翻译/双语索引（用 F4 评测选型） | F4 基准扩充 |
 | F3 Agent 接入 + 时间线雏形 | R-C 前置步骤 | 事件模型（已就绪） |
 | R-C（解冻候选） | C 可观测 + E3 v1 只读可视化 | ⏸ hold：用户 review 闸门（backlog 卡 R-C） |
+| testing-governance（测试治理） | e2e 测试与功能演进同步治理：成文规则(TG-1) + 覆盖矩阵 SSOT(TG-2) + ATDD case-first(TG-3) + provider 去漂移(TG-4) + 定时回归(TG-5) | F2 用户验收通过后开 sprint；候选卡见 [`phases/testing-governance/backlog.MD`](phases/testing-governance/backlog.MD)，预研笔记 `pre-research/tech/2026-08-31-testing-governance.MD` |
 
 ## Later（远期主题）
 

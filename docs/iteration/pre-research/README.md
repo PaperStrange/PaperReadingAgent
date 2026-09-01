@@ -8,7 +8,7 @@
 
 | 笔记 | 领域 | 状态 | 关键决策点 | 关联 |
 |---|---|---|---|---|
-| [tech/2026-08-31-testing-governance.MD](tech/2026-08-31-testing-governance.MD) | 技术 | 初稿方案待确认（§7：W1–W4 + 决策点 D1–D4） | 预研结论必须注入规划管线（已制度化）；测试治理范围/时点待拍板 | tech-research v1.1.0、fanout v3、1-WORKFLOW §4.4 |
+| [tech/2026-08-31-testing-governance.MD](tech/2026-08-31-testing-governance.MD) | 技术 | **初稿已确认，已开卡候选**（D1=A/D2/D3/D4；§7 方案） | 测试治理范围/时点已拍板；卡 TG-1~TG-5 入 phases/testing-governance/backlog.MD | tech-research v1.1.0、fanout v3、1-WORKFLOW §4.4、TG backlog |
 | [2026-08-31-domain-governance.MD](2026-08-31-domain-governance.MD) | 跨领域治理 | 设计备忘，未实施 | 一领域=一 agent=一 role=一目录；product/marketing 待讨论启动时创建；协作改进提案 3 条 | 待建：product-research、marketing-research |
 
 ## 更新规则
