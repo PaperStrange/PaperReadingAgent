@@ -12,7 +12,7 @@
 | 分类 | 条目 |
 |---|---|
 | 🖥️ 平台/环境（Windows·PowerShell·端口·编码） | 1.6、1.7、1.8、1.9、1.11、1.18、1.20、1.31 |
-| 🧩 框架/服务商（paperqa·litellm·模型） | 1.1、1.2、1.3、1.4、1.14、1.25、1.27 |
+| 🧩 框架/服务商（paperqa·litellm·模型） | 1.1、1.2、1.3、1.4、1.14、1.25、1.27、1.46 |
 | 📦 依赖与版本管理 | 1.5、1.13 |
 | 🎨 前端与测试驱动（React·Playwright） | 1.10、1.12、1.19（光标部分）、1.37、1.41、1.42、1.43 |
 | 🛡️ 安全与防护 | 1.16、1.17、1.33、§4 整改表 |
@@ -237,6 +237,12 @@
 - 现象：§7 把含"PR 合并 main"验收标准的 US-13.3 标 ✅，但当时 sync/sprint-13 未合并、§9 空白、DoD 未勾——文档状态与仓库现实矛盾（032 major）。
 - 解决：先完成 PR 合并 + 删远端 sync 分支 + 回填 §9/DoD 后再关（本轮按此执行）。
 - 教训：**关闭态文档的 ✅ 必须等外部关闭门（PR 合并 main、删 sync 分支、CI 绿）真正合上再标**——先合门、后写 ✅；1.34（living doc 滞后）的镜像面：文档跑在现实前面同样危险。
+
+### 1.46 显式传 model/api_base 但缺 provider → vision 模型回落默认服务商（F2 验收前 dashscope 验证）
+- 现象：`verify_e2e_dashscope.py` 首跑 Phase 1（dashscope）load_index 阶段报 `NotFoundError: The model 'deepseek-v4-flash-vision-exp' does not exist`，并伴随 "Error parsing PaperQA2.pdf, skipping index"——dashscope 的 api_base/model 都传对了，唯独 vision 请求打到了 DeepSeek。
+- 根因：脚本 config 参数显式传了 `model`/`api_base`/`embedding`，但缺 `provider` 与 `vision_model` → `make_settings` 中 vision 模型未显式指定时回落 `DEFAULT_PROVIDER`（此时 .env `PAPERQA_PROVIDER=deepseek`）的视觉模型 → 404。
+- 解决：e2e 脚本 config 显式传 `provider` + `vision_model`（与 GUI SchemaForm 的 provider 联动语义一致）。GUI 路径本就不受影响（联动总是显式带出 vision_model）。
+- 教训：**API/脚本调用者省略 `provider` 时，vision 模型回落默认服务商，而非跟随主模型**——显式传 model/api_base 不等于 provider 生效；e2e 脚本的 config 参数必须与 GUI 联动语义对齐。可选后续（新工作项，暂只记录）：`make_settings` 对"缺 provider 但显式给了 model"的场景加提醒或推导。
 
 ## 2. 验证记录（Windows，实际执行）
 

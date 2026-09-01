@@ -12,6 +12,7 @@
 | `verify_provider_switch.py` | 验证服务商切换（内置 4 家 + 自定义）：配置解析、密钥优先级、build_settings、**路由实证断言**（deepseek 真实 key 应 SUCCESS；dashscope/openai/openrouter/自定义 用占位 key 应拿到端点级拒绝=路由正确） | 联网；deepseek 真实 key（`.env` 或 `OPENAI_API_KEY`）；**真实 openrouter key 实测为用户资源门控**（占位 key 只证路由不证配额） |
 | `verify_e2e.py` | 启动真实后端（8787）→ 全链路 6 步，校验答案长度并保存结构化结果到 `verify_e2e_result.json` | 需要 `OPENAI_API_KEY`（DeepSeek）+ 本地 st- 向量模型；联网 |
 | `verify_e2e_openai.py` | Sprint-7 追加：**OpenAI 作为 provider + embedding**（gpt-4o-mini + text-embedding-3-large）全流程 + 同进程 deepseek→openai 切换（key 隔离回归） | 需要真实 `OPENAI_API_KEY`（**账户需有余额**）+ `DEEPSEEK_API_KEY`（Phase 2）；联网 |
+| `verify_e2e_dashscope.py` | 校验 deepseek→dashscope 全流程切换：Phase 1 dashscope 全链路 6 步 + Phase 2 同进程 deepseek 全流程（key/配置隔离回归） | 需要 `DASHSCOPE_API_KEY` + `DEEPSEEK_API_KEY`；联网 |
 | `verify_agent.py` | Agent 流程（fake agent）+ 翻译接口 | 同上，且索引 `verify_e2e_index` 已存在（e2e 先跑过） |
 | `verify_embed_load.py` | parse_chunk_embed 三种模式：run（重跑）/load 同会话（秒级）/load 新会话（embed 缓存），校验 texts 数量一致 | 需要 `OPENAI_API_KEY`（DeepSeek）+ 本地 st- 向量模型 |
 | `verify_remote_e2e.py` | remote 数据源全链路（Sprint-3）：config(remote+arXiv) → load_index（下载+索引）→ retrieve → parse → evidence → answer | 需要 `OPENAI_API_KEY`；联网（export.arxiv.org） |
@@ -41,6 +42,7 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 .\.venv\Scripts\python.exe .\verify\verify_provider_switch.py   # 联网
 .\.venv\Scripts\python.exe .\verify\verify_e2e.py
 .\.venv\Scripts\python.exe .\verify\verify_e2e_openai.py       # OpenAI provider+embedding 全流程（账户需余额）
+.\.venv\Scripts\python.exe .\verify\verify_e2e_dashscope.py   # dashscope 全流程 + deepseek 同进程切换（联网）
 .\.venv\Scripts\python.exe .\verify\verify_agent.py
 .\.venv\Scripts\python.exe .\verify\verify_remote_e2e.py       # Sprint-3 remote 全链路（联网）
 node .\verify\gui_check.mjs          # GUI（需先启动前后端）
