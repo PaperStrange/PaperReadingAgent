@@ -150,7 +150,7 @@
 
 **预研上下文传递（2026-08-31 制度化，用户建议）**：
 
-1. 探讨性预研（涉及用户选择/确认的调研讨论，如方案菜单、采纳范围、成本拍板）在结束或中断时，**必须落盘**为 `docs/iteration/pre-research/<日期>-<主题>.MD`（**仅 windows 分支维护**，main 无此目录 → 注入规则在 main 为 no-op）。要素：背景 / 现状证据 / 结论（方案菜单+推荐）/ 来源 / **用户决策记录（chronological）** / 注入指引。
+1. 探讨性预研（涉及用户选择/确认的调研讨论，如方案菜单、采纳范围、成本拍板）在结束或中断时，**必须落盘**为预研笔记（**仅 windows 分支维护**，main 无此目录 → 注入规则在 main 为 no-op）：按领域归档 `docs/iteration/pre-research/<领域>/<日期>-<主题>.MD`（领域 = tech/product/marketing，跨领域治理笔记放根目录；**一领域 = 一 agent = 一账本 role = 一笔记目录**，隔离与侧重点见 `docs/iteration/pre-research/2026-08-31-domain-governance.MD`）。要素：背景 / 现状证据 / 结论（方案菜单+推荐）/ 来源 / **用户决策记录（chronological）** / 注入指引；落盘后同步更新 `docs/iteration/pre-research/README.md` 追溯索引。
 2. planning 时：任务主题命中某预研笔记（按笔记"注入指引"的关键词匹配）→ **笔记作为 tech-research 的 `context` 输入，并在任务分解前注入规划上下文**；开卡时卡片链接对应笔记（见 `agents/fanout.json` planning_pipeline 的 `pre_research` 字段）。
 3. **基线规则**：tech-research 以笔记记录的既定决策为基线——不重复调研已决路线、不静默改向；发现与既定决策矛盾 → 报告"翻案建议"交用户裁决，不得自行推翻。
 4. 目的：避免方案路线决策在后续流程中**重复出现/前后矛盾**，预研结论与用户确认是规划管线的资产而非一次性对话。
