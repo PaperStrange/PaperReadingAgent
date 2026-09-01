@@ -30,11 +30,12 @@
 | M7 | 默认值漂移收敛：chunk/temperature 等默认值在 config_schema/App.jsx/provider_config/engine 重复 4 处（唯一真源原则） | 3 | 计划中（并入 F2 阶段 A = Sprint-11 US-11.2） | Sprint-7 全量 review | 与 F2（SSOT 驱动前端）同源，已并入 F2 |
 | M8 | remote_resolver SSRF DNS rebinding TOCTOU 强化（解析后 IP 复检） | 2 | 候选 | Sprint-7 全量 review | 理论性；现状已有逐跳重定向复检 + 内网段拒绝 |
 | M9 | 价表人工覆盖段填充（deepseek/qwen/openrouter 单价）——原 agents-infra A-M1 迁入 | 1 | 候选 | 阶段 1 预研 | **需用户提供服务商真实单价**；填后看板成本口径完整 |
-| M10 | fetch-spec 成功路径测试（sha256 命中/失配）+ 账本并发锁——原 agents-infra A-M4 迁入 | 2 | 候选 | Sprint-8 二查 nit | |
+| M10 | fetch-spec 成功路径测试（sha256 命中/失配）+ 账本并发锁——原 agents-infra A-M4 迁入 | 2 | **计划中（底座批次 ⑤，F2 验收通过后开工）** | Sprint-8 二查 nit | |
 | M11 | 三查执行器 agent 固化（fan-out 自动派发 + 账本登记 + 分诊）——原 agents-infra A-PM1 迁入（备选） | 3 | 候选（备选） | 用户 2026-08-30 | fanout.json 已为可调配置，固化执行器属演进项 |
 | M12 | Sprint 文档模板生成 agent（planning→燃尽→Retro 自动起草）——原 agents-infra A-PM2 迁入（备选） | 2 | 候选（备选） | 用户 2026-08-30 | |
 | M13 | 调研结论→用例生成 agent 固化——原 agents-infra A-PM3 迁入（备选） | 2 | 候选（备选） | 用户 2026-08-30 | |
-| M14 | 新 agent 上线评审 agent——原 agents-infra A-PM4 迁入（备选） | 2 | 候选（备选） | 用户 2026-08-30 | 与 `_template-agent.md` 模板联动 |
+| M14 | 新 agent 上线评审 agent——原 agents-infra A-PM4 迁入（备选） | 2 | **计划中（底座批次 ⑥）** | 用户 2026-08-30（+2026-08-31 底座批次） | 与 `_template-agent.md` 模板联动 |
+| M15 | 领域治理壳落地：product/marketing 笔记目录 + 追溯索引登记 + fanout 路由预留（完整 spec 等对应领域讨论启动时再填） | 1 | **计划中（底座批次 ②）** | 用户 2026-08-31（底座批次） | 依据 `pre-research/2026-08-31-domain-governance.MD` §3/§6 |
 
 ### 2.1 与 hold 状态的关系
 
