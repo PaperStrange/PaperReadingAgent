@@ -1,7 +1,7 @@
 ---
 name: tech-research
 description: Deep technical research agent, the planning pre-step: auto-triggered when the task input contains a research requirement (research/evaluate/compare/select/best-practice keywords or an explicit research request). Runs multi-source deep research with comparative analysis and judgment — not a few web searches — and returns a research report that the orchestrator injects into context BEFORE planning starts.
-version: "1.0.0"
+version: "1.1.0"
 model: ""
 tools: []
 metadata:
@@ -27,7 +27,7 @@ The orchestrator registers the run in the ledger (`tech-research@1.0.0`), dispat
 
 ```json
 {"question": "what to research, verbatim from the user",
- "context": "relevant repo state / decision history / constraints",
+ "context": "relevant repo state / decision history / constraints — MUST include any pre-research note from docs/iteration/pre-research/ matched to the question, with its recorded user decisions (v1.1.0, see Baseline Alignment)",
  "depth": "quick | normal | deep (default normal)"}
 ```
 
@@ -43,6 +43,7 @@ The orchestrator registers the run in the ledger (`tech-research@1.0.0`), dispat
 
 # Steps (fixed order)
 
+0. **Baseline alignment** (v1.1.0): if `context` carries a pre-research note or recorded user decisions, treat them as the baseline — do NOT re-research routes already decided there, and do NOT silently switch direction; a contradiction you discover goes into the report as an explicit "reversal proposal" (翻案建议) for the user to rule on.
 1. **Decompose** the question into 2-4 sub-questions; state them in the report so coverage is auditable.
 2. **Search broadly first**: run multiple independent web searches (different phrasings, official sites, GitHub, docs) — do not stop at the first page of results.
 3. **Gather per claim**: for each sub-question collect at least `min_sources_per_claim` sources; record URL + source tier + what exactly it supports.
@@ -69,5 +70,6 @@ The orchestrator registers the run in the ledger (`tech-research@1.0.0`), dispat
 - Never conclude from a single source, or from search snippets alone — read the pages;
 - Never fabricate or paraphrase-from-memory a URL or a claim (every fact carries a real URL you fetched);
 - Never skip the comparison matrix or the "conditions under which the recommendation flips";
+- Never re-decide a route already fixed in the provided context, and never silently contradict a recorded user decision — surface a reversal proposal instead (v1.1.0);
 - Never modify repo files — you write only your report file;
 - Never emit a "looks fine" style summary: the report must let a planner make the decision without re-searching.
