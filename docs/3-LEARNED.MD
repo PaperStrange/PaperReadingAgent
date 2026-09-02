@@ -15,10 +15,10 @@
 | 🧩 框架/服务商（paperqa·litellm·模型） | 1.1、1.2、1.3、1.4、1.14、1.25、1.27、1.46 |
 | 📦 依赖与版本管理 | 1.5、1.13 |
 | 🎨 前端与测试驱动（React·Playwright） | 1.10、1.12、1.19（光标部分）、1.37、1.41、1.42、1.43 |
-| 🛡️ 安全与防护 | 1.16、1.17、1.33、§4 整改表 |
-| 🏗️ 工程方法（分层/一致性/自愈） | 1.15、1.17、1.19（长路径/注册表可扩展）、1.21、1.22、1.28、1.32、1.35、1.39 |
+| 🛡️ 安全与防护 | 1.16、1.17、1.33、1.50、§4 整改表 |
+| 🏗️ 工程方法（分层/一致性/自愈） | 1.15、1.17、1.19（长路径/注册表可扩展）、1.21、1.22、1.28、1.32、1.35、1.39、1.48 |
 | 🔎 检索与算法改进 | 1.21（来源标记）、1.23 |
-| 📋 项目管理与流程 | 1.17（评审闭环）、1.24、1.26、1.28（AgentOps 工程化）、1.29、1.30、1.34、1.36、1.38、1.40、1.44、1.45、`1-WORKFLOW.MD` §4.4 |
+| 📋 项目管理与流程 | 1.17（评审闭环）、1.24、1.26、1.28（AgentOps 工程化）、1.29、1.30、1.34、1.36、1.38、1.40、1.44、1.45、1.49、`1-WORKFLOW.MD` §4.4 |
 
 ### 1.1 DeepSeek 无 embedding API → 本地向量化
 - 现象：DeepSeek 平台只提供 `deepseek-v4-flash / -pro / -flash-vision-exp`，无 embedding 端点。
@@ -249,6 +249,22 @@
 - 根因：Windows 下 `Path.write_text()`/`open('w')` 默认 `newline=None`，**把字符串里的 `\n` 静默翻译成 `\r\n`**——若字符串已含 `\r\n`（如先把 `\n` 替换成 `\r\n` 再写盘），就得到 CRCRLF；再反向替换又变成双空行。原文件是 LF（blob 实测），注入后变 CRLF → 整文件 diff 噪音。
 - 解决：批量改写文件一律 `read_bytes()`/`write_bytes()`（二进制，零翻译）；`verify_matrix.py` derive 写矩阵改用 `open(newline="\n")` 显式 LF，保证跨平台字节稳定；校验器用 `compile()` 而非 `ast.parse`（后者抓不到 `__future__` 放置错误）。
 - 教训：**任何"程序化改写仓库文本文件"的脚本，都要显式声明换行策略（二进制读写或 `newline='\n'`），并在提交前用 `git diff --stat` 核对变更量**——变更行数≈预期行数才放行；"看起来对"的文件内容 ≠ 字节级对。
+- 同型后续（Sprint-14 二查 035）：`agent-ops._derive_prices` 也以 `write_text` 写已入库 prices.json——M9 引入 scraped 段后风险放大，已改 `write_bytes` 封口。
+
+### 1.48 共享配置文件多写者竞态：同一 JSON 的每个写入口都要挂同一把锁（Sprint-14 二查 035）
+- 现象：`prices.json` 有 **prices-derive（agent-ops）** 与 **fetch-prices --apply** 两个写入口，都是 load→merge→save 且无锁——定时抓取与手动 derive 撞车会 last-writer-wins 丢失对方段落（M10 注册表锁的同型竞态落在姊妹文件上）。
+- 解决：`agent-ops.py` 抽出通用 `_file_lock(path)`（msvcrt/fcntl），`_registry_lock`/`_prices_lock` 共用；fetch-prices.py 内置同模式 `_prices_lock`，--apply 的 read-merge-write 全程持锁；锁文件 `.registry.lock`/`.prices.lock` 均 gitignore。
+- 教训：**只要一个 JSON 文件有 ≥2 个写入口，就必须共享同一把文件锁并覆盖 read-merge-write 全程**——新增写入口时第一件事是找既有锁，而不是各写各的。
+
+### 1.49 validate-spec 绿灯 ≠ 结构合规：门禁校验器只测"它测的东西"（Sprint-14 M14）
+- 现象：M14 上线评审首轮审出 3 条 major（lessons-learned 缺 Configurable Parameters 段、workspace-check 缺 Task Input 段与 estimated_chars），而 `validate-spec` 对 7 个 spec 全部 PASS——它只校验 frontmatter 必填键，不校验七段结构与 metadata 嵌套键；修复轮还曾把注释语义写成中文正文引入新 critical，全靠复审拦下。
+- 解决：新增 `agent-onboarding-review` 门禁 spec（结构/语言/边界/注册一致性七维检查 + validate-spec 实录）；评审闭环 = 初评→修复→复审→终审，每轮都重跑。
+- 教训：**校验器的 PASS 只代表它覆盖的断言通过；结构级门禁要靠评审 agent 补齐，且修复后必须复审（修复本身可能引入新问题）**——"绿灯"是必要不充分条件。
+
+### 1.50 新增网络抓取脚本必须继承 SSRF/大小上限防护（Sprint-14 二查 035）
+- 现象：`fetch-prices.py` 上线时只有"硬编码 https 字面量"作为唯一的网络姿势防护——urllib 默认跟随重定向但**不逐跳复检** scheme/host（上游 30x 到异常主机会被静默跟随），且 `resp.read()` 无响应体上限（OpenRouter 全模型表可达数 MB）。
+- 解决：加 `_SafeRedirectHandler`（每跳复检 https + 白名单域 deepseek.com/alibabacloud.com/openrouter.ai）+ `Content-Length` 预检 + `_MAX_BYTES=20MB` 读取上限。
+- 教训：**项目有 SSRF/下载安全标准（1.17、§4 整改表）时，任何新增的网络读取代码都必须复用同一套防护（逐跳复检 + 大小上限 + 白名单域）**，而不是"因为 URL 是我硬编码的就免检"。
 
 ## 2. 验证记录（Windows，实际执行）
 

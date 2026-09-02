@@ -45,6 +45,7 @@ verify/verify_e2e_dashscope_result.json
 # AgentOps runtime 账本与报告存档（实时态与留证；账本真相源=本地文件，非 git 追踪）
 agents/runtime/registry.json
 agents/runtime/.registry.lock
+agents/runtime/.prices.lock
 agents/runs/
 # 静态分析中间产物（可由 analyze_paperqa_system.py 再生成）
 paper-qa-script/paperqa_callgraph.json
