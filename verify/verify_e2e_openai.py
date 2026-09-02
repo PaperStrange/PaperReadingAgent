@@ -11,7 +11,9 @@ Prereqs:
 Run:
   .venv\\Scripts\\python.exe verify\\verify_e2e_openai.py [--keep-server]
 """
+
 from __future__ import annotations
+VERIFY_META = {'features': 'OpenAI provider+embedding 全流程 + 同进程 deepseek→openai 切换隔离回归', 'tier': 'network', 'providers': ['openai', 'deepseek'], 'est_seconds': 150, 'est_cost_cny': 1.0, 'routes': ['/api/new_session', '/api/run_step', '/api/stream/{session_id}/{run_id}', '/api/session_records/{session_id}', '/api/reset_session'], 'requires': ['keys', 'network', 'balance']}
 
 import argparse
 import asyncio

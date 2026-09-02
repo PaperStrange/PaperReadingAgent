@@ -12,7 +12,9 @@
 运行：.venv\\Scripts\\python.exe verify\\verify_config_schema.py（纯离线）
 重建基线：.venv\\Scripts\\python.exe verify\\verify_config_schema.py --regen-baseline
 """
+
 from __future__ import annotations
+VERIFY_META = {'features': '配置 SSOT 一致性 + M7 前端零硬编码 + Settings 升级基线护栏（114 断言，离线）', 'tier': 'offline', 'providers': [], 'est_seconds': 5, 'est_cost_cny': 0, 'routes': ['/api/config_schema', '/api/config/validate'], 'requires': ['none']}
 
 import json
 import re

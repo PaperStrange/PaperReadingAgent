@@ -60,6 +60,7 @@ jobs:
           python verify/verify_agentops.py
           python verify/verify_config_schema.py
           python verify/verify_index_health.py
+          python verify/verify_matrix.py check
 
       - name: Build reactflow frontend
         working-directory: paper-qa-script/reactflow-paperqa-prototype/frontend

@@ -1,3 +1,4 @@
+// VERIFY_META: {"features": "GUI 全链路：Run All 左到右 → 答案出现 → 截图", "tier": "gui", "providers": [], "est_seconds": 120, "est_cost_cny": 0, "routes": ["/api/new_session", "/api/run_step", "/api/stream/{session_id}/{run_id}", "/api/session_records/{session_id}", "/api/reset_session"], "requires": ["playwright", "servers"]}
 // GUI 全链路回归脚本（US-2.6 证据）：Run All 全链路 + 截图
 // 运行前提：后端 8787 / 前端 5173 已启动：
 //   node verify\gui_check.mjs

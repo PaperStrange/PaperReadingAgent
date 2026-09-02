@@ -1,3 +1,4 @@
+// VERIFY_META: {"features": "看板成本/上下文页截图（CNY 合计/pending 标注）", "tier": "gui", "providers": [], "est_seconds": 30, "est_cost_cny": 0, "routes": [], "requires": ["playwright", "dashboard"]}
 // Sprint-9 US-9.4/9.5 截图：成本/上下文页 + 报告浏览页
 import { createRequire } from "module";
 import path from "path";

@@ -6,7 +6,9 @@
 运行：.venv\\Scripts\\python.exe verify\\eval_retrieve.py
 输出：逐 query 的 strategy/result/hit@1，以及两语料的命中率汇总（作为 F1 的基线证据）。
 """
+
 from __future__ import annotations
+VERIFY_META = {'features': '检索质量小样本评测：双语料命中率 + hit@1 + 多语重试覆盖', 'tier': 'network', 'providers': ['deepseek'], 'est_seconds': 60, 'est_cost_cny': 0.3, 'routes': ['/api/run_step'], 'requires': ['keys', 'network']}
 
 import io
 import subprocess

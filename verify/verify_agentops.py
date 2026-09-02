@@ -6,7 +6,9 @@ UC-7 防双写完整性校验 / UC-9 自报上下文与成本覆盖 / UC-10 价�
 
 运行：.venv\\Scripts\\python.exe verify\\verify_agentops.py（纯离线，隔离到临时 AGENT_OPS_DIR）
 """
+
 from __future__ import annotations
+VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1~UC-10（离线）', 'tier': 'offline', 'providers': [], 'est_seconds': 5, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
 
 import json
 import os

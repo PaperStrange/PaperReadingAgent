@@ -1,3 +1,4 @@
+// VERIFY_META: {"features": "看板 fan-out 配置页截图（两条流水线+JSON 编辑器）", "tier": "gui", "providers": [], "est_seconds": 30, "est_cost_cny": 0, "routes": [], "requires": ["playwright", "dashboard"]}
 // Sprint-10 US-10.5 看板 fan-out 配置页截图（用户审阅用）。
 // 前提：agents-dashboard 已在 8600 运行（生产模式）；playwright 取 reactflow frontend 的 node_modules。
 import { createRequire } from "module";

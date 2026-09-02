@@ -4,6 +4,8 @@ config(remote: arXiv 2409.13740) -> load_index -> retrieve -> parse_chunk_embed 
 运行前提：OPENAI_API_KEY（DeepSeek）；联网（export.arxiv.org）。
 运行：.venv\\Scripts\\python.exe verify\\verify_remote_e2e.py
 """
+VERIFY_META = {'features': 'remote 数据源全链路（arXiv 下载+索引+6 步）', 'tier': 'network', 'providers': ['deepseek'], 'est_seconds': 180, 'est_cost_cny': 0.4, 'routes': ['/api/new_session', '/api/run_step', '/api/stream/{session_id}/{run_id}', '/api/session_records/{session_id}', '/api/reset_session'], 'requires': ['keys', 'network']}
+
 import io
 import json
 import subprocess

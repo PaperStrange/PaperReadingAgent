@@ -28,6 +28,7 @@
 | `gui_check_dashboard_report.mjs` | Sprint-9：看板报告浏览页截图（run 详情 + 报告全文） | 同 `gui_check_dashboard.mjs` |
 | `gui_check_dashboard_fanout.mjs` | Sprint-10：看板 fan-out 配置页截图（两条流水线可视化 + JSON 编辑器） | 同 `gui_check_dashboard.mjs` |
 | `gui_check_config_schema.mjs` | Sprint-11/12/13：Config 节点 schema 清单/全字段表单截图 + 字段级校验证据（非法温度值 → 错误态）+ defaults-derived-from-schema 断言 | 后端 8787 + 前端 5173 已启动；Playwright Chromium 已安装 |
+| `verify_matrix.py` | TG-2：覆盖矩阵 SSOT——从各脚本头部 `VERIFY_META` 派生 `TEST-MATRIX.MD`；`check` 模式逐字节防漂移（CI 离线套件内） | 离线；`derive` 生成矩阵 / `check` 校验 |
 
 运行示例：
 
@@ -39,6 +40,7 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 .\.venv\Scripts\python.exe .\verify\verify_agentops.py           # AgentOps 账本 CLI 用例断言（离线）
 .\.venv\Scripts\python.exe .\verify\verify_config_schema.py     # 配置 SSOT 一致性 + M7 零硬编码 + Settings 升级基线（离线）
 .\.venv\Scripts\python.exe .\verify\verify_index_health.py
+.\.venv\Scripts\python.exe .\verify\verify_matrix.py check         # 覆盖矩阵防漂移（离线；改动脚本元数据后先 derive）
 .\.venv\Scripts\python.exe .\verify\verify_provider_switch.py   # 联网
 .\.venv\Scripts\python.exe .\verify\verify_e2e.py
 .\.venv\Scripts\python.exe .\verify\verify_e2e_openai.py       # OpenAI provider+embedding 全流程（账户需余额）

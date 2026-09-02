@@ -35,11 +35,17 @@ VALID_TIERS = ("offline", "network", "gui")
 
 
 def parse_py_meta(path: Path) -> dict | None:
-    """从 Python 脚本头部提取 VERIFY_META 字典字面量（ast 安全解析）。"""
+    """从 Python 脚本头部提取 VERIFY_META 字典字面量。
+
+    先 compile() 全文件（能抓到"VERIFY_META 落在 __future__ import 之前"这类
+    ast.parse 抓不到的放置错误），再用 ast 提取字面量。
+    """
+    src = path.read_text(encoding="utf-8")
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-    except (SyntaxError, UnicodeDecodeError) as e:
-        raise SystemExit(f"FAIL: {path.name} 解析失败: {e}")
+        compile(src, str(path), "exec")
+    except SyntaxError as e:
+        raise SystemExit(f"FAIL: {path.name} 语法错误（line {e.lineno}）: {e.msg}")
+    tree = ast.parse(src)
     for node in tree.body:
         if isinstance(node, ast.Assign):
             targets = node.targets
@@ -93,7 +99,7 @@ def collect(verify_dir: Path) -> list[tuple[Path, dict]]:
         meta: dict | None = None
         if p.name.startswith(("verify_", "eval_")) and p.suffix == ".py":
             meta = parse_py_meta(p)
-        elif p.name.startswith("gui_check_") and p.suffix == ".mjs":
+        elif p.name.startswith("gui_check") and p.suffix == ".mjs":
             meta = parse_js_meta(p)
         else:
             continue

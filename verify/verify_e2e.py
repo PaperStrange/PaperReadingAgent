@@ -10,7 +10,9 @@ Prereqs:
 Run:
   .venv\\Scripts\\python.exe verify\\verify_e2e.py [--keep-server]
 """
+
 from __future__ import annotations
+VERIFY_META = {'features': 'deepseek 全链路 6 步（LLM+vision + 本地 st- 向量）', 'tier': 'network', 'providers': ['deepseek'], 'est_seconds': 120, 'est_cost_cny': 0.3, 'routes': ['/api/new_session', '/api/run_step', '/api/stream/{session_id}/{run_id}', '/api/session_records/{session_id}', '/api/reset_session'], 'requires': ['keys', 'network']}
 
 import argparse
 import asyncio

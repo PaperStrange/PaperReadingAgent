@@ -14,7 +14,9 @@
   .venv\\Scripts\\python.exe verify\\verify_provider_switch.py
 前提：联网；deepseek 真实 key（.env 或 OPENAI_API_KEY）。
 """
+
 from __future__ import annotations
+VERIFY_META = {'features': 'provider 切换路由实证：内置 4 家 + 自定义（端点级拒绝断言）', 'tier': 'network', 'providers': ['deepseek', 'dashscope', 'openai', 'openrouter'], 'est_seconds': 30, 'est_cost_cny': 0.1, 'routes': ['/api/providers'], 'requires': ['keys', 'network']}
 
 import asyncio
 import importlib.util

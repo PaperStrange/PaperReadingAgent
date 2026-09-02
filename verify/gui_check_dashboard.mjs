@@ -1,3 +1,4 @@
+// VERIFY_META: {"features": "看板概览页 + spec 编辑页截图", "tier": "gui", "providers": [], "est_seconds": 30, "est_cost_cny": 0, "routes": [], "requires": ["playwright", "dashboard"]}
 // Sprint-9 看板界面截图（用户审阅用）：概览页 + spec 编辑页。
 // 前提：agents-dashboard dev server 已在 8600 运行；playwright 取 reactflow frontend 的 node_modules。
 import { createRequire } from "module";

@@ -10,7 +10,9 @@
 Prereqs: .venv；paper-qa-script/.env 含 DASHSCOPE_API_KEY 与 DEEPSEEK_API_KEY（真实 key，本脚本不打印）。
 Run: .venv\\Scripts\\python.exe verify\\verify_e2e_dashscope.py [--keep-server]
 """
+
 from __future__ import annotations
+VERIFY_META = {'features': 'dashscope 全链路 6 步 + 同进程 deepseek 切换隔离回归', 'tier': 'network', 'providers': ['dashscope', 'deepseek'], 'est_seconds': 150, 'est_cost_cny': 0.5, 'routes': ['/api/new_session', '/api/run_step', '/api/stream/{session_id}/{run_id}', '/api/session_records/{session_id}', '/api/reset_session'], 'requires': ['keys', 'network']}
 
 import argparse
 import asyncio

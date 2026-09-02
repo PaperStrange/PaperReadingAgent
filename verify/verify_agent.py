@@ -1,4 +1,6 @@
 """Verify agent flow (agent_query, fake agent) + translate endpoint with DeepSeek."""
+VERIFY_META = {'features': 'Agent 流程（fake agent）+ 翻译接口', 'tier': 'network', 'providers': ['deepseek'], 'est_seconds': 60, 'est_cost_cny': 0.3, 'routes': ['/api/translate_preview', '/api/run_step'], 'requires': ['keys', 'network', 'index']}
+
 import asyncio
 import importlib.util
 import os

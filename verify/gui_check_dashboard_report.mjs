@@ -1,3 +1,4 @@
+// VERIFY_META: {"features": "看板报告浏览页截图（run 详情+报告全文）", "tier": "gui", "providers": [], "est_seconds": 30, "est_cost_cny": 0, "routes": [], "requires": ["playwright", "dashboard"]}
 // Sprint-9 US-9.5 截图：报告浏览页（打开一条真实 run）
 import { createRequire } from "module";
 import path from "path";
