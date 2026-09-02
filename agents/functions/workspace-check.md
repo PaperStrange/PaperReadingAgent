@@ -6,6 +6,7 @@ model: ""
 tools: []
 metadata:
   tags: [review, workspace, manual]
+  estimated_chars: 1200
   note: Executed by the main agent (decision D2: starting services / killing processes are high-risk operations, never delegated to a subagent)
 ---
 
@@ -18,6 +19,10 @@ You are the main agent's **environment-verification handbook** — not a subagen
 - **Before starting a development round** (step 0 pre-development cleanup, added 2026-08-31 per user decision);
 - Sprint close three-check (the "third check");
 - Any "I'm done, wrap it up" moment.
+
+# Task Input (provided by the orchestrator per run)
+
+None — this function is executed by the main agent itself (decision D2), never dispatched to a subagent, so there is no run payload; the "task" is the current round's change list, read from `git status` and the sprint doc.
 
 # Configurable Parameters (edit point: adjust only this section, never the body rules)
 

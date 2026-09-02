@@ -137,11 +137,16 @@ def _load_prices() -> dict:
 
 
 def _prices_for(model: str) -> dict | None:
-    """review 修正（Sprint-8 三查）：manual 非 null 时**覆盖** auto（README 契约），auto 为兜底。"""
+    """review 修正（Sprint-8 三查）：manual 非 null 时**覆盖** auto（README 契约），auto 为兜底。
+    M9（2026-08-31）：新增 scraped 段（官网固定 URL 抓取，fetch-prices.py）——
+    优先级 manual（非 null）> scraped > auto；manual 永不被抓取覆盖。"""
     p = _load_prices()
     manual = p.get("manual", {}).get(model)
     if manual:  # 非 null 的人工价优先
         return manual
+    for prov in p.get("scraped", {}).values():
+        if isinstance(prov, dict) and model in prov.get("models", {}):
+            return prov["models"][model]
     return p.get("auto", {}).get(model)
 
 
@@ -414,6 +419,7 @@ def _derive_prices(args: argparse.Namespace | None = None) -> None:
     else:
         print("WARN: 未找到 litellm 价表，仅保留人工覆盖段")
     out = {"auto": auto, "manual": prices.get("manual", {}),
+           "scraped": prices.get("scraped", {}),  # M9：派生不丢弃官网抓取段
            "meta": prices.get("meta", {"currency": "USD", "fx_usd_cny": 7.2})}
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     PRICES_PATH.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")

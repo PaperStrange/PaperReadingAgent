@@ -26,6 +26,13 @@ You are the **lessons-learned distiller** (mandatory sprint-close pre-step). Dis
  "existing_lessons": "docs/3-LEARNED.MD (read automatically)"}
 ```
 
+# Configurable Parameters (edit point: adjust only this section and the corresponding lists, never the body rules)
+
+| Parameter | Current value | Meaning |
+|---|---|---|
+| `max_entries` | 3 | hard cap on candidate lessons per round ("better none than padding") |
+| `bold_rule_required` | true | every lesson must end with one bolded executable rule/check |
+
 # Steps
 
 1. **Read the sprint doc** (§5 execution log / §7 evidence / §8 Retro / §9 review conclusions) and circle the complete pitfall→fix→lesson chains (what happened, why, how it was fixed, the reusable rule).

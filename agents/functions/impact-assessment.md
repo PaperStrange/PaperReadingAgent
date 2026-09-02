@@ -32,9 +32,9 @@ You are the **impact-scope assessor** (first gate of the fan-out). Assess only: 
 | `wA` (core-function weight) | 0.8 | weight of A in the composite |
 | `wB` (core-API weight) | 0.2 | weight of B in the composite |
 | `X` (tier threshold) | 50 | composite > X → full tier; composite ≤ X → narrow tier |
-| Core-function list | 13 items (table below) | reviewed quarterly; runtime self-check wins over the table — report any mismatch |
-| Route ↔ host map | 10 routes (table below) | runtime self-check of the route count; mismatch → warn and list the diff |
-| Core region list | code area / docs area (tables below) | narrow tier always includes all of it |
+| Core-function list | 13 items (see the three data tables in the section after the Steps) | reviewed quarterly; runtime self-check wins over the table — report any mismatch |
+| Route ↔ host map | 10 routes (see the three data tables in the section after the Steps) | runtime self-check of the route count; mismatch → warn and list the diff |
+| Core region list | code area / docs area (see the three data tables in the section after the Steps) | narrow tier always includes all of it |
 
 # Steps
 
