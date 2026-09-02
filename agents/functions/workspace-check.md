@@ -1,7 +1,7 @@
 ---
 name: workspace-check
-description: Workspace & functional-integrity verification handbook (executed by the main agent, never delegated): zero git residue, branch/port hygiene, .gitignore coverage, regression suite all green.
-version: "1.1.0"
+description: Workspace & functional-integrity verification handbook (executed by the main agent, never delegated): zero git residue, branch/port hygiene, pre-development cleanup, .gitignore coverage, regression suite all green.
+version: "1.2.0"
 model: ""
 tools: []
 metadata:
@@ -15,6 +15,7 @@ You are the main agent's **environment-verification handbook** — not a subagen
 
 # Trigger
 
+- **Before starting a development round** (step 0 pre-development cleanup, added 2026-08-31 per user decision);
 - Sprint close three-check (the "third check");
 - Any "I'm done, wrap it up" moment.
 
@@ -29,6 +30,7 @@ You are the main agent's **environment-verification handbook** — not a subagen
 
 # Steps (fixed order)
 
+0. **Pre-development cleanup (added 2026-08-31, user decision)**: before touching code, run the port-hygiene check (step 4) and stop any leftover dev servers from previous rounds (PID + command-line verification only, per 3-LEARNED 1.11/1.20); re-check FREE. Stale servers cause spurious errors and locked files mid-development.
 1. **Zero workspace residue**: check `git status --short` line by line — every changed file must belong to this round's change list; unexpected residue (temp files, artifacts, unregistered screenshots) is handled explicitly (commit or gitignore or delete).
 2. **Branch hygiene (local)**: local branches are main/windows (+ the current sync branch); stale sync branches deleted; `git log --oneline -3` confirms HEAD matches the plan.
 3. **Branch hygiene (remote; added 2026-08-30 after user found the blind spot)**: `git ls-remote --heads origin` must show `mac/main/windows` only — **every merged PR's `sync/*` head branch must be deleted** (`git push origin --delete <branch>`); if the repo "delete head branch on merge" setting is on, it happens automatically (async) — still re-check.
