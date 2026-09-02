@@ -82,7 +82,7 @@
 |---|---|---|---|
 | 〇查 范围 | **影响范围评估**（fan-out 第一道闸门） | 变更模块归类 → A（13 项核心功能触达）/B（10 条路由触达）→ composite（阈值 X=50）→ 两档 recommended_scope | 子代理 `functions/impact-assessment.md` × 1 任务 |
 | 一查 文档 | 文档一致性审计（范围 = 〇查 recommended_scope） | 死链/陈旧事实/跨文档矛盾/缺失知识；**4-ALGORITHM.MD 逐条对照代码**（其 §12 防漂移清单） | 子代理 `functions/doc-audit.md` × 1 任务（target=working-tree，scope 入参） |
-| 二查 代码 | windows + main 双分支 code review（范围 = 〇查 recommended_scope） | 正确性/安全/SSOT/兼容性/架构分层；main 侧重合并完整性与悬空引用 | 子代理 `functions/code-review.md` × 2 任务（target=branch:windows、branch:main 并行，scope 入参） |
+| 二查 代码 | windows + main 双分支 code review（范围 = 〇查 recommended_scope） | 正确性/安全/SSOT/兼容性/架构分层；main 侧重合并完整性与悬空引用；**功能-测试配对核查（TG-1，2026-08-31）**：用户可见功能（节点/路由/数据源/provider/表单字段）必须同 PR 交付对应 verify case（离线断言或联网 e2e/GUI check），并在覆盖矩阵登记（TG-2 落地后） | 子代理 `functions/code-review.md` × 2 任务（target=branch:windows、branch:main 并行，scope 入参） |
 | 三查 环境 | 工作区与功能完整性 | `git status` 零残留、本地已合并分支清理、.gitignore 覆盖、端口卫生、回归（smoke/e2e/新增端点/GUI）全绿 | **主代理** `functions/workspace-check.md`（起服务/杀进程不子代理化） |
 
 > 经验教训总结（lessons-learned）为 fan-out 五步第 4 步（在一查/二查之后、三查环境核验之前执行），见 §4.1 与 `agents/fanout.json`；不入上表（三查固定动作之外的关闭前置步骤）。
@@ -97,6 +97,7 @@
 | 🖼️ 运行/接口输出 | 后端 API 返回、`verify_*.py` 实测输出（时间/状态/样本）、日志 tail |
 | 🖼️ 命令与产物 | `npm run build`、pytest / e2e 结果、生成的报告 |
 | 📝 验收用例 | 对应 Backlog US-* 的验收标准逐条说明，标注通过/未通过 |
+| 📝 功能-测试配对（TG-1） | 每个用户可见功能（节点/路由/数据源/provider/表单字段）列出对应 verify case 与覆盖矩阵登记 |
 | 📝 理由/权衡 | 为什么这么做、关键取舍、为什么不采用其它方案、局限 |
 | 📝 边界与回归 | 受影响面、是否破坏既有功能、（可选）回归验证结果 |
 
@@ -118,6 +119,7 @@
 - [ ] sprint 文档已入库并随分支同步到 `docs/iteration/sprint/`
 - [ ] **三查已完成且发现项闭环**（文档/双分支 code review/工作区与功能完整性），结论写入 Sprint 文档
 - [ ] 决策逻辑变更已同步 `4-ALGORITHM.MD` 并核对 §12；windows 已 PR 同步 main（不含 `docs/iteration/`）
+- [ ] **用户可见功能均有对应 verify case 与矩阵登记（TG-1 规则，2026-08-31）**；缺失即不得关闭，须补 case 或说明豁免理由（经用户确认）
 
 ### 4.3 Sprint 文档模板
 
