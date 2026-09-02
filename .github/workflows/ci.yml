@@ -7,6 +7,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# 同 ref 连续 push 只跑最新（2026-08-31 用户决策：批量 push 节奏下防排队堆积）
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     name: Offline suite + builds (Windows)
