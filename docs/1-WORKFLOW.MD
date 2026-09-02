@@ -128,7 +128,7 @@
 
 ### 4.3 Sprint 文档模板
 
-见 `docs/iteration/sprint/_template-sprint.md`。关闭时把第 4.2 节的**项目管理与证据**板块填实。
+见 `docs/iteration/sprint/_template-sprint.md`（**仅 windows 分支维护**）。关闭时把第 4.2 节的**项目管理与证据**板块填实。
 
 ### 4.4 Sprint / Bug / 日常维护 的判定标准（2026-08-30 制度化）
 

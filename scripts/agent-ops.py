@@ -64,17 +64,18 @@ def _now() -> str:
 
 
 @contextlib.contextmanager
-def _registry_lock():
-    """账本互斥锁（M10，2026-08-31）：register/update/finish 的 load→mutate→save
-    全过程持锁，杜绝两个进程读同一快照后先后写回造成的 last-writer-wins 丢失更新。
-    锁文件 agents/runtime/.registry.lock（gitignore）。"""
-    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-    lock_path = RUNTIME_DIR / ".registry.lock"
+def _file_lock(lock_path: Path):
+    """通用文件互斥锁（M10/M9）：注册表与价表共用同一模式（msvcrt/fcntl 双平台）。
+    锁超时（~10s）以友好文案退出，不裸 traceback。"""
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
     with open(lock_path, "w") as fh:
-        if os.name == "nt":
-            msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
-        else:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        try:
+            if os.name == "nt":
+                msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        except OSError:
+            raise SystemExit(f"锁获取超时：{lock_path} 被另一进程占用（并发写账本/价表）——稍后重试") from None
         try:
             yield
         finally:
@@ -83,6 +84,22 @@ def _registry_lock():
                 msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
             else:
                 fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
+@contextlib.contextmanager
+def _registry_lock():
+    """账本互斥锁（M10，2026-08-31）：register/update/finish 的 load→mutate→save
+    全过程持锁，杜绝两个进程读同一快照后先后写回造成的 last-writer-wins 丢失更新。"""
+    with _file_lock(RUNTIME_DIR / ".registry.lock"):
+        yield
+
+
+@contextlib.contextmanager
+def _prices_lock():
+    """价表互斥锁（Sprint-14 二查 035）：prices-derive 与 fetch-prices --apply 对同一
+    prices.json 做 load→merge→save，必须同锁（否则 last-writer-wins 丢段落）。"""
+    with _file_lock(RUNTIME_DIR / ".prices.lock"):
+        yield
 
 
 def _with_registry_lock(fn):
@@ -146,6 +163,8 @@ def _prices_for(model: str) -> dict | None:
         return manual
     for prov in p.get("scraped", {}).values():
         if isinstance(prov, dict) and model in prov.get("models", {}):
+            # 注（035）：同名模型跨 provider 冲突时取首个命中；当前各 provider 模型名
+            # 带命名空间/前缀（deepseek/deepseek-v4-flash vs deepseek-v4-flash），无实际碰撞。
             return prov["models"][model]
     return p.get("auto", {}).get(model)
 
@@ -422,7 +441,9 @@ def _derive_prices(args: argparse.Namespace | None = None) -> None:
            "scraped": prices.get("scraped", {}),  # M9：派生不丢弃官网抓取段
            "meta": prices.get("meta", {"currency": "USD", "fx_usd_cny": 7.2})}
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-    PRICES_PATH.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    with _prices_lock():  # 035：与 fetch-prices --apply 互斥
+        # write_bytes：LF 字节写盘（1.47——文本模式在 Windows 会把 \n 翻成 \r\n）
+        PRICES_PATH.write_bytes(json.dumps(out, ensure_ascii=False, indent=2).encode("utf-8"))
     print(f"prices.json 已派生：auto={sorted(auto)} manual={sorted(out['manual'])}")
 
 

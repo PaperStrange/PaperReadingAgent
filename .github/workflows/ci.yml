@@ -85,7 +85,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 40
     env:
-      OPENAI_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      # 035：跑的是 verify_e2e.py（deepseek），直接设 DEEPSEEK_API_KEY（旧写法靠 provider_config
+      # 的 OPENAI_API_KEY 回退才生效，命名误导且脆弱）
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
     defaults:
       run:
         shell: pwsh

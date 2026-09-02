@@ -9,7 +9,7 @@
           "est_seconds": 10,        # 粗估运行时长
           "est_cost_cny": 0.0,      # 粗估单轮 API 成本（offline=0）
           "routes": ["/api/xxx"],   # 触达的后端路由（可空）
-          "requires": ["none | playwright | servers | keys"],  # 前置条件
+          "requires": ["none"],     # 前置条件列表（如 "playwright"/"servers"/"keys"）
       }
   JS（gui_check_*.mjs）:
       // VERIFY_META: {"features": "...", "tier": "gui", "providers": [], "est_seconds": 20, "est_cost_cny": 0, "routes": [], "requires": "playwright+servers"}
@@ -82,6 +82,8 @@ def validate_meta(path: Path, meta: dict) -> None:
         raise SystemExit(f"FAIL: {path.name} providers 必须是列表")
     if not isinstance(meta["routes"], list):
         raise SystemExit(f"FAIL: {path.name} routes 必须是列表")
+    if not isinstance(meta["requires"], list):
+        raise SystemExit(f"FAIL: {path.name} requires 必须是列表（前置条件集合）")
     if not isinstance(meta["features"], str):
         raise SystemExit(f"FAIL: {path.name} features 必须是字符串")
     if not isinstance(meta["est_seconds"], (int, float)):
@@ -149,6 +151,9 @@ def render_matrix(entries: list[tuple[Path, dict]]) -> str:
 
 
 def main() -> int:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")  # GBK 控制台不乱码（035）
     ap = argparse.ArgumentParser(description="TG-2 覆盖矩阵 derive/check")
     ap.add_argument("mode", choices=["derive", "check"])
     ap.add_argument("verify_dir", nargs="?", default=str(Path(__file__).parent))

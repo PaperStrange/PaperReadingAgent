@@ -10,7 +10,7 @@
       "task": {
         "trigger": "auto-detect: task input contains research-required keywords (see tech-research spec Trigger section) or an explicit research request",
         "inject": "research report is injected into the planning context BEFORE task decomposition",
-        "pre_research": "if the task matches a note in docs/iteration/pre-research/ (by its injection-guide keywords), inject that note as the tech-research 'context' input and into the planning context — recorded user decisions are the baseline; contradictions must be surfaced as reversal proposals, never silently switched (1-WORKFLOW.MD §4.4)",
+        "pre_research": "if the task matches a note in docs/iteration/pre-research/ (by its injection-guide keywords), inject that note as the tech-research 'context' input and into the planning context — recorded user decisions are the baseline; contradictions must be surfaced as reversal proposals, never silently switched (1-WORKFLOW.MD §4.4). The pre-research dir is windows-only: no notes on main = no-op injection there",
         "domain": "reserved per-domain routing (M15): default 'tech'; when the product/marketing discussion line starts, the user approves switching this step's spec to 'product-research'/'marketing-research' and the domain dir matching (docs/iteration/pre-research/<domain>/). One domain = one agent = one ledger role = one notes dir — never mix"
       },
       "condition": "research_required",

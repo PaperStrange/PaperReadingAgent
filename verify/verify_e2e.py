@@ -28,6 +28,7 @@ from e2e_common import (  # noqa: E402
     PORT,
     dump_log_tail,
     full_pipeline,
+    make_cfg,
     start_backend,
     stop_backend,
     wait_healthy,
@@ -35,14 +36,7 @@ from e2e_common import (  # noqa: E402
 )
 
 DEEP = get_provider_config("deepseek")
-CFG = {
-    "provider": "deepseek",
-    "api_key": DEEP["api_key"],
-    "api_base": DEEP["api_base"],
-    "model": DEEP["model"],
-    "vision_model": DEEP["vision_model"],
-    "embedding": DEEP["embedding"],
-}
+CFG = make_cfg(DEEP)
 
 
 async def main() -> int:

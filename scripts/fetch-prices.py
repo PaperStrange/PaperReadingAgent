@@ -14,16 +14,47 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import os
 import re
 import sys
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-AGENTS_BASE = Path(__import__("os").environ.get("AGENT_OPS_DIR", str(REPO_ROOT / "agents")))
+AGENTS_BASE = Path(os.environ.get("AGENT_OPS_DIR", str(REPO_ROOT / "agents")))
 PRICES_PATH = AGENTS_BASE / "runtime" / "prices.json"
+
+
+@contextlib.contextmanager
+def _prices_lock():
+    """价表互斥锁——与 scripts/agent-ops.py `_prices_lock` 同模式（保持同步）：
+    prices-derive 与 fetch-prices --apply 对同一 prices.json 做 load→merge→save，须同锁。"""
+    PRICES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = PRICES_PATH.parent / ".prices.lock"
+    with open(lock_path, "w") as fh:
+        try:
+            if os.name == "nt":
+                msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        except OSError:
+            raise SystemExit(f"锁获取超时：{lock_path} 被另一进程占用——稍后重试") from None
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 SOURCES = {
     "deepseek": "https://api-docs.deepseek.com/quick_start/pricing",
@@ -40,12 +71,44 @@ OPENROUTER_MODELS = [
 
 # 校验边界：单价（USD/token）必须在 (0, 0.02] 区间，防解析错位
 _PRICE_BOUND = 0.02
+# 响应体上限（OpenRouter 全模型表可达数 MB；防异常大响应）
+_MAX_BYTES = 20 * 1024 * 1024
+# 允许域（后缀匹配）：重定向目标与源域都必须在白名单内（035：逐跳复检）
+_ALLOW_DOMAINS = ("deepseek.com", "alibabacloud.com", "openrouter.ai")
+
+
+def _host_allowed(url: str) -> bool:
+    from urllib.parse import urlparse
+
+    p = urlparse(url)
+    if p.scheme != "https":
+        return False
+    host = (p.hostname or "").lower()
+    return any(host == d or host.endswith("." + d) for d in _ALLOW_DOMAINS)
+
+
+class _SafeRedirectHandler(urllib.request.HTTPSHandler):
+    """重定向逐跳复检：任一跳落到非 https 或白名单外域名 → 抛错（拒绝跟随）。"""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not _host_allowed(newurl):
+            raise ValueError(f"redirect to non-allowlisted target: {newurl}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 def _fetch(url: str, timeout: int = 30) -> str:
+    if not _host_allowed(url):
+        raise ValueError(f"non-allowlisted source: {url}")
+    opener = urllib.request.build_opener(_SafeRedirectHandler())
     req = urllib.request.Request(url, headers={"User-Agent": "agent-ops/fetch-prices"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
-        return resp.read().decode("utf-8", errors="replace")
+    with opener.open(req, timeout=timeout) as resp:  # noqa: S310
+        length = resp.headers.get("Content-Length")
+        if length and int(length) > _MAX_BYTES:
+            raise ValueError(f"response too large ({length} bytes > {_MAX_BYTES})")
+        body = resp.read(_MAX_BYTES + 1)
+        if len(body) > _MAX_BYTES:
+            raise ValueError("response exceeded size cap")
+        return body.decode("utf-8", errors="replace")
 
 
 def _valid(p: float) -> bool:
@@ -61,9 +124,15 @@ def _entry(inp: float, out: float, cache_read: float, cache_create: float) -> di
     }
 
 
+def _per1m(amounts: list[float], i: int) -> float:
+    """USD/1M → USD/token，round(10) 去浮点噪声（035）。"""
+    return round(amounts[i] / 1e6, 10)
+
+
 def parse_deepseek(html: str) -> dict:
     """deepseek 官方定价表：MODEL 表头 3 模型 × 6 价格行（hit/miss/output × off-peak/peak）。
-    取 **PEAK**（保守口径：预算上限决策用上界）。价格单位 USD/1M tokens。"""
+    取 **PEAK**（保守口径：预算上限决策用上界）。价格单位 USD/1M tokens。
+    注：HTML 正则解析有脆性，靠 `_valid` 边界兜底（越界模型整体跳过，fail-safe）。"""
     m = re.search(r"MODEL</td>(?:<td>(.*?)</td>){3}", html, re.S)
     if not m:
         return {}
@@ -74,14 +143,14 @@ def parse_deepseek(html: str) -> dict:
     amounts = [float(x) for x in re.findall(r"\$(\d+(?:\.\d+)?)", sec)]
     if len(amounts) < 18 or len(models) != 3:
         return {}
-    per1m = lambda i: amounts[i] / 1e6  # noqa: E731
     out = {}
     for j, name in enumerate(models):
-        hit_peak = per1m(3 + j)       # cache hit PEAK
-        miss_peak = per1m(9 + j)      # cache miss PEAK
-        out_peak = per1m(15 + j)      # output PEAK
+        hit_peak = _per1m(amounts, 3 + j)    # cache hit PEAK
+        miss_peak = _per1m(amounts, 9 + j)   # cache miss PEAK
+        out_peak = _per1m(amounts, 15 + j)   # output PEAK
         e = _entry(miss_peak, out_peak, hit_peak, miss_peak)
-        if all(_valid(x) for x in (e["input_cost_per_token"], e["output_cost_per_token"])):
+        if all(_valid(x) for x in (e["input_cost_per_token"], e["output_cost_per_token"],
+                                   e["cache_read_input_token_cost"], e["cache_creation_input_token_cost"])):
             out[name] = e
     return out
 
@@ -99,8 +168,8 @@ def parse_dashscope(html: str) -> dict:
         amounts = [float(x) for x in re.findall(r"\$(\d+(?:\.\d+)?)", m.group(0))]
         if not amounts:
             continue
-        inp = amounts[0] / 1e6
-        outp = (amounts[1] / 1e6) if len(amounts) > 1 else inp
+        inp = round(amounts[0] / 1e6, 10)
+        outp = round((amounts[1] / 1e6) if len(amounts) > 1 else inp, 10)
         if _valid(inp) and _valid(outp):
             out[token] = _entry(inp, outp, 0.0, inp)
     return out
@@ -118,8 +187,8 @@ def parse_openrouter(text: str) -> dict:
         if name not in OPENROUTER_MODELS:
             continue
         p = item.get("pricing", {}) or {}
-        inp = float(p.get("prompt") or 0)
-        outp = float(p.get("completion") or 0)
+        inp = round(float(p.get("prompt") or 0), 10)
+        outp = round(float(p.get("completion") or 0), 10)
         if _valid(inp) and _valid(outp):
             out[name] = _entry(inp, outp, 0.0, inp)
     return out
@@ -167,10 +236,11 @@ def main() -> int:
             print(f"[{prov}] FAIL: {type(exc).__name__}: {exc}")
 
     if args.apply:
-        existing = _load()
-        merged = merge(existing, scraped)
-        PRICES_PATH.parent.mkdir(parents=True, exist_ok=True)
-        PRICES_PATH.write_bytes(json.dumps(merged, ensure_ascii=False, indent=2).encode("utf-8"))
+        with _prices_lock():  # 035：与 agent-ops prices-derive 互斥（read-merge-write 全程持锁）
+            existing = _load()
+            merged = merge(existing, scraped)
+            PRICES_PATH.parent.mkdir(parents=True, exist_ok=True)
+            PRICES_PATH.write_bytes(json.dumps(merged, ensure_ascii=False, indent=2).encode("utf-8"))
         print(f"[written] {PRICES_PATH}（scraped providers: {sorted(scraped)}）")
         return 0
     print("--check 模式：未写盘。确认数字无误后运行 --apply")

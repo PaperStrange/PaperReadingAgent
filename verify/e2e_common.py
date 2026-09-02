@@ -39,13 +39,31 @@ def build_config_params(cfg: dict, paper_dir: Path, index_name: str) -> dict:
 
 
 def start_backend(backend_path: Path, server_log: Path, root: Path) -> subprocess.Popen:
-    return subprocess.Popen(
-        [sys.executable, str(backend_path)],
-        cwd=str(root),
-        stdout=open(server_log, "w", encoding="utf-8"),
-        stderr=subprocess.STDOUT,
-        env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
-    )
+    # 035：日志句柄在父进程侧关闭（子进程持自己的副本），避免测试生命周期内句柄泄漏
+    fh = open(server_log, "w", encoding="utf-8")
+    try:
+        return subprocess.Popen(
+            [sys.executable, str(backend_path)],
+            cwd=str(root),
+            stdout=fh,
+            stderr=subprocess.STDOUT,
+            env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
+        )
+    finally:
+        fh.close()
+
+
+def make_cfg(provider: dict) -> dict:
+    """由 get_provider_config() 返回值组装 e2e config 六键（provider 名由 provider_config 注入）。
+    三个入口脚本共用，消除 CFG/_cfg 复制粘贴（035 tech-debt）。"""
+    return {
+        "provider": provider["provider"],
+        "api_key": provider["api_key"],
+        "api_base": provider["api_base"],
+        "model": provider["model"],
+        "vision_model": provider["vision_model"],
+        "embedding": provider["embedding"],
+    }
 
 
 def wait_healthy(server: subprocess.Popen, server_log: Path) -> bool:
@@ -138,7 +156,9 @@ async def full_pipeline(
 ) -> str:
     """全新会话内跑完整 6 步：config→load_index→retrieve→parse_chunk_embed→evidence→answer。
     step 记录写入 sink；返回答案文本。"""
-    sid = (await client.post(f"{base}/api/new_session")).json()["session_id"]
+    resp = await client.post(f"{base}/api/new_session")
+    resp.raise_for_status()  # 035：先查状态码再取 json，500 错误页不被 JSON 解码掩盖
+    sid = resp.json()["session_id"]
     sink["session_id"] = sid
     print(f"[ok] session {sid}")
 

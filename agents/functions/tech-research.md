@@ -27,7 +27,7 @@ The orchestrator registers the run in the ledger (`tech-research@1.1.0`), dispat
 
 ```json
 {"question": "what to research, verbatim from the user",
- "context": "relevant repo state / decision history / constraints — MUST include any pre-research note from docs/iteration/pre-research/ matched to the question, with its recorded user decisions (v1.1.0, see Baseline Alignment)",
+ "context": "relevant repo state / decision history / constraints — MUST include any pre-research note from docs/iteration/pre-research/ (windows-only dir; none on main = nothing to inject) matched to the question, with its recorded user decisions (v1.1.0, see Baseline Alignment)",
  "depth": "quick | normal | deep (default normal)"}
 ```
 

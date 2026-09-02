@@ -37,6 +37,7 @@ from e2e_common import (  # noqa: E402
     build_config_params,
     dump_log_tail,
     full_pipeline,
+    make_cfg,
     start_backend,
     step,
     stop_backend,
@@ -46,17 +47,6 @@ from e2e_common import (  # noqa: E402
 
 OAI = get_provider_config("openai")
 DEEP = get_provider_config("deepseek")
-
-
-def _cfg(prov: dict) -> dict:
-    return {
-        "provider": prov["provider"],
-        "api_key": prov["api_key"],
-        "api_base": prov["api_base"],
-        "model": prov["model"],
-        "vision_model": prov["vision_model"],
-        "embedding": prov["embedding"],
-    }
 
 
 async def main() -> int:
@@ -86,7 +76,7 @@ async def main() -> int:
             answer = await full_pipeline(
                 client, base,
                 run_id="verify-e2e-openai",
-                cfg=_cfg(OAI),
+                cfg=make_cfg(OAI),
                 paper_dir=PAPER_DIR,
                 index_name="verify_e2e_openai_index",
                 question=QUESTION,
@@ -99,9 +89,9 @@ async def main() -> int:
                 print("\n== Phase 2: deepseek config then switch back to openai (key isolation) ==")
                 sid = (await client.post(f"{base}/api/new_session")).json()["session_id"]
                 await step(client, base, sid, "verify-e2e-openai", "config",
-                           build_config_params(_cfg(DEEP), PAPER_DIR, "verify_e2e_openai_index"))
+                           build_config_params(make_cfg(DEEP), PAPER_DIR, "verify_e2e_openai_index"))
                 await step(client, base, sid, "verify-e2e-openai", "config",
-                           build_config_params(_cfg(OAI), PAPER_DIR, "verify_e2e_openai_index"))
+                           build_config_params(make_cfg(OAI), PAPER_DIR, "verify_e2e_openai_index"))
                 ev2 = await step(client, base, sid, "verify-e2e-openai", "evidence", {"question": QUESTION})
                 ctx2 = ev2["output"].get("context_ids") or []
                 ans2 = await step(client, base, sid, "verify-e2e-openai", "answer", {})

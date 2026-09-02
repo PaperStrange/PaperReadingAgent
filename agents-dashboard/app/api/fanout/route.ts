@@ -25,6 +25,16 @@ function validateFanout(data: unknown): string | null {
         if (typeof s?.[field] !== "string")
           return `${key}[${i}].${field} 缺失或类型错误`;
       }
+      // Sprint-14 二查 035：补 task/tasks 结构断言——此前对称性（code-review 用 tasks、其余用 task）
+      // 与 task 载荷错误均无法被 dry-run/保存校验拦下
+      const taskOk =
+        (typeof s?.task === "object" && s.task !== null && !Array.isArray(s.task)) ||
+        (Array.isArray(s?.tasks) &&
+          (s.tasks as unknown[]).length > 0 &&
+          (s.tasks as Record<string, unknown>[]).every(
+            (t) => typeof t === "object" && t !== null && typeof t.target === "string",
+          ));
+      if (!taskOk) return `${key}[${i}] 缺 task(对象) 或 tasks(非空数组且每项含 target 字符串)`;
       if (orders[i] !== i + 1) return `${key}[${i}].order 应为 ${i + 1}（保持连续顺序）`;
     }
   }

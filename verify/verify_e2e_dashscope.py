@@ -31,6 +31,7 @@ from e2e_common import (  # noqa: E402
     PORT,
     dump_log_tail,
     full_pipeline,
+    make_cfg,
     start_backend,
     stop_backend,
     wait_healthy,
@@ -39,17 +40,6 @@ from e2e_common import (  # noqa: E402
 
 DS = get_provider_config("dashscope")
 DEEP = get_provider_config("deepseek")
-
-
-def _cfg(prov: dict) -> dict:
-    return {
-        "provider": prov["provider"],
-        "api_key": prov["api_key"],
-        "api_base": prov["api_base"],
-        "model": prov["model"],
-        "vision_model": prov["vision_model"],
-        "embedding": prov["embedding"],
-    }
 
 
 async def main() -> int:
@@ -83,7 +73,7 @@ async def main() -> int:
                 await full_pipeline(
                     client, base,
                     run_id=f"verify-e2e-{name}",
-                    cfg=_cfg(prov),
+                    cfg=make_cfg(prov),
                     paper_dir=PAPER_DIR,
                     index_name=idx,
                     question=QUESTION,
