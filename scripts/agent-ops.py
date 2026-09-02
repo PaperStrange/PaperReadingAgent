@@ -27,6 +27,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -35,6 +36,11 @@ import sys
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+
+if os.name == "nt":
+    import msvcrt  # Windows 文件锁（LK_LOCK/LK_UNLCK）
+else:
+    import fcntl  # POSIX 文件锁（flock）
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 # AGENT_OPS_DIR 环境变量可重定向账本根（verify 脚本用临时目录隔离；默认 agents）
@@ -55,6 +61,38 @@ _CHARS_PER_TOKEN = 4.0  # UC-4 兜底：无 token 上报时 tokens ≈ chars/4
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+@contextlib.contextmanager
+def _registry_lock():
+    """账本互斥锁（M10，2026-08-31）：register/update/finish 的 load→mutate→save
+    全过程持锁，杜绝两个进程读同一快照后先后写回造成的 last-writer-wins 丢失更新。
+    锁文件 agents/runtime/.registry.lock（gitignore）。"""
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    lock_path = RUNTIME_DIR / ".registry.lock"
+    with open(lock_path, "w") as fh:
+        if os.name == "nt":
+            msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
+def _with_registry_lock(fn):
+    """写命令装饰器：整条命令（含异常路径）都在锁内执行，异常自动释放锁。"""
+
+    def wrapper(args: argparse.Namespace):
+        with _registry_lock():
+            return fn(args)
+
+    return wrapper
 
 
 def _sha256(text: str) -> str:
@@ -143,6 +181,7 @@ def _estimate_cost(entry: dict) -> dict:
             "estimated": estimated, "pending_price": False, "model": model}
 
 
+@_with_registry_lock
 def cmd_register(args: argparse.Namespace) -> None:
     data = _load_registry()
     # review 修正（Sprint-8 三查）：显式 run_id 查重（_find_run 只命中第一条）
@@ -189,6 +228,7 @@ def _apply_usage(r: dict, args: argparse.Namespace) -> None:
             usage[val] = v
 
 
+@_with_registry_lock
 def cmd_update(args: argparse.Namespace) -> None:
     data = _load_registry()
     r = _find_run(data, args.run_id)
@@ -208,6 +248,7 @@ def cmd_update(args: argparse.Namespace) -> None:
     print(f"updated {args.run_id} (status={r['status']})")
 
 
+@_with_registry_lock
 def cmd_finish(args: argparse.Namespace) -> None:
     data = _load_registry()
     r = _find_run(data, args.run_id)
@@ -280,6 +321,12 @@ def cmd_validate_spec(args: argparse.Namespace) -> None:
     print(f"PASS: {p.name} frontmatter 合法（name={fm['name']} v{fm['version']}）")
 
 
+def _match_sha256(text: str, want_sha: str) -> bool:
+    """sha256 比对（M10，2026-08-31 抽出为纯函数：成功路径受 SSRF 防护无法离线走
+    网络，抽出后由 verify_agentops UC-11 进程内断言命中/失配两分支）。"""
+    return _sha256(text) == want_sha
+
+
 def cmd_fetch_spec(args: argparse.Namespace) -> None:
     """UC-2：依 source 块远程拉取（锁 ref + sha256 校验）；--offline 或失败 → 回退本地并告警。"""
     p = Path(args.spec_file)
@@ -325,7 +372,7 @@ def cmd_fetch_spec(args: argparse.Namespace) -> None:
     except Exception as exc:  # noqa: BLE001
         print(f"WARN: 拉取失败（{type(exc).__name__}: {exc}）→ 回退本地 spec {p.name}")
         return
-    if _sha256(remote) != want_sha:
+    if not _match_sha256(remote, want_sha):
         print(f"WARN: sha256 校验不符 → 回退本地 spec {p.name}")
         return
     print(f"OK: remote spec fetched & verified ({fetch_url} @ {ref or '?'})")

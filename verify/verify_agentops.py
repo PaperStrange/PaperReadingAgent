@@ -2,13 +2,14 @@
 
 覆盖用例：UC-1 spec frontmatter 校验 / UC-2 source 块远程引用回退 / UC-3 账本状态机 /
 UC-4 成本估算（价表 + chars/4 兜底 + pending_price）/ UC-5 报告输出模板解析 /
-UC-7 防双写完整性校验 / UC-9 自报上下文与成本覆盖 / UC-10 价表派生。
+UC-7 防双写完整性校验 / UC-9 自报上下文与成本覆盖 / UC-10 价表派生 /
+UC-11 fetch-spec sha256 命中/失配（M10）/ UC-12 账本并发锁无丢失更新（M10）。
 
 运行：.venv\\Scripts\\python.exe verify\\verify_agentops.py（纯离线，隔离到临时 AGENT_OPS_DIR）
 """
 
 from __future__ import annotations
-VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1~UC-10（离线）', 'tier': 'offline', 'providers': [], 'est_seconds': 5, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
+VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1~UC-12（离线；UC-11/12 为 M10 新增）', 'tier': 'offline', 'providers': [], 'est_seconds': 10, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
 
 import json
 import os
@@ -204,6 +205,36 @@ def main() -> int:
         levels = [x["level"] for x in parsed]
         ok("UC-5 报告解析", levels == ["critical", "major", "minor", "nit"], f"levels={levels}")
         ok("UC-5 file:line 位置保留", parsed[0]["where"] == "engine.py:202", f"where={parsed[0]['where']}")
+
+        # UC-11（M10）：fetch-spec sha256 命中/失配——成功路径受 SSRF 防护无法离线走网络，
+        # 比对逻辑已抽为 _match_sha256 纯函数，进程内断言两分支
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("agent_ops", CLI)
+        ao = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(ao)
+        ok("UC-11 sha256 命中", ao._match_sha256("remote-body", ao._sha256("remote-body")) is True)
+        ok("UC-11 sha256 失配", ao._match_sha256("remote-body", "abc") is False)
+
+        # UC-12（M10）：账本并发锁——6 个进程并发 register，无 last-writer-wins 丢失更新
+        procs = [
+            subprocess.Popen(
+                [sys.executable, str(CLI), "register", "--role", f"conc-{i}", "--task", "t",
+                 "--spec", "code-review@1.0.0", "--start"],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                encoding="utf-8", errors="replace", env=base_env,
+            )
+            for i in range(6)
+        ]
+        outs = [p.communicate(timeout=60)[0] for p in procs]
+        ok("UC-12 并发 register 全部成功",
+           all(p.returncode == 0 for p in procs),
+           "; ".join(o.strip()[-60:] for o in outs if "registered" not in o))
+        data12 = json.loads(registry.read_text(encoding="utf-8"))
+        conc = [r for r in data12["runs"] if r["role"].startswith("conc-")]
+        ok("UC-12 无丢失更新（6/6 在账）", len(conc) == 6, f"found {len(conc)}")
+        r = run(["list"], base_env, check=True)
+        ok("UC-12 并发后完整性有效", r.returncode == 0, "list 加载通过完整性校验")
 
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))
