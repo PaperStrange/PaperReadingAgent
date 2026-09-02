@@ -24,6 +24,92 @@
   },
   "meta": {
     "currency": "USD",
-    "fx_usd_cny": 7.2
+    "fx_usd_cny": 7.2,
+    "scraped_at": "2026-09-02T16:05:02+00:00",
+    "scraped_sources": {
+      "deepseek": "https://api-docs.deepseek.com/quick_start/pricing",
+      "dashscope": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+      "openrouter": "https://openrouter.ai/api/v1/models"
+    }
+  },
+  "scraped": {
+    "deepseek": {
+      "models": {
+        "deepseek-v4-flash": {
+          "input_cost_per_token": 4.4e-07,
+          "output_cost_per_token": 1.32e-06,
+          "cache_read_input_token_cost": 1.4e-08,
+          "cache_creation_input_token_cost": 4.4e-07
+        },
+        "deepseek-v4-pro": {
+          "input_cost_per_token": 1.32e-06,
+          "output_cost_per_token": 3.96e-06,
+          "cache_read_input_token_cost": 4.4e-08,
+          "cache_creation_input_token_cost": 1.32e-06
+        },
+        "deepseek-v4-flash-vision-exp": {
+          "input_cost_per_token": 4.4e-07,
+          "output_cost_per_token": 1.32e-06,
+          "cache_read_input_token_cost": 1.4e-08,
+          "cache_creation_input_token_cost": 4.4e-07
+        }
+      }
+    },
+    "dashscope": {
+      "models": {
+        "qwen-omni-turbo": {
+          "input_cost_per_token": 7e-08,
+          "output_cost_per_token": 4.440000000000001e-06,
+          "cache_read_input_token_cost": 0.0,
+          "cache_creation_input_token_cost": 7e-08
+        },
+        "qwen3-max": {
+          "input_cost_per_token": 1.2e-06,
+          "output_cost_per_token": 6e-06,
+          "cache_read_input_token_cost": 0.0,
+          "cache_creation_input_token_cost": 1.2e-06
+        },
+        "text-embedding-v3": {
+          "input_cost_per_token": 7e-08,
+          "output_cost_per_token": 7e-08,
+          "cache_read_input_token_cost": 0.0,
+          "cache_creation_input_token_cost": 7e-08
+        }
+      }
+    },
+    "openrouter": {
+      "models": {
+        "deepseek/deepseek-v4-flash-vision-exp": {
+          "input_cost_per_token": 2.2e-07,
+          "output_cost_per_token": 6.6e-07,
+          "cache_read_input_token_cost": 0.0,
+          "cache_creation_input_token_cost": 2.2e-07
+        },
+        "deepseek/deepseek-v4-pro": {
+          "input_cost_per_token": 1.034256e-06,
+          "output_cost_per_token": 2.068512e-06,
+          "cache_read_input_token_cost": 0.0,
+          "cache_creation_input_token_cost": 1.034256e-06
+        },
+        "deepseek/deepseek-v4-flash": {
+          "input_cost_per_token": 8.554e-08,
+          "output_cost_per_token": 1.7108e-07,
+          "cache_read_input_token_cost": 0.0,
+          "cache_creation_input_token_cost": 8.554e-08
+        },
+        "qwen/qwen3-max": {
+          "input_cost_per_token": 7.8e-07,
+          "output_cost_per_token": 3.9e-06,
+          "cache_read_input_token_cost": 0.0,
+          "cache_creation_input_token_cost": 7.8e-07
+        },
+        "openai/gpt-4o-mini": {
+          "input_cost_per_token": 1.5e-07,
+          "output_cost_per_token": 6e-07,
+          "cache_read_input_token_cost": 0.0,
+          "cache_creation_input_token_cost": 1.5e-07
+        }
+      }
+    }
   }
 }
