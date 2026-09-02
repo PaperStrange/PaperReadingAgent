@@ -29,7 +29,7 @@
 | M6 | 文档/知识管理例行勘误（随三查进行） | 1 | 持续 | Sprint-7 | 本轮勘误：verify/README 表格列数错位、README/1-WORKFLOW 清单补全、4-ALGORITHM 行号锚点漂移等 |
 | M7 | 默认值漂移收敛：chunk/temperature 等默认值在 config_schema/App.jsx/provider_config/engine 重复 4 处（唯一真源原则） | 3 | 计划中（并入 F2 阶段 A = Sprint-11 US-11.2） | Sprint-7 全量 review | 与 F2（SSOT 驱动前端）同源，已并入 F2 |
 | M8 | remote_resolver SSRF DNS rebinding TOCTOU 强化（解析后 IP 复检） | 2 | 候选 | Sprint-7 全量 review | 理论性；现状已有逐跳重定向复检 + 内网段拒绝 |
-| M9 | 价表人工覆盖段填充（deepseek/qwen/openrouter 单价）——原 agents-infra A-M1 迁入 | 1 | 候选 | 阶段 1 预研 | **需用户提供服务商真实单价**；填后看板成本口径完整 |
+| M9 | 价表填充改自动化：按 provider 官网**固定 URL 抓取单价** + `prices.json` 更新 + 定时刷新机制——原 agents-infra A-M1 迁入 | 1 | **计划中（底座批次 ⑦，F2 验收通过后开工）** | 阶段 1 预研 / 用户 2026-08-31 | 用户已验证官网详情页+文档可固定 URL 直接访问抓取；填后看板成本口径完整 |
 | M10 | fetch-spec 成功路径测试（sha256 命中/失配）+ 账本并发锁——原 agents-infra A-M4 迁入 | 2 | **计划中（底座批次 ⑤，F2 验收通过后开工）** | Sprint-8 二查 nit | |
 | M11 | 三查执行器 agent 固化（fan-out 自动派发 + 账本登记 + 分诊）——原 agents-infra A-PM1 迁入（备选） | 3 | 候选（备选） | 用户 2026-08-30 | fanout.json 已为可调配置，固化执行器属演进项 |
 | M12 | Sprint 文档模板生成 agent（planning→燃尽→Retro 自动起草）——原 agents-infra A-PM2 迁入（备选） | 2 | 候选（备选） | 用户 2026-08-30 | |
