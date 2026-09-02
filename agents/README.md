@@ -17,7 +17,7 @@
 
 - 同一职能对多个 target 各跑一次任务（如三查时 code-review 跑 windows+main 两任务），分支/PR 只是任务参数。
 - **调研前置（用户要求 2026-08-30）**：任务输入含调研要求（research/调研/选型/对比/评估/最佳实践等关键词，完整规则见 tech-research spec Trigger 节）时，**先自动跑 tech-research 深度调研**（不是几个网页搜索就下结论），把调研报告注入上下文，**再开始规划任务**；流程定义在 [`fanout.json`](fanout.json) 的 `planning_pipeline`。
-- **预研上下文传递（用户建议 2026-08-31，fanout v3 / tech-research v1.1.0）**：`docs/iteration/pre-research/`（仅 windows 分支）的预研笔记含用户决策记录；planning 时任务命中笔记 → 笔记作为 tech-research `context` 注入，既定决策为基线，矛盾以"翻案建议"交用户裁决（规则见 `1-WORKFLOW.MD` §4.4）。
+- **预研上下文传递（用户建议 2026-08-31，fanout v4 / tech-research v1.1.0）**：`docs/iteration/pre-research/`（仅 windows 分支）的预研笔记含用户决策记录；planning 时任务命中笔记 → 笔记作为 tech-research `context` 注入，既定决策为基线，矛盾以"翻案建议"交用户裁决（规则见 `1-WORKFLOW.MD` §4.4）。
 - **审查范围不得默认收窄到 Sprint 交付物**：一律先由 impact-assessment 评估——composite>50 → 全量档（整个代码库）；≤50 → 窄档（Sprint 修改文件 ∪ 核心文件区域），recommended_scope 作为 code-review/doc-audit 的 `scope` 入参。
 - **fan-out 顺序与运行条件（可调配置）**：Sprint 关闭流程五步定义在 [`fanout.json`](fanout.json) 的 `sprint_close_pipeline`——`scope → doc-audit → code-review → lessons-learned → workspace-check`（条件/顺序/执行者可调）；用户可通过看板观察各 agent 对开发部署进度的影响并**随时调整顺序与运行判断条件**（1-WORKFLOW §4.1）。
 - 新增职能：复制 [`functions/_template-agent.md`](functions/_template-agent.md)（frontmatter 超集 + 五段式 + 可配置参数 + 输出模板，英文），升 `version`，跑 `agent-ops validate-spec` 后上线。
@@ -26,14 +26,15 @@
 
 ```powershell
 # 一个子代理 run 的完整生命周期（任何编排方/IDE terminal 都能执行）：
-.\.venv\Scripts\python.exe .\scripts\agent-ops.py register --role code-review --task branch:windows --spec "code-review@1.1.0" --model deepseek-v4-flash --start
+.\.venv\Scripts\python.exe .\scripts\agent-ops.py register --role code-review --task branch:windows --spec "code-review@1.2.0" --model deepseek-v4-flash --start
 .\.venv\Scripts\python.exe .\scripts\agent-ops.py finish <run_id> --status succeeded --usage-in 10000 --usage-out 2000 --output-chars 3000 --result-file path/to/report.md
 .\.venv\Scripts\python.exe .\scripts\agent-ops.py list --role code-review
 ```
 
-- 账本 = 文件真相源：`runtime/registry.json`（append + sha256 完整性校验，手改即拒——防双写；**本地实时态，gitignore 不入库**）；`runs/<run_id>/<role>.report.md` 为报告存档（memory 浏览入口，**本地留证不入库**）；`runtime/prices.json` 为价表（auto 段由 litellm 价表派生，manual 段人工覆盖且**非 null 时优先于 auto**，`null` = 待填价 → 估算标 `pending_price`，**配置文件，入库**）。
+- 账本 = 文件真相源：`runtime/registry.json`（append + sha256 完整性校验，手改即拒——防双写；**本地实时态，gitignore 不入库**）；`runs/<run_id>/<role>.report.md` 为报告存档（memory 浏览入口，**本地留证不入库**）；`runtime/prices.json` 为价表（auto 段由 litellm 价表派生，manual 段人工覆盖，scraped 段官网抓取——**优先级 manual（非 null）> scraped > auto**；`null` = 待填价 → 估算标 `pending_price`，**配置文件，入库**）。
 - 成本估算：`usage × 单价`（含 cache 分列）；无 usage 时 `chars/4` 兜底并标 `estimated`；**单位 = CNY（用户决策 2026-08-30）**——价表单价为 USD/token，按 `prices.json meta.fx_usd_cny`（默认 7.2，可人工改）换算；口径 = **自报+估算**，精确账单以服务商后台为准。
-- 其余子命令：`update`（进入 running + 补 usage）、`validate-spec`（spec frontmatter 校验）、`fetch-spec`（source 块远程拉取：url+ref+sha256 校验、仅 http/https 且拒绝私网/保留地址，失败/`--offline` 回退本地）、`parse-report`（critical/major/minor/nit 结构化，位置含 file:line）、`prices-derive`（价表再派生，保留 manual）。
+- 其余子命令：`update`（进入 running + 补 usage）、`validate-spec`（spec frontmatter 校验）、`fetch-spec`（source 块远程拉取：url+ref+sha256 校验、仅 http/https 且拒绝私网/保留地址，失败/`--offline` 回退本地）、`parse-report`（critical/major/minor/nit 结构化，位置含 file:line）、`prices-derive`（价表再派生，保留 manual 与 scraped）。
+- **价表官网抓取（M9，2026-08-31）**：`python scripts/fetch-prices.py --check|--apply`——固定 URL 抓取 deepseek 官方定价页 / 阿里云百炼（dashscope）/ OpenRouter JSON API，写入 `prices.json` 的 **scraped** 段（manual 永不被覆盖；`--check` 只打印不写盘）；定时更新默认**两周一次**，与 F-AC8（provider_config 更新）共用调度底座（见 `docs/iteration/pre-research/2026-08-31-domain-governance.MD` §6）。
 - **run-id 日期口径**：`register` 自动生成的 run-id 日期取**本机时钟**；本机时钟偏移时（开发机曾 +09:00 且快约 13h），编排方必须用**网络时间（UTC+8）显式传 `--run-id`**（用户政策：时间以网络时间为准）。
 
 ## 3. 跨 IDE / 编排方迁移说明

@@ -1,3 +1,4 @@
+// VERIFY_META: {"features": "GUI 远程数据源：remote+arXiv → Run All → 截图", "tier": "gui", "providers": [], "est_seconds": 180, "est_cost_cny": 0, "routes": ["/api/new_session", "/api/run_step", "/api/stream/{session_id}/{run_id}", "/api/session_records/{session_id}", "/api/reset_session"], "requires": ["playwright", "servers", "network"]}
 // GUI 远程数据源检查（US-3.4/US-3.5 证据）：Config 面板切 remote + arXiv → Run All → 截图
 // 前提：后端 8787 / 前端 5173 已启动：node verify\gui_check_remote.mjs
 import { createRequire } from "module";

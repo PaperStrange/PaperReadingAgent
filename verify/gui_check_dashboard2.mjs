@@ -1,3 +1,4 @@
+// VERIFY_META: {"features": "看板 spec 编辑器打开态截图", "tier": "gui", "providers": [], "est_seconds": 20, "est_cost_cny": 0, "routes": [], "requires": ["playwright", "dashboard"]}
 // 补拍：spec 编辑器打开状态截图
 import { createRequire } from "module";
 import path from "path";

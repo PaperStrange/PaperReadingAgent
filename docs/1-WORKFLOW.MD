@@ -45,6 +45,11 @@
 - 约定：`windows` / `mac` 各自改动后，通过 **Pull Request 合并到 `main`**；每类工作一个提交，提交信息用 `type: 说明`（如 `fix:` / `docs:` / `feat:`）。
 - **PR 工具**：创建/更新/合并 PR 一律用 `scripts\github-pr.ps1`（create/patch/merge/get 子命令，UTF-8 安全）。**禁止**直接用 `Invoke-RestMethod` 传中文字符串 Body（PS 5.1 会按 GBK 编码 → GitHub 乱码，见 `3-LEARNED.MD` 1.18）。**（Windows-only；mac 侧等价用 `gh pr create/patch/merge` 或 Web UI，中文 Body 注意 UTF-8。）**
 - **分支保护（2026-08-30，A-M10）**：`main` 已启用保护——**必须经 PR 合并**（直推拒绝）、必需状态检查 = CI「Offline suite + builds (Windows)」（未绿时 API 合并会被拒，等 CI 转绿再 merge）、禁止 force push / 删除、enforce_admins 开启。`windows`/`mac` 不保护（工作分支允许历史整理）。
+- **同步节奏（2026-08-31 用户决策定稿，含 push 与 PR 两层）**：
+  1. **本地 commit**：按逻辑单元（卡/子步骤）提交，信息 `type: 说明`；commit 不触发任何远程动作；
+  2. **push windows 节奏**：**会话结束 + 里程碑（卡/阶段完成、流程确认）批量 push**，不逐卡 push；风险操作（切分支/rebase）前或长时间离开前 push 兜底备份；push 前先本地跑受影响的最小检查；
+  3. **windows CI 状态口径**：允许中途红（WIP 状态），但 **Sprint 关闭前必须绿**；连续红不修 → 暂停开新卡；CI 已加 `concurrency` 去重（同 ref 连续 push 只跑最新，防排队堆积）；
+  4. **PR main**：Sprint 关闭（三查通过）后**统一批量提交**，不逐卡 PR——main 只接收"已验证的里程碑快照"（1.45：先合门、后 ✅），减少 CI/评审噪音并保持 main 状态一致；**例外①** Blocker/Critical 或安全修复可即时同步（先修后补 sprint 记录）；**例外②** 跨 sprint 长任务可在**天然里程碑（阶段完成）**时补一次 PR（该阶段产物仍须三查）。
 
 ## 4. Sprint（迭代）项目管理与关闭标准
 
@@ -82,7 +87,7 @@
 |---|---|---|---|
 | 〇查 范围 | **影响范围评估**（fan-out 第一道闸门） | 变更模块归类 → A（13 项核心功能触达）/B（10 条路由触达）→ composite（阈值 X=50）→ 两档 recommended_scope | 子代理 `functions/impact-assessment.md` × 1 任务 |
 | 一查 文档 | 文档一致性审计（范围 = 〇查 recommended_scope） | 死链/陈旧事实/跨文档矛盾/缺失知识；**4-ALGORITHM.MD 逐条对照代码**（其 §12 防漂移清单） | 子代理 `functions/doc-audit.md` × 1 任务（target=working-tree，scope 入参） |
-| 二查 代码 | windows + main 双分支 code review（范围 = 〇查 recommended_scope） | 正确性/安全/SSOT/兼容性/架构分层；main 侧重合并完整性与悬空引用 | 子代理 `functions/code-review.md` × 2 任务（target=branch:windows、branch:main 并行，scope 入参） |
+| 二查 代码 | windows + main 双分支 code review（范围 = 〇查 recommended_scope） | 正确性/安全/SSOT/兼容性/架构分层；main 侧重合并完整性与悬空引用；**功能-测试配对核查（TG-1，2026-08-31）**：用户可见功能（节点/路由/数据源/provider/表单字段）必须同 PR 交付对应 verify case（离线断言或联网 e2e/GUI check），并在覆盖矩阵登记（TG-2 落地后） | 子代理 `functions/code-review.md` × 2 任务（target=branch:windows、branch:main 并行，scope 入参） |
 | 三查 环境 | 工作区与功能完整性 | `git status` 零残留、本地已合并分支清理、.gitignore 覆盖、端口卫生、回归（smoke/e2e/新增端点/GUI）全绿 | **主代理** `functions/workspace-check.md`（起服务/杀进程不子代理化） |
 
 > 经验教训总结（lessons-learned）为 fan-out 五步第 4 步（在一查/二查之后、三查环境核验之前执行），见 §4.1 与 `agents/fanout.json`；不入上表（三查固定动作之外的关闭前置步骤）。
@@ -97,6 +102,7 @@
 | 🖼️ 运行/接口输出 | 后端 API 返回、`verify_*.py` 实测输出（时间/状态/样本）、日志 tail |
 | 🖼️ 命令与产物 | `npm run build`、pytest / e2e 结果、生成的报告 |
 | 📝 验收用例 | 对应 Backlog US-* 的验收标准逐条说明，标注通过/未通过 |
+| 📝 功能-测试配对（TG-1） | 每个用户可见功能（节点/路由/数据源/provider/表单字段）列出对应 verify case 与覆盖矩阵登记 |
 | 📝 理由/权衡 | 为什么这么做、关键取舍、为什么不采用其它方案、局限 |
 | 📝 边界与回归 | 受影响面、是否破坏既有功能、（可选）回归验证结果 |
 
@@ -118,10 +124,11 @@
 - [ ] sprint 文档已入库并随分支同步到 `docs/iteration/sprint/`
 - [ ] **三查已完成且发现项闭环**（文档/双分支 code review/工作区与功能完整性），结论写入 Sprint 文档
 - [ ] 决策逻辑变更已同步 `4-ALGORITHM.MD` 并核对 §12；windows 已 PR 同步 main（不含 `docs/iteration/`）
+- [ ] **用户可见功能均有对应 verify case 与矩阵登记（TG-1 规则，2026-08-31）**；缺失即不得关闭，须补 case 或说明豁免理由（经用户确认）
 
 ### 4.3 Sprint 文档模板
 
-见 `docs/iteration/sprint/_template-sprint.md`。关闭时把第 4.2 节的**项目管理与证据**板块填实。
+见 `docs/iteration/sprint/_template-sprint.md`（**仅 windows 分支维护**）。关闭时把第 4.2 节的**项目管理与证据**板块填实。
 
 ### 4.4 Sprint / Bug / 日常维护 的判定标准（2026-08-30 制度化）
 
@@ -209,6 +216,7 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 .\.venv\Scripts\python.exe .\verify\verify_prune_callbacks.py   # litellm 回调裁剪（离线）
 .\.venv\Scripts\python.exe .\verify\verify_agentops.py          # AgentOps 账本 CLI 用例断言（离线）
 .\.venv\Scripts\python.exe .\verify\verify_config_schema.py     # 配置 SSOT 一致性 + M7 零硬编码 + Settings 升级基线（离线）
+.\.venv\Scripts\python.exe .\verify\verify_matrix.py check      # 覆盖矩阵防漂移（离线；改动脚本元数据后先 derive）
 .\.venv\Scripts\python.exe .\verify\verify_index_health.py      # 索引三重探针 + 自愈（离线）
 .\.venv\Scripts\python.exe .\verify\verify_provider_switch.py   # 服务商切换/路由实证（联网）
 .\.venv\Scripts\python.exe .\verify\verify_e2e.py               # 全链路（真实 API）

@@ -1,4 +1,6 @@
 """验证 parse_chunk_embed 的 载入(load)/重新生成(regen)/缓存 逻辑。"""
+VERIFY_META = {'features': 'parse_chunk_embed 三种模式：run/load 同会话/load 新会话（embed 缓存）', 'tier': 'network', 'providers': ['deepseek'], 'est_seconds': 90, 'est_cost_cny': 0.3, 'routes': ['/api/run_step'], 'requires': ['keys', 'network']}
+
 import asyncio
 import json
 import os
