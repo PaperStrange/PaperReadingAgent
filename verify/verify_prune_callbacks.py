@@ -5,7 +5,9 @@
 非法值回落 20；>30 钳制到 30，防止自拆 litellm MAX_CALLBACKS 防护）。
 运行：.venv\\Scripts\\python.exe verify\\verify_prune_callbacks.py
 """
+
 from __future__ import annotations
+VERIFY_META = {'features': 'litellm 回调裁剪：上限 env 可配 + 非法值回落 + 钳制（离线）', 'tier': 'offline', 'providers': [], 'est_seconds': 2, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
 
 import os
 import sys

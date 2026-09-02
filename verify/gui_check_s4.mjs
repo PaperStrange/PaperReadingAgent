@@ -1,3 +1,4 @@
+// VERIFY_META: {"features": "光标三断言（插入/位置/连续编辑）+ provider 联动四断言", "tier": "gui", "providers": [], "est_seconds": 30, "est_cost_cny": 0, "routes": [], "requires": ["playwright", "servers"]}
 // Sprint-4 GUI 验证（US-4.1 光标 / US-4.5 provider 联动）
 import { createRequire } from "module";
 import path from "path";

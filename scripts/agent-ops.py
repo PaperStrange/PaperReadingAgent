@@ -27,6 +27,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -35,6 +36,11 @@ import sys
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+
+if os.name == "nt":
+    import msvcrt  # Windows 文件锁（LK_LOCK/LK_UNLCK）
+else:
+    import fcntl  # POSIX 文件锁（flock）
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 # AGENT_OPS_DIR 环境变量可重定向账本根（verify 脚本用临时目录隔离；默认 agents）
@@ -55,6 +61,55 @@ _CHARS_PER_TOKEN = 4.0  # UC-4 兜底：无 token 上报时 tokens ≈ chars/4
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+@contextlib.contextmanager
+def _file_lock(lock_path: Path):
+    """通用文件互斥锁（M10/M9）：注册表与价表共用同一模式（msvcrt/fcntl 双平台）。
+    锁超时（~10s）以友好文案退出，不裸 traceback。"""
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "w") as fh:
+        try:
+            if os.name == "nt":
+                msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        except OSError:
+            raise SystemExit(f"锁获取超时：{lock_path} 被另一进程占用（并发写账本/价表）——稍后重试") from None
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
+@contextlib.contextmanager
+def _registry_lock():
+    """账本互斥锁（M10，2026-08-31）：register/update/finish 的 load→mutate→save
+    全过程持锁，杜绝两个进程读同一快照后先后写回造成的 last-writer-wins 丢失更新。"""
+    with _file_lock(RUNTIME_DIR / ".registry.lock"):
+        yield
+
+
+@contextlib.contextmanager
+def _prices_lock():
+    """价表互斥锁（Sprint-14 二查 035）：prices-derive 与 fetch-prices --apply 对同一
+    prices.json 做 load→merge→save，必须同锁（否则 last-writer-wins 丢段落）。"""
+    with _file_lock(RUNTIME_DIR / ".prices.lock"):
+        yield
+
+
+def _with_registry_lock(fn):
+    """写命令装饰器：整条命令（含异常路径）都在锁内执行，异常自动释放锁。"""
+
+    def wrapper(args: argparse.Namespace):
+        with _registry_lock():
+            return fn(args)
+
+    return wrapper
 
 
 def _sha256(text: str) -> str:
@@ -99,11 +154,18 @@ def _load_prices() -> dict:
 
 
 def _prices_for(model: str) -> dict | None:
-    """review 修正（Sprint-8 三查）：manual 非 null 时**覆盖** auto（README 契约），auto 为兜底。"""
+    """review 修正（Sprint-8 三查）：manual 非 null 时**覆盖** auto（README 契约），auto 为兜底。
+    M9（2026-08-31）：新增 scraped 段（官网固定 URL 抓取，fetch-prices.py）——
+    优先级 manual（非 null）> scraped > auto；manual 永不被抓取覆盖。"""
     p = _load_prices()
     manual = p.get("manual", {}).get(model)
     if manual:  # 非 null 的人工价优先
         return manual
+    for prov in p.get("scraped", {}).values():
+        if isinstance(prov, dict) and model in prov.get("models", {}):
+            # 注（035）：同名模型跨 provider 冲突时取首个命中；当前各 provider 模型名
+            # 带命名空间/前缀（deepseek/deepseek-v4-flash vs deepseek-v4-flash），无实际碰撞。
+            return prov["models"][model]
     return p.get("auto", {}).get(model)
 
 
@@ -143,6 +205,7 @@ def _estimate_cost(entry: dict) -> dict:
             "estimated": estimated, "pending_price": False, "model": model}
 
 
+@_with_registry_lock
 def cmd_register(args: argparse.Namespace) -> None:
     data = _load_registry()
     # review 修正（Sprint-8 三查）：显式 run_id 查重（_find_run 只命中第一条）
@@ -189,6 +252,7 @@ def _apply_usage(r: dict, args: argparse.Namespace) -> None:
             usage[val] = v
 
 
+@_with_registry_lock
 def cmd_update(args: argparse.Namespace) -> None:
     data = _load_registry()
     r = _find_run(data, args.run_id)
@@ -208,6 +272,7 @@ def cmd_update(args: argparse.Namespace) -> None:
     print(f"updated {args.run_id} (status={r['status']})")
 
 
+@_with_registry_lock
 def cmd_finish(args: argparse.Namespace) -> None:
     data = _load_registry()
     r = _find_run(data, args.run_id)
@@ -280,6 +345,12 @@ def cmd_validate_spec(args: argparse.Namespace) -> None:
     print(f"PASS: {p.name} frontmatter 合法（name={fm['name']} v{fm['version']}）")
 
 
+def _match_sha256(text: str, want_sha: str) -> bool:
+    """sha256 比对（M10，2026-08-31 抽出为纯函数：成功路径受 SSRF 防护无法离线走
+    网络，抽出后由 verify_agentops UC-11 进程内断言命中/失配两分支）。"""
+    return _sha256(text) == want_sha
+
+
 def cmd_fetch_spec(args: argparse.Namespace) -> None:
     """UC-2：依 source 块远程拉取（锁 ref + sha256 校验）；--offline 或失败 → 回退本地并告警。"""
     p = Path(args.spec_file)
@@ -325,7 +396,7 @@ def cmd_fetch_spec(args: argparse.Namespace) -> None:
     except Exception as exc:  # noqa: BLE001
         print(f"WARN: 拉取失败（{type(exc).__name__}: {exc}）→ 回退本地 spec {p.name}")
         return
-    if _sha256(remote) != want_sha:
+    if not _match_sha256(remote, want_sha):
         print(f"WARN: sha256 校验不符 → 回退本地 spec {p.name}")
         return
     print(f"OK: remote spec fetched & verified ({fetch_url} @ {ref or '?'})")
@@ -367,9 +438,12 @@ def _derive_prices(args: argparse.Namespace | None = None) -> None:
     else:
         print("WARN: 未找到 litellm 价表，仅保留人工覆盖段")
     out = {"auto": auto, "manual": prices.get("manual", {}),
+           "scraped": prices.get("scraped", {}),  # M9：派生不丢弃官网抓取段
            "meta": prices.get("meta", {"currency": "USD", "fx_usd_cny": 7.2})}
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-    PRICES_PATH.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    with _prices_lock():  # 035：与 fetch-prices --apply 互斥
+        # write_bytes：LF 字节写盘（1.47——文本模式在 Windows 会把 \n 翻成 \r\n）
+        PRICES_PATH.write_bytes(json.dumps(out, ensure_ascii=False, indent=2).encode("utf-8"))
     print(f"prices.json 已派生：auto={sorted(auto)} manual={sorted(out['manual'])}")
 
 

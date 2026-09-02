@@ -1,3 +1,4 @@
+// VERIFY_META: {"features": "Config schema 清单/全字段表单截图 + 字段级校验 + defaults-derived-from-schema 断言", "tier": "gui", "providers": [], "est_seconds": 60, "est_cost_cny": 0, "routes": ["/api/config_schema", "/api/config/validate"], "requires": ["playwright", "servers"]}
 // Sprint-12（F2 阶段 B）Config 节点全字段表单截图 + 字段级校验证据。
 // 前提：后端 8787（/api/config_schema + /api/config/validate 就绪）、前端 5173 已启动；playwright 取前端 node_modules。
 import { createRequire } from "module";

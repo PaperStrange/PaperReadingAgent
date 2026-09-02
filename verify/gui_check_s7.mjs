@@ -1,3 +1,4 @@
+// VERIFY_META: {"features": "多节点并发计时显示 + 完成后冻结", "tier": "gui", "providers": [], "est_seconds": 60, "est_cost_cny": 0, "routes": [], "requires": ["playwright", "servers"]}
 // Sprint-7 M4 关闭证据脚本（可复现）：多节点并发计时显示 + 完成后冻结。
 // 场景：预热 config/load_index/parse 后，并发跑 evidence + parse(regen)（双双慢、互不依赖）——
 // subcanvas 计时应出现纯双运行中（"evidence X.Xs · parse_chunk_embed Y.Ys"），

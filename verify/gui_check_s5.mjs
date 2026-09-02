@@ -1,3 +1,4 @@
+// VERIFY_META: {"features": "自动重跑 config / retrieve 双模式标记 / 复制报错按钮 / 计时冻结", "tier": "gui", "providers": [], "est_seconds": 40, "est_cost_cny": 0, "routes": [], "requires": ["playwright", "servers"]}
 // Sprint-5 关闭证据脚本（可复现）：US-5.1 自动重跑 config / US-5.2 双模式标记 /
 // US-5.3 复制报错按钮与计时冻结。前提：后端 8787 + 前端 5173 已启动。
 import { createRequire } from "module";

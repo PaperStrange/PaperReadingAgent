@@ -21,10 +21,17 @@ You are the **lessons-learned distiller** (mandatory sprint-close pre-step). Dis
 # Task Input (provided by the orchestrator per run)
 
 ```json
-{"sprint_doc": "path to docs/iteration/sprint/<date>-sprint-N.md",
+{"sprint_doc": "path to docs/iteration/sprint/<date>-sprint-N.md (windows-only dir; none on main = only 3-LEARNED distillation applies)",
  "change_commits": "this round's commit list",
  "existing_lessons": "docs/3-LEARNED.MD (read automatically)"}
 ```
+
+# Configurable Parameters (edit point: adjust only this section and the corresponding lists, never the body rules)
+
+| Parameter | Current value | Meaning |
+|---|---|---|
+| `max_entries` | 3 | hard cap on candidate lessons per round ("better none than padding") |
+| `bold_rule_required` | true | every lesson must end with one bolded executable rule/check |
 
 # Steps
 

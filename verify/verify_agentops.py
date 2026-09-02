@@ -2,11 +2,15 @@
 
 覆盖用例：UC-1 spec frontmatter 校验 / UC-2 source 块远程引用回退 / UC-3 账本状态机 /
 UC-4 成本估算（价表 + chars/4 兜底 + pending_price）/ UC-5 报告输出模板解析 /
-UC-7 防双写完整性校验 / UC-9 自报上下文与成本覆盖 / UC-10 价表派生。
+UC-7 防双写完整性校验 / UC-9 自报上下文与成本覆盖 / UC-10 价表派生 /
+UC-11 fetch-spec sha256 命中/失配（M10）/ UC-12 账本并发锁无丢失更新（M10）/
+UC-13 fetch-prices 解析与合并优先级（M9）。
 
 运行：.venv\\Scripts\\python.exe verify\\verify_agentops.py（纯离线，隔离到临时 AGENT_OPS_DIR）
 """
+
 from __future__ import annotations
+VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1~UC-13（离线；UC-11/12=M10，UC-13=M9）', 'tier': 'offline', 'providers': [], 'est_seconds': 10, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
 
 import json
 import os
@@ -202,6 +206,102 @@ def main() -> int:
         levels = [x["level"] for x in parsed]
         ok("UC-5 报告解析", levels == ["critical", "major", "minor", "nit"], f"levels={levels}")
         ok("UC-5 file:line 位置保留", parsed[0]["where"] == "engine.py:202", f"where={parsed[0]['where']}")
+
+        # UC-11（M10）：fetch-spec sha256 命中/失配——成功路径受 SSRF 防护无法离线走网络，
+        # 比对逻辑已抽为 _match_sha256 纯函数，进程内断言两分支
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("agent_ops", CLI)
+        ao = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(ao)
+        ok("UC-11 sha256 命中", ao._match_sha256("remote-body", ao._sha256("remote-body")) is True)
+        ok("UC-11 sha256 失配", ao._match_sha256("remote-body", "abc") is False)
+
+        # UC-12（M10）：账本并发锁——6 个进程并发 register，无 last-writer-wins 丢失更新
+        procs = [
+            subprocess.Popen(
+                [sys.executable, str(CLI), "register", "--role", f"conc-{i}", "--task", "t",
+                 "--spec", "code-review@1.0.0", "--start"],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                encoding="utf-8", errors="replace", env=base_env,
+            )
+            for i in range(6)
+        ]
+        outs = [p.communicate(timeout=60)[0] for p in procs]
+        ok("UC-12 并发 register 全部成功",
+           all(p.returncode == 0 for p in procs),
+           "; ".join(o.strip()[-60:] for o in outs if "registered" not in o))
+        data12 = json.loads(registry.read_text(encoding="utf-8"))
+        conc = [r for r in data12["runs"] if r["role"].startswith("conc-")]
+        ok("UC-12 无丢失更新（6/6 在账）", len(conc) == 6, f"found {len(conc)}")
+        r = run(["list"], base_env, check=True)
+        ok("UC-12 并发后完整性有效", r.returncode == 0, "list 加载通过完整性校验")
+
+        # UC-13（M9）：fetch-prices 解析器（deepseek 表格 / openrouter JSON）+ 合并与优先级
+        spec_fp = importlib.util.spec_from_file_location("fetch_prices", ROOT / "scripts" / "fetch-prices.py")
+        fp = importlib.util.module_from_spec(spec_fp)
+        assert spec_fp.loader is not None
+        spec_fp.loader.exec_module(fp)
+        deepseek_html = (
+            '<table><tr><td colspan="3" style="text-align:center">MODEL</td>'
+            "<td>deepseek-v4-flash</td><td>deepseek-v4-pro</td><td>deepseek-v4-flash-vision-exp</td></tr>"
+            '<tr><td rowspan="6">PRICING</td><td rowspan="2">1M INPUT TOKENS<br>(CACHE HIT)</td>'
+            "<td>OFF-PEAK</td><td>$0.007</td><td>$0.022</td><td>$0.007</td></tr>"
+            "<tr><td>PEAK</td><td>$0.014</td><td>$0.044</td><td>$0.014</td></tr>"
+            '<tr><td rowspan="2">1M INPUT TOKENS<br>(CACHE MISS)</td>'
+            "<td>OFF-PEAK</td><td>$0.22</td><td>$0.66</td><td>$0.22</td></tr>"
+            "<tr><td>PEAK</td><td>$0.44</td><td>$1.32</td><td>$0.44</td></tr>"
+            '<tr><td rowspan="2">1M OUTPUT TOKENS</td>'
+            "<td>OFF-PEAK</td><td>$0.66</td><td>$1.98</td><td>$0.66</td></tr>"
+            "<tr><td>PEAK</td><td>$1.32</td><td>$3.96</td><td>$1.32</td></tr></table>Concurrency 10"
+        )
+        ds = fp.parse_deepseek(deepseek_html)
+        ok("UC-13 deepseek 表格解析（PEAK 口径）",
+           "deepseek-v4-flash" in ds
+           and abs(ds["deepseek-v4-flash"]["input_cost_per_token"] - 4.4e-7) < 1e-12
+           and abs(ds["deepseek-v4-flash"]["output_cost_per_token"] - 1.32e-6) < 1e-12,
+           f"flash={ds.get('deepseek-v4-flash')}")
+        orjson = '{"data":[{"id":"openai/gpt-4o-mini","pricing":{"prompt":"1.5e-7","completion":"6e-7"}}]}'
+        orr = fp.parse_openrouter(orjson)
+        ok("UC-13 openrouter JSON 解析",
+           "openai/gpt-4o-mini" in orr
+           and abs(orr["openai/gpt-4o-mini"]["input_cost_per_token"] - 1.5e-7) < 1e-15,
+           f"orr={orr}")
+        dsh_html = ('<tr><td><p>qwen-omni-turbo</p><blockquote><p>eq</p></blockquote></td>'
+                    '<td><p>International</p></td><td><p>Non-Thinking mode</p></td>'
+                    '<td><p>$0.07</p></td><td><p>$4.44</p></td><td><p>$0.21</p></td></tr>')
+        dsc = fp.parse_dashscope(dsh_html)
+        ok("UC-13 dashscope 行解析",
+           "qwen-omni-turbo" in dsc
+           and abs(dsc["qwen-omni-turbo"]["input_cost_per_token"] - 7e-8) < 1e-12
+           and abs(dsc["qwen-omni-turbo"]["output_cost_per_token"] - 4.44e-6) < 1e-12,
+           f"dsc={dsc}")
+        merged = fp.merge(
+            {"auto": {"a": {"input_cost_per_token": 1e-6}}, "manual": {"m": None}, "meta": {"fx_usd_cny": 7.2}},
+            {"deepseek": {"models": {"deepseek-v4-flash": ds["deepseek-v4-flash"]}}},
+        )
+        ok("UC-13 merge 保留 auto/manual/meta 且新增 scraped",
+           merged["auto"]["a"]["input_cost_per_token"] == 1e-6 and "m" in merged["manual"]
+           and merged["meta"]["fx_usd_cny"] == 7.2
+           and "deepseek-v4-flash" in merged["scraped"]["deepseek"]["models"],
+           "merge 结构")
+        # 优先级：manual 非 null 覆盖 scraped；manual null → scraped 兜底（进程内重载 module 以改 AGENT_OPS_DIR）
+        os.environ["AGENT_OPS_DIR"] = str(tmp)
+        spec_ao2 = importlib.util.spec_from_file_location("agent_ops2", CLI)
+        ao2 = importlib.util.module_from_spec(spec_ao2)
+        assert spec_ao2.loader is not None
+        spec_ao2.loader.exec_module(ao2)
+        prices13 = {
+            "auto": {}, "manual": {"m": None, "wins": {"input_cost_per_token": 9e-9}},
+            "scraped": {"deepseek": {"models": {"m": {"input_cost_per_token": 1e-9}, "wins": {"input_cost_per_token": 1e-9}}}},
+            "meta": {},
+        }
+        (tmp / "runtime" / "prices.json").write_text(json.dumps(prices13, ensure_ascii=False), encoding="utf-8")
+        ok("UC-13 manual 非 null 覆盖 scraped",
+           ao2._prices_for("wins")["input_cost_per_token"] == 9e-9, "manual wins")
+        ok("UC-13 manual null → scraped 兜底",
+           ao2._prices_for("m") is not None and ao2._prices_for("m")["input_cost_per_token"] == 1e-9,
+           "scraped fallback")
 
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))
