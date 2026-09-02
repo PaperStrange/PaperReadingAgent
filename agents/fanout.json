@@ -1,6 +1,6 @@
 {
-  "version": 3,
-  "comment": "Agent fan-out pipelines as adjustable config (dashboard-editable). Two pipelines: planning_pipeline (research before planning, auto-triggered) and sprint_close_pipeline (three-check + lessons). Conditions/order/executors are adjustable; the user watches agent impact on dev progress via the dashboard. workspace-check stays with the main agent (D2). v3: research step injects pre-research notes (docs/iteration/pre-research/, windows-only) as tech-research context when the task matches a note.",
+  "version": 4,
+  "comment": "Agent fan-out pipelines as adjustable config (dashboard-editable). Two pipelines: planning_pipeline (research before planning, auto-triggered) and sprint_close_pipeline (three-check + lessons). Conditions/order/executors are adjustable; the user watches agent impact on dev progress via the dashboard. workspace-check stays with the main agent (D2). v3: research step injects pre-research notes (docs/iteration/pre-research/, windows-only) as tech-research context. v4 (M15 domain shell): research step reserves per-domain routing — domain defaults to tech; product/marketing specs are created only when their first discussion starts (domain-governance §3).",
   "planning_pipeline": [
     {
       "order": 1,
@@ -10,7 +10,8 @@
       "task": {
         "trigger": "auto-detect: task input contains research-required keywords (see tech-research spec Trigger section) or an explicit research request",
         "inject": "research report is injected into the planning context BEFORE task decomposition",
-        "pre_research": "if the task matches a note in docs/iteration/pre-research/ (by its injection-guide keywords), inject that note as the tech-research 'context' input and into the planning context — recorded user decisions are the baseline; contradictions must be surfaced as reversal proposals, never silently switched (1-WORKFLOW.MD §4.4)"
+        "pre_research": "if the task matches a note in docs/iteration/pre-research/ (by its injection-guide keywords), inject that note as the tech-research 'context' input and into the planning context — recorded user decisions are the baseline; contradictions must be surfaced as reversal proposals, never silently switched (1-WORKFLOW.MD §4.4)",
+        "domain": "reserved per-domain routing (M15): default 'tech'; when the product/marketing discussion line starts, the user approves switching this step's spec to 'product-research'/'marketing-research' and the domain dir matching (docs/iteration/pre-research/<domain>/). One domain = one agent = one ledger role = one notes dir — never mix"
       },
       "condition": "research_required",
       "executor": "subagent"
