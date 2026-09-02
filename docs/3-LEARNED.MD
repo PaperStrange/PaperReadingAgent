@@ -11,7 +11,7 @@
 
 | 分类 | 条目 |
 |---|---|
-| 🖥️ 平台/环境（Windows·PowerShell·端口·编码） | 1.6、1.7、1.8、1.9、1.11、1.18、1.20、1.31 |
+| 🖥️ 平台/环境（Windows·PowerShell·端口·编码） | 1.6、1.7、1.8、1.9、1.11、1.18、1.20、1.31、1.47 |
 | 🧩 框架/服务商（paperqa·litellm·模型） | 1.1、1.2、1.3、1.4、1.14、1.25、1.27、1.46 |
 | 📦 依赖与版本管理 | 1.5、1.13 |
 | 🎨 前端与测试驱动（React·Playwright） | 1.10、1.12、1.19（光标部分）、1.37、1.41、1.42、1.43 |
@@ -243,6 +243,12 @@
 - 根因：脚本 config 参数显式传了 `model`/`api_base`/`embedding`，但缺 `provider` 与 `vision_model` → `make_settings` 中 vision 模型未显式指定时回落 `DEFAULT_PROVIDER`（此时 .env `PAPERQA_PROVIDER=deepseek`）的视觉模型 → 404。
 - 解决：e2e 脚本 config 显式传 `provider` + `vision_model`（与 GUI SchemaForm 的 provider 联动语义一致）。GUI 路径本就不受影响（联动总是显式带出 vision_model）。
 - 教训：**API/脚本调用者省略 `provider` 时，vision 模型回落默认服务商，而非跟随主模型**——显式传 model/api_base 不等于 provider 生效；e2e 脚本的 config 参数必须与 GUI 联动语义对齐。可选后续（新工作项，暂只记录）：`make_settings` 对"缺 provider 但显式给了 model"的场景加提醒或推导。
+
+### 1.47 Windows 文本模式写盘静默换行翻译：批量改文件的脚本必须二进制写（Sprint-14 TG-2）
+- 现象：TG-2 用一次性脚本给 24 个 verify 脚本注入 `VERIFY_META`，随后 `git diff` 显示**整文件重排**（+122/-121 纯行尾噪音），且一次"修复"把 CRCRLF 翻成 `\n\n` 双空行，内容被污染。
+- 根因：Windows 下 `Path.write_text()`/`open('w')` 默认 `newline=None`，**把字符串里的 `\n` 静默翻译成 `\r\n`**——若字符串已含 `\r\n`（如先把 `\n` 替换成 `\r\n` 再写盘），就得到 CRCRLF；再反向替换又变成双空行。原文件是 LF（blob 实测），注入后变 CRLF → 整文件 diff 噪音。
+- 解决：批量改写文件一律 `read_bytes()`/`write_bytes()`（二进制，零翻译）；`verify_matrix.py` derive 写矩阵改用 `open(newline="\n")` 显式 LF，保证跨平台字节稳定；校验器用 `compile()` 而非 `ast.parse`（后者抓不到 `__future__` 放置错误）。
+- 教训：**任何"程序化改写仓库文本文件"的脚本，都要显式声明换行策略（二进制读写或 `newline='\n'`），并在提交前用 `git diff --stat` 核对变更量**——变更行数≈预期行数才放行；"看起来对"的文件内容 ≠ 字节级对。
 
 ## 2. 验证记录（Windows，实际执行）
 
