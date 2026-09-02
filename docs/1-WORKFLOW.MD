@@ -45,6 +45,7 @@
 - 约定：`windows` / `mac` 各自改动后，通过 **Pull Request 合并到 `main`**；每类工作一个提交，提交信息用 `type: 说明`（如 `fix:` / `docs:` / `feat:`）。
 - **PR 工具**：创建/更新/合并 PR 一律用 `scripts\github-pr.ps1`（create/patch/merge/get 子命令，UTF-8 安全）。**禁止**直接用 `Invoke-RestMethod` 传中文字符串 Body（PS 5.1 会按 GBK 编码 → GitHub 乱码，见 `3-LEARNED.MD` 1.18）。**（Windows-only；mac 侧等价用 `gh pr create/patch/merge` 或 Web UI，中文 Body 注意 UTF-8。）**
 - **分支保护（2026-08-30，A-M10）**：`main` 已启用保护——**必须经 PR 合并**（直推拒绝）、必需状态检查 = CI「Offline suite + builds (Windows)」（未绿时 API 合并会被拒，等 CI 转绿再 merge）、禁止 force push / 删除、enforce_admins 开启。`windows`/`mac` 不保护（工作分支允许历史整理）。
+- **同步节奏（2026-08-31 用户决策）**：windows→main 的 PR **在 Sprint 关闭（三查通过）后统一批量提交**，不逐卡 PR——main 只接收"已验证的里程碑快照"（1.45：先合门、后 ✅），减少 CI/评审噪音并保持 main 状态一致；**例外**：Blocker/Critical 或安全修复可即时同步（先修后补 sprint 记录）。windows 工作分支自身的 commit/push 不受限（随卡推进、按需备份）。
 
 ## 4. Sprint（迭代）项目管理与关闭标准
 
