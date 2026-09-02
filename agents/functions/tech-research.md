@@ -21,7 +21,7 @@ Run this function **before planning** whenever ANY of the following is true for 
 - The task explicitly asks to "research/study/investigate before deciding";
 - A prior run made a decision with a note like "仅做了初步网页搜索/未深入对比" (re-do it properly).
 
-The orchestrator registers the run in the ledger (`tech-research@1.0.0`), dispatches this spec to a subagent, then **injects the returned report into the planning context** before any task decomposition.
+The orchestrator registers the run in the ledger (`tech-research@1.1.0`), dispatches this spec to a subagent, then **injects the returned report into the planning context** before any task decomposition.
 
 # Task Input (provided by the orchestrator per run)
 

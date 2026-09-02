@@ -130,7 +130,7 @@ PaperReading-Windows/
 ├── data/pdf/PaperQA2.pdf      # 示例论文
 ├── data/remote/               # Sprint-3 远程源下载暂存（.gitignore 忽略，运行时生成）
 ├── scripts/                   # setup-env.ps1 / start-backend.ps1 / start-frontend.ps1 / start-streamlit.ps1（+ .bat 双击版）
-├── verify/                    # 验收脚本（smoke/e2e/agent/provider_switch/embed_load/remote_e2e/prune_callbacks/index_health + eval_retrieve + gui_check*.mjs）+ e2e 结果
+├── verify/                    # 验收脚本（smoke/e2e×3/agent/provider_switch/embed_load/remote_e2e/prune_callbacks/index_health/agentops/config_schema + verify_matrix（覆盖矩阵 SSOT）+ TEST-MATRIX.MD + e2e_common（共享基座）+ eval_retrieve + gui_check*.mjs）+ e2e 结果
 ├── requirements-windows.txt   # Windows 依赖清单
 ├── requirements.txt           # 原语料采集依赖（未动）
 ├── docs/                      # 1-WORKFLOW / 2-ARCHITECTURE / 3-LEARNED
