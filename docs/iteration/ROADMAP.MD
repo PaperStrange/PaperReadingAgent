@@ -10,7 +10,7 @@
 
 | 阶段 | 入口 | 状态 | 当前 Sprint 序列 |
 |---|---|---|---|
-| **refactor-analysis（代码重构）** | [`phases/refactor-analysis/README.MD`](phases/refactor-analysis/README.MD) | 🟢 进行中（**Now 档唯一 active 阶段**） | Sprint-2 ✅ · Sprint-3 ✅ · 插队 Sprint-4 ✅ · 插队 Sprint-5 ✅ · Sprint-6(F1) ✅ · 插队 Sprint-7(维护批) ✅ · Sprint-10（收口+跨平台债）✅ · Sprint-11（F2 阶段 A）✅ · Sprint-12（F2 阶段 B）✅ · **Sprint-13（F2 阶段 C，关闭中）** |
+| **refactor-analysis（代码重构）** | [`phases/refactor-analysis/README.MD`](phases/refactor-analysis/README.MD) | 🟢 进行中（**Now 档唯一 active 阶段**） | Sprint-2 ✅ · Sprint-3 ✅ · 插队 Sprint-4 ✅ · 插队 Sprint-5 ✅ · Sprint-6(F1) ✅ · 插队 Sprint-7(维护批) ✅ · Sprint-10（收口+跨平台债）✅ · Sprint-11（F2 阶段 A）✅ · Sprint-12（F2 阶段 B）✅ · Sprint-13（F2 阶段 C）✅ · Sprint-14（底座批次）✅ · **Sprint-15（F2 验收修复·交互类，进行中）** · Sprint-16（数据准确性+成本韧性，排期待开） |
 | **agents-infra（AgentOps 基础设施）** | [`phases/agents-infra/README.MD`](phases/agents-infra/README.MD) | ✅ **已归档封存（2026-08-31，只读）** | 阶段1 ✅ · Sprint-8 ✅（PR #23）· Sprint-9 ✅（PR #31 cbf93ea）；剩余卡迁出至 refactor-analysis M9~M14 |
 
 - 阶段内 roadmap（原规划冻结 + 实际实录）：[`phases/refactor-analysis/roadmap.MD`](phases/refactor-analysis/roadmap.MD)
