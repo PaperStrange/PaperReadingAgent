@@ -47,7 +47,7 @@
 | M14 | 新 agent 上线评审 agent——原 agents-infra A-PM4 迁入（备选） | 2 | ✅ 完成 | Sprint-14（2026-08-31，PR #48） | 用户 2026-08-30（+2026-08-31 底座批次） | 与 `_template-agent.md` 模板联动 |
 | M15 | 领域治理壳落地：product/marketing 笔记目录 + 追溯索引登记 + fanout 路由预留（完整 spec 等对应领域讨论启动时再填） | 1 | ✅ 完成 | Sprint-14（2026-08-31，PR #48） | 用户 2026-08-31（底座批次） | 依据 `pre-research/2026-08-31-domain-governance.MD` §3/§6 |
 | M16 | **调研工作流深化（知识沉淀）**：① 三级深度响应（工程级/领域专家级/研究学者级，场景自适应+用户可覆盖；工程级=主代理直接执行）；② 决策证据落档（context.md + evidence/ 快照，唯一真相）；③ 段落级溯源 + 思考过程附件（reasoning.md + 证据索引表，支持引经据典讨论） | 6 | **计划中（Sprint-16，与 F-AC8 调研联跑，首跑演示即真实需求）** | 用户 2026-09-07 | 设计草案 `pre-research/tech/2026-09-07-research-workflow.MD`；tech-research v2.0 + fanout depth 路由 + 归档结构校验 + 首跑演示；**阈值可配置（spec 可配置参数节/fanout 可调，不得写死）** |
-| M17 | **思维模型管理（知识沉淀）**：经验文档（3-LEARNED）→ 抽象模型架构；**成功判据 = 模型可直接生成可执行 agent workflow**（schema 字段 → spec 五段式映射）；种子模型=思维实验（爱因斯坦，用户 2026-09-07 提供）；来源=用户输入/探讨交流/主代理主管经验文档提取 | 8~10 | 候选（规模判断：建议拆 2 段 sprint 或独立阶段 mental-models，待用户 Q1 拍板） | 用户 2026-09-07 | 设计草案 `pre-research/tech/2026-09-07-mental-models.MD`；含模型 schema、生成器机制、种子模型字段补全、Q1~Q3 待确认 |
+| M17 | ~~思维模型管理~~ → **迁出（2026-09-07 用户拍板）**：成立独立阶段 `phases/mental-models/`（MM-1~MM-5，9 点），M17 内容并入 | — | 迁出 | 用户 2026-09-07 | 预研基线 `pre-research/tech/2026-09-07-mental-models.MD` |
 
 ### 2.1 与 hold 状态的关系
 
