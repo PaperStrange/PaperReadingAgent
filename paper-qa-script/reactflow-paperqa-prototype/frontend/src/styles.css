@@ -1,5 +1,15 @@
+/* Sprint-15 F-AC1：排版 token 化——字号/字体族唯一真源，新卡片一律引用变量不写字面量。 */
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --fs-title: 13px;       /* 卡片主标题（Sprint-15 从 14px 收敛） */
+  --fs-pane-title: 13px;  /* 子面板标题 */
+  --fs-block-title: 12px; /* block 标题（沿用 US-4.4 规范） */
+  --fs-body: 12px;
+  --fs-small: 11px;
+  --fs-tiny: 10px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
 }
 
 html,
@@ -77,7 +87,8 @@ body,
 .pane-title-row {
   border-bottom: 1px solid #e2e8f0;
   padding: 8px 10px;
-  font-size: 13px;
+  font-size: var(--fs-pane-title);
+  font-family: var(--font-ui);
   font-weight: 700;
   color: #1e293b;
 }
@@ -130,7 +141,8 @@ body,
 }
 
 .node-title {
-  font-size: 14px;
+  font-size: var(--fs-title);
+  font-family: var(--font-ui);
   font-weight: 700;
 }
 
@@ -144,7 +156,7 @@ body,
   min-height: 120px;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   padding: 6px;
   resize: vertical;
@@ -198,7 +210,7 @@ body,
   margin-top: 2px;
   border: 1px solid #cbd5e1;
   border-radius: 4px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   padding: 4px 6px;
   resize: vertical;
@@ -222,6 +234,8 @@ body,
   max-width: 560px;
 }
 .schema-list .schema-title {
+  font-size: var(--fs-block-title);
+  font-family: var(--font-ui);
   font-weight: 600;
   margin-bottom: 6px;
 }
@@ -265,6 +279,8 @@ body,
 
 /* Sprint-12（F2 阶段 B）：schema 驱动全字段表单 */
 .schema-form .schema-form-title {
+  font-size: var(--fs-block-title);
+  font-family: var(--font-ui);
   font-weight: 600;
   margin-bottom: 6px;
 }
@@ -360,7 +376,8 @@ body,
 
 .node-block-title {
   padding: 4px 6px 0 6px;
-  font-size: 12px;
+  font-size: var(--fs-block-title);
+  font-family: var(--font-ui);
   color: #334155;
   font-weight: 600;
 }
@@ -388,11 +405,11 @@ body,
   padding: 6px;
   white-space: pre-wrap;
   font-size: 11px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 
 .json-tree {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.35;
   padding: 4px 6px 6px 6px;
@@ -448,7 +465,7 @@ body,
 }
 
 .node-run-meta code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 
 .fn-node-card {
@@ -468,6 +485,8 @@ body,
 }
 
 .fn-title {
+  font-size: var(--fs-block-title);
+  font-family: var(--font-ui);
   font-weight: 700;
   color: #14532d;
   margin-bottom: 3px;
@@ -584,7 +603,7 @@ body,
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: #111827;
 }
@@ -613,6 +632,8 @@ body,
 }
 
 .log-title {
+  font-size: var(--fs-block-title);
+  font-family: var(--font-ui);
   font-weight: 700;
   margin-bottom: 4px;
 }
