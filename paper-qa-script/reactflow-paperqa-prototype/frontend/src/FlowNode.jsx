@@ -80,6 +80,19 @@ export default function FlowNode({ id, data }) {
     }
   }, [params]);
 
+  // F-AC4（验收②）：节点运行完成（running → success/failed）时自动收起所有展开项，
+  // 仅 output_snapshot 保持展开；用户重新展开后不重复收起，直到下一次运行完成。
+  const prevStatusRef = useRef(status);
+  const [collapseSignal, setCollapseSignal] = useState(0);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    if (prev === "running" && (status === "success" || status === "failed")) {
+      setCollapseSignal((s) => s + 1);
+    }
+    prevStatusRef.current = status;
+  }, [status]);
+  const collapsed = collapseSignal > 0;
+
   return (
     <div className={`node-card status-${status || "idle"}`}>
       <Handle type="target" position={Position.Left} />
@@ -90,7 +103,12 @@ export default function FlowNode({ id, data }) {
       </div>
 
       {isConfigStep ? (
-        <SchemaForm params={params} apiBase={data.apiBase} onChange={(text) => onChangeParams(id, text)} />
+        <SchemaForm
+          params={params}
+          apiBase={data.apiBase}
+          collapsed={collapsed}
+          onChange={(text) => onChangeParams(id, text)}
+        />
       ) : null}
 
       <textarea
@@ -168,21 +186,22 @@ export default function FlowNode({ id, data }) {
             <pre className="error-text">{error}</pre>
           </div>
         ) : (
-          <JsonTree value={output || {}} />
+          /* F-AC4：output_snapshot 不参与收起（仅此块在完成后保持展开） */
+          <JsonTree value={output || {}} collapsed={false} />
         )}
       </div>
 
       {lastSnapshot ? (
         <div className="node-output">
           <div className="node-block-title">input_snapshot</div>
-          <JsonTree value={{ input_snapshot: lastSnapshot.input || {} }} />
+          <JsonTree value={{ input_snapshot: lastSnapshot.input || {} }} collapsed={collapsed} />
         </div>
       ) : null}
 
       {lastSnapshot ? (
         <div className="node-output">
           <div className="node-block-title">function_trace (time ordered)</div>
-          <JsonTree value={functionTraceList(lastSnapshot.function_trace || [])} />
+          <JsonTree value={functionTraceList(lastSnapshot.function_trace || [])} collapsed={collapsed} />
         </div>
       ) : null}
 

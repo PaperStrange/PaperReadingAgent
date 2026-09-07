@@ -21,7 +21,7 @@ function linesToArr(text) {
     .filter(Boolean);
 }
 
-export default function SchemaForm({ params, apiBase, onChange }) {
+export default function SchemaForm({ params, apiBase, onChange, collapsed = false }) {
   const [schema, setSchema] = useState(null);
   const [providers, setProviders] = useState([]);
   const [loadError, setLoadError] = useState(null);
@@ -301,7 +301,11 @@ export default function SchemaForm({ params, apiBase, onChange }) {
             ? `${g.fields.length}项`
             : `${visFields.length}/${g.fields.length}项`;
         return (
-        <details key={g.key} className="schema-group" open={g.key === "llm" || g.key === "datasource"}>
+        <details
+          key={g.key}
+          className="schema-group"
+          open={collapsed ? false : g.key === "llm" || g.key === "datasource"}
+        >
           <summary>
             {g.label}（{countLabel}，
             <span className={changedInGroup(g) > 0 ? "schema-changed-count" : "schema-changed-count-zero"}>
