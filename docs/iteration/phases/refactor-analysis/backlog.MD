@@ -46,7 +46,7 @@
 | M13 | 调研结论→用例生成 agent 固化——原 agents-infra A-PM3 迁入（备选） | 2 | 候选（备选） | 用户 2026-08-30 | |
 | M14 | 新 agent 上线评审 agent——原 agents-infra A-PM4 迁入（备选） | 2 | ✅ 完成 | Sprint-14（2026-08-31，PR #48） | 用户 2026-08-30（+2026-08-31 底座批次） | 与 `_template-agent.md` 模板联动 |
 | M15 | 领域治理壳落地：product/marketing 笔记目录 + 追溯索引登记 + fanout 路由预留（完整 spec 等对应领域讨论启动时再填） | 1 | ✅ 完成 | Sprint-14（2026-08-31，PR #48） | 用户 2026-08-31（底座批次） | 依据 `pre-research/2026-08-31-domain-governance.MD` §3/§6 |
-| M16 | **调研工作流深化（知识沉淀）**：① 三级深度响应（工程级/领域专家级/研究学者级，场景自适应+用户可覆盖）；② 决策证据落档（context.md + evidence/ 快照，唯一真相）；③ 段落级溯源 + 思考过程附件（reasoning.md + 证据索引表，支持引经据典讨论） | 6 | 候选（排期待定，建议 Sprint-16 与 F-AC8 调研联跑） | 用户 2026-09-07 | 设计草案 `pre-research/tech/2026-09-07-research-workflow.MD`；tech-research v2.0 + fanout depth 路由 + 归档结构校验 + 首跑演示 |
+| M16 | **调研工作流深化（知识沉淀）**：① 三级深度响应（工程级/领域专家级/研究学者级，场景自适应+用户可覆盖；工程级=主代理直接执行）；② 决策证据落档（context.md + evidence/ 快照，唯一真相）；③ 段落级溯源 + 思考过程附件（reasoning.md + 证据索引表，支持引经据典讨论） | 6 | **计划中（Sprint-16，与 F-AC8 调研联跑，首跑演示即真实需求）** | 用户 2026-09-07 | 设计草案 `pre-research/tech/2026-09-07-research-workflow.MD`；tech-research v2.0 + fanout depth 路由 + 归档结构校验 + 首跑演示；**阈值可配置（spec 可配置参数节/fanout 可调，不得写死）** |
 
 ### 2.1 与 hold 状态的关系
 
