@@ -137,6 +137,13 @@ export default function SchemaForm({ params, apiBase, onChange }) {
   };
   const changedInGroup = (g) => g.fields.filter(isChanged).length;
 
+  // F-AC3（验收①1.3b）：show_if 条件可见——schema 字段带 show_if:{key:value} 时，
+  // 仅当 params 对应值匹配才渲染（如 remote 三字段在 local 模式隐藏；隐藏≠删除参数）。
+  const fieldVisible = (f) => {
+    if (!f.show_if) return true;
+    return Object.entries(f.show_if).every(([k, v]) => String(params?.[k] ?? "") === String(v));
+  };
+
   const renderControl = (f) => {
     const key = f.key;
     const cur = params?.[key];
@@ -287,17 +294,23 @@ export default function SchemaForm({ params, apiBase, onChange }) {
         </div>
       )}
 
-      {schema.groups.map((g) => (
+      {schema.groups.map((g) => {
+        const visFields = g.fields.filter(fieldVisible);
+        const countLabel =
+          visFields.length === g.fields.length
+            ? `${g.fields.length}项`
+            : `${visFields.length}/${g.fields.length}项`;
+        return (
         <details key={g.key} className="schema-group" open={g.key === "llm" || g.key === "datasource"}>
           <summary>
-            {g.label}（{g.fields.length}项，
+            {g.label}（{countLabel}，
             <span className={changedInGroup(g) > 0 ? "schema-changed-count" : "schema-changed-count-zero"}>
               {changedInGroup(g)}
             </span>
             项被改动）
           </summary>
           <div className="schema-fields">
-            {g.fields.map((f) => {
+            {visFields.map((f) => {
               const err = fieldError(f.key);
               return (
                 <div key={f.key} className={`schema-field ${err ? "schema-field-error" : ""}`}>
@@ -325,7 +338,8 @@ export default function SchemaForm({ params, apiBase, onChange }) {
             })}
           </div>
         </details>
-      ))}
+        );
+      })}
     </div>
   );
 }
