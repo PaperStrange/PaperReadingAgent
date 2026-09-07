@@ -10,7 +10,8 @@
 |---|---|---|---|---|
 | [tech/2026-08-31-testing-governance.MD](tech/2026-08-31-testing-governance.MD) | 技术 | **初稿已确认，已开卡候选**（D1=A/D2/D3/D4；§7 方案） | 测试治理范围/时点已拍板；卡 TG-1~TG-5 入 phases/testing-governance/backlog.MD（TG-1/2/4 已完成 Sprint-14） | tech-research v1.1.0、fanout v3、1-WORKFLOW §4.4、TG backlog |
 | [tech/2026-09-07-release-practice.MD](tech/2026-09-07-release-practice.MD) | 技术 | **D1/D2/D4 已拍板，D3/D5 默认采纳**（未开卡） | 发版实践：版本号保留现状、源码包+Windows 免安装包、rc 起步、中文五组 notes | 未来「首次发版 v1.0.0」工作项基线 |
-| [tech/2026-09-07-research-workflow.MD](tech/2026-09-07-research-workflow.MD) | 技术 | **设计草案待确认，已开卡 M16**（P1~P3 待拍板） | 调研分级（工程/专家/学者）+ 决策证据落档 + 段落级溯源 + 思考过程附件 | M16（refactor-analysis backlog，~6 点） |
+| [tech/2026-09-07-research-workflow.MD](tech/2026-09-07-research-workflow.MD) | 技术 | **设计草案待确认，已开卡 M16**（P1~P3 已拍板） | 调研分级（工程/专家/学者）+ 决策证据落档 + 段落级溯源 + 思考过程附件 | M16（Sprint-16 与 F-AC8 联跑） |
+| [tech/2026-09-07-mental-models.MD](tech/2026-09-07-mental-models.MD) | 技术 | **设计草案待确认，已开卡 M17**（Q1~Q3 待拍板） | 经验文档→思维模型架构；成功判据=生成可执行 agent workflow；种子=思维实验 | M17（规模 8~10 点，或独立阶段） |
 | [2026-08-31-domain-governance.MD](2026-08-31-domain-governance.MD) | 跨领域治理 | 设计备忘，未实施 | 一领域=一 agent=一 role=一目录；product/marketing 待讨论启动时创建；协作改进提案 3 条 | 待建：product-research、marketing-research |
 
 ## 更新规则
