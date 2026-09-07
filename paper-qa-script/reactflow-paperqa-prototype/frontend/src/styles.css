@@ -277,6 +277,19 @@ body,
   color: #64748b;
 }
 
+/* Sprint-15 F-AC2：hints/warnings 汇总限高滚动 + 分组标题改动计数标红 */
+.schema-msg {
+  max-height: 96px;
+  overflow-y: auto;
+}
+.schema-changed-count {
+  color: #dc2626;
+  font-weight: 600;
+}
+.schema-changed-count-zero {
+  color: #94a3b8;
+}
+
 /* Sprint-12（F2 阶段 B）：schema 驱动全字段表单 */
 .schema-form .schema-form-title {
   font-size: var(--fs-block-title);

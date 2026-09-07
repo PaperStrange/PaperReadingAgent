@@ -125,6 +125,18 @@ export default function SchemaForm({ params, apiBase, onChange }) {
     // 027 nit：仅保留带括号的精确匹配（后端错误文案恒含 ($key)），去掉子串误匹配兜底
     validate.errors.filter((e) => e.includes(`(${key})`)).join("；");
 
+  // F-AC2（验收①1.2b）：影响上浮到分组标题——"LLM（6项，M项被改动）"，M 标红。
+  // 改动判定 = params 显式含该键且值 ≠ schema 默认（数组按序列化比较，类型统一按字符串）。
+  const isChanged = (f) => {
+    const cur = params?.[f.key];
+    if (cur === undefined || cur === null || cur === "") return false;
+    const def = f.default;
+    if (def === undefined || def === null) return false;
+    if (Array.isArray(def)) return JSON.stringify(cur) !== JSON.stringify(def);
+    return String(cur) !== String(def);
+  };
+  const changedInGroup = (g) => g.fields.filter(isChanged).length;
+
   const renderControl = (f) => {
     const key = f.key;
     const cur = params?.[key];
@@ -278,7 +290,11 @@ export default function SchemaForm({ params, apiBase, onChange }) {
       {schema.groups.map((g) => (
         <details key={g.key} className="schema-group" open={g.key === "llm" || g.key === "datasource"}>
           <summary>
-            {g.label}（{g.fields.length} 项）
+            {g.label}（{g.fields.length}项，
+            <span className={changedInGroup(g) > 0 ? "schema-changed-count" : "schema-changed-count-zero"}>
+              {changedInGroup(g)}
+            </span>
+            项被改动）
           </summary>
           <div className="schema-fields">
             {g.fields.map((f) => {
