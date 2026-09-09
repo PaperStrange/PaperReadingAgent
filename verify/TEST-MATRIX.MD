@@ -14,6 +14,7 @@
 | `gui_check_dashboard_fanout.mjs` | 看板 fan-out 配置页截图（两条流水线+JSON 编辑器） | gui | — | 30s | ¥0 | — | playwright, dashboard |
 | `gui_check_dashboard_report.mjs` | 看板报告浏览页截图（run 详情+报告全文） | gui | — | 30s | ¥0 | — | playwright, dashboard |
 | `gui_check_remote.mjs` | GUI 远程数据源：remote+arXiv → Run All → 截图 | gui | — | 180s | ¥0 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | playwright, servers, network |
+| `gui_check_s15_bidi_link.mjs` | Sprint-15 F-AC9：subcanvas 手动切换节点 → 主画布联动选中并定位对应节点 | gui | — | 40s | ¥0 | — | playwright, servers |
 | `gui_check_s15_collapse.mjs` | Sprint-15 F-AC4：节点运行完成后自动收起全部展开项，仅 output_snapshot 保持展开 | gui | — | 50s | ¥0 | /api/run_step | playwright, servers |
 | `gui_check_s15_hints_title.mjs` | Sprint-15 F-AC2：hints 限高滚动 + 分组标题影响聚合（N项，M项被改动，M 标红） | gui | — | 45s | ¥0 | /api/config_schema, /api/config/validate | playwright, servers |
 | `gui_check_s15_local_dir.mjs` | Sprint-15 F-AC3：local 模式显示论文目录并隐藏远程源三字段、remote 模式恢复；Index 组不再含论文目录 | gui | — | 45s | ¥0 | /api/config_schema | playwright, servers |
@@ -37,4 +38,4 @@
 | `verify_remote_e2e.py` | remote 数据源全链路（arXiv 下载+索引+6 步） | network | deepseek | 180s | ¥0.4 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
 | `verify_smoke.py` | 冒烟 8 项：paperqa 导入/后端 10 路由加载/runtime_trace 目标/PDF 解析等（离线） | offline | — | 10s | ¥0 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session, /api/health, /api/providers, /api/config_schema, /api/config/validate, /api/translate_preview | none |
 
-共 31 个脚本：offline 6 / network 8 / gui 17。
+共 32 个脚本：offline 6 / network 8 / gui 18。

@@ -301,6 +301,22 @@ export default function App() {
   const runIdRef = useRef(runId);
   const activeStepIdRef = useRef(activeStepId);
   const lastRenderedStepRef = useRef(null);
+  const mainFlowRef = useRef(null); // F-AC9：主画布实例（subcanvas 切节点 → 主画布联动定位）
+
+  // F-AC9（验收⑦）：subcanvas 手动切换节点（step-switch-btn）→ 主画布选中并居中对应节点
+  useEffect(() => {
+    if (!activeStepId) return;
+    setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === activeStepId })));
+    const t = setTimeout(() => {
+      mainFlowRef.current?.fitView({
+        nodes: [{ id: activeStepId }],
+        duration: 300,
+        maxZoom: 1.2,
+        padding: 0.3,
+      });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [activeStepId, setNodes]);
 
   // US-5.3 + Sprint-7 M4：Function Subcanvas 步骤计时（运行中每 0.5s 刷新；完成/失败后冻结最终时长）。
   // M4：多节点并发逐个展示（`stepA 3.2s · stepB 1.1s`）；以"计时起点表"为准遍历——
@@ -1109,6 +1125,7 @@ export default function App() {
           <div className="pane-title">Main Pipeline Canvas</div>
           <div className="pane-flow">
             <ReactFlow
+              ref={mainFlowRef}
               nodes={hydratedNodes}
               edges={edges}
               nodeTypes={nodeTypes}
