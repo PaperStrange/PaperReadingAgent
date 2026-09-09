@@ -1,4 +1,4 @@
-// VERIFY_META: {"features": "Sprint-15 F-AC6：失败一键复制（主卡+fn 卡，含完整堆栈）+ fn 卡框选复制 + 主画布错误摘要可展开 + 多报错卡定位按钮显隐", "tier": "gui", "providers": [], "est_seconds": 90, "est_cost_cny": 0, "routes": ["/api/run_step"], "requires": ["playwright", "servers"]}
+// VERIFY_META: {"features": "Sprint-15 F-AC6：失败一键复制（主卡+fn 卡，含完整堆栈）+ fn 卡框选复制 + 主画布错误摘要可展开 + 多报错卡定位按钮显隐 + 走查七轮报错卡 zIndex 压顶与 fn_title 定位", "tier": "gui", "providers": [], "est_seconds": 120, "est_cost_cny": 0, "routes": ["/api/run_step"], "requires": ["playwright", "servers"]}
 // Sprint-15 F-AC6（验收④）：复制与报错详情（Q5 口径：摘要 + 可展开完整堆栈）。
 // 前提：后端 8787、前端 5173 已启动；playwright 取前端 node_modules。
 import { createRequire } from "module";
@@ -127,6 +127,72 @@ try {
     return c.left < p.right && c.right > p.left && c.top < p.bottom && c.bottom > p.top;
   });
   ok("F-AC7 切回报错节点再次定位到报错卡", errAgain, `errAgain=${errAgain}`);
+
+  // ⑧ 走查七轮：报错卡 zIndex 最高（重叠压顶）+ 定位按 fn_title 找卡（拖正常卡压住报错卡后切走切回仍居中报错卡）
+  const zIdx = await page.evaluate(() => {
+    const zi = (el) => {
+      if (!el) return null;
+      const z = window.getComputedStyle(el).zIndex;
+      const n = parseInt(z, 10);
+      return Number.isNaN(n) ? 0 : n;
+    };
+    return {
+      err: zi(document.querySelector(".fn-node-card.fn-error")?.closest(".react-flow__node")),
+      ok: zi(document.querySelector(".fn-node-card:not(.fn-error)")?.closest(".react-flow__node")),
+    };
+  });
+  ok("F-AC6 七轮 报错卡 zIndex 高于正常卡", zIdx.err != null && zIdx.err > (zIdx.ok ?? 0), JSON.stringify(zIdx));
+
+  const drag = await page.evaluate(() => {
+    const err = document.querySelector(".fn-node-card.fn-error");
+    const normals = [...document.querySelectorAll(".fn-node-card:not(.fn-error)")];
+    if (!err || !normals.length) return null;
+    const er = err.getBoundingClientRect();
+    const ec = { x: er.left + er.width / 2, y: er.top + er.height / 2 };
+    const nearest = normals
+      .map((c) => {
+        const r = c.getBoundingClientRect();
+        return { dx: r.left + r.width / 2 - ec.x, dy: r.top + r.height / 2 - ec.y, sx: r.left + r.width / 2, sy: r.top + r.height / 2 };
+      })
+      .sort((a, b) => a.dx * a.dx + a.dy * a.dy - (b.dx * b.dx + b.dy * b.dy))[0];
+    return { ...nearest, ex: ec.x, ey: ec.y };
+  });
+  if (drag) {
+    await page.mouse.move(drag.sx, drag.sy);
+    await page.mouse.down();
+    await page.mouse.move(drag.ex, drag.ey, { steps: 25 });
+    await page.mouse.up();
+    await page.waitForTimeout(800);
+  }
+  const topAtErr = await page.evaluate(() => {
+    const err = document.querySelector(".fn-node-card.fn-error");
+    if (!err) return { hit: false };
+    const r = err.getBoundingClientRect();
+    const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    const card = el?.closest?.(".fn-node-card") || null;
+    return { hit: !!card, isErr: card?.classList.contains("fn-error") || false };
+  });
+  ok("F-AC6 七轮 重叠时报错卡压顶（elementFromPoint）", topAtErr.hit && topAtErr.isErr, JSON.stringify(topAtErr));
+
+  // 压住报错卡后切走再切回：定位必须按 fn_title 直接找报错卡居中，且仍压顶
+  await page.locator(".step-switch-btn", { hasText: "Retrieve" }).evaluate((el) => el.click());
+  await page.waitForTimeout(1500);
+  await page.locator(".step-switch-btn", { hasText: "parse" }).evaluate((el) => el.click());
+  await page.waitForTimeout(2500);
+  const overlapRecheck = await page.evaluate(() => {
+    const err = document.querySelector(".fn-node-card.fn-error");
+    const pane = document.querySelector(".fn-pane-flow");
+    if (!err || !pane) return { visible: false, centerDelta: 1, topErr: false };
+    const c = err.getBoundingClientRect();
+    const p = pane.getBoundingClientRect();
+    const visible = c.left < p.right && c.right > p.left && c.top < p.bottom && c.bottom > p.top;
+    const centerDelta = Math.abs(c.left + c.width / 2 - (p.left + p.width / 2)) / (p.width || 1);
+    const el = document.elementFromPoint(c.left + c.width / 2, c.top + c.height / 2);
+    const card = el?.closest?.(".fn-node-card") || null;
+    return { visible, centerDelta, topErr: card?.classList.contains("fn-error") || false };
+  });
+  ok("F-AC6 七轮 重叠后切回仍按 fn_title 定位报错卡（居中）", overlapRecheck.visible && overlapRecheck.centerDelta < 0.35, JSON.stringify(overlapRecheck));
+  ok("F-AC6 七轮 重叠后切回报错卡仍压顶", overlapRecheck.topErr, JSON.stringify(overlapRecheck));
 
   await page.screenshot({ path: path.resolve(_here, "f2-error-copy.png"), fullPage: false });
   console.log("SHOT f2-error-copy.png");

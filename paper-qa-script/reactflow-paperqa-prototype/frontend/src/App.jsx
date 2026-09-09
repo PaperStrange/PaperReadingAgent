@@ -231,6 +231,7 @@ function buildFunctionSubgraphForStep(stepNode) {
         y: pos.y,
       },
       draggable: true,
+      zIndex: evt.status === "error" ? 10000 : undefined, // 走查七轮：报错卡层级最高，重叠时恒压顶
       data: {
         call_id: callId,
         func: evt.func || "",
@@ -507,23 +508,40 @@ export default function App() {
   }, [applyFnEdgesUpdate]);
 
   // 节点渐进显示完成后，自动把整个函数子图画布居中（fitView）；F-AC6 走查追加：
-  // 当前节点失败时优先定位到**报错卡片**（走查 2026-09-10 修正：用 fitView 节点过滤
-  // 或 DOM 实测坐标，杜绝按存储 position 定位偏移到相邻卡）；切回正常节点则正常 fitView。
+  // 当前节点失败时优先定位到**报错卡片**；切回正常节点则正常 fitView。
   // 走查五轮：多报错卡时自动定位**最新（call_id 最大）**一张；"定位下一处报错"按钮逆序循环。
-  const fitToFnNode = useCallback((nodeId) => {
-    const inst = fnFlowRef.current;
-    try {
-      inst?.fitView({ nodes: [{ id: nodeId }], duration: 300, maxZoom: 1, padding: 0.35 });
-      return;
-    } catch {
-      /* fall through：DOM 实测坐标 */
+  // 走查七轮：报错卡可能与正常卡重叠——① 报错卡 zIndex 最高（build 时置 10000，恒压顶）；
+  // ② 定位一律按 **fn_title** 找卡（DOM 实测屏幕中心 setCenter），不按相对位置；找不到再以 id fitView 兜底。
+  const fnTitleOf = (n) => `#${n?.data?.call_id ?? "?"} ${n?.data?.func || "function"}`;
+  const findErrorCardByTitle = (title) => {
+    const want = title.replace(/\s+/g, " ").trim();
+    const cards = document.querySelectorAll(".fn-node-card.fn-error");
+    for (const c of cards) {
+      const t = (c.querySelector(".fn-title")?.textContent || "").replace(/\s+/g, " ").trim();
+      if (t === want) return c;
     }
-    const el = document.querySelector(`.react-flow__node[data-id="${nodeId}"]`);
-    const pane = document.querySelector(".fn-pane-flow");
-    if (el && pane && typeof inst?.screenToFlowPosition === "function" && typeof inst.setCenter === "function") {
-      const r = el.getBoundingClientRect();
-      const pos = inst.screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
-      inst.setCenter(pos.x, pos.y, { zoom: 1, duration: 300 });
+    return null;
+  };
+
+  // 定位单张报错卡：fn_title 找卡 → 实测中心 setCenter；找不到 → fitView 节点过滤兜底。
+  // 返回是否成功定位（用于重试）。
+  const fitToFnErrorCard = useCallback((node) => {
+    const inst = fnFlowRef.current;
+    const card = findErrorCardByTitle(fnTitleOf(node));
+    if (card) {
+      const pane = document.querySelector(".fn-pane-flow");
+      if (pane && typeof inst?.screenToFlowPosition === "function" && typeof inst?.setCenter === "function") {
+        const r = card.getBoundingClientRect();
+        const pos = inst.screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+        inst.setCenter(pos.x, pos.y, { zoom: 1, duration: 300 });
+        return true;
+      }
+    }
+    try {
+      inst?.fitView({ nodes: [{ id: node.id }], duration: 300, maxZoom: 1, padding: 0.35 });
+      return true;
+    } catch {
+      return false;
     }
   }, []);
 
@@ -540,17 +558,20 @@ export default function App() {
         .sort((a, b) => (a.data?.call_id ?? 0) - (b.data?.call_id ?? 0));
       if (!errNodes.length) {
         if (attempt < 10) {
-          window.setTimeout(() => locateError(attempt + 1), 200); // 渐进显示中，等报错卡入场
+          window.setTimeout(() => locateError(attempt + 1), 200); // 等报错卡入场
         }
         return;
       }
       errLocateIndexRef.current = errNodes.length - 1; // 自动定位：最新（call_id 最大）报错卡
-      fitToFnNode(errNodes[errLocateIndexRef.current].id);
+      const ok = fitToFnErrorCard(errNodes[errLocateIndexRef.current]);
+      if (!ok && attempt < 10) {
+        window.setTimeout(() => locateError(attempt + 1), 200); // 卡片尚未入 DOM，稍后重试
+      }
     };
     window.setTimeout(() => locateError(0), 120);
-  }, [fitToFnNode]);
+  }, [fitToFnErrorCard]);
 
-  // 走查五轮：多报错卡时按时间逆序循环定位上一处报错（含回绕）
+  // 走查五轮：多报错卡时按时间逆序循环定位上一处报错（含回绕）；七轮起同样走 fn_title 找卡
   const locatePrevError = useCallback(() => {
     const errNodes = fnNodesRef.current
       .filter((n) => n.data?.status === "error")
@@ -558,8 +579,8 @@ export default function App() {
     if (!errNodes.length) return;
     const idx = (errLocateIndexRef.current - 1 + errNodes.length) % errNodes.length;
     errLocateIndexRef.current = idx;
-    fitToFnNode(errNodes[idx].id);
-  }, [fitToFnNode]);
+    fitToFnErrorCard(errNodes[idx]);
+  }, [fitToFnErrorCard]);
 
   const startRevealTimer = useCallback(() => {
     if (revealTimerRef.current) {
