@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Handle, Position } from "reactflow";
 import JsonTree from "./JsonTree";
@@ -23,6 +23,34 @@ export default function FunctionTraceNode({ data }) {
   const [translating, setTranslating] = useState(false);
   const [translateErr, setTranslateErr] = useState("");
   const [lightbox, setLightbox] = useState(null); // 大图预览 URL
+  // F-AC6（验收④）：fn 卡错误一键复制（含降级路径）
+  const [errCopied, setErrCopied] = useState(false);
+  const errCopiedTimerRef = useRef(null);
+  useEffect(
+    () => () => {
+      if (errCopiedTimerRef.current) clearTimeout(errCopiedTimerRef.current);
+    },
+    []
+  );
+  const copyFnError = async (text) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(String(text ?? ""));
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = String(text ?? "");
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setErrCopied(true);
+      if (errCopiedTimerRef.current) clearTimeout(errCopiedTimerRef.current);
+      errCopiedTimerRef.current = setTimeout(() => setErrCopied(false), 1500);
+    } catch {
+      /* 剪贴板不可用时忽略 */
+    }
+  };
 
   const rp = data?.result_payload || null;
   const ap = data?.args_payload || null;
@@ -121,7 +149,15 @@ export default function FunctionTraceNode({ data }) {
           ) : null}
         </details>
       ) : null}
-      {data?.error ? <div className="fn-error-text">error: {data.error}</div> : null}
+      {/* F-AC6（验收④）：错误全文（不再截断）+ 一键复制 */}
+      {data?.error ? (
+        <div className="fn-error-block">
+          <button className="run-btn fn-copy-err-btn" onClick={() => copyFnError(data.error)}>
+            {errCopied ? "已复制 ✓" : "复制报错"}
+          </button>
+          <div className="fn-error-text">error: {String(data.error)}</div>
+        </div>
+      ) : null}
       <Handle type="source" position={Position.Right} />
 
       {lightbox

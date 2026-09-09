@@ -842,6 +842,7 @@ export default function App() {
                     duration: resp.duration_s,
                     output: resp.output,
                     error: resp.error,
+                    error_detail: resp.error_detail || null, // F-AC6：完整堆栈
                     lastSnapshot: {
                       run_id: resp.run_id || activeRunId,
                       timestamp: new Date().toISOString(),

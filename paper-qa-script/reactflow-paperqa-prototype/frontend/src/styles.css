@@ -484,6 +484,8 @@ body,
 .fn-node-card {
   width: 340px;
   max-width: 100%; /* F-AC5：窄面板下不撑破容器 */
+  user-select: text; /* F-AC6：完成计算的卡片允许鼠标框选复制 */
+  -webkit-user-select: text;
   box-sizing: border-box;
   border: 1px solid #22c55e;
   background: #f0fdf4;
@@ -496,6 +498,26 @@ body,
 .fn-node-card.fn-error {
   border-color: #dc2626;
   background: #fef2f2;
+}
+
+/* F-AC6：fn 卡错误全文（换行不截断）+ 复制按钮；主画布可展开堆栈 */
+.fn-error-block {
+  margin-top: 4px;
+}
+.fn-error-block .fn-copy-err-btn {
+  margin-bottom: 4px;
+}
+.fn-error-text {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.error-detail {
+  margin-top: 4px;
+}
+.error-detail summary {
+  cursor: pointer;
+  color: #334155;
+  font-size: var(--fs-small);
 }
 
 .fn-title {

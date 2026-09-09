@@ -13,6 +13,7 @@ import json
 import hashlib
 import re
 import time
+import traceback
 import uuid
 import zlib
 from pathlib import Path
@@ -62,6 +63,7 @@ class StepResponse(BaseModel):
     duration_s: float
     output: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None
+    error_detail: str | None = None  # F-AC6：完整 traceback（主画布"摘要+可展开堆栈"）
     input_snapshot: dict[str, Any] = Field(default_factory=dict)
     output_snapshot: dict[str, Any] = Field(default_factory=dict)
     function_trace: list[dict[str, Any]] = Field(default_factory=list)
@@ -629,6 +631,7 @@ class PipelineOrchestrator:
                 duration_s=round(time.perf_counter() - t0, 3),
                 output={},
                 error=str(exc),
+                error_detail=traceback.format_exc(),  # F-AC6：完整堆栈供前端展开
                 input_snapshot=input_snapshot,
                 output_snapshot={},
                 function_trace=_paperqa_trace(tracer.events),
@@ -643,6 +646,7 @@ class PipelineOrchestrator:
                     "input_snapshot": input_snapshot,
                     "output_snapshot": {},
                     "error": str(exc),
+                    "error_detail": err_resp.error_detail,  # F-AC6
                     "function_trace": _paperqa_trace(tracer.events),
                     "timestamp": time.time(),
                 }

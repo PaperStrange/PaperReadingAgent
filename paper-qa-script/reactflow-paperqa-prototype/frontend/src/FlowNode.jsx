@@ -25,6 +25,7 @@ export default function FlowNode({ id, data }) {
     duration,
     output,
     error,
+    error_detail: errorDetail,
     lastSnapshot,
     onChangeParams,
     onRun,
@@ -178,12 +179,19 @@ export default function FlowNode({ id, data }) {
               <button
                 className="run-btn copy-err-btn"
                 title="复制完整错误信息，便于二次调试"
-                onClick={() => copyErrorText(error)}
+                onClick={() => copyErrorText(errorDetail ? `${error}\n\n===== 完整堆栈 =====\n${errorDetail}` : error)}
               >
                 {copied ? "已复制 ✓" : "复制报错"}
               </button>
             </div>
+            {/* F-AC6（验收④）：主画布报错 = 摘要 + 可展开完整堆栈（Q5 口径） */}
             <pre className="error-text">{error}</pre>
+            {errorDetail ? (
+              <details className="error-detail">
+                <summary>完整堆栈（traceback）</summary>
+                <pre className="error-text">{errorDetail}</pre>
+              </details>
+            ) : null}
           </div>
         ) : (
           /* F-AC4：output_snapshot 不参与收起（仅此块在完成后保持展开） */
