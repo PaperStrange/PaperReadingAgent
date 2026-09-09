@@ -86,6 +86,21 @@ try {
   t = await timerText();
   ok("F-AC7 未运行节点显示 idle", /answer idle/.test(t || ""), `t=${t}`);
 
+  // 5) 走查三轮：运行中切换节点——不显示他节点的实时计时；切回后恢复 + 不重新计数卡死
+  await clickCard(await cardOf("parse"));
+  await page.waitForTimeout(400);
+  await runNode(await cardOf("parse"));
+  await page.waitForTimeout(900); // parse 已在运行中（embedding 耗时）
+  await clickCard(await cardOf("config"));
+  await page.waitForTimeout(1200);
+  t = await timerText();
+  ok("F-AC7 运行中切换不显示他节点计时", !/parse \d+\.\d+s/.test(t || ""), `t=${t}`);
+  await clickCard(await cardOf("parse"));
+  await page.waitForTimeout(1200);
+  t = await timerText();
+  ok("F-AC7 切回运行节点恢复计时显示", /parse_chunk_embed \d+\.\d+s/.test(t || ""), `t=${t}`);
+  await waitDone("parse");
+
   await page.screenshot({ path: path.resolve(_here, "f2-status-scope.png"), fullPage: false });
   console.log("SHOT f2-status-scope.png");
 } finally {

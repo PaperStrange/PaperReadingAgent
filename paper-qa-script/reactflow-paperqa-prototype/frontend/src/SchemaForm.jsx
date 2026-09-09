@@ -169,13 +169,13 @@ export default function SchemaForm({ params, apiBase, onChange, collapsed = fals
     const hasValue = cur !== undefined && cur !== null && cur !== "";
     const readonly = !!f.readonly;
     const ph = f.default === undefined || f.default === null ? f.hint || "" : `默认：${Array.isArray(f.default) ? "[]" : String(f.default)}`;
-    const common = { disabled: readonly, className: "ds-input" };
+    const common = { disabled: readonly, className: "ds-input nodrag nopan" };
 
     if (key === "provider") {
       // provider 下拉 + 联动（US-12.3）
       return (
         <select
-          className="ds-select schema-field-provider"
+          className="ds-select schema-field-provider nodrag nopan"
           value={params?.provider || ""}
           disabled={readonly}
           onChange={(e) => onProviderChange(e.target.value)}
@@ -195,7 +195,7 @@ export default function SchemaForm({ params, apiBase, onChange, collapsed = fals
         return (
           <input
             type="password"
-            className="ds-input"
+            className="ds-input nodrag nopan"
             ref={attachInputRef(key)}
             defaultValue={hasValue ? String(cur) : ""}
             placeholder={ph}
@@ -219,7 +219,7 @@ export default function SchemaForm({ params, apiBase, onChange, collapsed = fals
       case "enum":
         return (
           <select
-            className={`ds-select ${key === "data_source" ? "schema-field-datasource" : ""}`}
+            className={`ds-select nodrag nopan ${key === "data_source" ? "schema-field-datasource" : ""}`}
             value={hasValue ? String(cur) : String(f.default ?? "")}
             disabled={readonly}
             onChange={(e) => {
@@ -239,7 +239,7 @@ export default function SchemaForm({ params, apiBase, onChange, collapsed = fals
       case "string_list":
         return (
           <textarea
-            className="ds-textarea"
+            className="ds-textarea nodrag nopan"
             value={toText(cur)}
             disabled={readonly}
             // 027 nit：默认空列表时 placeholder 优先显示用法提示（hint）而非"默认：[]"
@@ -256,7 +256,7 @@ export default function SchemaForm({ params, apiBase, onChange, collapsed = fals
         return (
           <input
             type="number"
-            className="ds-input"
+            className="ds-input nodrag nopan"
             ref={attachInputRef(key)}
             defaultValue={hasValue ? String(cur) : ""}
             min={f.range?.[0]}

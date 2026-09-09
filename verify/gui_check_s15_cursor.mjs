@@ -27,7 +27,7 @@ function ok(name, cond, detail = "") {
 const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
-  await page.goto("http://127.0.0.1:5173/", { waitUntil: "networkidle" });
+  await page.goto("http://127.0.0.1:5173/", { waitUntil: "load", timeout: 30000 });
   await page.waitForSelector(".node-card .node-textarea", { timeout: 15000 });
   await page.waitForTimeout(1000);
 
@@ -67,6 +67,31 @@ try {
     return g ? g.querySelector("summary").textContent.replace(/\s+/g, "") : "";
   });
   ok("走查② api_key 改动计数生效", /项被改动/.test(llm) && !/0项被改动/.test(llm), llm);
+
+  // ④ 走查三轮：回车不删卡（选中节点后按 Enter，节点数不变）
+  const countBefore = await page.evaluate(() => document.querySelectorAll(".react-flow__node").length);
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(600);
+  const countAfter = await page.evaluate(() => document.querySelectorAll(".react-flow__node").length);
+  ok("走查三轮 回车不删卡", countBefore === countAfter, `before=${countBefore} after=${countAfter}`);
+
+  // ⑤ 走查三轮：输入控件带 nodrag/nopan（框选文字不拖动卡片/画布）
+  const cls = await page.evaluate(() => ({
+    ta: document.querySelector(".node-textarea")?.className || "",
+    input: document.querySelector(".ds-input")?.className || "",
+  }));
+  ok(
+    "走查三轮 输入控件 nodrag nopan",
+    cls.ta.includes("nodrag") && cls.ta.includes("nopan") && cls.input.includes("nodrag") && cls.input.includes("nopan"),
+    JSON.stringify(cls)
+  );
+
+  // ⑥ 走查三轮：tooltip 可见（真实 hover 触发 ::after 内容出现）
+  const tipEl = page.locator(".node-block-title.tip").first();
+  await tipEl.hover({ force: true });
+  await page.waitForTimeout(300);
+  const tipContent = await tipEl.evaluate((el) => window.getComputedStyle(el, "::after").content);
+  ok("走查三轮 hover 出 tooltip", !!tipContent && tipContent !== "none" && tipContent !== '""', `content=${tipContent}`);
 
   await page.screenshot({ path: path.resolve(_here, "f2-cursor-count.png"), fullPage: false });
   console.log("SHOT f2-cursor-count.png");

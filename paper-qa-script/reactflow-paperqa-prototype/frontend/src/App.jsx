@@ -323,17 +323,14 @@ export default function App() {
   // 运行中→实时计时；已结束→冻结文案（先完成的节点不会被后续 tick 覆盖丢失，快速节点也不会漏）；
   // 结束后删除起点（ref 不无界增长）；新一轮运行开始时清掉上一轮冻结。
   const frozenTextRef = useRef(new Map()); // id -> 冻结文案（完成/失败）
-  const hadRunningRef = useRef(false);     // 上一 tick 是否有 running（新一轮运行判定）
   const anyRunRef = useRef(false);         // F-AC7：本次会话是否发生过运行（idle 兜底闸门）
   useEffect(() => {
     const iv = setInterval(() => {
       const byId = new Map(nodesRef.current.map((n) => [n.id, n]));
       const running = nodesRef.current.filter((n) => n.data?.status === "running");
-      if (running.length && !hadRunningRef.current) {
-        frozenTextRef.current.clear(); // 新一轮运行开始：清掉上一轮全部冻结
-      }
+      // 走查三轮：不再在新一轮运行时全局清空冻结文案——各节点完成状态保留，
+      // 仅在该节点自身重跑（running 分支）时清除自己的旧冻结。
       if (running.length) anyRunRef.current = true;
-      hadRunningRef.current = running.length > 0;
       const runningIds = new Set(running.map((n) => n.id));
       const parts = [];
       // 1) 有计时起点的节点：运行中→实时；已结束→冻结并清理起点；其余→清理残留
@@ -347,8 +344,12 @@ export default function App() {
         const st = n.data?.status;
         if (st === "running") {
           frozenTextRef.current.delete(id); // 重跑 → 清除旧冻结
-          const s = (Date.now() - start) / 1000;
-          parts.push(`${n.data.step} ${s.toFixed(1)}s`);
+          // 走查三轮：单节点运行时计时只随"当前查看节点"展示（手动切换后不再显示他节点计时）；
+          // ≥2 并发运行保留 M4 双计时展示。
+          if (runningIds.size >= 2 || id === activeStepIdRef.current) {
+            const s = (Date.now() - start) / 1000;
+            parts.push(`${n.data.step} ${s.toFixed(1)}s`);
+          }
         } else if (st === "success" || st === "failed") {
           const dur = n.data.duration;
           const durText = typeof dur === "number" ? ` ${dur.toFixed(1)}s` : "";
@@ -581,10 +582,24 @@ export default function App() {
       stopRevealTimer();
       pendingFnNodesRef.current = [];
       desiredFnEdgesRef.current = [];
-      fnNodesRef.current = [];
-      fnEdgesRef.current = [];
-      applyFnNodesUpdate([]);
-      applyFnEdgesUpdate([]);
+      if (stepNode.data?.status === "running") {
+        // 走查三轮：运行中切回该节点——不清空重建（避免重新计数/卡顿），
+        // 仅保留本步前缀的既有节点，随 scheduleFnRefresh 增量补齐
+        const keepN = fnNodesRef.current.filter((n) => String(n.id).startsWith(`${stepId}__fn__`));
+        const keepIds = new Set(keepN.map((n) => n.id));
+        const keepE = fnEdgesRef.current.filter(
+          (e) => keepIds.has(e.source) && keepIds.has(e.target)
+        );
+        fnNodesRef.current = keepN;
+        fnEdgesRef.current = keepE;
+        applyFnNodesUpdate(keepN);
+        applyFnEdgesUpdate(keepE);
+      } else {
+        fnNodesRef.current = [];
+        fnEdgesRef.current = [];
+        applyFnNodesUpdate([]);
+        applyFnEdgesUpdate([]);
+      }
       setFnFlowRevision((v) => v + 1);
       lastRenderedStepRef.current = stepId;
     }
@@ -848,6 +863,11 @@ export default function App() {
       );
       runStartTimesRef.current[id] = Date.now(); // US-5.3：Subcanvas 步骤计时起点
       anyRunRef.current = true; // F-AC7：运行发起即置位（tick 500ms 可能观察不到 <0.5s 的快步骤）
+      // 走查三轮：点击运行节点后自动定位卡片顶部（卡片较高时 Run Node 按钮在视口外）
+      const runPos = currentNode.position;
+      if (runPos && mainFlowRef.current?.setCenter) {
+        mainFlowRef.current.setCenter(runPos.x + 180, runPos.y, { zoom: 1, duration: 200 });
+      }
 
       try {
         const params =
@@ -1165,6 +1185,7 @@ export default function App() {
                 // F-AC9 走查修复：v11 实例经 onInit 获取（ref= 不是实例 API）
                 mainFlowRef.current = inst;
               }}
+              deleteKeyCode={["Backspace", "Delete"]}
               nodes={hydratedNodes}
               edges={edges}
               nodeTypes={nodeTypes}

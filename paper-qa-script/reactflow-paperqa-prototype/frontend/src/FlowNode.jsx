@@ -117,7 +117,7 @@ export default function FlowNode({ id, data }) {
 
       <textarea
         ref={textareaRef}
-        className="node-textarea"
+        className="node-textarea nodrag nopan"
         defaultValue={paramsJson}
         onFocus={() => {
           focusedRef.current = true;
@@ -176,8 +176,8 @@ export default function FlowNode({ id, data }) {
 
       <div className="node-output">
         <div
-          className="node-block-title"
-          title={JSON.stringify(output || {}, null, 2)}
+          className="node-block-title tip"
+          data-tip={JSON.stringify(output || {}, null, 2)}
         >
           output_snapshot
           {/* F-AC11（走查 N1）：output 完整查看——一键复制全文 JSON；标题 hover 出全文 tooltip */}
@@ -227,7 +227,7 @@ export default function FlowNode({ id, data }) {
                 {copied ? "已复制 ✓" : "复制答案"}
               </button>
             </div>
-            <pre className="answer-text" title={output.answer}>{output.answer}</pre>
+            <pre className="answer-text tip" data-tip={output.answer}>{output.answer}</pre>
             {output.references ? (
               <details className="answer-refs-detail" open>
                 <summary>参考文献</summary>

@@ -553,6 +553,33 @@ body,
   color: #334155;
 }
 
+/* F-AC11 三轮：hover 可见 tooltip（原生 title 太隐晦，走查 N1 疑似 FAIL） */
+.tip {
+  position: relative;
+  cursor: help;
+}
+.tip:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 2000;
+  max-width: 480px;
+  max-height: 320px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #1e293b;
+  color: #f1f5f9;
+  font-size: 11px;
+  font-weight: normal;
+  line-height: 1.5;
+  padding: 6px 8px;
+  border-radius: 6px;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.3);
+  pointer-events: none;
+}
+
 .fn-title {
   font-size: var(--fs-block-title);
   font-family: var(--font-ui);
