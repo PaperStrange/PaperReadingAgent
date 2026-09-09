@@ -387,6 +387,7 @@ export default function App() {
   const fnNodesByStepRef = useRef({}); // 走查四轮：每步 fn 节点缓存（切回瞬间还原，不重计数）
   const desiredFnEdgesRef = useRef([]);
   const fnFlowRef = useRef(null);
+  const errLocateIndexRef = useRef(0); // 走查五轮：多报错卡循环定位下标（自动定位=最新一张，按钮逆序回退）
 
   useEffect(() => {
     nodesRef.current = nodes;
@@ -508,6 +509,24 @@ export default function App() {
   // 节点渐进显示完成后，自动把整个函数子图画布居中（fitView）；F-AC6 走查追加：
   // 当前节点失败时优先定位到**报错卡片**（走查 2026-09-07 修正：用 fitView 节点过滤
   // 或 DOM 实测坐标，杜绝按存储 position 定位偏移到相邻卡）；切回正常节点则正常 fitView。
+  // 走查五轮：多报错卡时自动定位**最新（call_id 最大）**一张；"定位下一处报错"按钮逆序循环。
+  const fitToFnNode = useCallback((nodeId) => {
+    const inst = fnFlowRef.current;
+    try {
+      inst?.fitView({ nodes: [{ id: nodeId }], duration: 300, maxZoom: 1, padding: 0.35 });
+      return;
+    } catch {
+      /* fall through：DOM 实测坐标 */
+    }
+    const el = document.querySelector(`.react-flow__node[data-id="${nodeId}"]`);
+    const pane = document.querySelector(".fn-pane-flow");
+    if (el && pane && typeof inst?.screenToFlowPosition === "function" && typeof inst.setCenter === "function") {
+      const r = el.getBoundingClientRect();
+      const pos = inst.screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+      inst.setCenter(pos.x, pos.y, { zoom: 1, duration: 300 });
+    }
+  }, []);
+
   const fitFnView = useCallback(() => {
     const locateError = (attempt = 0) => {
       const inst = fnFlowRef.current;
@@ -516,29 +535,31 @@ export default function App() {
         if (typeof inst?.fitView === "function") inst.fitView({ padding: 0.2, duration: 300 });
         return;
       }
-      const errNode = fnNodesRef.current.find((n) => n.data?.status === "error");
-      if (!errNode) {
+      const errNodes = fnNodesRef.current
+        .filter((n) => n.data?.status === "error")
+        .sort((a, b) => (a.data?.call_id ?? 0) - (b.data?.call_id ?? 0));
+      if (!errNodes.length) {
         if (attempt < 10) {
           window.setTimeout(() => locateError(attempt + 1), 200); // 渐进显示中，等报错卡入场
         }
         return;
       }
-      try {
-        inst?.fitView({ nodes: [{ id: errNode.id }], duration: 300, maxZoom: 1, padding: 0.3 });
-        return;
-      } catch {
-        /* fall through：DOM 实测坐标 */
-      }
-      const el = document.querySelector(`.react-flow__node[data-id="${errNode.id}"]`);
-      const pane = document.querySelector(".fn-pane-flow");
-      if (el && pane && typeof inst?.screenToFlowPosition === "function" && typeof inst.setCenter === "function") {
-        const r = el.getBoundingClientRect();
-        const pos = inst.screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
-        inst.setCenter(pos.x, pos.y, { zoom: 1, duration: 300 });
-      }
+      errLocateIndexRef.current = errNodes.length - 1; // 自动定位：最新（call_id 最大）报错卡
+      fitToFnNode(errNodes[errLocateIndexRef.current].id);
     };
     window.setTimeout(() => locateError(0), 120);
-  }, []);
+  }, [fitToFnNode]);
+
+  // 走查五轮：多报错卡时按时间逆序循环定位上一处报错（含回绕）
+  const locatePrevError = useCallback(() => {
+    const errNodes = fnNodesRef.current
+      .filter((n) => n.data?.status === "error")
+      .sort((a, b) => (a.data?.call_id ?? 0) - (b.data?.call_id ?? 0));
+    if (!errNodes.length) return;
+    const idx = (errLocateIndexRef.current - 1 + errNodes.length) % errNodes.length;
+    errLocateIndexRef.current = idx;
+    fitToFnNode(errNodes[idx].id);
+  }, [fitToFnNode]);
 
   const startRevealTimer = useCallback(() => {
     if (revealTimerRef.current) {
@@ -587,6 +608,7 @@ export default function App() {
       // 切回瞬间还原（不再从 0 重新计数）；位置对已存在 id 保留，避免卡片跳动。
       setFnFlowRevision((v) => v + 1);
       lastRenderedStepRef.current = stepId;
+      errLocateIndexRef.current = 0; // 走查五轮：切换步骤时重置循环定位下标
     }
 
     const built = buildFunctionSubgraphForStep(stepNode);
@@ -1092,6 +1114,7 @@ export default function App() {
   const activeStepNode = nodes.find((n) => n.id === activeStepId);
   const fnStepStatus = activeStepNode?.data?.status || "idle";
   const fnTraceCount = (activeStepNode?.data?.lastSnapshot?.function_trace || []).length;
+  const fnErrorCount = fnNodes.reduce((acc, n) => acc + (n.data?.status === "error" ? 1 : 0), 0);
   const fnIsRunning = fnStepStatus === "running";
   const fnStatusText = fnIsRunning
     ? `正在生成函数追踪图（已加载 ${fnNodes.length} 个调用）…`
@@ -1215,6 +1238,15 @@ export default function App() {
               {fnIsRunning && <span className="fn-spinner" aria-hidden />}
               {fnStatusText}
             </span>
+            {fnStepStatus === "failed" && fnErrorCount >= 2 ? (
+              <button
+                className="fn-locate-err-btn"
+                title={`共 ${fnErrorCount} 张报错卡，按时间逆序循环定位上一处`}
+                onClick={locatePrevError}
+              >
+                定位下一处报错（{fnErrorCount}）
+              </button>
+            ) : null}
             {subTimerText ? <span className="fn-timer">{subTimerText}</span> : null}
             <span className="fn-toolbar-actions">
               <button className="icon-btn" title="放大" aria-label="放大" onClick={() => fnFlowRef.current?.zoomIn({ duration: 200 })}>＋</button>

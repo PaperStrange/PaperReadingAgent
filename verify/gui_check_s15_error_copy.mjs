@@ -1,4 +1,4 @@
-// VERIFY_META: {"features": "Sprint-15 F-AC6：失败一键复制（主卡+fn 卡，含完整堆栈）+ fn 卡框选复制 + 主画布错误摘要可展开", "tier": "gui", "providers": [], "est_seconds": 90, "est_cost_cny": 0, "routes": ["/api/run_step"], "requires": ["playwright", "servers"]}
+// VERIFY_META: {"features": "Sprint-15 F-AC6：失败一键复制（主卡+fn 卡，含完整堆栈）+ fn 卡框选复制 + 主画布错误摘要可展开 + 多报错卡定位按钮显隐", "tier": "gui", "providers": [], "est_seconds": 90, "est_cost_cny": 0, "routes": ["/api/run_step"], "requires": ["playwright", "servers"]}
 // Sprint-15 F-AC6（验收④）：复制与报错详情（Q5 口径：摘要 + 可展开完整堆栈）。
 // 前提：后端 8787、前端 5173 已启动；playwright 取前端 node_modules。
 import { createRequire } from "module";
@@ -90,6 +90,10 @@ try {
   await page.waitForTimeout(500);
   const clipFn = await page.evaluate(() => navigator.clipboard.readText().catch(() => ""));
   ok("F-AC6 fn 卡复制含完整错误", /FileNotFoundError/.test(clipFn) && !/truncated/.test(clipFn), clipFn.slice(0, 120));
+
+  // ⑤-走查五轮：报错卡 < 2 张时不显示"定位下一处报错"按钮（≥2 张才出现，多卡场景见手动走查记录）
+  const locateBtnCount = await page.locator(".fn-locate-err-btn").count();
+  ok("F-AC6 单张报错卡时隐藏定位下一处报错按钮", locateBtnCount === 0, `btn=${locateBtnCount}`);
 
   // ② 框选复制：fn 卡 user-select = text
   const us = await page.evaluate(() => window.getComputedStyle(document.querySelector(".fn-node-card")).userSelect);
