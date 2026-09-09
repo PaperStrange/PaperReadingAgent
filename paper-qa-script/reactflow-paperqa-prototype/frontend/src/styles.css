@@ -483,6 +483,7 @@ body,
 
 .fn-node-card {
   width: 340px;
+  max-width: 100%; /* F-AC5：窄面板下不撑破容器 */
   box-sizing: border-box;
   border: 1px solid #22c55e;
   background: #f0fdf4;
@@ -774,7 +775,8 @@ body,
 
 /* ---- 分栏拖拽分隔条 ---- */
 .canvas-split {
-  grid-template-columns: 55% 8px 45%;
+  /* F-AC5：与 App.jsx 内联样式同构（默认 55/45）：calc 减分隔条 + minmax 下限防溢出 */
+  grid-template-columns: minmax(320px, calc(55% - 8px)) 8px minmax(340px, calc(45% - 8px));
 }
 .canvas-split .split-divider {
   width: 8px;

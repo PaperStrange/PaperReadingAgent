@@ -17,6 +17,7 @@
 | `gui_check_s15_collapse.mjs` | Sprint-15 F-AC4：节点运行完成后自动收起全部展开项，仅 output_snapshot 保持展开 | gui | — | 50s | ¥0 | /api/run_step | playwright, servers |
 | `gui_check_s15_hints_title.mjs` | Sprint-15 F-AC2：hints 限高滚动 + 分组标题影响聚合（N项，M项被改动，M 标红） | gui | — | 45s | ¥0 | /api/config_schema, /api/config/validate | playwright, servers |
 | `gui_check_s15_local_dir.mjs` | Sprint-15 F-AC3：local 模式显示论文目录并隐藏远程源三字段、remote 模式恢复；Index 组不再含论文目录 | gui | — | 45s | ¥0 | /api/config_schema | playwright, servers |
+| `gui_check_s15_responsive.mjs` | Sprint-15 F-AC5：分栏自适应——1280/1366/1920 桌面宽度下无横向溢出、fn 卡片完整可见 | gui | — | 60s | ¥0 | /api/run_step | playwright, servers |
 | `gui_check_s15_status_scope.mjs` | Sprint-15 F-AC7：步骤状态行仅展示当前查看节点的完成/失败文案（切换即更替，不残留他节点） | gui | — | 60s | ¥0 | /api/run_step | playwright, servers |
 | `gui_check_s15_typography.mjs` | Sprint-15 F-AC1 排版统一断言：标题字号/字体族 token 一致性（node-title 13px、block 标题 12px、字体族统一） | gui | — | 40s | ¥0 | — | playwright, servers |
 | `gui_check_s4.mjs` | 光标三断言（插入/位置/连续编辑）+ provider 联动四断言 | gui | — | 30s | ¥0 | — | playwright, servers |
@@ -36,4 +37,4 @@
 | `verify_remote_e2e.py` | remote 数据源全链路（arXiv 下载+索引+6 步） | network | deepseek | 180s | ¥0.4 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
 | `verify_smoke.py` | 冒烟 8 项：paperqa 导入/后端 10 路由加载/runtime_trace 目标/PDF 解析等（离线） | offline | — | 10s | ¥0 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session, /api/health, /api/providers, /api/config_schema, /api/config/validate, /api/translate_preview | none |
 
-共 30 个脚本：offline 6 / network 8 / gui 16。
+共 31 个脚本：offline 6 / network 8 / gui 17。

@@ -1099,7 +1099,11 @@ export default function App() {
 
       <div
         className="canvas-split"
-        style={{ gridTemplateColumns: `${splitPct}% 8px ${100 - splitPct}%` }}
+        style={{
+          // F-AC5：% 列需减除 8px 分隔条防总宽超 100%（1280 下曾溢出 8~18px 截断右卡）；
+          // minmax 下限护栏保证窄桌面下 fn 面板不小于卡片宽度、主画布不低于 320px。
+          gridTemplateColumns: `minmax(320px, calc(${splitPct}% - 8px)) 8px minmax(340px, calc(${100 - splitPct}% - 8px))`,
+        }}
       >
         <div className="canvas-pane">
           <div className="pane-title">Main Pipeline Canvas</div>
