@@ -506,6 +506,11 @@ body,
   background: #fef2f2;
 }
 
+/* 走查八轮：当前被定位的报错卡红色高亮描边（定位目标唯一压顶） */
+.fn-node-card.fn-located {
+  box-shadow: 0 0 0 3px #dc2626, 0 4px 12px rgba(220, 38, 38, 0.35);
+}
+
 /* F-AC6：fn 卡错误全文（换行不截断）+ 复制按钮；主画布可展开堆栈 */
 .fn-error-block {
   margin-top: 4px;

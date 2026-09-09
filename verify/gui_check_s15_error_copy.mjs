@@ -1,4 +1,4 @@
-// VERIFY_META: {"features": "Sprint-15 F-AC6：失败一键复制（主卡+fn 卡，含完整堆栈）+ fn 卡框选复制 + 主画布错误摘要可展开 + 多报错卡定位按钮显隐 + 走查七轮报错卡 zIndex 压顶与 fn_title 定位", "tier": "gui", "providers": [], "est_seconds": 120, "est_cost_cny": 0, "routes": ["/api/run_step"], "requires": ["playwright", "servers"]}
+// VERIFY_META: {"features": "Sprint-15 F-AC6：失败一键复制（主卡+fn 卡，含完整堆栈）+ fn 卡框选复制 + 主画布错误摘要可展开 + 多报错卡定位按钮显隐 + 走查七轮报错卡 zIndex 压顶与 fn_title 定位 + 走查八轮定位目标抬层 10001 高亮", "tier": "gui", "providers": [], "est_seconds": 120, "est_cost_cny": 0, "routes": ["/api/run_step"], "requires": ["playwright", "servers"]}
 // Sprint-15 F-AC6（验收④）：复制与报错详情（Q5 口径：摘要 + 可展开完整堆栈）。
 // 前提：后端 8787、前端 5173 已启动；playwright 取前端 node_modules。
 import { createRequire } from "module";
@@ -143,6 +143,15 @@ try {
   });
   ok("F-AC6 七轮 报错卡 zIndex 高于正常卡", zIdx.err != null && zIdx.err > (zIdx.ok ?? 0), JSON.stringify(zIdx));
 
+  // ⑧-八轮：被定位的报错卡抬升至 10001 并带 fn-located 高亮（报错卡之间重叠时定位目标唯一压顶）
+  const elev = await page.evaluate(() => {
+    const err = document.querySelector(".fn-node-card.fn-error");
+    const zw = err?.closest(".react-flow__node");
+    const z = zw ? parseInt(window.getComputedStyle(zw).zIndex, 10) || 0 : 0;
+    return { z, located: err?.classList.contains("fn-located") || false };
+  });
+  ok("F-AC6 八轮 被定位报错卡抬升至 10001 且高亮", elev.z === 10001 && elev.located, JSON.stringify(elev));
+
   const drag = await page.evaluate(() => {
     const err = document.querySelector(".fn-node-card.fn-error");
     const normals = [...document.querySelectorAll(".fn-node-card:not(.fn-error)")];
@@ -189,10 +198,13 @@ try {
     const centerDelta = Math.abs(c.left + c.width / 2 - (p.left + p.width / 2)) / (p.width || 1);
     const el = document.elementFromPoint(c.left + c.width / 2, c.top + c.height / 2);
     const card = el?.closest?.(".fn-node-card") || null;
-    return { visible, centerDelta, topErr: card?.classList.contains("fn-error") || false };
+    const zw = err.closest(".react-flow__node");
+    const z = zw ? parseInt(window.getComputedStyle(zw).zIndex, 10) || 0 : 0;
+    return { visible, centerDelta, topErr: card?.classList.contains("fn-error") || false, located: err.classList.contains("fn-located"), z };
   });
   ok("F-AC6 七轮 重叠后切回仍按 fn_title 定位报错卡（居中）", overlapRecheck.visible && overlapRecheck.centerDelta < 0.35, JSON.stringify(overlapRecheck));
   ok("F-AC6 七轮 重叠后切回报错卡仍压顶", overlapRecheck.topErr, JSON.stringify(overlapRecheck));
+  ok("F-AC6 八轮 切回后定位卡仍抬层高亮", overlapRecheck.located && overlapRecheck.z === 10001, JSON.stringify(overlapRecheck));
 
   await page.screenshot({ path: path.resolve(_here, "f2-error-copy.png"), fullPage: false });
   console.log("SHOT f2-error-copy.png");

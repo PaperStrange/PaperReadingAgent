@@ -89,7 +89,7 @@ export default function FunctionTraceNode({ data }) {
   };
 
   return (
-    <div className={`fn-node-card ${data?.status === "error" ? "fn-error" : ""}`}>
+    <div className={`fn-node-card ${data?.status === "error" ? "fn-error" : ""} ${data?.isLocated ? "fn-located" : ""}`}>
       <Handle type="target" position={Position.Left} />
       <div className="fn-title">#{data?.call_id} {data?.func || "function"}</div>
       <div className="fn-meta">

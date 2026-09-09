@@ -389,6 +389,8 @@ export default function App() {
   const desiredFnEdgesRef = useRef([]);
   const fnFlowRef = useRef(null);
   const errLocateIndexRef = useRef(0); // 走查五轮：多报错卡循环定位下标（自动定位=最新一张，按钮逆序回退）
+  const locatedErrNodeIdRef = useRef(null); // 走查八轮：当前被定位的报错卡 id（按钮以此为基准逆序）
+  const locateRetryTimerRef = useRef(null); // 走查八轮：自动定位重试计时器（手动点击时取消，防回跳覆盖）
 
   useEffect(() => {
     nodesRef.current = nodes;
@@ -523,27 +525,68 @@ export default function App() {
     return null;
   };
 
-  // 定位单张报错卡：fn_title 找卡 → 实测中心 setCenter；找不到 → fitView 节点过滤兜底。
-  // 返回是否成功定位（用于重试）。
-  const fitToFnErrorCard = useCallback((node) => {
-    const inst = fnFlowRef.current;
-    const card = findErrorCardByTitle(fnTitleOf(node));
-    if (card) {
-      const pane = document.querySelector(".fn-pane-flow");
-      if (pane && typeof inst?.screenToFlowPosition === "function" && typeof inst?.setCenter === "function") {
-        const r = card.getBoundingClientRect();
-        const pos = inst.screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
-        inst.setCenter(pos.x, pos.y, { zoom: 1, duration: 300 });
-        return true;
+  // 走查八轮：被定位的报错卡再抬一层（10001）+ 高亮描边，其余报错卡回落 10000——
+  // 报错卡之间也可能重叠，同 zIndex 时 DOM 顺序决定谁压谁，定位目标必须唯一压顶。
+  const elevateFnErrorCard = useCallback(
+    (nodeId) => {
+      applyFnNodesUpdate((prev) => {
+        let changed = false;
+        const next = prev.map((n) => {
+          if (n.id === nodeId) {
+            if (n.zIndex !== 10001 || n.data?.isLocated !== true) {
+              changed = true;
+              return { ...n, zIndex: 10001, data: { ...n.data, isLocated: true } };
+            }
+            return n;
+          }
+          if (n.zIndex === 10001 || n.data?.isLocated) {
+            changed = true;
+            return {
+              ...n,
+              zIndex: n.data?.status === "error" ? 10000 : undefined,
+              data: { ...n.data, isLocated: false },
+            };
+          }
+          return n;
+        });
+        return changed ? next : prev;
+      });
+    },
+    [applyFnNodesUpdate]
+  );
+
+  // 定位单张报错卡：先抬层（目标报错卡压顶+高亮）→ fn_title 找卡 → 实测中心 setCenter；
+  // 找不到 → fitView 节点过滤兜底。返回是否成功定位（用于重试）。
+  const fitToFnErrorCard = useCallback(
+    (node) => {
+      if (!node) return false;
+      const inst = fnFlowRef.current;
+      elevateFnErrorCard(node.id); // 目标报错卡抬到最高层并高亮（其余报错卡回落）
+      const card = findErrorCardByTitle(fnTitleOf(node));
+      if (card) {
+        const pane = document.querySelector(".fn-pane-flow");
+        if (pane && typeof inst?.screenToFlowPosition === "function" && typeof inst?.setCenter === "function") {
+          try {
+            const r = card.getBoundingClientRect();
+            const pos = inst.screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+            inst.setCenter(pos.x, pos.y, { zoom: 1, duration: 300 });
+            locatedErrNodeIdRef.current = node.id;
+            return true;
+          } catch {
+            /* fall through：fitView 兜底 */
+          }
+        }
       }
-    }
-    try {
-      inst?.fitView({ nodes: [{ id: node.id }], duration: 300, maxZoom: 1, padding: 0.35 });
-      return true;
-    } catch {
-      return false;
-    }
-  }, []);
+      try {
+        inst?.fitView({ nodes: [{ id: node.id }], duration: 300, maxZoom: 1, padding: 0.35 });
+        locatedErrNodeIdRef.current = node.id;
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [elevateFnErrorCard]
+  );
 
   const fitFnView = useCallback(() => {
     const locateError = (attempt = 0) => {
@@ -558,28 +601,42 @@ export default function App() {
         .sort((a, b) => (a.data?.call_id ?? 0) - (b.data?.call_id ?? 0));
       if (!errNodes.length) {
         if (attempt < 10) {
-          window.setTimeout(() => locateError(attempt + 1), 200); // 等报错卡入场
+          locateRetryTimerRef.current = window.setTimeout(() => locateError(attempt + 1), 200); // 等报错卡入场
         }
         return;
       }
       errLocateIndexRef.current = errNodes.length - 1; // 自动定位：最新（call_id 最大）报错卡
       const ok = fitToFnErrorCard(errNodes[errLocateIndexRef.current]);
       if (!ok && attempt < 10) {
-        window.setTimeout(() => locateError(attempt + 1), 200); // 卡片尚未入 DOM，稍后重试
+        locateRetryTimerRef.current = window.setTimeout(() => locateError(attempt + 1), 200); // 卡片尚未入 DOM，稍后重试
       }
     };
-    window.setTimeout(() => locateError(0), 120);
+    locateRetryTimerRef.current = window.setTimeout(() => locateError(0), 120);
   }, [fitToFnErrorCard]);
 
-  // 走查五轮：多报错卡时按时间逆序循环定位上一处报错（含回绕）；七轮起同样走 fn_title 找卡
+  // 走查五轮：多报错卡时按时间逆序循环定位上一处报错（含回绕）；七轮起同样走 fn_title 找卡；
+  // 走查八轮：以"当前可见定位卡"为基准逆序（不依赖可能被自动定位重置的下标），
+  // 先取消自动定位重试（防回跳覆盖手动点击），目标卡未入 DOM 时重试 3 次。
   const locatePrevError = useCallback(() => {
-    const errNodes = fnNodesRef.current
-      .filter((n) => n.data?.status === "error")
-      .sort((a, b) => (a.data?.call_id ?? 0) - (b.data?.call_id ?? 0));
-    if (!errNodes.length) return;
-    const idx = (errLocateIndexRef.current - 1 + errNodes.length) % errNodes.length;
-    errLocateIndexRef.current = idx;
-    fitToFnErrorCard(errNodes[idx]);
+    if (locateRetryTimerRef.current) {
+      clearTimeout(locateRetryTimerRef.current);
+      locateRetryTimerRef.current = null;
+    }
+    const doLocate = (attempt = 0) => {
+      const errNodes = fnNodesRef.current
+        .filter((n) => n.data?.status === "error")
+        .sort((a, b) => (a.data?.call_id ?? 0) - (b.data?.call_id ?? 0));
+      if (!errNodes.length) return;
+      const curPos = errNodes.findIndex((n) => n.id === locatedErrNodeIdRef.current);
+      const base = curPos >= 0 ? curPos : errNodes.length - 1;
+      const idx = (base - 1 + errNodes.length) % errNodes.length;
+      errLocateIndexRef.current = idx;
+      const ok = fitToFnErrorCard(errNodes[idx]);
+      if (!ok && attempt < 3) {
+        window.setTimeout(() => doLocate(attempt + 1), 150);
+      }
+    };
+    doLocate(0);
   }, [fitToFnErrorCard]);
 
   const startRevealTimer = useCallback(() => {
@@ -630,6 +687,7 @@ export default function App() {
       setFnFlowRevision((v) => v + 1);
       lastRenderedStepRef.current = stepId;
       errLocateIndexRef.current = 0; // 走查五轮：切换步骤时重置循环定位下标
+      locatedErrNodeIdRef.current = null; // 走查八轮：切换步骤时清空"当前定位卡"基准
     }
 
     const built = buildFunctionSubgraphForStep(stepNode);
