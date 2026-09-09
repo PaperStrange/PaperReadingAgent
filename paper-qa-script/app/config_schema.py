@@ -10,6 +10,9 @@
      避免与框架双份维护。
 - `readonly: true` 的字段 = 通过 Settings 默认值生效、但当前表单/参数暂不可改
   （如 evidence_k / answer_length / multimodal），如实展示 + 提示，不误导。
+- **`show_if`（Sprint-15 F-AC3）**：字段级条件可见——`show_if: {<key>: <value>}` 表示仅当 params
+  中该键的字符串值匹配时才渲染该字段（如远程源三字段 `show_if: {data_source: remote}`）；
+  前端 SchemaForm 按此过滤，后端 validate 不受影响（隐藏≠删除，参数仍可保留）。
 - 维护成本控制：新增 paperqa 字段只需在 GROUPS 加一行（可只给 pydantic_path 自动取默认）；
   `assert_schema_consistency()` 校验所有 pydantic_path 真实存在（CLI/CI 用，防拼写/漂移）。
 - 输出物：
@@ -121,14 +124,20 @@ GROUPS: list[dict[str, Any]] = [
              "default": "local", "label": "数据源模式",
              "hint": "local=本地论文目录（默认）；remote=URL/arXiv/DOI 下载后建索引",
              "impacts": ["切换 remote 需联网下载（首次较慢）", _IMPACTS_INDEX]},
+            # Sprint-15 F-AC3：论文目录从 Index 组移入数据源组（用户反馈"找不到本地路径入口"）；
+            # 引擎侧消费 params["paper_directory"]（engine.py:192），无需别名接线。
+            {"key": "paper_directory", "type": "string", "default": "data/pdf",
+             "label": "本地论文目录", "hint": "local 模式索引的论文目录（相对后端工作目录或绝对路径）；remote 模式时为下载暂存目录",
+             "impacts": ["数据源"]},
+            # show_if（F-AC3）：data_source=remote 才显示远程源字段；local 模式自动隐藏
             {"key": "source_urls", "type": "string_list", "default": [],
-             "label": "URL 列表",
+             "label": "URL 列表", "show_if": {"data_source": "remote"},
              "hint": "每行一个：PDF/HTML 直链（http/https）", "impacts": ["需联网"]},
             {"key": "source_arxiv_ids", "type": "string_list", "default": [],
-             "label": "arXiv ID 列表",
+             "label": "arXiv ID 列表", "show_if": {"data_source": "remote"},
              "hint": "每行一个：如 2409.13740（export.arxiv.org 解析，免 key）", "impacts": ["需联网"]},
             {"key": "source_dois", "type": "string_list", "default": [],
-             "label": "DOI 列表",
+             "label": "DOI 列表", "show_if": {"data_source": "remote"},
              "hint": "每行一个：如 10.xxxx/yyyy（Unpaywall 查开放全文；需设置 UNPAYWALL_EMAIL 环境变量为真实邮箱）",
              "impacts": ["需联网", "部分论文无 OA 全文会失败"]},
             {"key": "manifest_file", "type": "string", "default": "",
@@ -141,9 +150,6 @@ GROUPS: list[dict[str, Any]] = [
         "key": "index",
         "label": "Index",
         "fields": [
-            {"key": "paper_directory", "type": "string", "default": "data/pdf",
-             "label": "论文目录", "hint": "本地目录（相对后端工作目录）；remote 模式时为下载暂存目录",
-             "impacts": ["数据源"]},
             {"key": "index_name", "type": "string", "default": "debug_index",
              "label": "索引名", "hint": "存于 ~/.pqa/indexes/<name>/；remote 下载目录为 data/remote/<name>/"},
         ],
@@ -231,6 +237,8 @@ def get_config_schema() -> dict[str, Any]:
                 item["default"] = _resolve_pydantic_default(f["pydantic_path"])
             if "pydantic_path" in f:
                 item["pydantic_path"] = list(f["pydantic_path"])
+            if "show_if" in f:
+                item["show_if"] = dict(f["show_if"])  # F-AC3：条件可见规则透传给前端
             fields.append(item)
         groups.append({"key": g["key"], "label": g["label"], "fields": fields})
     return {"version": 1, "groups": groups}

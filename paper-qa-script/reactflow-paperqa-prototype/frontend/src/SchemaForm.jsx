@@ -21,7 +21,7 @@ function linesToArr(text) {
     .filter(Boolean);
 }
 
-export default function SchemaForm({ params, apiBase, onChange }) {
+export default function SchemaForm({ params, apiBase, onChange, collapsed = false }) {
   const [schema, setSchema] = useState(null);
   const [providers, setProviders] = useState([]);
   const [loadError, setLoadError] = useState(null);
@@ -55,6 +55,24 @@ export default function SchemaForm({ params, apiBase, onChange }) {
 
   // 卸载清定时器
   useEffect(() => () => timerRef.current && clearTimeout(timerRef.current), []);
+
+  // 走查 2026-09-10（光标跳末尾第二轮）：文本/密码/数字输入全部**非受控**——
+  // React 不写 DOM value，光标从机制上不被重置；外部变更（provider 联动等）
+  // 仅在输入框未聚焦时手动同步 DOM。（注意：hooks 必须在早退 return 之前声明）
+  const inputRefs = useRef({});
+  useEffect(() => {
+    Object.keys(inputRefs.current).forEach((key) => {
+      const el = inputRefs.current[key];
+      if (!el || el === document.activeElement) return;
+      const cur = params?.[key];
+      const v = cur === undefined || cur === null ? "" : String(cur);
+      if (el.value !== v) el.value = v;
+    });
+  }, [params]);
+  const attachInputRef = (key) => (el) => {
+    if (el) inputRefs.current[key] = el;
+    else delete inputRefs.current[key];
+  };
 
   // US-12.2：防抖校验（编辑后 600ms 调 validate 端点）；update 与 provider 联动共用
   // 027 加固：请求序号守卫（仅最新请求可写状态）+ r.ok 检查 + validate 请求体剔除 api_key
@@ -125,19 +143,39 @@ export default function SchemaForm({ params, apiBase, onChange }) {
     // 027 nit：仅保留带括号的精确匹配（后端错误文案恒含 ($key)），去掉子串误匹配兜底
     validate.errors.filter((e) => e.includes(`(${key})`)).join("；");
 
+  // F-AC2（验收①1.2b）：影响上浮到分组标题——"LLM（6项，M项被改动）"，M 标红。
+  // 改动判定 = params 显式含该键且值 ≠ schema 默认（数组按序列化比较，类型统一按字符串）；
+  // 无默认值字段（api_key/api_base 等，走查 2026-09-10 发现）有值即视为改动。
+  const isChanged = (f) => {
+    const cur = params?.[f.key];
+    if (cur === undefined || cur === null || cur === "") return false;
+    const def = f.default;
+    if (def === undefined || def === null) return true;
+    if (Array.isArray(def)) return JSON.stringify(cur) !== JSON.stringify(def);
+    return String(cur) !== String(def);
+  };
+  const changedInGroup = (g) => g.fields.filter(isChanged).length;
+
+  // F-AC3（验收①1.3b）：show_if 条件可见——schema 字段带 show_if:{key:value} 时，
+  // 仅当 params 对应值匹配才渲染（如 remote 三字段在 local 模式隐藏；隐藏≠删除参数）。
+  const fieldVisible = (f) => {
+    if (!f.show_if) return true;
+    return Object.entries(f.show_if).every(([k, v]) => String(params?.[k] ?? "") === String(v));
+  };
+
   const renderControl = (f) => {
     const key = f.key;
     const cur = params?.[key];
     const hasValue = cur !== undefined && cur !== null && cur !== "";
     const readonly = !!f.readonly;
     const ph = f.default === undefined || f.default === null ? f.hint || "" : `默认：${Array.isArray(f.default) ? "[]" : String(f.default)}`;
-    const common = { disabled: readonly, className: "ds-input" };
+    const common = { disabled: readonly, className: "ds-input nodrag nopan" };
 
     if (key === "provider") {
       // provider 下拉 + 联动（US-12.3）
       return (
         <select
-          className="ds-select schema-field-provider"
+          className="ds-select schema-field-provider nodrag nopan"
           value={params?.provider || ""}
           disabled={readonly}
           onChange={(e) => onProviderChange(e.target.value)}
@@ -157,8 +195,9 @@ export default function SchemaForm({ params, apiBase, onChange }) {
         return (
           <input
             type="password"
-            className="ds-input"
-            value={hasValue ? String(cur) : ""}
+            className="ds-input nodrag nopan"
+            ref={attachInputRef(key)}
+            defaultValue={hasValue ? String(cur) : ""}
             placeholder={ph}
             autoComplete="off"
             disabled={readonly}
@@ -180,7 +219,7 @@ export default function SchemaForm({ params, apiBase, onChange }) {
       case "enum":
         return (
           <select
-            className={`ds-select ${key === "data_source" ? "schema-field-datasource" : ""}`}
+            className={`ds-select nodrag nopan ${key === "data_source" ? "schema-field-datasource" : ""}`}
             value={hasValue ? String(cur) : String(f.default ?? "")}
             disabled={readonly}
             onChange={(e) => {
@@ -200,7 +239,7 @@ export default function SchemaForm({ params, apiBase, onChange }) {
       case "string_list":
         return (
           <textarea
-            className="ds-textarea"
+            className="ds-textarea nodrag nopan"
             value={toText(cur)}
             disabled={readonly}
             // 027 nit：默认空列表时 placeholder 优先显示用法提示（hint）而非"默认：[]"
@@ -217,8 +256,9 @@ export default function SchemaForm({ params, apiBase, onChange }) {
         return (
           <input
             type="number"
-            className="ds-input"
-            value={hasValue ? String(cur) : ""}
+            className="ds-input nodrag nopan"
+            ref={attachInputRef(key)}
+            defaultValue={hasValue ? String(cur) : ""}
             min={f.range?.[0]}
             max={f.range?.[1]}
             step={f.type === "integer" ? 1 : "any"}
@@ -244,7 +284,8 @@ export default function SchemaForm({ params, apiBase, onChange }) {
           <input
             {...common}
             type="text"
-            value={hasValue ? String(cur) : ""}
+            ref={attachInputRef(key)}
+            defaultValue={hasValue ? String(cur) : ""}
             placeholder={ph}
             onChange={(e) => update({ [key]: e.target.value })}
           />
@@ -275,13 +316,27 @@ export default function SchemaForm({ params, apiBase, onChange }) {
         </div>
       )}
 
-      {schema.groups.map((g) => (
-        <details key={g.key} className="schema-group" open={g.key === "llm" || g.key === "datasource"}>
+      {schema.groups.map((g) => {
+        const visFields = g.fields.filter(fieldVisible);
+        const countLabel =
+          visFields.length === g.fields.length
+            ? `${g.fields.length}项`
+            : `${visFields.length}/${g.fields.length}项`;
+        return (
+        <details
+          key={g.key}
+          className="schema-group"
+          open={collapsed ? false : g.key === "llm" || g.key === "datasource"}
+        >
           <summary>
-            {g.label}（{g.fields.length} 项）
+            {g.label}（{countLabel}，
+            <span className={changedInGroup(g) > 0 ? "schema-changed-count" : "schema-changed-count-zero"}>
+              {changedInGroup(g)}
+            </span>
+            项被改动）
           </summary>
           <div className="schema-fields">
-            {g.fields.map((f) => {
+            {visFields.map((f) => {
               const err = fieldError(f.key);
               return (
                 <div key={f.key} className={`schema-field ${err ? "schema-field-error" : ""}`}>
@@ -309,7 +364,8 @@ export default function SchemaForm({ params, apiBase, onChange }) {
             })}
           </div>
         </details>
-      ))}
+        );
+      })}
     </div>
   );
 }

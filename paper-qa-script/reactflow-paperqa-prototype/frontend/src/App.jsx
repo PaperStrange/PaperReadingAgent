@@ -231,6 +231,7 @@ function buildFunctionSubgraphForStep(stepNode) {
         y: pos.y,
       },
       draggable: true,
+      zIndex: evt.status === "error" ? 10000 : undefined, // 走查七轮：报错卡层级最高，重叠时恒压顶
       data: {
         call_id: callId,
         func: evt.func || "",
@@ -301,21 +302,36 @@ export default function App() {
   const runIdRef = useRef(runId);
   const activeStepIdRef = useRef(activeStepId);
   const lastRenderedStepRef = useRef(null);
+  const mainFlowRef = useRef(null); // F-AC9：主画布实例（subcanvas 切节点 → 主画布联动定位）
+
+  // F-AC9（验收⑦）：subcanvas 手动切换节点（step-switch-btn）→ 主画布选中并居中对应节点
+  useEffect(() => {
+    if (!activeStepId) return;
+    setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === activeStepId })));
+    const t = setTimeout(() => {
+      // 走查 2026-09-10：v11 实例必须经 onInit 获取；定位用 setCenter（节点 position 确定）
+      const inst = mainFlowRef.current;
+      const n = nodesRef.current.find((x) => x.id === activeStepId);
+      if (inst && n && typeof inst.setCenter === "function") {
+        inst.setCenter(n.position?.x ?? 0, n.position?.y ?? 0, { zoom: 1, duration: 300 });
+      }
+    }, 60);
+    return () => clearTimeout(t);
+  }, [activeStepId, setNodes]);
 
   // US-5.3 + Sprint-7 M4：Function Subcanvas 步骤计时（运行中每 0.5s 刷新；完成/失败后冻结最终时长）。
   // M4：多节点并发逐个展示（`stepA 3.2s · stepB 1.1s`）；以"计时起点表"为准遍历——
   // 运行中→实时计时；已结束→冻结文案（先完成的节点不会被后续 tick 覆盖丢失，快速节点也不会漏）；
   // 结束后删除起点（ref 不无界增长）；新一轮运行开始时清掉上一轮冻结。
   const frozenTextRef = useRef(new Map()); // id -> 冻结文案（完成/失败）
-  const hadRunningRef = useRef(false);     // 上一 tick 是否有 running（新一轮运行判定）
+  const anyRunRef = useRef(false);         // F-AC7：本次会话是否发生过运行（idle 兜底闸门）
   useEffect(() => {
     const iv = setInterval(() => {
       const byId = new Map(nodesRef.current.map((n) => [n.id, n]));
       const running = nodesRef.current.filter((n) => n.data?.status === "running");
-      if (running.length && !hadRunningRef.current) {
-        frozenTextRef.current.clear(); // 新一轮运行开始：清掉上一轮全部冻结
-      }
-      hadRunningRef.current = running.length > 0;
+      // 走查三轮：不再在新一轮运行时全局清空冻结文案——各节点完成状态保留，
+      // 仅在该节点自身重跑（running 分支）时清除自己的旧冻结。
+      if (running.length) anyRunRef.current = true;
       const runningIds = new Set(running.map((n) => n.id));
       const parts = [];
       // 1) 有计时起点的节点：运行中→实时；已结束→冻结并清理起点；其余→清理残留
@@ -329,30 +345,39 @@ export default function App() {
         const st = n.data?.status;
         if (st === "running") {
           frozenTextRef.current.delete(id); // 重跑 → 清除旧冻结
-          const s = (Date.now() - start) / 1000;
-          parts.push(`${n.data.step} ${s.toFixed(1)}s`);
+          // 走查三轮：单节点运行时计时只随"当前查看节点"展示（手动切换后不再显示他节点计时）；
+          // ≥2 并发运行保留 M4 双计时展示。
+          if (runningIds.size >= 2 || id === activeStepIdRef.current) {
+            const s = (Date.now() - start) / 1000;
+            parts.push(`${n.data.step} ${s.toFixed(1)}s`);
+          }
         } else if (st === "success" || st === "failed") {
           const dur = n.data.duration;
           const durText = typeof dur === "number" ? ` ${dur.toFixed(1)}s` : "";
-          frozenTextRef.current.set(
-            id,
-            `${n.data.step} ${st === "success" ? "完成" : "失败"}${durText}`
-          );
+          const text = `${n.data.step} ${st === "success" ? "完成" : "失败"}${durText}`;
+          frozenTextRef.current.set(id, text);
+          // F-AC7（验收⑤）：冻结文案只在"当前查看的执行节点"下展示
+          if (id === activeStepIdRef.current) parts.push(text);
           delete runStartTimesRef.current[id];
         } else {
           delete runStartTimesRef.current[id]; // idle/stale 残留
         }
       }
-      // 2) 冻结文案（跳过正在运行的；节点被删除的丢弃）
+      // 2) 冻结文案（跳过正在运行的；节点被删除的丢弃；F-AC7：仅当前 activeStep 的）
       for (const [id, text] of frozenTextRef.current) {
         if (runningIds.has(id)) continue;
         if (!byId.has(id)) {
           frozenTextRef.current.delete(id);
           continue;
         }
-        parts.push(text);
+        if (id === activeStepIdRef.current) parts.push(text);
       }
-      if (parts.length) setSubTimerText(parts.join(" · "));
+      // F-AC7 走查语义修正：无运行、当前节点也无冻结文案时，展示"该节点 idle"（不直接空白）
+      if (parts.length === 0 && anyRunRef.current) {
+        const activeN = byId.get(activeStepIdRef.current);
+        if (activeN) parts.push(`${activeN.data?.step || "step"} idle`);
+      }
+      setSubTimerText(parts.length ? parts.join(" · ") : "");
     }, 500);
     return () => clearInterval(iv);
   }, []);
@@ -360,8 +385,12 @@ export default function App() {
   const refreshScheduledRef = useRef(false);
   const pendingFnNodesRef = useRef([]);
   const revealTimerRef = useRef(null);
+  const fnNodesByStepRef = useRef({}); // 走查四轮：每步 fn 节点缓存（切回瞬间还原，不重计数）
   const desiredFnEdgesRef = useRef([]);
   const fnFlowRef = useRef(null);
+  const errLocateIndexRef = useRef(0); // 走查五轮：多报错卡循环定位下标（自动定位=最新一张，按钮逆序回退）
+  const locatedErrNodeIdRef = useRef(null); // 走查八轮：当前被定位的报错卡 id（按钮以此为基准逆序）
+  const locateRetryTimerRef = useRef(null); // 走查八轮：自动定位重试计时器（手动点击时取消，防回跳覆盖）
 
   useEffect(() => {
     nodesRef.current = nodes;
@@ -480,12 +509,138 @@ export default function App() {
     applyFnEdgesUpdate(kept);
   }, [applyFnEdgesUpdate]);
 
-  // 节点渐进显示完成后，自动把整个函数子图画布居中（fitView）。
+  // 节点渐进显示完成后，自动把整个函数子图画布居中（fitView）；F-AC6 走查追加：
+  // 当前节点失败时优先定位到**报错卡片**；切回正常节点则正常 fitView。
+  // 走查五轮：多报错卡时自动定位**最新（call_id 最大）**一张；"定位下一处报错"按钮逆序循环。
+  // 走查七轮：报错卡可能与正常卡重叠——① 报错卡 zIndex 最高（build 时置 10000，恒压顶）；
+  // ② 定位一律按 **fn_title** 找卡（DOM 实测屏幕中心 setCenter），不按相对位置；找不到再以 id fitView 兜底。
+  const fnTitleOf = (n) => `#${n?.data?.call_id ?? "?"} ${n?.data?.func || "function"}`;
+  const findErrorCardByTitle = (title) => {
+    const want = title.replace(/\s+/g, " ").trim();
+    const cards = document.querySelectorAll(".fn-node-card.fn-error");
+    for (const c of cards) {
+      const t = (c.querySelector(".fn-title")?.textContent || "").replace(/\s+/g, " ").trim();
+      if (t === want) return c;
+    }
+    return null;
+  };
+
+  // 走查八轮：被定位的报错卡再抬一层（10001）+ 高亮描边，其余报错卡回落 10000——
+  // 报错卡之间也可能重叠，同 zIndex 时 DOM 顺序决定谁压谁，定位目标必须唯一压顶。
+  const elevateFnErrorCard = useCallback(
+    (nodeId) => {
+      applyFnNodesUpdate((prev) => {
+        let changed = false;
+        const next = prev.map((n) => {
+          if (n.id === nodeId) {
+            if (n.zIndex !== 10001 || n.data?.isLocated !== true) {
+              changed = true;
+              return { ...n, zIndex: 10001, data: { ...n.data, isLocated: true } };
+            }
+            return n;
+          }
+          if (n.zIndex === 10001 || n.data?.isLocated) {
+            changed = true;
+            return {
+              ...n,
+              zIndex: n.data?.status === "error" ? 10000 : undefined,
+              data: { ...n.data, isLocated: false },
+            };
+          }
+          return n;
+        });
+        return changed ? next : prev;
+      });
+    },
+    [applyFnNodesUpdate]
+  );
+
+  // 定位单张报错卡：先抬层（目标报错卡压顶+高亮）→ fn_title 找卡 → 实测中心 setCenter；
+  // 找不到 → fitView 节点过滤兜底。返回是否成功定位（用于重试）。
+  const fitToFnErrorCard = useCallback(
+    (node) => {
+      if (!node) return false;
+      const inst = fnFlowRef.current;
+      elevateFnErrorCard(node.id); // 目标报错卡抬到最高层并高亮（其余报错卡回落）
+      const card = findErrorCardByTitle(fnTitleOf(node));
+      if (card) {
+        const pane = document.querySelector(".fn-pane-flow");
+        if (pane && typeof inst?.screenToFlowPosition === "function" && typeof inst?.setCenter === "function") {
+          try {
+            const r = card.getBoundingClientRect();
+            const pos = inst.screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+            inst.setCenter(pos.x, pos.y, { zoom: 1, duration: 300 });
+            locatedErrNodeIdRef.current = node.id;
+            return true;
+          } catch {
+            /* fall through：fitView 兜底 */
+          }
+        }
+      }
+      try {
+        if (typeof inst?.fitView === "function") {
+          inst.fitView({ nodes: [{ id: node.id }], duration: 300, maxZoom: 1, padding: 0.35 });
+          locatedErrNodeIdRef.current = node.id;
+          return true;
+        }
+        return false; // 走查九轮分诊：实例未就绪不伪成功，交由调用方重试
+      } catch {
+        return false;
+      }
+    },
+    [elevateFnErrorCard]
+  );
+
   const fitFnView = useCallback(() => {
-    window.setTimeout(() => {
-      fnFlowRef.current?.fitView({ padding: 0.2, duration: 300 });
-    }, 120);
-  }, []);
+    const locateError = (attempt = 0) => {
+      const inst = fnFlowRef.current;
+      const activeN = nodesRef.current.find((n) => n.id === activeStepIdRef.current);
+      if (!activeN || activeN.data?.status !== "failed") {
+        if (typeof inst?.fitView === "function") inst.fitView({ padding: 0.2, duration: 300 });
+        return;
+      }
+      const errNodes = fnNodesRef.current
+        .filter((n) => n.data?.status === "error")
+        .sort((a, b) => (a.data?.call_id ?? 0) - (b.data?.call_id ?? 0));
+      if (!errNodes.length) {
+        if (attempt < 10) {
+          locateRetryTimerRef.current = window.setTimeout(() => locateError(attempt + 1), 200); // 等报错卡入场
+        }
+        return;
+      }
+      errLocateIndexRef.current = errNodes.length - 1; // 自动定位：最新（call_id 最大）报错卡
+      const ok = fitToFnErrorCard(errNodes[errLocateIndexRef.current]);
+      if (!ok && attempt < 10) {
+        locateRetryTimerRef.current = window.setTimeout(() => locateError(attempt + 1), 200); // 卡片尚未入 DOM，稍后重试
+      }
+    };
+    locateRetryTimerRef.current = window.setTimeout(() => locateError(0), 120);
+  }, [fitToFnErrorCard]);
+
+  // 走查五轮：多报错卡时按时间逆序循环定位上一处报错（含回绕）；七轮起同样走 fn_title 找卡；
+  // 走查八轮：以"当前可见定位卡"为基准逆序（不依赖可能被自动定位重置的下标），
+  // 先取消自动定位重试（防回跳覆盖手动点击），目标卡未入 DOM 时重试 3 次。
+  const locatePrevError = useCallback(() => {
+    if (locateRetryTimerRef.current) {
+      clearTimeout(locateRetryTimerRef.current);
+      locateRetryTimerRef.current = null;
+    }
+    const doLocate = (attempt = 0) => {
+      const errNodes = fnNodesRef.current
+        .filter((n) => n.data?.status === "error")
+        .sort((a, b) => (a.data?.call_id ?? 0) - (b.data?.call_id ?? 0));
+      if (!errNodes.length) return;
+      const curPos = errNodes.findIndex((n) => n.id === locatedErrNodeIdRef.current);
+      const base = curPos >= 0 ? curPos : errNodes.length - 1;
+      const idx = (base - 1 + errNodes.length) % errNodes.length;
+      errLocateIndexRef.current = idx;
+      const ok = fitToFnErrorCard(errNodes[idx]);
+      if (!ok && attempt < 3) {
+        locateRetryTimerRef.current = window.setTimeout(() => doLocate(attempt + 1), 150); // 统一计时器登记（走查九轮分诊）
+      }
+    };
+    doLocate(0);
+  }, [fitToFnErrorCard]);
 
   const startRevealTimer = useCallback(() => {
     if (revealTimerRef.current) {
@@ -530,12 +685,12 @@ export default function App() {
       stopRevealTimer();
       pendingFnNodesRef.current = [];
       desiredFnEdgesRef.current = [];
-      fnNodesRef.current = [];
-      fnEdgesRef.current = [];
-      applyFnNodesUpdate([]);
-      applyFnEdgesUpdate([]);
+      // 走查四轮：切换不再清空/重建——每步节点经 fnNodesByStepRef 缓存全量直铺，
+      // 切回瞬间还原（不再从 0 重新计数）；位置对已存在 id 保留，避免卡片跳动。
       setFnFlowRevision((v) => v + 1);
       lastRenderedStepRef.current = stepId;
+      errLocateIndexRef.current = 0; // 走查五轮：切换步骤时重置循环定位下标
+      locatedErrNodeIdRef.current = null; // 走查八轮：切换步骤时清空"当前定位卡"基准
     }
 
     const built = buildFunctionSubgraphForStep(stepNode);
@@ -543,17 +698,15 @@ export default function App() {
     let nextNodes = built.nodes || [];
     let nextEdges = built.edges || [];
 
-    // Avoid mid-run disappearing nodes caused by temporary trace shrinkage.
-    if (stepNode.data?.status === "running" && !switchedStep) {
+    // 运行中防缩水：built 缺失的 id 从**本步缓存**补齐（切回场景下缓存已在手，不依赖当前 state）
+    if (stepNode.data?.status === "running") {
       const builtIds = new Set(nextNodes.map((n) => n.id));
-      const prevNodesSameStep = fnNodesRef.current.filter((n) =>
-        String(n.id).startsWith(`${stepId}__fn__`)
-      );
-      const keepOld = prevNodesSameStep.filter((n) => !builtIds.has(n.id));
+      const cachedStep = fnNodesByStepRef.current[stepId] || [];
+      const keepOld = cachedStep.filter((n) => !builtIds.has(n.id));
       if (keepOld.length) {
         nextNodes = [...nextNodes, ...keepOld];
         const keepIds = new Set(nextNodes.map((n) => n.id));
-        const keepOldEdges = fnEdgesRef.current.filter(
+        const keepOldEdges = (fnEdgesRef.current || []).filter(
           (e) => keepIds.has(e.source) && keepIds.has(e.target)
         );
         const edgeIds = new Set(nextEdges.map((e) => e.id));
@@ -576,20 +729,16 @@ export default function App() {
         session_id: sessionIdRef.current || null,
       },
     }));
+    fnNodesByStepRef.current[stepId] = stabilized; // 每步缓存（走查四轮）
 
-    const existingIds = new Set(fnNodesRef.current.map((n) => n.id));
-    const keepNow = stabilized.filter((n) => existingIds.has(n.id));
-    const queued = stabilized
-      .filter((n) => !existingIds.has(n.id))
-      .sort((a, b) => Number(a.data?.call_id || 0) - Number(b.data?.call_id || 0));
-
-    pendingFnNodesRef.current = queued;
-    applyFnNodesUpdate(keepNow);
-    if (!keepNow.length) {
-      applyFnEdgesUpdate([]);
-    } else {
-      syncFnEdges();
-    }
+    // 全量直铺：已存在的 id 保留旧位置，其余按新布局追加；不再走渐进 reveal（切回零重计）
+    pendingFnNodesRef.current = [];
+    applyFnNodesUpdate((prev) => {
+      const posById = new Map(prev.map((n) => [n.id, n.position]));
+      return stabilized.map((n) => (posById.has(n.id) ? { ...n, position: posById.get(n.id) } : n));
+    });
+    fnNodesRef.current = stabilized; // 同步 ref（后续 syncFnEdges/fitFnView 立即使用）
+    syncFnEdges();
     startRevealTimer();
   }, [apiBase, applyFnEdgesUpdate, applyFnNodesUpdate, startRevealTimer, stopRevealTimer, syncFnEdges]);
 
@@ -796,6 +945,13 @@ export default function App() {
         )
       );
       runStartTimesRef.current[id] = Date.now(); // US-5.3：Subcanvas 步骤计时起点
+      anyRunRef.current = true; // F-AC7：运行发起即置位（tick 500ms 可能观察不到 <0.5s 的快步骤）
+      fnNodesByStepRef.current[id] = []; // 走查四轮：新一次运行重置该步缓存（旧 run 的节点不复用）
+      // 走查三轮：点击运行节点后自动定位卡片顶部（卡片较高时 Run Node 按钮在视口外）
+      const runPos = currentNode.position;
+      if (runPos && mainFlowRef.current?.setCenter) {
+        mainFlowRef.current.setCenter(runPos.x + 180, runPos.y, { zoom: 1, duration: 200 });
+      }
 
       try {
         const params =
@@ -825,6 +981,7 @@ export default function App() {
                     duration: resp.duration_s,
                     output: resp.output,
                     error: resp.error,
+                    error_detail: resp.error_detail || null, // F-AC6：完整堆栈
                     lastSnapshot: {
                       run_id: resp.run_id || activeRunId,
                       timestamp: new Date().toISOString(),
@@ -1039,6 +1196,7 @@ export default function App() {
   const activeStepNode = nodes.find((n) => n.id === activeStepId);
   const fnStepStatus = activeStepNode?.data?.status || "idle";
   const fnTraceCount = (activeStepNode?.data?.lastSnapshot?.function_trace || []).length;
+  const fnErrorCount = fnNodes.reduce((acc, n) => acc + (n.data?.status === "error" ? 1 : 0), 0);
   const fnIsRunning = fnStepStatus === "running";
   const fnStatusText = fnIsRunning
     ? `正在生成函数追踪图（已加载 ${fnNodes.length} 个调用）…`
@@ -1098,12 +1256,21 @@ export default function App() {
 
       <div
         className="canvas-split"
-        style={{ gridTemplateColumns: `${splitPct}% 8px ${100 - splitPct}%` }}
+        style={{
+          // F-AC5：% 列需减除 8px 分隔条防总宽超 100%（1280 下曾溢出 8~18px 截断右卡）；
+          // minmax 下限护栏保证窄桌面下 fn 面板不小于卡片宽度、主画布不低于 320px。
+          gridTemplateColumns: `minmax(320px, calc(${splitPct}% - 8px)) 8px minmax(340px, calc(${100 - splitPct}% - 8px))`,
+        }}
       >
         <div className="canvas-pane">
           <div className="pane-title">Main Pipeline Canvas</div>
           <div className="pane-flow">
             <ReactFlow
+              onInit={(inst) => {
+                // F-AC9 走查修复：v11 实例经 onInit 获取（ref= 不是实例 API）
+                mainFlowRef.current = inst;
+              }}
+              deleteKeyCode={null}
               nodes={hydratedNodes}
               edges={edges}
               nodeTypes={nodeTypes}
@@ -1153,6 +1320,15 @@ export default function App() {
               {fnIsRunning && <span className="fn-spinner" aria-hidden />}
               {fnStatusText}
             </span>
+            {fnStepStatus === "failed" && fnErrorCount >= 2 ? (
+              <button
+                className="fn-locate-err-btn"
+                title={`共 ${fnErrorCount} 张报错卡，按时间逆序循环定位上一处`}
+                onClick={locatePrevError}
+              >
+                定位下一处报错（{fnErrorCount}）
+              </button>
+            ) : null}
             {subTimerText ? <span className="fn-timer">{subTimerText}</span> : null}
             <span className="fn-toolbar-actions">
               <button className="icon-btn" title="放大" aria-label="放大" onClick={() => fnFlowRef.current?.zoomIn({ duration: 200 })}>＋</button>

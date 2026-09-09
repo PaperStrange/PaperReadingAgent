@@ -14,7 +14,7 @@ function Primitive({ value }) {
   return <span className="json-str">"{shortText(String(value))}"</span>;
 }
 
-function JsonNode({ name, value, depth = 0 }) {
+function JsonNode({ name, value, depth = 0, collapsed = false }) {
   const isArr = Array.isArray(value);
   const isObj = value && typeof value === "object" && !isArr;
 
@@ -32,24 +32,26 @@ function JsonNode({ name, value, depth = 0 }) {
     : Object.entries(value || {});
 
   return (
-    <details className="json-details" open={depth < 2}>
+    <details className="json-details" open={collapsed ? false : depth < 2}>
       <summary className="json-summary" style={{ marginLeft: `${depth * 12}px` }}>
         {name != null ? <span className="json-key">{name}: </span> : null}
         <span className="json-type">{isArr ? `[${entries.length}]` : `{${entries.length}}`}</span>
       </summary>
       <div>
         {entries.map(([k, v]) => (
-          <JsonNode key={`${depth}-${String(k)}`} name={String(k)} value={v} depth={depth + 1} />
+          <JsonNode key={`${depth}-${String(k)}`} name={String(k)} value={v} depth={depth + 1} collapsed={collapsed} />
         ))}
       </div>
     </details>
   );
 }
 
-export default function JsonTree({ value }) {
+export default function JsonTree({ value, collapsed = false }) {
+  // F-AC4：collapsed=true 时整树收起（depth 规则失效）——节点完成后 input_snapshot/
+  // function_trace 用；output_snapshot 显式传 collapsed={false} 保持展开。
   return (
     <div className="json-tree">
-      <JsonNode value={value} depth={0} />
+      <JsonNode value={value} depth={0} collapsed={collapsed} />
     </div>
   );
 }
