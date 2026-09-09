@@ -30,6 +30,8 @@
 | Sprint-11（F2 阶段 A） | 2026-08-31 | 配置 SSOT 端点（`/api/config_schema` + `/api/config/validate`，路由 8→10、impact spec v1.4.0）；M7 默认值收敛锁（verify_config_schema 104 断言）；前端 schema 只读清单（`../sprint/2026-08-31-sprint-11.md`） | ✅ 完成 |
 | Sprint-12（F2 阶段 B） | 2026-08-31 | SchemaForm 全字段交互表单（23 字段类型控件/防抖字段级校验/impacts 切换前可见/provider 联动），取代 ModelConfigPanel/DataSourcePanel/SchemaFieldList；gui_check_s4/remote 选择器更新（`../sprint/2026-08-31-sprint-12.md`） | ✅ 完成 |
 | Sprint-13（F2 阶段 C） | 2026-08-31 | 手写字面量退役（n1 默认值 schema 派生 + 前端零硬编码 16 键）、Settings 升级基线护栏（77 路径 + CI 比对 + --regen-baseline）、三查收口 + F2 用户验收清单（`../sprint/2026-08-31-sprint-13.md`） | ✅ 完成 |
+| Sprint-14（底座批次） | 2026-08-31 启动 | 领域壳 M15 / 测试矩阵 SSOT TG-1/2 / 账本锁 M10 / 价表抓取 M9 / 门禁 agent M14；统一 PR #48（`../sprint/2026-08-31-sprint-14.md`） | ✅ 完成 |
+| Sprint-15（F2 验收修复·交互类） | 2026-09-07 启动，2026-09-10 关闭 | F-AC1~7/9/11/12 交互信息类修复 + TG-3 case-first + 走查九轮（报错定位 zIndex 分层/fn_title 找卡/非受控输入）；用户 2026-09-10 验收通过；统一 PR #49（main 头 1c11bcd）（`../sprint/2026-09-07-sprint-15.md`） | ✅ 完成 |
 | 原 Sprint-4（C + E3 v1 只读可视化） | — | 结构化事件→时间线 + 工作流只读可视化 v1 | ⏸ hold（v1 需用户 review） |
 | 原 Sprint-5（E1/E2） | — | pip 注入 + 版本检查/更新/回滚 | ⏸ hold |
 | 原 Sprint-6（D） | — | 单机多 worker + 会话外置 + 网关分流 | ⏸ hold |
