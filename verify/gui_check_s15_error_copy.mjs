@@ -95,6 +95,17 @@ try {
   const us = await page.evaluate(() => window.getComputedStyle(document.querySelector(".fn-node-card")).userSelect);
   ok("F-AC6 fn 卡可框选复制（user-select:text）", us === "text", `userSelect=${us}`);
 
+  // ⑤ 走查追加：报错后 fn 画布自动定位到报错卡（报错卡与 fn 面板视口相交）
+  const errInView = await page.evaluate(() => {
+    const errCard = document.querySelector(".fn-node-card.fn-error");
+    const pane = document.querySelector(".fn-pane-flow");
+    if (!errCard || !pane) return false;
+    const c = errCard.getBoundingClientRect();
+    const p = pane.getBoundingClientRect();
+    return c.left < p.right && c.right > p.left && c.top < p.bottom && c.bottom > p.top;
+  });
+  ok("F-AC6 报错后 fn 画布定位到报错卡", errInView, `errInView=${errInView}`);
+
   await page.screenshot({ path: path.resolve(_here, "f2-error-copy.png"), fullPage: false });
   console.log("SHOT f2-error-copy.png");
 } finally {

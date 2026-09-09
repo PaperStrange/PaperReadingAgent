@@ -80,6 +80,12 @@ try {
   ok("F-AC7 切回 config 状态行换回 config 完成", /config 完成/.test(t || ""), `t=${t}`);
   ok("F-AC7 切回后不残留 load_index 文案", !/load_index 完成/.test(t || ""), `t=${t}`);
 
+  // 4) 走查语义修正：切到从未运行的节点 → 显示 "X idle"（而非空白）
+  await clickCard(await cardOf("answer"));
+  await page.waitForTimeout(1200);
+  t = await timerText();
+  ok("F-AC7 未运行节点显示 idle", /answer idle/.test(t || ""), `t=${t}`);
+
   await page.screenshot({ path: path.resolve(_here, "f2-status-scope.png"), fullPage: false });
   console.log("SHOT f2-status-scope.png");
 } finally {

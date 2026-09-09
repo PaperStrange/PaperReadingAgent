@@ -308,12 +308,12 @@ export default function App() {
     if (!activeStepId) return;
     setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === activeStepId })));
     const t = setTimeout(() => {
-      mainFlowRef.current?.fitView({
-        nodes: [{ id: activeStepId }],
-        duration: 300,
-        maxZoom: 1.2,
-        padding: 0.3,
-      });
+      // 走查 2026-09-07：v11 实例必须经 onInit 获取；定位用 setCenter（节点 position 确定）
+      const inst = mainFlowRef.current;
+      const n = nodesRef.current.find((x) => x.id === activeStepId);
+      if (inst && n && typeof inst.setCenter === "function") {
+        inst.setCenter(n.position?.x ?? 0, n.position?.y ?? 0, { zoom: 1, duration: 300 });
+      }
     }, 60);
     return () => clearTimeout(t);
   }, [activeStepId, setNodes]);
@@ -324,6 +324,7 @@ export default function App() {
   // 结束后删除起点（ref 不无界增长）；新一轮运行开始时清掉上一轮冻结。
   const frozenTextRef = useRef(new Map()); // id -> 冻结文案（完成/失败）
   const hadRunningRef = useRef(false);     // 上一 tick 是否有 running（新一轮运行判定）
+  const anyRunRef = useRef(false);         // F-AC7：本次会话是否发生过运行（idle 兜底闸门）
   useEffect(() => {
     const iv = setInterval(() => {
       const byId = new Map(nodesRef.current.map((n) => [n.id, n]));
@@ -331,6 +332,7 @@ export default function App() {
       if (running.length && !hadRunningRef.current) {
         frozenTextRef.current.clear(); // 新一轮运行开始：清掉上一轮全部冻结
       }
+      if (running.length) anyRunRef.current = true;
       hadRunningRef.current = running.length > 0;
       const runningIds = new Set(running.map((n) => n.id));
       const parts = [];
@@ -368,7 +370,11 @@ export default function App() {
         }
         if (id === activeStepIdRef.current) parts.push(text);
       }
-      // F-AC7：空态也写回（切到无状态节点时清掉旧文案，不再残留）
+      // F-AC7 走查语义修正：无运行、当前节点也无冻结文案时，展示"该节点 idle"（不直接空白）
+      if (parts.length === 0 && anyRunRef.current) {
+        const activeN = byId.get(activeStepIdRef.current);
+        if (activeN) parts.push(`${activeN.data?.step || "step"} idle`);
+      }
       setSubTimerText(parts.length ? parts.join(" · ") : "");
     }, 500);
     return () => clearInterval(iv);
@@ -497,10 +503,21 @@ export default function App() {
     applyFnEdgesUpdate(kept);
   }, [applyFnEdgesUpdate]);
 
-  // 节点渐进显示完成后，自动把整个函数子图画布居中（fitView）。
+  // 节点渐进显示完成后，自动把整个函数子图画布居中（fitView）；F-AC6 走查追加：
+  // 当前节点失败时优先定位到**报错卡片**，方便直接复制 fn 卡错误信息。
   const fitFnView = useCallback(() => {
     window.setTimeout(() => {
-      fnFlowRef.current?.fitView({ padding: 0.2, duration: 300 });
+      const inst = fnFlowRef.current;
+      if (!inst) return;
+      const activeN = nodesRef.current.find((n) => n.id === activeStepIdRef.current);
+      if (activeN?.data?.status === "failed") {
+        const errNode = fnNodesRef.current.find((n) => n.data?.status === "error");
+        if (errNode && typeof inst.setCenter === "function") {
+          inst.setCenter(errNode.position?.x ?? 0, errNode.position?.y ?? 0, { zoom: 1, duration: 300 });
+          return;
+        }
+      }
+      if (typeof inst.fitView === "function") inst.fitView({ padding: 0.2, duration: 300 });
     }, 120);
   }, []);
 
@@ -813,6 +830,7 @@ export default function App() {
         )
       );
       runStartTimesRef.current[id] = Date.now(); // US-5.3：Subcanvas 步骤计时起点
+      anyRunRef.current = true; // F-AC7：运行发起即置位（tick 500ms 可能观察不到 <0.5s 的快步骤）
 
       try {
         const params =
@@ -1126,7 +1144,10 @@ export default function App() {
           <div className="pane-title">Main Pipeline Canvas</div>
           <div className="pane-flow">
             <ReactFlow
-              ref={mainFlowRef}
+              onInit={(inst) => {
+                // F-AC9 走查修复：v11 实例经 onInit 获取（ref= 不是实例 API）
+                mainFlowRef.current = inst;
+              }}
               nodes={hydratedNodes}
               edges={edges}
               nodeTypes={nodeTypes}

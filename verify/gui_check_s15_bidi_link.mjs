@@ -27,6 +27,8 @@ function ok(name, cond, detail = "") {
 const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+  const pageErrors = [];
+  page.on("pageerror", (e) => pageErrors.push(String(e).slice(0, 120)));
   await page.goto("http://127.0.0.1:5173/", { waitUntil: "networkidle" });
   await page.waitForSelector(".step-switch-btn", { timeout: 15000 });
   await page.waitForTimeout(1200);
@@ -60,6 +62,7 @@ try {
     return { hasSelected: !!sel, selectedText: sel ? sel.textContent.replace(/\s+/g, " ").slice(0, 80) : "" };
   });
   ok("F-AC9 再次切换主画布选中跟随", selInfo2.hasSelected && /answer/i.test(selInfo2.selectedText), JSON.stringify(selInfo2));
+  ok("F-AC9 切换无页面异常（fitView 实例走查修复守卫）", pageErrors.length === 0, JSON.stringify(pageErrors));
 
   await page.screenshot({ path: path.resolve(_here, "f2-bidi-link.png"), fullPage: false });
   console.log("SHOT f2-bidi-link.png");
