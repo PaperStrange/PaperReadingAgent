@@ -520,6 +520,39 @@ body,
   font-size: var(--fs-small);
 }
 
+/* F-AC11：output 复制按钮 + answer 全文展示 */
+.copy-output-btn {
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: var(--fs-small);
+}
+.node-answer .answer-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px;
+  margin: 4px 0 0 0;
+}
+.node-answer .answer-refs {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  color: #334155;
+}
+.answer-refs-detail {
+  margin-top: 4px;
+}
+.answer-refs-detail summary {
+  cursor: pointer;
+  font-size: var(--fs-small);
+  color: #334155;
+}
+
 .fn-title {
   font-size: var(--fs-block-title);
   font-family: var(--font-ui);

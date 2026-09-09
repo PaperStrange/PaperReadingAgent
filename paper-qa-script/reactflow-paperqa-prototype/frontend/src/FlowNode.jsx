@@ -36,6 +36,7 @@ export default function FlowNode({ id, data }) {
 
   const isParseStep = step === "parse_chunk_embed";
   const isConfigStep = step === "config";
+  const isAnswerStep = step === "answer"; // F-AC11：answer 节点答案全文展示
 
   // US-5.3：复制报错按钮的暂态反馈（含降级路径与 unmount 清理，Sprint-5 关闭二查修正）
   const [copied, setCopied] = useState(false);
@@ -174,7 +175,19 @@ export default function FlowNode({ id, data }) {
       ) : null}
 
       <div className="node-output">
-        <div className="node-block-title">output_snapshot</div>
+        <div className="node-block-title">
+          output_snapshot
+          {/* F-AC11（走查 N1）：output 完整查看——一键复制全文 JSON */}
+          {!error && (
+            <button
+              className="run-btn copy-output-btn"
+              title="复制 output 完整内容"
+              onClick={() => copyErrorText(JSON.stringify(output || {}, null, 2))}
+            >
+              {copied ? "已复制 ✓" : "复制 output"}
+            </button>
+          )}
+        </div>
         {error ? (
           <div>
             <div className="node-actions err-actions">
@@ -192,6 +205,30 @@ export default function FlowNode({ id, data }) {
               <details className="error-detail">
                 <summary>完整堆栈（traceback）</summary>
                 <pre className="error-text">{errorDetail}</pre>
+              </details>
+            ) : null}
+          </div>
+        ) : isAnswerStep && output?.answer ? (
+          /* F-AC11：answer 节点直接展示答案全文（不再埋在截断的 JsonTree 里） */
+          <div className="node-answer">
+            <div className="node-block-title">
+              答案全文
+              <button
+                className="run-btn copy-output-btn"
+                onClick={() =>
+                  copyErrorText(
+                    `答案：\n${output.answer || ""}\n\n参考文献：\n${output.references || ""}`
+                  )
+                }
+              >
+                {copied ? "已复制 ✓" : "复制答案"}
+              </button>
+            </div>
+            <pre className="answer-text">{output.answer}</pre>
+            {output.references ? (
+              <details className="answer-refs-detail" open>
+                <summary>参考文献</summary>
+                <pre className="answer-refs">{output.references}</pre>
               </details>
             ) : null}
           </div>
