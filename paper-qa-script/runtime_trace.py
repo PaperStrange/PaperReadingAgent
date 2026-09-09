@@ -113,9 +113,12 @@ def _render_pdf_page_preview(file_location: str, page_num_1_based: int) -> tuple
                 return None, "empty_pdf"
             pidx = max(0, min(page_num_1_based - 1, len(pdf) - 1))
             page = pdf[pidx]
-            pix = page.get_pixmap(matrix=fitz.Matrix(0.45, 0.45), alpha=False)
+            # F-AC12（走查 N2）：0.45 → 1.0 缩放提升清晰度（~2.2× 线性 / ~5× 像素）；
+            # 尺寸护栏同步放宽（0.4MB → 1.2MB）。更深的分块级图像格式优化留给
+            # embed-optimization 预分割卡（文本/图片/表格/公式）。
+            pix = page.get_pixmap(matrix=fitz.Matrix(1.0, 1.0), alpha=False)
             raw = pix.tobytes("png")
-            if len(raw) > 400_000:
+            if len(raw) > 1_200_000:
                 return None, "image_too_large"
             b64 = base64.b64encode(raw).decode("ascii")
             return f"data:image/png;base64,{b64}", "ok"

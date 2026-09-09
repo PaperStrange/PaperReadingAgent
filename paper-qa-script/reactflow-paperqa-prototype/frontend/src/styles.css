@@ -1,5 +1,15 @@
+/* Sprint-15 F-AC1：排版 token 化——字号/字体族唯一真源，新卡片一律引用变量不写字面量。 */
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --fs-title: 13px;       /* 卡片主标题（Sprint-15 从 14px 收敛） */
+  --fs-pane-title: 13px;  /* 子面板标题 */
+  --fs-block-title: 12px; /* block 标题（沿用 US-4.4 规范） */
+  --fs-body: 12px;
+  --fs-small: 11px;
+  --fs-tiny: 10px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
 }
 
 html,
@@ -77,7 +87,8 @@ body,
 .pane-title-row {
   border-bottom: 1px solid #e2e8f0;
   padding: 8px 10px;
-  font-size: 13px;
+  font-size: var(--fs-pane-title);
+  font-family: var(--font-ui);
   font-weight: 700;
   color: #1e293b;
 }
@@ -130,7 +141,8 @@ body,
 }
 
 .node-title {
-  font-size: 14px;
+  font-size: var(--fs-title);
+  font-family: var(--font-ui);
   font-weight: 700;
 }
 
@@ -144,7 +156,7 @@ body,
   min-height: 120px;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   padding: 6px;
   resize: vertical;
@@ -198,7 +210,7 @@ body,
   margin-top: 2px;
   border: 1px solid #cbd5e1;
   border-radius: 4px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   padding: 4px 6px;
   resize: vertical;
@@ -222,6 +234,8 @@ body,
   max-width: 560px;
 }
 .schema-list .schema-title {
+  font-size: var(--fs-block-title);
+  font-family: var(--font-ui);
   font-weight: 600;
   margin-bottom: 6px;
 }
@@ -263,8 +277,23 @@ body,
   color: #64748b;
 }
 
+/* Sprint-15 F-AC2：hints/warnings 汇总限高滚动 + 分组标题改动计数标红 */
+.schema-msg {
+  max-height: 96px;
+  overflow-y: auto;
+}
+.schema-changed-count {
+  color: #dc2626;
+  font-weight: 600;
+}
+.schema-changed-count-zero {
+  color: #94a3b8;
+}
+
 /* Sprint-12（F2 阶段 B）：schema 驱动全字段表单 */
 .schema-form .schema-form-title {
+  font-size: var(--fs-block-title);
+  font-family: var(--font-ui);
   font-weight: 600;
   margin-bottom: 6px;
 }
@@ -350,6 +379,9 @@ body,
 }
 
 .node-output {
+  user-select: text; /* 四轮：output/input_snapshot/function_trace 可框选文字 */
+  -webkit-user-select: text;
+  cursor: text;
   margin-top: 6px;
   max-height: 160px;
   overflow: auto;
@@ -357,10 +389,14 @@ body,
   border-radius: 6px;
   background: #f8fafc;
 }
+.node-output .node-block-title {
+  cursor: default;
+}
 
 .node-block-title {
   padding: 4px 6px 0 6px;
-  font-size: 12px;
+  font-size: var(--fs-block-title);
+  font-family: var(--font-ui);
   color: #334155;
   font-weight: 600;
 }
@@ -388,11 +424,11 @@ body,
   padding: 6px;
   white-space: pre-wrap;
   font-size: 11px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 
 .json-tree {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.35;
   padding: 4px 6px 6px 6px;
@@ -448,11 +484,14 @@ body,
 }
 
 .node-run-meta code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 
 .fn-node-card {
   width: 340px;
+  max-width: 100%; /* F-AC5：窄面板下不撑破容器 */
+  user-select: text; /* F-AC6：完成计算的卡片允许鼠标框选复制 */
+  -webkit-user-select: text;
   box-sizing: border-box;
   border: 1px solid #22c55e;
   background: #f0fdf4;
@@ -467,7 +506,67 @@ body,
   background: #fef2f2;
 }
 
+/* 走查八轮：当前被定位的报错卡红色高亮描边（定位目标唯一压顶） */
+.fn-node-card.fn-located {
+  box-shadow: 0 0 0 3px #dc2626, 0 4px 12px rgba(220, 38, 38, 0.35);
+}
+
+/* F-AC6：fn 卡错误全文（换行不截断）+ 复制按钮；主画布可展开堆栈 */
+.fn-error-block {
+  margin-top: 4px;
+}
+.fn-error-block .fn-copy-err-btn {
+  margin-bottom: 4px;
+}
+.fn-error-text {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.error-detail {
+  margin-top: 4px;
+}
+.error-detail summary {
+  cursor: pointer;
+  color: #334155;
+  font-size: var(--fs-small);
+}
+
+/* F-AC11：output 复制按钮 + answer 全文展示 */
+.copy-output-btn {
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: var(--fs-small);
+}
+.node-answer .answer-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px;
+  margin: 4px 0 0 0;
+}
+.node-answer .answer-refs {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  color: #334155;
+}
+.answer-refs-detail {
+  margin-top: 4px;
+}
+.answer-refs-detail summary {
+  cursor: pointer;
+  font-size: var(--fs-small);
+  color: #334155;
+}
+
 .fn-title {
+  font-size: var(--fs-block-title);
+  font-family: var(--font-ui);
   font-weight: 700;
   color: #14532d;
   margin-bottom: 3px;
@@ -584,7 +683,7 @@ body,
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: #111827;
 }
@@ -613,6 +712,8 @@ body,
 }
 
 .log-title {
+  font-size: var(--fs-block-title);
+  font-family: var(--font-ui);
   font-weight: 700;
   margin-bottom: 4px;
 }
@@ -658,6 +759,27 @@ body,
 
 .fn-status-failed {
   color: #b91c1c;
+}
+
+.fn-locate-err-btn {
+  font-family: var(--font-ui, inherit);
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 8px;
+  border: 1px solid #dc2626;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #b91c1c;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.fn-locate-err-btn:hover {
+  background: #fee2e2;
+}
+
+.fn-locate-err-btn:active {
+  background: #fecaca;
 }
 
 .fn-status-success {
@@ -740,7 +862,8 @@ body,
 
 /* ---- 分栏拖拽分隔条 ---- */
 .canvas-split {
-  grid-template-columns: 55% 8px 45%;
+  /* F-AC5：与 App.jsx 内联样式同构（默认 55/45）：calc 减分隔条 + minmax 下限防溢出 */
+  grid-template-columns: minmax(320px, calc(55% - 8px)) 8px minmax(340px, calc(45% - 8px));
 }
 .canvas-split .split-divider {
   width: 8px;
