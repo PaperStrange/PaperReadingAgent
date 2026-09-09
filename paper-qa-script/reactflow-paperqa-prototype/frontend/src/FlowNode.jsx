@@ -70,14 +70,16 @@ export default function FlowNode({ id, data }) {
     }
   };
 
-  // US-4.1：JSON 编辑区用本地草稿态，避免父组件回写格式化 JSON 导致光标跳末尾/无法连续编辑。
-  // 聚焦期间外部 params 变化不覆盖草稿；失焦后恢复跟随。
+  // US-4.1 + 走查 2026-09-07：JSON 编辑区改**非受控**（defaultValue + ref）——
+  // 受控 textarea 每次击键经 params 回写触发 React 重设 value → 光标跳末尾；
+  // 非受控下 React 不触碰 DOM value，光标天然保留；外部 params 变化在未聚焦时手动同步。
   const paramsJson = JSON.stringify(params || {}, null, 2);
-  const [draft, setDraft] = useState(paramsJson);
+  const textareaRef = useRef(null);
   const focusedRef = useRef(false);
   useEffect(() => {
-    if (!focusedRef.current) {
-      setDraft(JSON.stringify(params || {}, null, 2));
+    const next = JSON.stringify(params || {}, null, 2);
+    if (!focusedRef.current && textareaRef.current && textareaRef.current.value !== next) {
+      textareaRef.current.value = next;
     }
   }, [params]);
 
@@ -113,8 +115,9 @@ export default function FlowNode({ id, data }) {
       ) : null}
 
       <textarea
+        ref={textareaRef}
         className="node-textarea"
-        value={draft}
+        defaultValue={paramsJson}
         onFocus={() => {
           focusedRef.current = true;
         }}
@@ -122,7 +125,6 @@ export default function FlowNode({ id, data }) {
           focusedRef.current = false;
         }}
         onChange={(e) => {
-          setDraft(e.target.value);
           onChangeParams(id, e.target.value);
         }}
       />

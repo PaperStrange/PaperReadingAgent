@@ -126,12 +126,13 @@ export default function SchemaForm({ params, apiBase, onChange, collapsed = fals
     validate.errors.filter((e) => e.includes(`(${key})`)).join("；");
 
   // F-AC2（验收①1.2b）：影响上浮到分组标题——"LLM（6项，M项被改动）"，M 标红。
-  // 改动判定 = params 显式含该键且值 ≠ schema 默认（数组按序列化比较，类型统一按字符串）。
+  // 改动判定 = params 显式含该键且值 ≠ schema 默认（数组按序列化比较，类型统一按字符串）；
+  // 无默认值字段（api_key/api_base 等，走查 2026-09-07 发现）有值即视为改动。
   const isChanged = (f) => {
     const cur = params?.[f.key];
     if (cur === undefined || cur === null || cur === "") return false;
     const def = f.default;
-    if (def === undefined || def === null) return false;
+    if (def === undefined || def === null) return true;
     if (Array.isArray(def)) return JSON.stringify(cur) !== JSON.stringify(def);
     return String(cur) !== String(def);
   };
