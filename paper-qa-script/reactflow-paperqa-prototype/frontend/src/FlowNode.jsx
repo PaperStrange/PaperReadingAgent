@@ -71,7 +71,7 @@ export default function FlowNode({ id, data }) {
     }
   };
 
-  // US-4.1 + 走查 2026-09-07：JSON 编辑区改**非受控**（defaultValue + ref）——
+  // US-4.1 + 走查 2026-09-10：JSON 编辑区改**非受控**（defaultValue + ref）——
   // 受控 textarea 每次击键经 params 回写触发 React 重设 value → 光标跳末尾；
   // 非受控下 React 不触碰 DOM value，光标天然保留；外部 params 变化在未聚焦时手动同步。
   const paramsJson = JSON.stringify(params || {}, null, 2);

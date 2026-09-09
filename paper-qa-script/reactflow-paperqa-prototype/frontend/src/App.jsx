@@ -308,7 +308,7 @@ export default function App() {
     if (!activeStepId) return;
     setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === activeStepId })));
     const t = setTimeout(() => {
-      // 走查 2026-09-07：v11 实例必须经 onInit 获取；定位用 setCenter（节点 position 确定）
+      // 走查 2026-09-10：v11 实例必须经 onInit 获取；定位用 setCenter（节点 position 确定）
       const inst = mainFlowRef.current;
       const n = nodesRef.current.find((x) => x.id === activeStepId);
       if (inst && n && typeof inst.setCenter === "function") {
@@ -507,7 +507,7 @@ export default function App() {
   }, [applyFnEdgesUpdate]);
 
   // 节点渐进显示完成后，自动把整个函数子图画布居中（fitView）；F-AC6 走查追加：
-  // 当前节点失败时优先定位到**报错卡片**（走查 2026-09-07 修正：用 fitView 节点过滤
+  // 当前节点失败时优先定位到**报错卡片**（走查 2026-09-10 修正：用 fitView 节点过滤
   // 或 DOM 实测坐标，杜绝按存储 position 定位偏移到相邻卡）；切回正常节点则正常 fitView。
   // 走查五轮：多报错卡时自动定位**最新（call_id 最大）**一张；"定位下一处报错"按钮逆序循环。
   const fitToFnNode = useCallback((nodeId) => {

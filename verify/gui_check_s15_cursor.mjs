@@ -1,5 +1,5 @@
 // VERIFY_META: {"features": "Sprint-15 走查修复：真实键盘输入光标不跳（JSON 编辑区/表单输入）+ 无默认值字段（api_key）改动计数", "tier": "gui", "providers": [], "est_seconds": 50, "est_cost_cny": 0, "routes": ["/api/config/validate"], "requires": ["playwright", "servers"]}
-// 走查 2026-09-07 发现：① 手动改 api_base 光标跳末尾；② api_key/api_base 等无默认值字段改动不计数。
+// 走查 2026-09-10 发现：① 手动改 api_base 光标跳末尾；② api_key/api_base 等无默认值字段改动不计数。
 // 本检查用**真实键盘事件**（非 .value 赋值——赋值本身会把光标移到末尾，是测试伪影）验证修复。
 import { createRequire } from "module";
 import path from "path";

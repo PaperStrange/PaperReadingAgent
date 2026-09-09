@@ -106,7 +106,7 @@
 **任务参数（每次执行的任务输入）**：
 ```json
 {"target": "branch:windows | branch:main | pr:<n> | working-tree",
- "focus": ["<以各职能 spec 的 focus 枚举为准>"],  // code-review: correctness/security/ssot/compat/architecture/tech-debt；doc-audit: links/stale-facts/contradictions/algorithm-drift/tables/knowledge；空=全维度
+ "focus": ["<以各职能 spec 的 focus 枚举为准>"],  // code-review: correctness/security/ssot/compat/architecture/tech-debt；doc-audit: links/stale-facts/contradictions/algorithm-drift/tables/knowledge/timestamps；空=全维度
  "strictness": "normal | strict"}
 ```
 
