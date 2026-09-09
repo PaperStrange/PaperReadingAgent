@@ -384,6 +384,7 @@ export default function App() {
   const refreshScheduledRef = useRef(false);
   const pendingFnNodesRef = useRef([]);
   const revealTimerRef = useRef(null);
+  const fnNodesByStepRef = useRef({}); // 走查四轮：每步 fn 节点缓存（切回瞬间还原，不重计数）
   const desiredFnEdgesRef = useRef([]);
   const fnFlowRef = useRef(null);
 
@@ -582,24 +583,8 @@ export default function App() {
       stopRevealTimer();
       pendingFnNodesRef.current = [];
       desiredFnEdgesRef.current = [];
-      if (stepNode.data?.status === "running") {
-        // 走查三轮：运行中切回该节点——不清空重建（避免重新计数/卡顿），
-        // 仅保留本步前缀的既有节点，随 scheduleFnRefresh 增量补齐
-        const keepN = fnNodesRef.current.filter((n) => String(n.id).startsWith(`${stepId}__fn__`));
-        const keepIds = new Set(keepN.map((n) => n.id));
-        const keepE = fnEdgesRef.current.filter(
-          (e) => keepIds.has(e.source) && keepIds.has(e.target)
-        );
-        fnNodesRef.current = keepN;
-        fnEdgesRef.current = keepE;
-        applyFnNodesUpdate(keepN);
-        applyFnEdgesUpdate(keepE);
-      } else {
-        fnNodesRef.current = [];
-        fnEdgesRef.current = [];
-        applyFnNodesUpdate([]);
-        applyFnEdgesUpdate([]);
-      }
+      // 走查四轮：切换不再清空/重建——每步节点经 fnNodesByStepRef 缓存全量直铺，
+      // 切回瞬间还原（不再从 0 重新计数）；位置对已存在 id 保留，避免卡片跳动。
       setFnFlowRevision((v) => v + 1);
       lastRenderedStepRef.current = stepId;
     }
@@ -609,17 +594,15 @@ export default function App() {
     let nextNodes = built.nodes || [];
     let nextEdges = built.edges || [];
 
-    // Avoid mid-run disappearing nodes caused by temporary trace shrinkage.
-    if (stepNode.data?.status === "running" && !switchedStep) {
+    // 运行中防缩水：built 缺失的 id 从**本步缓存**补齐（切回场景下缓存已在手，不依赖当前 state）
+    if (stepNode.data?.status === "running") {
       const builtIds = new Set(nextNodes.map((n) => n.id));
-      const prevNodesSameStep = fnNodesRef.current.filter((n) =>
-        String(n.id).startsWith(`${stepId}__fn__`)
-      );
-      const keepOld = prevNodesSameStep.filter((n) => !builtIds.has(n.id));
+      const cachedStep = fnNodesByStepRef.current[stepId] || [];
+      const keepOld = cachedStep.filter((n) => !builtIds.has(n.id));
       if (keepOld.length) {
         nextNodes = [...nextNodes, ...keepOld];
         const keepIds = new Set(nextNodes.map((n) => n.id));
-        const keepOldEdges = fnEdgesRef.current.filter(
+        const keepOldEdges = (fnEdgesRef.current || []).filter(
           (e) => keepIds.has(e.source) && keepIds.has(e.target)
         );
         const edgeIds = new Set(nextEdges.map((e) => e.id));
@@ -642,20 +625,16 @@ export default function App() {
         session_id: sessionIdRef.current || null,
       },
     }));
+    fnNodesByStepRef.current[stepId] = stabilized; // 每步缓存（走查四轮）
 
-    const existingIds = new Set(fnNodesRef.current.map((n) => n.id));
-    const keepNow = stabilized.filter((n) => existingIds.has(n.id));
-    const queued = stabilized
-      .filter((n) => !existingIds.has(n.id))
-      .sort((a, b) => Number(a.data?.call_id || 0) - Number(b.data?.call_id || 0));
-
-    pendingFnNodesRef.current = queued;
-    applyFnNodesUpdate(keepNow);
-    if (!keepNow.length) {
-      applyFnEdgesUpdate([]);
-    } else {
-      syncFnEdges();
-    }
+    // 全量直铺：已存在的 id 保留旧位置，其余按新布局追加；不再走渐进 reveal（切回零重计）
+    pendingFnNodesRef.current = [];
+    applyFnNodesUpdate((prev) => {
+      const posById = new Map(prev.map((n) => [n.id, n.position]));
+      return stabilized.map((n) => (posById.has(n.id) ? { ...n, position: posById.get(n.id) } : n));
+    });
+    fnNodesRef.current = stabilized; // 同步 ref（后续 syncFnEdges/fitFnView 立即使用）
+    syncFnEdges();
     startRevealTimer();
   }, [apiBase, applyFnEdgesUpdate, applyFnNodesUpdate, startRevealTimer, stopRevealTimer, syncFnEdges]);
 
@@ -863,6 +842,7 @@ export default function App() {
       );
       runStartTimesRef.current[id] = Date.now(); // US-5.3：Subcanvas 步骤计时起点
       anyRunRef.current = true; // F-AC7：运行发起即置位（tick 500ms 可能观察不到 <0.5s 的快步骤）
+      fnNodesByStepRef.current[id] = []; // 走查四轮：新一次运行重置该步缓存（旧 run 的节点不复用）
       // 走查三轮：点击运行节点后自动定位卡片顶部（卡片较高时 Run Node 按钮在视口外）
       const runPos = currentNode.position;
       if (runPos && mainFlowRef.current?.setCenter) {
@@ -1185,7 +1165,7 @@ export default function App() {
                 // F-AC9 走查修复：v11 实例经 onInit 获取（ref= 不是实例 API）
                 mainFlowRef.current = inst;
               }}
-              deleteKeyCode={["Backspace", "Delete"]}
+              deleteKeyCode={null}
               nodes={hydratedNodes}
               edges={edges}
               nodeTypes={nodeTypes}

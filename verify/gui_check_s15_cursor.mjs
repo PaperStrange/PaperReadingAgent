@@ -68,12 +68,16 @@ try {
   });
   ok("走查② api_key 改动计数生效", /项被改动/.test(llm) && !/0项被改动/.test(llm), llm);
 
-  // ④ 走查三轮：回车不删卡（选中节点后按 Enter，节点数不变）
+  // ④ 走查三轮/四轮：回车与 Backspace 均不删卡（键盘删除整体禁用）
   const countBefore = await page.evaluate(() => document.querySelectorAll(".react-flow__node").length);
   await page.keyboard.press("Enter");
   await page.waitForTimeout(600);
-  const countAfter = await page.evaluate(() => document.querySelectorAll(".react-flow__node").length);
-  ok("走查三轮 回车不删卡", countBefore === countAfter, `before=${countBefore} after=${countAfter}`);
+  const countAfterEnter = await page.evaluate(() => document.querySelectorAll(".react-flow__node").length);
+  ok("走查四轮 回车不删卡", countBefore === countAfterEnter, `before=${countBefore} after=${countAfterEnter}`);
+  await page.keyboard.press("Backspace");
+  await page.waitForTimeout(600);
+  const countAfterBk = await page.evaluate(() => document.querySelectorAll(".react-flow__node").length);
+  ok("走查四轮 Backspace 不删卡", countBefore === countAfterBk, `before=${countBefore} after=${countAfterBk}`);
 
   // ⑤ 走查三轮：输入控件带 nodrag/nopan（框选文字不拖动卡片/画布）
   const cls = await page.evaluate(() => ({
@@ -86,12 +90,18 @@ try {
     JSON.stringify(cls)
   );
 
-  // ⑥ 走查三轮：tooltip 可见（真实 hover 触发 ::after 内容出现）
-  const tipEl = page.locator(".node-block-title.tip").first();
-  await tipEl.hover({ force: true });
-  await page.waitForTimeout(300);
-  const tipContent = await tipEl.evaluate((el) => window.getComputedStyle(el, "::after").content);
-  ok("走查三轮 hover 出 tooltip", !!tipContent && tipContent !== "none" && tipContent !== '""', `content=${tipContent}`);
+  // ⑥ 走查四轮：tooltip 功能已按用户要求移除——json 区可框选（user-select text + nodrag）
+  const selectInfo = await page.evaluate(() => {
+    const out = document.querySelector(".node-output");
+    if (!out) return null;
+    const cs = window.getComputedStyle(out);
+    return { userSelect: cs.userSelect, cls: out.className };
+  });
+  ok(
+    "走查四轮 output 区可框选（user-select:text + nodrag nopan）",
+    !!selectInfo && selectInfo.userSelect === "text" && selectInfo.cls.includes("nodrag") && selectInfo.cls.includes("nopan"),
+    JSON.stringify(selectInfo)
+  );
 
   await page.screenshot({ path: path.resolve(_here, "f2-cursor-count.png"), fullPage: false });
   console.log("SHOT f2-cursor-count.png");

@@ -174,11 +174,8 @@ export default function FlowNode({ id, data }) {
         </div>
       ) : null}
 
-      <div className="node-output">
-        <div
-          className="node-block-title tip"
-          data-tip={JSON.stringify(output || {}, null, 2)}
-        >
+      <div className="node-output nodrag nopan">
+        <div className="node-block-title">
           output_snapshot
           {/* F-AC11（走查 N1）：output 完整查看——一键复制全文 JSON；标题 hover 出全文 tooltip */}
           {!error && (
@@ -227,7 +224,7 @@ export default function FlowNode({ id, data }) {
                 {copied ? "已复制 ✓" : "复制答案"}
               </button>
             </div>
-            <pre className="answer-text tip" data-tip={output.answer}>{output.answer}</pre>
+            <pre className="answer-text">{output.answer}</pre>
             {output.references ? (
               <details className="answer-refs-detail" open>
                 <summary>参考文献</summary>
@@ -242,14 +239,14 @@ export default function FlowNode({ id, data }) {
       </div>
 
       {lastSnapshot ? (
-        <div className="node-output">
+        <div className="node-output nodrag nopan">
           <div className="node-block-title">input_snapshot</div>
           <JsonTree value={{ input_snapshot: lastSnapshot.input || {} }} collapsed={collapsed} />
         </div>
       ) : null}
 
       {lastSnapshot ? (
-        <div className="node-output">
+        <div className="node-output nodrag nopan">
           <div className="node-block-title">function_trace (time ordered)</div>
           <JsonTree value={functionTraceList(lastSnapshot.function_trace || [])} collapsed={collapsed} />
         </div>
