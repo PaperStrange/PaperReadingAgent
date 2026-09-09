@@ -334,25 +334,26 @@ export default function App() {
         } else if (st === "success" || st === "failed") {
           const dur = n.data.duration;
           const durText = typeof dur === "number" ? ` ${dur.toFixed(1)}s` : "";
-          frozenTextRef.current.set(
-            id,
-            `${n.data.step} ${st === "success" ? "完成" : "失败"}${durText}`
-          );
+          const text = `${n.data.step} ${st === "success" ? "完成" : "失败"}${durText}`;
+          frozenTextRef.current.set(id, text);
+          // F-AC7（验收⑤）：冻结文案只在"当前查看的执行节点"下展示
+          if (id === activeStepIdRef.current) parts.push(text);
           delete runStartTimesRef.current[id];
         } else {
           delete runStartTimesRef.current[id]; // idle/stale 残留
         }
       }
-      // 2) 冻结文案（跳过正在运行的；节点被删除的丢弃）
+      // 2) 冻结文案（跳过正在运行的；节点被删除的丢弃；F-AC7：仅当前 activeStep 的）
       for (const [id, text] of frozenTextRef.current) {
         if (runningIds.has(id)) continue;
         if (!byId.has(id)) {
           frozenTextRef.current.delete(id);
           continue;
         }
-        parts.push(text);
+        if (id === activeStepIdRef.current) parts.push(text);
       }
-      if (parts.length) setSubTimerText(parts.join(" · "));
+      // F-AC7：空态也写回（切到无状态节点时清掉旧文案，不再残留）
+      setSubTimerText(parts.length ? parts.join(" · ") : "");
     }, 500);
     return () => clearInterval(iv);
   }, []);
