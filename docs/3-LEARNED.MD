@@ -14,11 +14,11 @@
 | 🖥️ 平台/环境（Windows·PowerShell·端口·编码） | 1.6、1.7、1.8、1.9、1.11、1.18、1.20、1.31、1.47 |
 | 🧩 框架/服务商（paperqa·litellm·模型） | 1.1、1.2、1.3、1.4、1.14、1.25、1.27、1.46 |
 | 📦 依赖与版本管理 | 1.5、1.13 |
-| 🎨 前端与测试驱动（React·Playwright） | 1.10、1.12、1.19（光标部分）、1.37、1.41、1.42、1.43 |
+| 🎨 前端与测试驱动（React·Playwright） | 1.10、1.12、1.19（光标部分）、1.37、1.41、1.42、1.43、1.52 |
 | 🛡️ 安全与防护 | 1.16、1.17、1.33、1.50、§4 整改表 |
-| 🏗️ 工程方法（分层/一致性/自愈） | 1.15、1.17、1.19（长路径/注册表可扩展）、1.21、1.22、1.28、1.32、1.35、1.39、1.48 |
+| 🏗️ 工程方法（分层/一致性/自愈） | 1.15、1.17、1.19（长路径/注册表可扩展）、1.21、1.22、1.28、1.32、1.35、1.39、1.48、1.53 |
 | 🔎 检索与算法改进 | 1.21（来源标记）、1.23 |
-| 📋 项目管理与流程 | 1.17（评审闭环）、1.24、1.26、1.28（AgentOps 工程化）、1.29、1.30、1.34、1.36、1.38、1.40、1.44、1.45、1.49、`1-WORKFLOW.MD` §4.4 |
+| 📋 项目管理与流程 | 1.17（评审闭环）、1.24、1.26、1.28（AgentOps 工程化）、1.29、1.30、1.34、1.36、1.38、1.40、1.44、1.45、1.49、1.51、`1-WORKFLOW.MD` §4.4 |
 
 ### 1.1 DeepSeek 无 embedding API → 本地向量化
 - 现象：DeepSeek 平台只提供 `deepseek-v4-flash / -pro / -flash-vision-exp`，无 embedding 端点。
@@ -107,6 +107,7 @@
 - 现象：① Config JSON 编辑每敲一次光标跳最后一行（受控 textarea 被父组件回写格式化 JSON）；② 用户目录嵌套 PDF 索引报 FileNotFoundError（**Windows MAX_PATH 260 字符**——`\\?\` 前缀才能打开，普通 open 直接失败；递归本身 paperqa 默认已开）；③ provider 表写死三家，无法接 OpenRouter/自定义网关。
 - 解决：① textarea 改本地草稿态（聚焦期间外部 params 不覆盖、失焦后跟随），Playwright 用 `execCommand("insertText")+setSelectionRange` 验证光标位置；② `make_settings` 对 Windows 绝对路径统一加 `\\?\` 前缀、parse 步骤拼接不再 re-resolve（否则丢前缀），另补索引损坏自愈（zlib/decompress 签名含 ExceptionGroup 子异常）与缺失目录友好报错；③ provider 注册表 = 内置 + `providers.json`/`PAPERQA_PROVIDERS_JSON` 合并，`/api/providers` 脱敏列表，前端下拉联动（有 embedding API 带出策展模型、无则清空交给 recommender）。
 - 教训：**"递归/嵌套"这类问题先实测再归因**（真凶是 MAX_PATH 而非递归开关）；**Windows 深度路径操作永远考虑 260 上限**（`\\?\` 前缀 + 不 re-resolve）；**受控输入组件永远给"聚焦保护"**，否则格式化回写必然打断连续编辑。
+- 追加（Sprint-15 走查二轮，机制级根治）：受控 value 重写按规范必然重置光标，"聚焦保护"只是缓解；**根治 = 非受控**（defaultValue + ref，外部变更仅在未聚焦时手动同步 DOM），SchemaForm 文本/密码/数字与 JSON 编辑区已全部非受控，`gui_check_s15_cursor.mjs` 7 断言锁定。坑：探针用 `.value` setter 赋值同样会移光标（假阳性），验证必须走真实键盘事件。
 
 ### 1.20 后台任务停止 ≠ 端口释放：job_kill 只杀包装 shell，子进程会变孤儿占住端口
 - 现象：Sprint-4 GUI 检查后，用户启动 dev server 报 `Error: Port 5173 is already in use`——vite(node) 与后端(python) 是当时后台任务的**子进程**，包装 pwsh 被停后它们存活下来继续监听 5173/8787。
@@ -270,6 +271,16 @@
 - 现象：Sprint-15 走查验收记录与 §8 工作日志全部标注 2026-09-07，但用户实际 09-10 才开始走查；git 提交显示 F-AC3/4 完成于 09-08、F-AC5/6/7/9 完成于 09-09、走查五轮跨 09-09 深夜~09-10 凌晨——记录日期整体漂移（误信上下文中"今天=09-07"的陈旧认知，未核权威时间）。
 - 解决：全库修正（sprint 文档/backlog/代码注释共 20+ 处）；机制固化——doc-audit spec v1.3.0 新增 **timestamps 维度**（日期记录准确性入一查文档审计）：锚定权威网络时间 UTC+8、走查记录=实际走查日期、工作日志=实际完成日期、与 `git log` 提交日期交叉核验、无证据日期标"待核实"。
 - 教训：**"今天几号"必须取自权威网络时间而非会话记忆**；凡写入文档的日期都要有可核验证据（git 提交/事件对证），否则宁可留空待核实。
+
+### 1.52 ReactFlow v11 交互三原则：实例只在 onInit 拿、层级靠 zIndex 显式分层、定位坐标以 DOM 实测为准（Sprint-15 走查 3/7/8 轮）
+- 现象：① `ref=` 拿到的不是 ReactFlow 实例 API（调用 `fitView is not a function` 崩溃）；② 报错卡与正常卡重叠时定位后显示的是压在上面的正常卡；报错卡之间重叠时按 DOM 顺序压住目标卡；③ 按节点存储 position `setCenter` 会偏移到相邻卡。
+- 解决：① 实例经 `onInit` 回调获取（`mainFlowRef`/`fnFlowRef`）；② 报错卡 build 时 `zIndex:10000`、被定位报错卡抬升至 `10001` + `fn-located` 描边（ReactFlow 选中态提升只有 1000，恒小于业务分层）；③ 定位一律按 `fn_title` 在 DOM 找卡 → `getBoundingClientRect` 实测屏幕中心 → `screenToFlowPosition` + `setCenter`（fitView 节点过滤兜底）。
+- 教训：**ReactFlow v11 交互代码三原则：实例只在 onInit 获取；重叠层级用 node.zIndex 显式分层（不要依赖 DOM 顺序）；居中定位以 DOM 实测坐标为准（不按存储 position）**。
+
+### 1.53 组件早退 return 之后再写 hooks = "Rendered more hooks" 崩溃（Sprint-15 走查二轮）
+- 现象：在 SchemaForm 给 `if (!schema) return` 早退分支之后新增 `useEffect`，页面崩溃："Rendered more hooks than during the previous render"。
+- 解决：把全部 hooks（useRef/useEffect/useCallback）移到早退分支之前；项目约定新增 hooks 前先扫描组件内是否有早退 return。
+- 教训：**任何组件里，早退 return 必须位于全部 hooks 声明之后；新增 hook 的第一动作是确认声明位置在早退之前**。
 
 ## 2. 验证记录（Windows，实际执行）
 

@@ -578,9 +578,12 @@ export default function App() {
         }
       }
       try {
-        inst?.fitView({ nodes: [{ id: node.id }], duration: 300, maxZoom: 1, padding: 0.35 });
-        locatedErrNodeIdRef.current = node.id;
-        return true;
+        if (typeof inst?.fitView === "function") {
+          inst.fitView({ nodes: [{ id: node.id }], duration: 300, maxZoom: 1, padding: 0.35 });
+          locatedErrNodeIdRef.current = node.id;
+          return true;
+        }
+        return false; // 走查九轮分诊：实例未就绪不伪成功，交由调用方重试
       } catch {
         return false;
       }
@@ -633,7 +636,7 @@ export default function App() {
       errLocateIndexRef.current = idx;
       const ok = fitToFnErrorCard(errNodes[idx]);
       if (!ok && attempt < 3) {
-        window.setTimeout(() => doLocate(attempt + 1), 150);
+        locateRetryTimerRef.current = window.setTimeout(() => doLocate(attempt + 1), 150); // 统一计时器登记（走查九轮分诊）
       }
     };
     doLocate(0);
