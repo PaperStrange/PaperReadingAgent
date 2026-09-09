@@ -504,21 +504,38 @@ export default function App() {
   }, [applyFnEdgesUpdate]);
 
   // 节点渐进显示完成后，自动把整个函数子图画布居中（fitView）；F-AC6 走查追加：
-  // 当前节点失败时优先定位到**报错卡片**，方便直接复制 fn 卡错误信息。
+  // 当前节点失败时优先定位到**报错卡片**（走查 2026-09-07 修正：用 fitView 节点过滤
+  // 或 DOM 实测坐标，杜绝按存储 position 定位偏移到相邻卡）；切回正常节点则正常 fitView。
   const fitFnView = useCallback(() => {
-    window.setTimeout(() => {
+    const locateError = (attempt = 0) => {
       const inst = fnFlowRef.current;
-      if (!inst) return;
       const activeN = nodesRef.current.find((n) => n.id === activeStepIdRef.current);
-      if (activeN?.data?.status === "failed") {
-        const errNode = fnNodesRef.current.find((n) => n.data?.status === "error");
-        if (errNode && typeof inst.setCenter === "function") {
-          inst.setCenter(errNode.position?.x ?? 0, errNode.position?.y ?? 0, { zoom: 1, duration: 300 });
-          return;
-        }
+      if (!activeN || activeN.data?.status !== "failed") {
+        if (typeof inst?.fitView === "function") inst.fitView({ padding: 0.2, duration: 300 });
+        return;
       }
-      if (typeof inst.fitView === "function") inst.fitView({ padding: 0.2, duration: 300 });
-    }, 120);
+      const errNode = fnNodesRef.current.find((n) => n.data?.status === "error");
+      if (!errNode) {
+        if (attempt < 10) {
+          window.setTimeout(() => locateError(attempt + 1), 200); // 渐进显示中，等报错卡入场
+        }
+        return;
+      }
+      try {
+        inst?.fitView({ nodes: [{ id: errNode.id }], duration: 300, maxZoom: 1, padding: 0.3 });
+        return;
+      } catch {
+        /* fall through：DOM 实测坐标 */
+      }
+      const el = document.querySelector(`.react-flow__node[data-id="${errNode.id}"]`);
+      const pane = document.querySelector(".fn-pane-flow");
+      if (el && pane && typeof inst?.screenToFlowPosition === "function" && typeof inst.setCenter === "function") {
+        const r = el.getBoundingClientRect();
+        const pos = inst.screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+        inst.setCenter(pos.x, pos.y, { zoom: 1, duration: 300 });
+      }
+    };
+    window.setTimeout(() => locateError(0), 120);
   }, []);
 
   const startRevealTimer = useCallback(() => {

@@ -95,8 +95,26 @@ try {
   const us = await page.evaluate(() => window.getComputedStyle(document.querySelector(".fn-node-card")).userSelect);
   ok("F-AC6 fn 卡可框选复制（user-select:text）", us === "text", `userSelect=${us}`);
 
-  // ⑤ 走查追加：报错后 fn 画布自动定位到报错卡（报错卡与 fn 面板视口相交）
+  // ⑤ 走查追加：报错后 fn 画布自动定位到报错卡（报错卡与 fn 面板视口相交 + 中心贴近面板中心）
   const errInView = await page.evaluate(() => {
+    const errCard = document.querySelector(".fn-node-card.fn-error");
+    const pane = document.querySelector(".fn-pane-flow");
+    if (!errCard || !pane) return { visible: false, centerDelta: 1 };
+    const c = errCard.getBoundingClientRect();
+    const p = pane.getBoundingClientRect();
+    const visible = c.left < p.right && c.right > p.left && c.top < p.bottom && c.bottom > p.top;
+    const centerDelta = Math.abs(c.left + c.width / 2 - (p.left + p.width / 2)) / (p.width || 1);
+    return { visible, centerDelta };
+  });
+  ok("F-AC6 报错后 fn 画布定位到报错卡", errInView.visible, JSON.stringify(errInView));
+  ok("F-AC6 定位精度（报错卡中心贴近面板中心）", errInView.centerDelta < 0.35, JSON.stringify(errInView));
+
+  // ⑦ 走查追加：切走再切回报错节点，仍定位到报错卡（正常节点则正常视图）
+  await page.locator(".step-switch-btn", { hasText: "Retrieve" }).evaluate((el) => el.click());
+  await page.waitForTimeout(1500);
+  await page.locator(".step-switch-btn", { hasText: "parse" }).evaluate((el) => el.click());
+  await page.waitForTimeout(2500);
+  const errAgain = await page.evaluate(() => {
     const errCard = document.querySelector(".fn-node-card.fn-error");
     const pane = document.querySelector(".fn-pane-flow");
     if (!errCard || !pane) return false;
@@ -104,7 +122,7 @@ try {
     const p = pane.getBoundingClientRect();
     return c.left < p.right && c.right > p.left && c.top < p.bottom && c.bottom > p.top;
   });
-  ok("F-AC6 报错后 fn 画布定位到报错卡", errInView, `errInView=${errInView}`);
+  ok("F-AC7 切回报错节点再次定位到报错卡", errAgain, `errAgain=${errAgain}`);
 
   await page.screenshot({ path: path.resolve(_here, "f2-error-copy.png"), fullPage: false });
   console.log("SHOT f2-error-copy.png");

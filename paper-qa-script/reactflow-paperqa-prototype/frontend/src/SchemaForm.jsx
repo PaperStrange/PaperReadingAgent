@@ -56,6 +56,24 @@ export default function SchemaForm({ params, apiBase, onChange, collapsed = fals
   // 卸载清定时器
   useEffect(() => () => timerRef.current && clearTimeout(timerRef.current), []);
 
+  // 走查 2026-09-07（光标跳末尾第二轮）：文本/密码/数字输入全部**非受控**——
+  // React 不写 DOM value，光标从机制上不被重置；外部变更（provider 联动等）
+  // 仅在输入框未聚焦时手动同步 DOM。（注意：hooks 必须在早退 return 之前声明）
+  const inputRefs = useRef({});
+  useEffect(() => {
+    Object.keys(inputRefs.current).forEach((key) => {
+      const el = inputRefs.current[key];
+      if (!el || el === document.activeElement) return;
+      const cur = params?.[key];
+      const v = cur === undefined || cur === null ? "" : String(cur);
+      if (el.value !== v) el.value = v;
+    });
+  }, [params]);
+  const attachInputRef = (key) => (el) => {
+    if (el) inputRefs.current[key] = el;
+    else delete inputRefs.current[key];
+  };
+
   // US-12.2：防抖校验（编辑后 600ms 调 validate 端点）；update 与 provider 联动共用
   // 027 加固：请求序号守卫（仅最新请求可写状态）+ r.ok 检查 + validate 请求体剔除 api_key
   const requestIdRef = useRef(0);
@@ -178,7 +196,8 @@ export default function SchemaForm({ params, apiBase, onChange, collapsed = fals
           <input
             type="password"
             className="ds-input"
-            value={hasValue ? String(cur) : ""}
+            ref={attachInputRef(key)}
+            defaultValue={hasValue ? String(cur) : ""}
             placeholder={ph}
             autoComplete="off"
             disabled={readonly}
@@ -238,7 +257,8 @@ export default function SchemaForm({ params, apiBase, onChange, collapsed = fals
           <input
             type="number"
             className="ds-input"
-            value={hasValue ? String(cur) : ""}
+            ref={attachInputRef(key)}
+            defaultValue={hasValue ? String(cur) : ""}
             min={f.range?.[0]}
             max={f.range?.[1]}
             step={f.type === "integer" ? 1 : "any"}
@@ -264,7 +284,8 @@ export default function SchemaForm({ params, apiBase, onChange, collapsed = fals
           <input
             {...common}
             type="text"
-            value={hasValue ? String(cur) : ""}
+            ref={attachInputRef(key)}
+            defaultValue={hasValue ? String(cur) : ""}
             placeholder={ph}
             onChange={(e) => update({ [key]: e.target.value })}
           />

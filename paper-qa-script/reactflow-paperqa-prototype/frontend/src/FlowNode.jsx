@@ -175,9 +175,12 @@ export default function FlowNode({ id, data }) {
       ) : null}
 
       <div className="node-output">
-        <div className="node-block-title">
+        <div
+          className="node-block-title"
+          title={JSON.stringify(output || {}, null, 2)}
+        >
           output_snapshot
-          {/* F-AC11（走查 N1）：output 完整查看——一键复制全文 JSON */}
+          {/* F-AC11（走查 N1）：output 完整查看——一键复制全文 JSON；标题 hover 出全文 tooltip */}
           {!error && (
             <button
               className="run-btn copy-output-btn"
@@ -224,7 +227,7 @@ export default function FlowNode({ id, data }) {
                 {copied ? "已复制 ✓" : "复制答案"}
               </button>
             </div>
-            <pre className="answer-text">{output.answer}</pre>
+            <pre className="answer-text" title={output.answer}>{output.answer}</pre>
             {output.references ? (
               <details className="answer-refs-detail" open>
                 <summary>参考文献</summary>

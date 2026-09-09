@@ -8,10 +8,19 @@ function shortText(text, maxLen = 180) {
 
 function Primitive({ value }) {
   if (value === null) return <span className="json-null">null</span>;
-  if (typeof value === "string") return <span className="json-str">"{shortText(value)}"</span>;
+  if (typeof value === "string") {
+    // F-AC11（走查 N1 追加）：截断的字符串 hover 出全文 tooltip
+    const s = String(value);
+    return (
+      <span className="json-str" title={s.length > 180 ? s : undefined}>
+        "{shortText(value)}"
+      </span>
+    );
+  }
   if (typeof value === "number") return <span className="json-num">{String(value)}</span>;
   if (typeof value === "boolean") return <span className="json-bool">{String(value)}</span>;
-  return <span className="json-str">"{shortText(String(value))}"</span>;
+  const s = String(value);
+  return <span className="json-str" title={s}>"{shortText(s)}"</span>;
 }
 
 function JsonNode({ name, value, depth = 0, collapsed = false }) {
