@@ -110,9 +110,9 @@
 
 - 能**直观反映改动**：例如拖拽后的分栏比例、全屏后的整体视图、放大后的图片、新增按钮及其点击后的结果。
 - 标注**时间/环境**（可选）：截图文件名或 caption 标注日期与操作。
-- 存放到 `docs/iteration/sprint/<run>.png`（连同该 sprint 文档一起入库），在 Markdown 里用相对路径引用，例如：
+- 存放到 `docs/iteration/sprint/<run>.png`（连同该 sprint 文档一起入库），在 Markdown 里用相对路径引用（示意占位，非真实文件）：
   ```markdown
-  ![分栏拖拽](./2026-08-26-pane-resize.png)
+  ![分栏拖拽](./<sprint>-<run>.png)
   ```
 
 #### 关闭时的 Self-check

@@ -36,7 +36,7 @@ PROVIDERS: dict[str, dict] = {
         "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "model": "openai/qwen3.5-omni-plus",           # 2026-09 官网调研更新（原 qwen-omni-turbo）
         "vision_model": "openai/qwen3.5-omni-plus",
-        "embedding": "openai/text-embedding-v4",       # 待首轮官网调研核实（F2 验收 D 项）
+        "embedding": "openai/text-embedding-v4",       # 官网已核实（run-2026-09-12-provider-refresh-001）
         "embedding_local": False,
         "has_embedding_api": True,
         "key_envs": ("DASHSCOPE_API_KEY", "OPENAI_API_KEY"),
@@ -164,31 +164,49 @@ def get_providers() -> dict[str, dict]:
     return registry
 
 
-def provider_source(name: str) -> str:
-    """该 provider 的生效来源（file / builtin / legacy / env），供 /api/providers 与排查使用。"""
-    name = name.strip().lower()
+def _source_map() -> dict[str, str]:
+    """一次性算出各 provider 的生效来源（env > legacy > file > builtin），避免逐个 provider 重复读盘。"""
+    env_names: set[str] = set()
     env_raw = os.environ.get("PAPERQA_PROVIDERS_JSON", "").strip()
     if env_raw:
         try:
-            if name in {str(k).strip().lower() for k in json.loads(env_raw)}:
-                return "env"
+            env_names = {str(k).strip().lower() for k in json.loads(env_raw)}
         except Exception:
-            pass
+            env_names = set()
+    legacy_names: set[str] = set()
     if LEGACY_PROVIDERS_FILE.exists():
         try:
-            if name in {str(k).strip().lower() for k in json.loads(LEGACY_PROVIDERS_FILE.read_text(encoding="utf-8"))}:
-                return "legacy"
+            legacy_names = {
+                str(k).strip().lower()
+                for k in json.loads(LEGACY_PROVIDERS_FILE.read_text(encoding="utf-8"))
+            }
         except Exception:
-            pass
+            legacy_names = set()
     file_registry, _ = load_provider_files()
-    if name in file_registry:
-        return "file"
-    return "builtin" if name in PROVIDERS else "unknown"
+    out: dict[str, str] = {}
+    for n in set(env_names) | set(legacy_names) | set(file_registry) | set(PROVIDERS):
+        out[n] = (
+            "env" if n in env_names
+            else "legacy" if n in legacy_names
+            else "file" if n in file_registry
+            else "builtin"
+        )
+    return out
+
+
+def provider_source(name: str, sources: dict[str, str] | None = None) -> str:
+    """`name` 的生效来源（env / legacy / file / builtin / unknown）。
+
+    可选 `sources`：传入 `_source_map()` 的结果以复用（列表场景避免 N 次读盘）。
+    """
+    mapping = sources if sources is not None else _source_map()
+    return mapping.get(name.strip().lower(), "unknown")
 
 
 def list_providers_safe() -> list[dict]:
     """provider 列表 + 默认值（**不含密钥**，供 /api/providers 与前端下拉）。"""
     out: list[dict] = []
+    sources = _source_map()  # 一次算好来源，避免每个 provider 重复读盘
     for name, cfg in sorted(get_providers().items()):
         meta = cfg.get(_META_KEY) or {}
         out.append(
@@ -200,7 +218,7 @@ def list_providers_safe() -> list[dict]:
                 "embedding": cfg.get("embedding"),
                 "has_embedding_api": bool(cfg.get("has_embedding_api")),
                 "builtin": name in PROVIDERS,
-                "source": provider_source(name),
+                "source": provider_source(name, sources),
                 "fetched_at": meta.get("fetched_at"),
                 "source_urls": list(meta.get("source_urls") or []),
             }

@@ -64,5 +64,3 @@ docs/iteration/sprint/config_schema.json
 docs/iteration/sprint/*.png
 verify/*.png
 
-# DSH skills
-.agents*.log

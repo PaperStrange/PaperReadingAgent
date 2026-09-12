@@ -131,6 +131,7 @@ PaperReading-Windows/
 ├── data/pdf/PaperQA2.pdf      # 示例论文
 ├── data/remote/               # Sprint-3 远程源下载暂存（.gitignore 忽略，运行时生成）
 ├── scripts/                   # setup-env.ps1 / start-backend.ps1 / start-frontend.ps1 / start-streamlit.ps1（+ .bat 双击版）/ agent-ops.py（账本 CLI）/ fetch-prices.py（M9 价表抓取）/ github-pr.ps1（PR 助手）/ **refresh-providers.py（F-AC8 官网调研刷新 + M16 归档）/ scheduled-tasks.py（TG-5 定时底座）/ register-scheduled-tasks.ps1（Windows 任务计划）**
+│                              # 注：`scripts/*.sh`（setup-env/start-backend/start-frontend/start-streamlit）**仅 main/mac 侧存在**；windows 侧以 .ps1/.bat 等价替换且不回流 main（code-review 050 记录的"有意分叉"，非缺失项）
 ├── verify/                    # 验收脚本（40 个，SSOT=TEST-MATRIX.MD）：smoke/e2e×3/agent/provider_switch/embed_load/remote_e2e/prune_callbacks/index_health/agentops/config_schema/local_dir/checkpoint（F-AC10）/archive（M16 归档门禁）/providers（F-AC8）/runner（TG-5）/f12_preview_res + **run_suite.py（分层 runner：offline/gui/network + 预算闸门）** + verify_matrix（覆盖矩阵 SSOT）+ TEST-MATRIX.MD + e2e_common（共享基座）+ eval_retrieve + gui_check*.mjs（含 s15 十件套）
 ├── requirements-windows.txt   # Windows 依赖清单
 ├── requirements.txt           # 原语料采集依赖（未动）
@@ -161,7 +162,7 @@ PaperReading-Windows/
 | 向量化 | `openai/text-embedding-v4`（API） | `st-multi-qa-MiniLM-L6-cos-v1`（本地，首次自动下载 ~90MB） |
 | API Base | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `https://api.deepseek.com` |
 | 思考模式 | 不适用 | `extra_body={"thinking":{"type":"disabled"}}` 关闭（详见 3-LEARNED） |
-| dashscope 侧默认值（Sprint-16 官网调研更新） | `openai/qwen-omni-turbo` | **`openai/qwen3.5-omni-plus`**（model + vision_model；embedding `openai/text-embedding-v4` 据官方文档确认；证据 `agents/runs/run-2026-09-12-provider-refresh-001`） |
+| dashscope 侧默认值（Sprint-16 官网调研更新） | `openai/qwen-omni-turbo` | **`openai/qwen3.5-omni-plus`**（model + vision_model；embedding `openai/text-embedding-v4` 据官方文档确认；证据=本地调研归档 `agents/runs/<run_id>/`（gitignore 运行时产物，含 evidence 逐字摘录）） |
 
 密钥解析优先级：config 节点 `params.api_key` → 服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY`）→ 通用 `OPENAI_API_KEY` → 本地 `paper-qa-script/.env`（ps1 启动脚本导入）；服务商由 `PAPERQA_PROVIDER` 切换（**一 provider 一文件 `providers/*.json` 为主来源** + 旧 `providers.json`/`PAPERQA_PROVIDERS_JSON` 覆盖），显式 `api_base/model/vision_model/embedding_model` 参数优先级最高。
 

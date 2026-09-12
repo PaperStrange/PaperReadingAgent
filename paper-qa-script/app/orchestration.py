@@ -204,18 +204,28 @@ _EMBED_CHECKPOINT_SCHEMA = 1
 _CHECKPOINT_NAMESPACE_KEEP = 20
 
 
-def _prune_checkpoints(root: Path, keep: int = _CHECKPOINT_NAMESPACE_KEEP, protect: str = "") -> list[str]:
-    """按 mtime 保留最近 keep 个命名空间（manifest + 载荷目录），删除更旧的；protect 指定的 key 永不删。"""
+def _prune_checkpoints(
+    root: Path, keep: int = _CHECKPOINT_NAMESPACE_KEEP, protect: str = "", grace_s: float = 86400.0
+) -> list[str]:
+    """按 mtime 保留最近 keep 个命名空间（manifest + 载荷目录），删除更旧的。
+
+    - `protect`：本轮在用的 key，永不删；
+    - `grace_s`：宽限期——只清理 **updated_at 早于 now-grace_s** 的命名空间，
+      避免并发运行（另一命名空间正在写入）时被误删而丢掉已花的嵌入成本（code-review 050 minor）。
+    """
     try:
         manifests = sorted(root.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     except OSError:
         return []
+    cutoff = time.time() - grace_s
     removed: list[str] = []
     for m in manifests[keep:]:
         key = m.stem
         if key == protect:
             continue
         try:
+            if m.stat().st_mtime > cutoff:
+                continue  # 宽限期内（可能正在被另一轮使用）
             m.unlink()
             payload_dir = root / key
             if payload_dir.is_dir():
@@ -288,12 +298,19 @@ class PipelineOrchestrator:
         model: str,
         entries: dict[str, Any],
         status: str,
+        checkpoint_key: str = "",
     ) -> dict[str, Any]:
+        reader_cfg = getattr(getattr(settings, "parsing", None), "reader_config", None) or {}
         return {
             "schema": _EMBED_CHECKPOINT_SCHEMA,
+            "checkpoint_key": checkpoint_key,  # 契约字段（code-review 050 major：manifest 自述 key，测试/巡检不再靠猜测）
             "paper_dir": str(paper_dir),
             "index_name": str(getattr(getattr(settings, "agent", None).index, "name", "") or ""),
             "embedding_model": model,
+            # 切块口径（code-review 050 minor）：变更即判为不可复用，防"旧分块静默沿用"
+            "chunk_chars": reader_cfg.get("chunk_chars"),
+            "chunk_overlap": reader_cfg.get("overlap"),
+            "parse_schema": _EMBED_CHECKPOINT_SCHEMA,
             "status": status,  # ready=本轮全部就绪；partial=有失败/未完成（fail-closed）
             "updated_at": time.time(),
             "docs": entries,
@@ -323,9 +340,16 @@ class PipelineOrchestrator:
         _prune_checkpoints(root, protect=ckpt_key)  # 防无界增长（保留最近 N 个命名空间，绝不删本轮用的）
 
         manifest = _read_checkpoint_json(manifest_path) or {}
+        _reader_cfg = getattr(getattr(settings, "parsing", None), "reader_config", None) or {}
+        _cur_chunk = _reader_cfg.get("chunk_chars")
+        _cur_overlap = _reader_cfg.get("overlap")
+        # 复用前提（fail-closed）：schema + 嵌入模型 + **切块口径** 全部一致（code-review 050 minor：
+        # 否则改了 chunk_chars/overlap 仍会静默沿用旧分块向量）
         model_match = (
             manifest.get("schema") == _EMBED_CHECKPOINT_SCHEMA
             and manifest.get("embedding_model") == model
+            and manifest.get("chunk_chars") == _cur_chunk
+            and manifest.get("chunk_overlap") == _cur_overlap
         )
         entries: dict[str, Any] = dict(manifest.get("docs") or {}) if model_match else {}
         stats: dict[str, Any] = {
@@ -334,6 +358,8 @@ class PipelineOrchestrator:
             "deduped": 0,
             "failed": 0,
             "model_match": bool(model_match),
+            "chunk_chars": _cur_chunk,
+            "chunk_overlap": _cur_overlap,
             "checkpoint_key": ckpt_key,
             "manifest": str(manifest_path),
         }
@@ -401,7 +427,7 @@ class PipelineOrchestrator:
                 }
                 _atomic_write_json(
                     manifest_path,
-                    self._checkpoint_manifest(paper_dir, settings, model, entries, "partial"),
+                    self._checkpoint_manifest(paper_dir, settings, model, entries, "partial", ckpt_key),
                 )
                 # US-5.1：单文件失败给出上下文；文件缺失多半是索引与目录不一致
                 raise ValueError(
@@ -426,7 +452,7 @@ class PipelineOrchestrator:
                 }
                 _atomic_write_json(
                     manifest_path,
-                    self._checkpoint_manifest(paper_dir, settings, model, entries, "partial"),
+                    self._checkpoint_manifest(paper_dir, settings, model, entries, "partial", ckpt_key),
                 )
                 per_file.append(
                     {
@@ -443,6 +469,13 @@ class PipelineOrchestrator:
             stats["embedded"] += 1
             dockey = str((payload.get("doc") or {}).get("dockey") or docname)
             _atomic_write_json(payload_dir / f"{dockey}.json.gz", payload, gz=True)
+            # 清理该篇的旧版本载荷（指纹变化 → 新 dockey）：防载荷目录按历史内容版本无界增长
+            old_dockey = str(entry.get("dockey") or "")
+            if old_dockey and old_dockey != dockey:
+                try:
+                    (payload_dir / f"{old_dockey}.json.gz").unlink(missing_ok=True)
+                except OSError:
+                    pass
             entries[p] = {
                 "fingerprint": fingerprint,
                 "dockey": dockey,
@@ -469,7 +502,7 @@ class PipelineOrchestrator:
 
         _atomic_write_json(
             manifest_path,
-            self._checkpoint_manifest(paper_dir, settings, model, entries, "ready"),
+            self._checkpoint_manifest(paper_dir, settings, model, entries, "ready", ckpt_key),
         )
         return per_file, stats
 

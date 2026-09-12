@@ -94,8 +94,12 @@ def main() -> int:
     listed = pc.list_providers_safe()
     names = sorted(x["name"] for x in listed)
     ok("⑥ 列表含四个内置 provider", all(n in names for n in builtin), json.dumps(names, ensure_ascii=False))
-    ok("⑥ 列表带 source/fetched_at/source_urls", all(
-        x.get("source") and x.get("fetched_at") and x.get("source_urls") for x in listed if x["name"] in builtin
+    ok("⑥ 列表带 source/fetched_at/source_urls（未成功刷新者 fetched_at 可为 null）", all(
+        x.get("source") and x.get("source_urls") for x in listed if x["name"] in builtin
+    ) and all(
+        (x.get("fetched_at") is not None)
+        or (json.loads((pc.PROVIDERS_DIR / f"{x['name']}.json").read_text(encoding="utf-8")).get("meta") or {}).get("last_refresh_status") in ("error", "pending")
+        for x in listed if x["name"] in builtin
     ), json.dumps([{k: v for k, v in x.items() if k in ("name", "source", "fetched_at")} for x in listed if x["name"] in builtin], ensure_ascii=False))
     ok("⑥ 列表不含密钥字段", all("api_key" not in x and "key_envs" not in x for x in listed),
        json.dumps(sorted({k for x in listed for k in x}), ensure_ascii=False))
@@ -107,11 +111,25 @@ def main() -> int:
     except ValueError as exc:
         ok("⑦ 未知 provider → ValueError 且列出可选值", "可选值" in str(exc) and "deepseek" in str(exc), str(exc)[:110])
 
-    # ⑧ 调研可追溯契约
+    # ⑧ 调研可追溯契约（source_urls 必填；fetched_at 可为 null=从未成功刷新，须有 error/pending 状态解释）
     for name in builtin:
         meta = json.loads((pc.PROVIDERS_DIR / f"{name}.json").read_text(encoding="utf-8")).get("meta") or {}
-        ok(f"⑧ {name} meta.source_urls 非空 + fetched_at 存在",
-           bool(meta.get("source_urls")) and bool(meta.get("fetched_at")), json.dumps(meta, ensure_ascii=False)[:120])
+        ok(f"⑧ {name} meta.source_urls 非空 + fetched_at 或失败状态齐备",
+           bool(meta.get("source_urls"))
+           and (bool(meta.get("fetched_at")) or meta.get("last_refresh_status") in ("error", "pending")),
+           json.dumps(meta, ensure_ascii=False)[:120])
+
+    # ⑧b SSOT 守护（code-review 050 major）：代码兜底表 PROVIDERS 与 providers/*.json 必须逐字段一致
+    #     （providers/ 缺失/损坏时应用回落到兜底表；两者漂移 = 静默换模型/成本口径）
+    fields = ("api_base", "model", "vision_model", "embedding", "embedding_local",
+              "has_embedding_api", "key_envs", "thinking_disabled")
+    for name in builtin:
+        raw = json.loads((pc.PROVIDERS_DIR / f"{name}.json").read_text(encoding="utf-8"))
+        # 两侧都先 normalize_entry（否则 key_envs 的 tuple/list 容器差异会假红）
+        fb = pc.normalize_entry(name, pc.PROVIDERS[name])
+        fl = pc.normalize_entry(name, raw)
+        diff = {k: (fb.get(k), fl.get(k)) for k in fields if fb.get(k) != fl.get(k)}
+        ok(f"⑧b {name} 代码兜底表与 providers/{name}.json 逐字段一致", not diff, json.dumps(diff, ensure_ascii=False))
 
     # ⑨~⑪ 刷新链路（离线快照，目录全部重定向到临时目录：绝不改动仓库文件）
     refresh_script = ROOT / "scripts" / "refresh-providers.py"
@@ -159,14 +177,17 @@ def main() -> int:
         ok("⑩ 失败状态被记录为 error", st["providers"]["openai"]["status"] == "error",
            json.dumps(st["providers"]["openai"], ensure_ascii=False)[:140])
 
-        # ⑪ 到期判定可配置（间隔 14 天 → 未到期；间隔 0 天 → 到期）
-        due_ok = subprocess.run([sys.executable, str(refresh_script), "--check", "--providers-dir", str(pdir)],
-                                cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
-        ok("⑪ 刚刷新后按 14 天间隔判定为未到期（--check 退出 0）", due_ok.returncode == 0,
-           (due_ok.stdout or "").strip()[-140:])
+        # ⑪ 到期判定可配置：已成功刷新者按 14 天为"未到期"；失败/从未刷新者恒 due（正确语义）
+        due_run = subprocess.run([sys.executable, str(refresh_script), "--check", "--providers-dir", str(pdir)],
+                                 cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
+        out11 = due_run.stdout or ""
+        ds_line = next((ln for ln in out11.splitlines() if ln.strip().startswith("dashscope")), "")
+        ok("⑪ 已成功刷新者按 14 天判定未到期", "due=False" in ds_line, ds_line.strip()[:120])
+        oa_line = next((ln for ln in out11.splitlines() if ln.strip().startswith("openai")), "")
+        ok("⑪ 从未成功刷新者（fetched_at=null）判为 due（应尽快重试）", "due=True" in oa_line, oa_line.strip()[:120])
         due_zero = subprocess.run([sys.executable, str(refresh_script), "--check", "--interval-days", "0", "--providers-dir", str(pdir)],
                                   cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
-        ok("⑪ 间隔改为 0 天即判到期（退出 1，间隔可配置）", due_zero.returncode == 1,
+        ok("⑪ 间隔改为 0 天即全判到期（退出 1，间隔可配置）", due_zero.returncode == 1,
            (due_zero.stdout or "").strip()[-140:])
 
     print(f"\nALL PASS ({PASSED} assertions)")

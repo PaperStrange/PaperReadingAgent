@@ -156,11 +156,17 @@ def main() -> int:
     if args.record_cost is not None:
         task = args.task or "nightly-suite"
         rec = state.setdefault("tasks", {}).setdefault(task, {})
+        cap = budget_cny(state)
         rec["last_cost_cny"] = float(args.record_cost)
-        rec["last_cost_status"] = "measured"
+        rec["last_cost_cap_cny"] = cap
+        rec["last_cost_status"] = "measured" if float(args.record_cost) <= cap else "over_budget"
         rec["cost_measured_at"] = time.time()
         save_state(sp, state)
-        print(f"OK: {task} 实际花费已回填 {args.record_cost} CNY（cost_status=measured）→ 下一轮夜间套件放行。")
+        if rec["last_cost_status"] == "over_budget":
+            print(f"OK: {task} 实际花费已回填 {args.record_cost} CNY —— **超过上限 {cap} CNY** → cost_status=over_budget，"
+                  f"下一轮夜间套件将拒绝放行（确认后可 `--force` 覆盖或调高上限）。")
+        else:
+            print(f"OK: {task} 实际花费已回填 {args.record_cost} CNY（上限 {cap}）→ cost_status=measured，下一轮放行。")
         return 0
 
     if not args.task:
@@ -173,12 +179,30 @@ def main() -> int:
         print(f"SKIP: {args.task} {why}")
         return 0
 
-    # 三态成本闸门：预算制任务在上一轮花费未测量时拒绝放行（fail-closed）
+    # 三态成本闸门（fail-closed；code-review 050 major 修复）：
+    #   ① over_budget → 拒绝（除非 --force 显式覆盖）；
+    #   ② unknown（上一轮成功但未回填）→ 拒绝；
+    #   ③ unknown 且上一轮**失败/中断** → 放行重试（避免"失败一次永久停摆且不自愈"的静默停摆）。
     rec = (state.get("tasks") or {}).get(args.task) or {}
-    if spec["budgeted"] and rec.get("last_cost_status") == "unknown":
-        print(f"REFUSED: {args.task} 上一轮实际花费未回填（cost_status=unknown）→ 拒绝放行（fail-closed）。"
-              f"请先 `--task {args.task} --record-cost <CNY>` 回填账本实际花费。")
-        return REFUSE_EXIT
+    if spec["budgeted"]:
+        status = rec.get("last_cost_status")
+        last_status = str(rec.get("last_status") or "")
+        blocked_reason = ""
+        if status == "over_budget":
+            blocked_reason = (f"上一轮实测花费 {rec.get('last_cost_cny')} CNY 超过上限 {budget_cny(state)} CNY"
+                              f"（cost_status=over_budget）")
+        elif status == "unknown" and not last_status.startswith("failed"):
+            blocked_reason = "上一轮实际花费未回填（cost_status=unknown）"
+        if blocked_reason and not args.force:
+            rec["last_blocked_at"] = time.time()
+            rec["last_blocked_reason"] = blocked_reason
+            state.setdefault("tasks", {})[args.task] = rec
+            save_state(sp, state)
+            print(f"REFUSED: {args.task} {blocked_reason} → 拒绝放行（fail-closed）。"
+                  f"回填：`--task {args.task} --record-cost <CNY>`；确认要跑：`--force`。")
+            return REFUSE_EXIT
+        if blocked_reason and args.force:
+            print(f"OVERRIDE: {args.task} {blocked_reason} → --force 覆盖，本轮放行（已记录）。")
 
     if args.task == "providers" and not Path(spec["cmd"][1]).exists():
         print(f"UNAVAILABLE: {args.task} 实现尚未就绪（{spec['cmd'][1]} 由 F-AC8 交付）→ 记 skipped。")

@@ -100,18 +100,28 @@ def prune_checks() -> None:
             (root / k / "x.json.gz").write_bytes(b"x")
             ts = time.time() - (len(keys) - i) * 60
             os.utime(root / f"{k}.json", (ts, ts))
-        removed = _prune_checkpoints(root, keep=2)
+        removed = _prune_checkpoints(root, keep=2, grace_s=0)
         ok("⑦ 收敛删除最旧命名空间（manifest + 载荷目录）",
            removed == ["old"] and not (root / "old.json").exists() and not (root / "old").exists()
            and (root / "mid.json").exists() and (root / "new.json").exists(),
            json.dumps({"removed": removed, "left": sorted(p.stem for p in root.glob("*.json"))}))
+        # 宽限期（code-review 050 minor）：fresh 命名空间在默认 grace 下不被删（防并发误删在用 checkpoint）
+        fresh_root = root / "grace"
+        fresh_root.mkdir()
+        for i, k in enumerate(["a", "b"]):
+            (fresh_root / f"{k}.json").write_text("{}", encoding="utf-8")
+        removed_grace = _prune_checkpoints(fresh_root, keep=1)
+        ok("⑦ 宽限期内不删 fresh 命名空间（防并发误删）", removed_grace == [], json.dumps(removed_grace))
+        removed_grace0 = _prune_checkpoints(fresh_root, keep=1, grace_s=0)
+        ok("⑦ 宽限期=0 时同条件下会删（证明差异来自宽限期）",
+           len(removed_grace0) == 1, json.dumps(removed_grace0))
         # keep=1 时次新的 mid 成为删除候选；protect 指定它则不得删除（且 newest 保留）
-        removed2 = _prune_checkpoints(root, keep=1, protect="mid")
+        removed2 = _prune_checkpoints(root, keep=1, protect="mid", grace_s=0)
         ok("⑦ protect 指定的命名空间不被删除（其余收敛逻辑不变）",
            removed2 == [] and (root / "mid.json").exists() and (root / "new.json").exists(),
            json.dumps({"removed": removed2, "left": sorted(p.stem for p in root.glob("*.json"))}))
         # 反证：同一状态下不 protect，则 mid 会被删除（证明 protect 才是保护来源）
-        removed3 = _prune_checkpoints(root, keep=1)
+        removed3 = _prune_checkpoints(root, keep=1, grace_s=0)
         ok("⑦ 反证：不 protect 时次新命名空间被删除",
            removed3 == ["mid"] and not (root / "mid.json").exists() and (root / "new.json").exists(),
            json.dumps({"removed": removed3, "left": sorted(p.stem for p in root.glob("*.json"))}))
@@ -207,7 +217,12 @@ async def main() -> int:
             # ④ 边界：载荷损坏（截断 Beta 的载荷 → 该篇重跑）
             m3 = json.loads(manifest_path.read_text(encoding="utf-8"))
             beta_dockey = str((m3.get("docs") or {}).get("Beta.pdf", {}).get("dockey") or "")
-            payload = manifest_path.parent / str(m3.get("checkpoint_key") or manifest_path.stem) / f"{beta_dockey}.json.gz"
+            # 契约：manifest 自述 checkpoint_key（code-review 050 major：此前只在 stats 里，测试靠父目录巧合通过）
+            ok("④ manifest 自述 checkpoint_key 且与 stats 一致",
+               m3.get("checkpoint_key") == c1.get("checkpoint_key") and bool(m3.get("checkpoint_key")),
+               json.dumps({"manifest": m3.get("checkpoint_key"), "stats": c1.get("checkpoint_key")}))
+            payload = manifest_path.parent / str(m3["checkpoint_key"]) / f"{beta_dockey}.json.gz"
+            ok("④ 载荷路径按 manifest 契约可定位", payload.is_file(), str(payload))
             payload.write_bytes(b"corrupt")
             d4 = await run_parse(client, base, sid, "ckpt-4", paths)
             ok("④ 载荷损坏轮成功", bool(d4.get("ok")), str(d4.get("error"))[:160])
@@ -242,6 +257,35 @@ async def main() -> int:
                json.dumps(c6, ensure_ascii=False))
             ok("⑥ per_file 标出 deduped 项", per6.get("Gamma.pdf", {}).get("deduped") is True,
                json.dumps({k: v.get("deduped") for k, v in per6.items()}, ensure_ascii=False))
+
+            # ⑦b 边界：切块口径变化（code-review 050 minor）→ 不得复用旧分块向量
+            r = await client.post(
+                f"{base}/api/run_step",
+                json={"session_id": sid, "run_id": "ckpt-7", "step": "config",
+                      "params": {"provider": "deepseek",
+                                 "embedding_model": "st-multi-qa-MiniLM-L6-cos-v1",
+                                 "data_source": "local",
+                                 "paper_directory": str(tmp),
+                                 "index_name": "verify_checkpoint_index",
+                                 "chunk_chars": 1200, "chunk_overlap": 60},
+                      "upstream": {}},
+            )
+            r.raise_for_status()
+            ok("⑦b 切块参数变更后 config 成功", bool(r.json().get("ok")), str(r.json().get("error"))[:120])
+            # config 重跑按设计失效下游（search_index=None）→ 需重跑 load_index 才能 parse
+            r = await client.post(
+                f"{base}/api/run_step",
+                json={"session_id": sid, "run_id": "ckpt-7", "step": "load_index",
+                      "params": {"build": True}, "upstream": {}},
+            )
+            r.raise_for_status()
+            ok("⑦b 切块变更后 load_index 成功", bool(r.json().get("ok")), str(r.json().get("error"))[:120])
+            d7 = await run_parse(client, base, sid, "ckpt-7", paths)
+            ok("⑦b 切块变更轮成功", bool(d7.get("ok")), str(d7.get("error"))[:160])
+            c7 = (d7.get("output") or {}).get("checkpoint") or {}
+            ok("⑦b 切块口径变化 → 全部重跑（reused=0，不静默沿用旧分块）",
+               c7.get("reused") == 0 and c7.get("embedded") == 2 and c7.get("chunk_chars") == 1200,
+               json.dumps(c7, ensure_ascii=False))
     finally:
         stop_backend(server, False)
         shutil.rmtree(tmp, ignore_errors=True)

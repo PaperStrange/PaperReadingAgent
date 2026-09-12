@@ -230,6 +230,31 @@ def _verdict_rows(entries: list[dict]) -> list[dict]:
 
 # ---------- provider 文件读写 ----------
 
+def load_provider_validated(names: list[str]) -> tuple[dict[str, dict], list[str]]:
+    """用 SSOT 校验器读 providers/*.json（provider_config.load_provider_files），避免两套校验口径。
+
+    code-review 050 nit：原实现只判 is_file()，坏 JSON 直接抛栈、name/必填字段不校验。
+    """
+    sys.path.insert(0, str(ROOT / "paper-qa-script"))
+    try:
+        import provider_config as pc  # noqa: PLC0415
+
+        registry, problems = pc.load_provider_files(PROVIDERS_DIR)
+        picked = {n: registry[n] for n in names if n in registry}
+        for n in names:
+            if n not in registry:
+                problems.append(f"providers/{n}.json 缺失或未通过校验")
+        return picked, problems
+    except Exception as exc:  # noqa: BLE001 —— 兜底：脚本仍需可用（但显式告警）
+        print(f"WARN: 复用 provider_config 校验失败（{type(exc).__name__}: {exc}）→ 回落朴素读取（不校验）")
+        reg: dict[str, dict] = {}
+        for n in names:
+            p = PROVIDERS_DIR / f"{n}.json"
+            if p.is_file():
+                reg[n] = json.loads(p.read_text(encoding="utf-8"))
+        return reg, ["（回落模式：未执行 SSOT 校验）"]
+
+
 def load_provider(name: str) -> dict | None:
     p = PROVIDERS_DIR / f"{name}.json"
     if not p.is_file():
@@ -300,7 +325,7 @@ def cmd_migrate() -> int:
     return 0
 
 
-def refresh(entries_spec: list[tuple[str, dict]], run_id: str, apply: bool, accept: bool,
+def refresh(entries_spec: list[tuple[str, dict]], run_id: str, apply: bool, accepts: dict[tuple[str, str], str],
             snapshot: dict[str, str] | None = None) -> int:
     entries: list[dict] = []
     proposal: dict = {"run_id": run_id, "generated_at": time.time(), "providers": {}}
@@ -387,13 +412,17 @@ def refresh(entries_spec: list[tuple[str, dict]], run_id: str, apply: bool, acce
             meta["fetched_at"] = _net_now("%Y-%m-%dT%H:%M:%S") + "+08:00"
             meta["last_refresh_status"] = "ok"
             meta["last_evidence_run"] = run_id
-            if accept:
-                for v in info["verdicts"]:
-                    if v["verdict"] == "needs_review" and isinstance(v["candidates"], list) and v["candidates"]:
-                        data[v["field"]] = v["candidates"][0]
-                        meta.setdefault("refresh_notes", []).append(
-                            f"{_net_now('%Y-%m-%d')} {v['field']} 由候选 {v['candidates'][0]} 更新（run {run_id}）"
-                        )
+            if accepts:
+                applied_fields = []
+                for (pv, fld), value in sorted(accepts.items()):
+                    if pv != name:
+                        continue
+                    data[fld] = value
+                    applied_fields.append(f"{fld}={value}")
+                if applied_fields:
+                    meta.setdefault("refresh_notes", []).append(
+                        f"{_net_now('%Y-%m-%d')} 人工确认更新：{'、'.join(applied_fields)}（run {run_id}）"
+                    )
             write_provider(name, data)
             applied.append(name)
             entry["status"] = "applied"
@@ -416,7 +445,10 @@ def main() -> int:
     ap.add_argument("--from-file", default="", help="离线模式：从快照 JSON（{url: text}）生成归档/proposal")
     ap.add_argument("--provider", default="", help="仅处理指定 provider")
     ap.add_argument("--apply", action="store_true", help="抓取成功后刷新 meta（fetched_at/status/evidence_run）")
-    ap.add_argument("--accept-candidates", action="store_true", help="同时接受候选型号（默认需人工确认）")
+    ap.add_argument("--accept", action="append", default=[],
+                    help="显式接受候选并写入：<provider>:<field>=<value>（可多次；人工确认路径）")
+    ap.add_argument("--accept-candidates", action="store_true",
+                    help="【已弃用】隐式取候选第一名；请改用 --accept")
     ap.add_argument("--migrate", action="store_true", help="把旧 providers.json 拆成 providers/*.json")
     ap.add_argument("--interval-days", type=float,
                     default=float(os.environ.get("PAPERQA_PROVIDER_INTERVAL_DAYS", DEFAULT_INTERVAL_DAYS)))
@@ -441,16 +473,26 @@ def main() -> int:
         return cmd_check(args.interval_days)
 
     names = [args.provider] if args.provider else sorted(p.stem for p in PROVIDERS_DIR.glob("*.json"))
-    entries_spec: list[tuple[str, dict]] = []
-    for n in names:
-        data = load_provider(n)
-        if data is None:
-            print(f"SKIP: providers/{n}.json 不存在")
-            continue
-        entries_spec.append((n, data))
+    registry, problems = load_provider_validated(names)
+    if problems:
+        print("PROBLEMS（SSOT 校验）: " + "; ".join(problems))
+    entries_spec: list[tuple[str, dict]] = [(n, dict(registry[n])) for n in names if n in registry]
     if not entries_spec:
-        print("没有可处理的 provider")
+        print("没有可处理的 provider（全部缺失或未通过校验）")
         return 2
+
+    # 显式接受候选（code-review 050 minor）：--accept provider:field=value，可多次；禁止隐式取字母序第一名
+    accepts: dict[tuple[str, str], str] = {}
+    for item in args.accept or []:
+        try:
+            lhs, value = item.split("=", 1)
+            provider, field = lhs.split(":", 1)
+        except ValueError:
+            print(f"FAIL: --accept 语法应为 <provider>:<field>=<value>，收到 {item!r}")
+            return 2
+        accepts[(provider.strip().lower(), field.strip())] = value.strip()
+    if args.accept_candidates:
+        print("WARN: --accept-candidates（隐式取候选第一名）已弃用——请改用 --accept <provider>:<field>=<value>；本次忽略该开关。")
 
     snapshot = None
     if args.from_file:
@@ -459,7 +501,7 @@ def main() -> int:
         print("请指定 --fetch（真实抓取）或 --from-file（离线快照）或 --check/--migrate")
         return 2
 
-    return refresh(entries_spec, _next_run_id(), apply=args.apply, accept=args.accept_candidates, snapshot=snapshot)
+    return refresh(entries_spec, _next_run_id(), apply=args.apply, accepts=accepts, snapshot=snapshot)
 
 
 if __name__ == "__main__":

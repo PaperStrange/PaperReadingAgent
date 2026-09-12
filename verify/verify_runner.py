@@ -137,14 +137,36 @@ def main() -> int:
     res = run([PY, str(SCHED), "--task", "nightly-suite", "--check-due", "--dry-run", "--state", str(state)])
     ok("⑧ 闸门解除后 due 检查放行（RUN）", res.returncode == 0 and "RUN" in res.stdout, (res.stdout or "").strip()[:140])
 
-    # ⑨ providers 未就绪（F-AC8 未交付时）→ UNAVAILABLE，不假成功
-    if not (ROOT / "scripts" / "refresh-providers.py").exists():
-        state.write_text(json.dumps({"schema": 1, "tasks": {}}, ensure_ascii=False), encoding="utf-8")
-        res = run([PY, str(SCHED), "--task", "providers", "--force", "--state", str(state)])
-        ok("⑨ providers 实现未就绪 → UNAVAILABLE（退出 5）", res.returncode == 5 and "UNAVAILABLE" in res.stdout,
-           f"exit={res.returncode} out={(res.stdout or '').strip()[:120]}")
-    else:
-        print("SKIP: ⑨ providers 实现已存在（F-AC8 已交付），跳过未就绪断言")
+    # ⑨ 预算参数契约（code-review 050 minor：⑨ 原先在 F-AC8 交付后恒 SKIP，未覆盖"--budget-cny 是否真的注入"）
+    state.write_text(json.dumps({"schema": 1, "tasks": {}}, ensure_ascii=False), encoding="utf-8")
+    res = run([PY, str(SCHED), "--task", "nightly-suite", "--force", "--dry-run", "--state", str(state)])
+    out9 = (res.stdout or "") + (res.stderr or "")
+    ok("⑨ scheduled-tasks → run_suite 注入 --budget-cny（闸门接线契约）",
+       res.returncode == 0 and "--budget-cny" in out9 and "run_suite.py" in out9,
+       out9.strip()[-160:])
+    # ⑨b over_budget 语义（code-review 050 major）：回填超上限 → 拒绝放行；--force 可覆盖
+    state.write_text(json.dumps({"schema": 1, "config": {"budget_cny": 10}, "tasks": {}}, ensure_ascii=False), encoding="utf-8")
+    res = run([PY, str(SCHED), "--task", "nightly-suite", "--record-cost", "999", "--state", str(state)])
+    st9 = json.loads(state.read_text(encoding="utf-8"))["tasks"]["nightly-suite"]
+    ok("⑨b 回填超上限 → cost_status=over_budget", res.returncode == 0 and st9.get("last_cost_status") == "over_budget",
+       json.dumps(st9, ensure_ascii=False))
+    res = run([PY, str(SCHED), "--task", "nightly-suite", "--check-due", "--dry-run", "--state", str(state)])
+    ok("⑨b over_budget → 拒绝放行（退出 4）且记录 blocked 原因",
+       res.returncode == 4 and "REFUSED" in res.stdout,
+       f"exit={res.returncode} out={(res.stdout or '').strip()[:120]}")
+    st9b = json.loads(state.read_text(encoding="utf-8"))["tasks"]["nightly-suite"]
+    ok("⑨b REFUSED 写入 last_blocked_at/last_blocked_reason",
+       bool(st9b.get("last_blocked_at")) and bool(st9b.get("last_blocked_reason")),
+       json.dumps({k: st9b.get(k) for k in ("last_blocked_at", "last_blocked_reason")}, ensure_ascii=False))
+    res = run([PY, str(SCHED), "--task", "nightly-suite", "--check-due", "--dry-run", "--force", "--state", str(state)])
+    ok("⑨b --force 可显式覆盖 over_budget", res.returncode == 0 and "OVERRIDE" in res.stdout,
+       (res.stdout or "").strip()[:140])
+    # ⑨c 失败后自愈（code-review 050 major）：unknown + 上一轮 failed → 允许重试，不静默停摆
+    state.write_text(json.dumps({"schema": 1, "tasks": {"nightly-suite": {
+        "last_run": time.time() - 8 * 86400, "last_cost_status": "unknown", "last_status": "failed:1"}}}, ensure_ascii=False), encoding="utf-8")
+    res = run([PY, str(SCHED), "--task", "nightly-suite", "--check-due", "--dry-run", "--state", str(state)])
+    ok("⑨c unknown + 上轮失败 → 放行重试（不自愈则永久停摆）", res.returncode == 0 and "RUN" in res.stdout,
+       f"exit={res.returncode} out={(res.stdout or '').strip()[:140]}")
 
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
