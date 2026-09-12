@@ -32,6 +32,7 @@
 | Sprint-13（F2 阶段 C） | 2026-08-31 | 手写字面量退役（n1 默认值 schema 派生 + 前端零硬编码 16 键）、Settings 升级基线护栏（77 路径 + CI 比对 + --regen-baseline）、三查收口 + F2 用户验收清单（`../sprint/2026-08-31-sprint-13.md`） | ✅ 完成 |
 | Sprint-14（底座批次） | 2026-08-31 启动 | 领域壳 M15 / 测试矩阵 SSOT TG-1/2 / 账本锁 M10 / 价表抓取 M9 / 门禁 agent M14；统一 PR #48（`../sprint/2026-08-31-sprint-14.md`） | ✅ 完成 |
 | Sprint-15（F2 验收修复·交互类） | 2026-09-07 启动，2026-09-10 关闭 | F-AC1~7/9/11/12 交互信息类修复 + TG-3 case-first + 走查九轮（报错定位 zIndex 分层/fn_title 找卡/非受控输入）；用户 2026-09-10 验收通过；统一 PR #49（main 头 1c11bcd）（`../sprint/2026-09-07-sprint-15.md`） | ✅ 完成 |
+| Sprint-16（数据准确性+成本韧性+调研工作流深化） | 2026-09-12 启动 | F-AC8 一 provider 一文件 + 官网调研刷新（两周定时）；F-AC10 文献级 checkpoint（零成本续跑）；TG-5 分层 runner + 定时底座 + 三态预算闸门；M16 调研工作流 v2.0（三级深度 + 证据落档 + 归档门禁）；三查闭环 + workspace-check 通过 + windows CI 绿（`../sprint/2026-09-12-sprint-16.md`） | 🔄 四卡 19/19 DONE，**待用户走查验收后创建统一 PR → 关闭** |
 | 原 Sprint-4（C + E3 v1 只读可视化） | — | 结构化事件→时间线 + 工作流只读可视化 v1 | ⏸ hold（v1 需用户 review） |
 | 原 Sprint-5（E1/E2） | — | pip 注入 + 版本检查/更新/回滚 | ⏸ hold |
 | 原 Sprint-6（D） | — | 单机多 worker + 会话外置 + 网关分流 | ⏸ hold |
