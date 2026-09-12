@@ -55,7 +55,12 @@ def budget_from(args) -> float:
 
 
 def select(verify_dir: Path, tier: str, only: list[str] | None) -> list[tuple[Path, dict]]:
-    entries = collect(verify_dir)
+    try:
+        entries = collect(verify_dir)
+    except SystemExit as exc:  # 元数据缺失/非法 → fail-closed 且给出可执行提示
+        print(f"FAIL: 脚本元数据校验未通过，runner 拒绝启动（fail-closed）：{exc}")
+        print("提示：TG-2 规则要求每个 verify 脚本带 VERIFY_META 头部；修复后重跑 `verify_matrix.py derive`。")
+        raise SystemExit(2) from exc
     picked = [
         (p, m)
         for p, m in entries
@@ -113,6 +118,8 @@ def main() -> int:
     }
 
     print(f"== run_suite tier={args.tier} scripts={len(picked)} est_cost={est_cost} CNY budget={budget} CNY ==")
+    if args.tier == "gui":
+        print("NOTE: gui 档需要后端 8787 + 前端 5173 已启动（并用 Playwright）；请先确认端口空闲/服务在线，否则本档必然失败。")
     for p, m in picked:
         print(f"  - {p.name} (est {m.get('est_seconds')}s / {m.get('est_cost_cny')} CNY)")
 

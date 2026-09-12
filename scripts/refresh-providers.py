@@ -118,8 +118,13 @@ def extract_candidates(text: str) -> dict[str, list[str]]:
 
 # ---------- 归档（M16 契约） ----------
 
+def _net_now(fmt: str) -> str:
+    """权威时间口径（3-LEARNED 1.51）：统一 UTC+8，不随开发机时区漂移。"""
+    return time.strftime(fmt, time.gmtime(time.time() + 8 * 3600))
+
+
 def _next_run_id() -> str:
-    date = time.strftime("%Y-%m-%d")
+    date = _net_now("%Y-%m-%d")
     seq = 1
     while (RUNS_DIR / f"run-{date}-provider-refresh-{seq:03d}").exists():
         seq += 1
@@ -129,7 +134,7 @@ def _next_run_id() -> str:
 def write_archive(run_id: str, depth: str, entries: list[dict], question: str, context_lines: list[str]) -> Path:
     run_dir = RUNS_DIR / run_id
     (run_dir / "evidence").mkdir(parents=True, exist_ok=True)
-    now = time.strftime("%Y-%m-%d %H:%M %z")
+    now = _net_now("%Y-%m-%d %H:%M") + " UTC+8"
 
     for i, ev in enumerate(entries, start=1):
         status = "ok" if ev.get("text") else "failed"
@@ -287,7 +292,7 @@ def cmd_migrate() -> int:
             continue
         payload = {"$schema_version": 1, "name": name, **entry,
                    "meta": {"source": "migrated from legacy providers.json",
-                            "source_urls": [], "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                            "source_urls": [], "fetched_at": _net_now("%Y-%m-%dT%H:%M:%S") + "+08:00",
                             "last_refresh_status": "pending"}}
         write_provider(name, payload)
         written.append(name)
@@ -379,7 +384,7 @@ def refresh(entries_spec: list[tuple[str, dict]], run_id: str, apply: bool, acce
         entry = {"fetched_ok": info["fetched_ok"], "verdicts": info["verdicts"]}
         if info["fetched_ok"] and apply:
             meta = data.setdefault("meta", {})
-            meta["fetched_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+            meta["fetched_at"] = _net_now("%Y-%m-%dT%H:%M:%S") + "+08:00"
             meta["last_refresh_status"] = "ok"
             meta["last_evidence_run"] = run_id
             if accept:
@@ -387,7 +392,7 @@ def refresh(entries_spec: list[tuple[str, dict]], run_id: str, apply: bool, acce
                     if v["verdict"] == "needs_review" and isinstance(v["candidates"], list) and v["candidates"]:
                         data[v["field"]] = v["candidates"][0]
                         meta.setdefault("refresh_notes", []).append(
-                            f"{time.strftime('%Y-%m-%d')} {v['field']} 由候选 {v['candidates'][0]} 更新（run {run_id}）"
+                            f"{_net_now('%Y-%m-%d')} {v['field']} 由候选 {v['candidates'][0]} 更新（run {run_id}）"
                         )
             write_provider(name, data)
             applied.append(name)
