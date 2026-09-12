@@ -34,8 +34,8 @@ PROVIDERS: dict[str, dict] = {
     },
     "dashscope": {
         "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "model": "openai/qwen-omni-turbo",             # 或 openai/qwen3-max
-        "vision_model": "openai/qwen-omni-turbo",
+        "model": "openai/qwen3.5-omni-plus",           # 2026-09 官网调研更新（原 qwen-omni-turbo）
+        "vision_model": "openai/qwen3.5-omni-plus",
         "embedding": "openai/text-embedding-v4",       # 待首轮官网调研核实（F2 验收 D 项）
         "embedding_local": False,
         "has_embedding_api": True,

@@ -160,7 +160,7 @@ def parse_dashscope(html: str) -> dict:
     取行内第 1 个 $ = input、第 2 个 $ = output（USD/1M tokens）；只有一个价格格（如
     embedding 模型）时 output 复用 input。解析失败/越界 → 该模型跳过。"""
     out: dict[str, dict] = {}
-    targets = ["qwen-omni-turbo", "qwen3-max", "text-embedding-v3"]
+    targets = ["qwen-omni-turbo", "qwen3.5-omni-plus", "qwen3-max", "text-embedding-v3", "text-embedding-v4"]
     for token in targets:
         m = re.search(r"<p>\s*" + re.escape(token) + r"\s*</p>.*?</tr>", html, re.S)
         if not m:

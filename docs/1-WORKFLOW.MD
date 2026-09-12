@@ -213,6 +213,28 @@ npm ci
 .\.venv\Scripts\python.exe .\paper-qa-script\manual_test_internet_connection.py  # 连通性
 ```
 
+Sprint-16 追加（provider 刷新 / 定时底座 / 分层验证）：
+
+```powershell
+# ① provider 官网调研刷新（F-AC8）：抓 meta.source_urls → M16 归档 + proposal；--apply 仅刷新 fetched_at/status
+.\.venv\Scripts\python.exe .\scripts\refresh-providers.py --check                  # 到期判定（不联网）
+.\.venv\Scripts\python.exe .\scripts\refresh-providers.py --fetch --apply          # 真实抓取 + 刷新元数据（模型名变更需人工确认）
+.\.venv\Scripts\python.exe .\scripts\refresh-providers.py --migrate                # 旧 providers.json 拆成 providers/*.json
+
+# ② 定时底座（TG-5）：单一入口，供手动 / 进程内调度 / Windows 任务计划调用
+.\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --list                     # 任务、间隔、上次运行、花费
+.\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --task nightly-suite --check-due   # 到期才跑（fail-closed 预算闸门）
+.\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --task nightly-suite --record-cost 3.5  # 回填实测花费，解除 unknown
+powershell -ExecutionPolicy Bypass -File .\scripts\register-scheduled-tasks.ps1 -Action register   # 注册周频任务计划（可选）
+
+# ③ 分层验证（fail-closed；上限可配置）
+.\.venv\Scripts\python.exe .\verify\run_suite.py --tier offline                    # 离线档（CI/日常）
+.\.venv\Scripts\python.exe .\verify\run_suite.py --tier gui                        # GUI 档（需前后端已启动）
+.\.venv\Scripts\python.exe .\verify\run_suite.py --tier network --budget-cny 10    # 联网档（预估超上限直接拒绝启动）
+```
+
+> HF 网络不可达时（模型已在本地缓存）设 `$env:HF_HUB_OFFLINE = "1"`（+ `TRANSFORMERS_OFFLINE=1`）避免 sentence-transformers 的 HEAD 重试阻塞调用。
+
 ### 5.5 验收脚本
 
 ```powershell
