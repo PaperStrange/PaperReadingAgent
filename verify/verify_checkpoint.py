@@ -13,7 +13,7 @@
 Run: .venv\\Scripts\\python.exe verify\\verify_checkpoint.py
 """
 from __future__ import annotations
-VERIFY_META = {'features': 'F-AC10 文献级 checkpoint：逐篇落盘 + 零成本复用 + 文件变更/载荷损坏/模型不匹配/同内容去重四重边界 fail-closed', 'tier': 'offline', 'providers': [], 'est_seconds': 180, 'est_cost_cny': 0, 'routes': ['/api/new_session', '/api/run_step'], 'requires': ['self-boots-backend']}
+VERIFY_META = {'features': 'F-AC10 文献级 checkpoint：逐篇落盘 + 零成本复用 + 文件变更/载荷损坏/模型不匹配/切块口径/同内容去重五重边界 fail-closed', 'tier': 'network', 'providers': ['deepseek'], 'est_seconds': 240, 'est_cost_cny': 0.05, 'routes': ['/api/new_session', '/api/run_step'], 'requires': ['keys', 'network', 'self-boots-backend']}
 
 import asyncio
 import json

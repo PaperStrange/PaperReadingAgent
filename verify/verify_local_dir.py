@@ -7,10 +7,11 @@ load_index(build) → retrieve → 断言候选路径来自临时目录（证明
 Run: .venv\\Scripts\\python.exe verify\\verify_local_dir.py
 """
 from __future__ import annotations
-VERIFY_META = {'features': 'F-AC3 引擎接线实证：临时目录 paper_directory → load_index → retrieve 候选来自该目录', 'tier': 'offline', 'providers': [], 'est_seconds': 90, 'est_cost_cny': 0, 'routes': ['/api/new_session', '/api/run_step'], 'requires': ['self-boots-backend']}
+VERIFY_META = {'features': 'F-AC3 引擎接线实证：临时目录 paper_directory → load_index → retrieve 候选来自该目录（免密：注入占位 key，链路无 LLM 调用）', 'tier': 'offline', 'providers': [], 'est_seconds': 90, 'est_cost_cny': 0, 'routes': ['/api/new_session', '/api/run_step'], 'requires': ['self-boots-backend']}
 
 import asyncio
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -43,10 +44,21 @@ def ok(name: str, cond: bool, detail: str = "") -> None:
 async def main() -> int:
     import httpx
 
+    # 免密化（2026-09-12，CI 离线档实证）：本链路 config → load_index → retrieve **不调用 LLM**，
+    # 但两处会要求/触发 LLM：① `make_settings` 要求 api_key 非空；② **索引构建内部会走 `aadd` 的
+    # citation 推断**（3-LEARNED 1.30 同型坑）。故：注入占位 key + 用 CSV manifest 提供 citation
+    # （与 verify_index_health 同一解法）。若将来此链路意外发起真实调用，占位 key 会 401 直接暴露。
+    os.environ.setdefault("DEEPSEEK_API_KEY", "sk-offline-dummy-for-verify-local-dir")
     tmp = Path(tempfile.mkdtemp(prefix="verify_local_dir_"))
     # 唯一文件名：data/pdf 下不存在 LocalDirProbe.pdf，候选命中它即证明索引来自临时目录
     tmp_pdf = tmp / "LocalDirProbe.pdf"
     shutil.copy2(SRC_PDF, tmp_pdf)
+    manifest = tmp / "manifest.csv"
+    manifest.write_text(
+        "file_location,citation,title\n"
+        'LocalDirProbe.pdf,"LocalDirProbe, 2026, Verify Fixture","LocalDirProbe"\n',
+        encoding="utf-8",
+    )
     server = start_backend(BACKEND, SERVER_LOG, ROOT)
     if not wait_healthy(server, SERVER_LOG):
         return 3
@@ -64,6 +76,7 @@ async def main() -> int:
                         "data_source": "local",
                         "paper_directory": str(tmp),
                         "index_name": "verify_local_dir_index",
+                        "manifest_file": str(manifest),  # citation 由 manifest 提供 → 索引构建无 LLM 调用
                     },
                     "upstream": {},
                 },
