@@ -1,0 +1,31 @@
+{
+  "$schema_version": 1,
+  "name": "dashscope",
+  "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "model": "openai/qwen3.5-omni-plus",
+  "vision_model": "openai/qwen3.5-omni-plus",
+  "embedding": "openai/text-embedding-v4",
+  "embedding_local": false,
+  "has_embedding_api": true,
+  "key_envs": [
+    "DASHSCOPE_API_KEY",
+    "OPENAI_API_KEY"
+  ],
+  "thinking_disabled": false,
+  "meta": {
+    "source": "curated（Sprint-16 F-AC8 拆分自 provider_config.PROVIDERS，行为保持）",
+    "source_urls": [
+      "https://help.aliyun.com/zh/model-studio/developer-reference/text-embedding-synchronous-api",
+      "https://help.aliyun.com/zh/model-studio/models"
+    ],
+    "fetched_at": "2026-09-12T23:52:36+0900",
+    "last_refresh_status": "ok",
+    "notes": "本 provider 有 embedding API（text-embedding 系列）",
+    "last_evidence_run": "run-2026-09-12-provider-refresh-001",
+    "refresh_notes": [
+      "2026-09-12 官网调研（阿里云百炼模型列表 + text-embedding 同步 API 文档）：embedding 候选 text-embedding-v1..v4 均存在 → 现值 openai/text-embedding-v4 **有官方依据（no_change）**；F2 验收台账『注释失实（官方最新为 v3）』一说由证据澄清",
+      "2026-09-12 model 现值 openai/qwen-omni-turbo 未出现在官方列表；文档『图像与视频理解』段列出 qwen3.5-omni-plus（另有 qwen3.7-plus / qwen3.8-max）→ 判定 needs_review，**待用户确认后再改默认模型**（改默认模型属行为/成本级决策）",
+      "2026-09-12 **用户决策：默认模型更新为 openai/qwen3.5-omni-plus**（model + vision_model 同步；依据 run-2026-09-12-provider-refresh-001 官方文档证据）"
+    ]
+  }
+}

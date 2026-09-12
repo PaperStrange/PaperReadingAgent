@@ -1,7 +1,7 @@
 """dashscope 全流程端到端验证（用户验收项，2026-08-31；TG-4 起走共享基座 e2e_common）。
 
 Phase 1（dashscope）：config -> load_index -> retrieve -> parse_chunk_embed -> evidence -> answer
-  - LLM openai/qwen-omni-turbo、Embedding openai/text-embedding-v4（DashScope embedding API）、api_base compatible-mode
+  - LLM/视觉与 Embedding 取 `providers/dashscope.json` 现值（**Sprint-16 F-AC8 起一 provider 一文件**；2026-09 官网调研后 model/vision_model = `openai/qwen3.5-omni-plus`，Embedding = `openai/text-embedding-v4`）、api_base compatible-mode
 Phase 2（deepseek，同进程切换隔离回归，3-LEARNED 1.27 的 dashscope 方向）：
   同一后端进程内新会话再跑 deepseek 全流程（LLM deepseek-v4-flash + 本地 st- 向量）——
   若 make_settings 曾把解析出的 key 写回 OPENAI_API_KEY，Phase 2 会因 key 污染 401/路由错而失败。

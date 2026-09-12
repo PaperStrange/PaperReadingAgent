@@ -60,15 +60,20 @@
 
 ```text
 REGISTRY :=
-    BUILTIN_PROVIDERS
-  ⊕ providers.json            // 文件存在且 JSON 合法时合并，同名覆盖内置
-  ⊕ PAPERQA_PROVIDERS_JSON    // 环境变量 JSON 字符串，最高优先级，同名覆盖
-                                [provider_config.py·_load_custom_providers / get_providers]
+    BUILTIN_PROVIDERS                 // 代码内引导兜底（providers/ 缺失/损坏时保证可用）
+  ⊕ providers/*.json                  // 【Sprint-16 F-AC8 主来源】一 provider 一文件，同名覆盖兜底
+  ⊕ providers.json                    // 旧版单文件（用户自定义/覆盖），兼容保留
+  ⊕ PAPERQA_PROVIDERS_JSON            // 环境变量 JSON 字符串，最高优先级，同名覆盖
+                                [provider_config.py·load_provider_files / _load_legacy_custom / get_providers]
 ```
 
+- 文件布局：`paper-qa-script/providers/<name>.json`，字段与内置条一致，另含 `meta{source, source_urls[], fetched_at, last_refresh_status, last_evidence_run, refresh_notes[]}`（**meta 不参与运行配置**，供 `/api/providers` 追溯与刷新脚本使用）。
+- 逐文件校验：JSON 非法 / 顶层非对象 / `name` 与文件名不一致 / 缺 `model` → **只跳过该文件**并记录原因（`load_provider_files` 返回 problems），不拖垮注册表。
+- 来源标记：`provider_source(name)` → `env | legacy | file | builtin | unknown`（与合并优先级一致）。
 - 内置 4 家：`deepseek / dashscope / openai / openrouter`（OpenRouter 为通用网关，`model=openrouter/auto` 智能路由）。
-- 自定义条目字段与默认值（缺失字段补齐 `_CUSTOM_DEFAULTS`）：`api_base=None, model=必填, vision_model="", embedding=st-multi-qa-MiniLM-L6-cos-v1, embedding_local=True, has_embedding_api=False, key_envs=("OPENAI_API_KEY",), thinking_disabled=False`。
-- 名称一律 `strip().lower()`；单个自定义条目非法（如缺 `model`）**只跳过该条目**，不拖垮注册表（review 修正）。
+- 自定义/文件条目字段与默认值（缺失字段补齐 `_ENTRY_DEFAULTS`）：`api_base=None, model=必填, vision_model="", embedding=st-multi-qa-MiniLM-L6-cos-v1, embedding_local=True, has_embedding_api=False, key_envs=("OPENAI_API_KEY",), thinking_disabled=False`。
+- 名称一律 `strip().lower()`；非法条目（如缺 `model`）**只跳过该条目**，不拖垮注册表（review 修正）。
+- 刷新链路：`scripts/refresh-providers.py`（`--fetch` 抓官方 `meta.source_urls` → M16 归档 + proposal；`--apply` 刷新 `fetched_at/status`；**模型名变更需人工确认或显式 `--accept-candidates`**；抓取失败**保留旧文件**）；定时：`scripts/scheduled-tasks.py --task providers`（默认 14 天，可配置）。
 
 ### 3.2 密钥解析（DSL）
 
@@ -102,7 +107,7 @@ flowchart LR
 
 ### 3.3 对外安全视图
 
-`GET /api/providers`（`backend/main.py::providers`）只返回：`name / api_base / model / vision_model / embedding / has_embedding_api / builtin`——**密钥一律不出现**（`list_providers_safe`）。
+`GET /api/providers`（`backend/main.py::providers`）只返回：`name / api_base / model / vision_model / embedding / has_embedding_api / builtin / source / fetched_at / source_urls`——**密钥与 `key_envs` 一律不出现**（`list_providers_safe`；`source`=生效来源，`fetched_at`/`source_urls`=调研追溯）。
 
 ---
 
@@ -368,7 +373,7 @@ stateDiagram-v2
 | config | 无 | 推荐注入 → make_settings | `settings`, `data_source_params` | paper_directory/index_name/llm/embedding/config_notes[/embedding_resolved] |
 | load_index | settings 非空 | 远程解析(remote) → 目录存在检查 → 索引(自愈) | `search_index` | index_name/indexed_files/files[/remote_sources] |
 | retrieve | search_index 非空 | query_index；query 缺省取 upstream.question 或 "PaperQA"；top_n 默认 5；**结果按命中顺序去重**；**含 CJK 的 query 零命中 → 提取 `[A-Za-z][A-Za-z0-9\-]{2,}` 英文关键词重试（多语检索 v1，零成本）**；仍零命中 → 回退取 `index_files.keys()[:top_n]`；输出 `query_used`/`query_strategy`（direct\|keyword_retry\|fallback_first_n）/`result`（ranked\|fallback_first_n）/`hit_note` 命中理由 | `candidate_paths` | query/query_used/query_strategy/candidate_count/candidate_paths/result/hit_note |
-| parse_chunk_embed | settings、search_index 非空 | 见 8.3 三分支；**无 candidate_paths 时默认取索引前 5 篇**；**单文件失败给定位信息**（"解析文件失败：<p>…若文件不存在：核对论文目录并重跑 Config → load_index"） | `docs` | docs_count/texts_count/per_file/sample_texts/loaded[/regen] |
+| parse_chunk_embed | settings、search_index 非空 | 见 8.3 三分支；**无 candidate_paths 时默认取索引前 5 篇**；**逐篇走文献级 checkpoint（F-AC10）**；**单文件失败给定位信息**（"解析文件失败：<p>…若文件不存在：核对论文目录并重跑 Config → load_index"） | `docs` | docs_count/texts_count/per_file/sample_texts/loaded[/regen]/**checkpoint{reused,embedded,deduped,failed,model_match,manifest,checkpoint_key,reuse_misses}**；per_file[] 含 `reused`/`deduped` |
 | evidence | docs、settings 非空 | `aget_evidence`；question 缺省 upstream 或 "什么是PaperQA？" | `evidence_session` | question/contexts_count/context_ids |
 | answer | docs、settings、evidence_session 非空 | `aquery`；**文本回退链 answer → formatted_answer → raw_answer** | `answer_session` | answer/references/used_contexts/answer_available_fields |
 
@@ -385,8 +390,31 @@ load 分支：
         -> 仅还原展示（source=cache；跨会话时 docs 缺，前端提示"重新生成"）
   | 无缓存 -> 按 run 执行（source=session 之外全量解析）
 
-run / regen 分支：总是重建 docs（逐文件 aadd），覆盖缓存；regen 额外标记 regen=true
+run / regen 分支：总是重建 docs（**逐篇经 checkpoint 决定复用或重跑**），覆盖展示缓存；regen 额外标记 regen=true
 路径拼接：abs_path = p 绝对 ? p : paper_dir / p（不 re-resolve，保留 \\?\ 前缀）
+```
+
+### 8.4 文献级 embedding checkpoint（F-AC10，Sprint-16）
+
+```text
+命名空间 := sha1(paper_dir | index_name | embedding_model)[:16]
+  目录   := ~/.pqa/embed_cache/checkpoints/
+  manifest := <命名空间>.json         // 原子写（tmp + os.replace）
+  payload  := <命名空间>/<dockey>.json.gz  // gzip JSON：doc + texts（含 embedding/media）
+
+逐篇决策（对每个候选 p）：
+  fingerprint := size:mtime_ns(abs_path)          // 弱口径（调研标注；误判再升级全量 sha256）
+  entry := manifest.docs[p]
+  命中条件（全部满足才复用）：
+      entry.status == "ready" ∧ entry.fingerprint == fingerprint
+      ∧ payload 可读 ∧ Text(doc=doc, **raw) 还原成功
+  复用 -> engine.restore_doc → paperqa `aadd_texts`（texts 已带向量 → **短路，不再调用嵌入模型**，零成本）
+  未命中/坏件/还原抛错 -> 该篇 add_doc 重跑，成功后**立即**原子写 payload + manifest 条目
+  内容去重（paperqa 以 content_hash 作 dockey）→ 记 deduped（非错误、无独立载荷）
+失败：写 entry.status="error" + error 文本后**抛出**（保持既有中止语义与错误文案）
+收尾：全部走完无异常才把 manifest.status 置 "ready"（fail-closed 就绪判定）
+收敛：_prune_checkpoints 按 mtime 保留最近 20 个命名空间（protect=本轮在用），防无界增长
+无关项：embedding_model 变化 → 命名空间不同 → 旧 checkpoint 天然不复用（不静默沿用）
 ```
 
 ---
@@ -493,6 +521,7 @@ classDiagram
         +get_directory_index(settings, build)
         +query_index(index, query, top_n)
         +new_docs() / add_doc(docs, path, settings)
+        +export_doc(docs, docname) / restore_doc(docs, payload, settings)   // F-AC10 checkpoint 载荷往返
         +get_evidence(docs, q, settings)
         +query_answer(docs, ev, settings)
         +run_agent(...) / version
@@ -526,6 +555,8 @@ classDiagram
     }
     class provider_config {
         +get_provider_config(p) / get_providers() / list_providers_safe()
+        +load_provider_files(dir) / provider_source(name) / normalize_entry(name, entry)
+        // F-AC8：providers/<name>.json 主来源；来源标记 file|legacy|env|builtin
     }
     class data_sources {
         +SourceKind / SourceSpec / RemoteSourceConfig
@@ -569,6 +600,9 @@ classDiagram
 - [ ] D7：草稿态聚焦保护、面板联动、Run All 拓扑（节点参数独立 → 会话级共享）；**更改配置后下游自动重跑 config**（stale 检查）；**Config 节点初始默认值 schema 派生 + 前端零硬编码（16 键）**
 - [ ] D6/D8：retrieve 去重与 `result` 标记；**多语检索 v1（CJK 零命中 → 英文关键词重试，query_used/query_strategy(direct|keyword_retry|fallback_first_n)/hit_note）**；parse 单文件定位报错；`prune_litellm_callbacks`（engine 层，7 列表，MAX_CALLBACKS 防护，上限 env 可配 `PAPERQA_LITELLM_CALLBACK_LIMIT`）；config 重跑失效下游状态；stream `is_disconnected` 静默退出
 - [ ] D8：SSE 线协议字段（新增字段 = 新增兼容负担，须评估）
+- [ ] D1+（F-AC8）：`providers/*.json` 主来源与合并顺序（兜底 < 文件 < 旧 providers.json < env）；逐文件校验只跳过坏文件；`provider_source` 标记；`/api/providers` 的 source/fetched_at/source_urls；`refresh-providers.py` 的 fail-closed（抓取失败不动文件）与"模型名需人工确认"
+- [ ] D6+（F-AC10）：checkpoint 命名空间三元组（paper_dir|index_name|embedding_model）、逐篇原子落盘、命中四条件、`deduped` 语义、fail-closed 就绪判定、`_prune_checkpoints` 收敛；`engine.export_doc/restore_doc` 载荷往返（`Text.doc` 必填）
+- [ ] D6+（TG-5）：分层 runner 的 tier 选择与 fail-closed、预算上限优先级（CLI > env `PAPERQA_NIGHTLY_BUDGET_CNY` > 默认 10）、三态成本判定（unknown 不放行）；`scheduled-tasks.py` due 判定与 `--record-cost` 回填
 - [ ] 本文相关 UML 图与真值表行序是否仍与代码短路顺序一致
 
-> 更新历史：2026-08-30 初版（覆盖 Sprint-2 分层、Sprint-3 数据源、Sprint-4 体验/嵌入推荐/provider 扩展）；同日后追加 Sprint-5 一致性自愈/Sprint-6 多语检索/Sprint-7 M1 三重探针 + M2 回调上限配置化。
+> 更新历史：2026-08-30 初版（覆盖 Sprint-2 分层、Sprint-3 数据源、Sprint-4 体验/嵌入推荐/provider 扩展）；同日后追加 Sprint-5 一致性自愈/Sprint-6 多语检索/Sprint-7 M1 三重探针 + M2 回调上限配置化；**2026-09-12 追加 Sprint-16：D1 provider 一文件（providers/*.json + 来源标记 + 刷新链路）、D6 parse_chunk_embed 文献级 checkpoint（§8.4）、TG-5 分层 runner/定时底座/三态预算闸门**。

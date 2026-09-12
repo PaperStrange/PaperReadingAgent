@@ -94,6 +94,13 @@
 
 > 三查可委托评审代理并行执行；**发现项必须修复闭环后（修复 → 回归 → 文档同步 → PR 同步 main）才允许 Close**；结论写入该 Sprint 文档的「评审/同步记录」节。
 
+**fan-out 执行纪律（2026-09-12 制度化，Sprint-15/16 两次子代理无产出超时后固化）**：
+
+1. **报告先行**：派发子代理时必须在 prompt 里要求"**第一步先落盘报告文件**（骨架→逐条覆盖更新）"；只把发现留在上下文中不落盘的运行视为未产出（超时后无任何资产可回收）。各派发型 spec（tech-research / impact-assessment / code-review / doc-audit / lessons-learned）已在正文加 Output discipline 段固化该要求。
+2. **接管判据**：子代理**超过 spec Timebox（或 15 分钟无报告文件产出/无回报）** → 主代理**直接接管**，按同一 spec 全维度执行并落盘报告；在 Sprint §9 注明"子代理超时，主代理接管执行"及账本 run 状态。
+3. **账本诚实**：接管运行同样登记账本（register→finish），报告写入 `agents/runs/<run_id>/<role>.report.md`；不得把未产出的子代理记为 succeeded 而不留报告。
+4. **范围纪律**：Finding cap / Timebox 是硬约束——宁可交回"已写下的部分 + 覆盖度说明"，也不要为凑完整性无限扩张。
+
 #### 证据 checklist（按需选取，尽可能覆盖）
 
 | 类别 | 示例 |
@@ -110,9 +117,9 @@
 
 - 能**直观反映改动**：例如拖拽后的分栏比例、全屏后的整体视图、放大后的图片、新增按钮及其点击后的结果。
 - 标注**时间/环境**（可选）：截图文件名或 caption 标注日期与操作。
-- 存放到 `docs/iteration/sprint/<run>.png`（连同该 sprint 文档一起入库），在 Markdown 里用相对路径引用，例如：
+- 存放到 `docs/iteration/sprint/<run>.png`（连同该 sprint 文档一起入库），在 Markdown 里用相对路径引用（示意占位，非真实文件）：
   ```markdown
-  ![分栏拖拽](./2026-08-26-pane-resize.png)
+  ![分栏拖拽](./<sprint>-<run>.png)
   ```
 
 #### 关闭时的 Self-check
@@ -162,6 +169,13 @@
 3. **基线规则**：tech-research 以笔记记录的既定决策为基线——不重复调研已决路线、不静默改向；发现与既定决策矛盾 → 报告"翻案建议"交用户裁决，不得自行推翻。
 4. 目的：避免方案路线决策在后续流程中**重复出现/前后矛盾**，预研结论与用户确认是规划管线的资产而非一次性对话。
 
+**调研工作流分级与证据落档（M16，2026-09-12 落地；用户 2026-09-07 拍板 P1~P3）**：
+
+1. **三级深度路由**（`agents/fanout.json` planning_pipeline 的 `depth` 字段）：**quick 工程级**（实现问题/工具用法/快速查证；3~5 源、1 维；**主代理直接执行**，零子代理成本——P2）/ **expert 领域专家级**（方案选型/最佳实践/跨方案对比；6~10 源、≥3 维、对比矩阵；默认档，子代理）/ **scholar 研究学者级**（架构决策/长期路线/发布级判断；≥12 源 + 全 tradeoff + 反向证据）。**阈值一律在 spec 可配置参数节**（P3：可调，不写死）；级别由任务难度自动建议、**用户可覆盖**；兼容旧别名 normal=expert、deep=scholar。
+2. **决策证据落档（唯一真相）**：expert/scholar 档的 run 目录必须含 `context.md`（输入上下文快照：问题/深度/注入的预研基线与用户决策/约束/网络时间日期）、`evidence/<nn>-<slug>.md`（每条引用 = URL + 来源层级 + 抓取时间 + **逐字原文段落** + 支撑点；抓取失败须记 reason）、`reasoning.md`（证据→结论推导链 + 采信/排除理由 + 未决风险）。
+3. **段落级溯源**：报告 §7 证据索引表把每条结论映射到 evidence 文件与段落摘录，供后续"引经据典"式讨论直接回溯。
+4. **归档门禁**：`verify/verify_archive.py <run_dir> --depth <tier>`（缺件/空证据/字段缺失/索引表未引用 → fail-closed，退出非 0）；报告注入规划上下文前须过门禁（`agents/fanout.json` 的 `archive` 字段）。
+
 ## 5. 运行手册（Windows）
 
 > **新用户请先看根目录 `README.md` 的"本地部署"**（含先决条件、一步步部署、验证安装、故障排查）。
@@ -205,6 +219,28 @@ npm ci
 .\.venv\Scripts\python.exe .\paper-qa-script\manual_index_paper.py     # 建索引 + 交互问答
 .\.venv\Scripts\python.exe .\paper-qa-script\manual_test_internet_connection.py  # 连通性
 ```
+
+Sprint-16 追加（provider 刷新 / 定时底座 / 分层验证）：
+
+```powershell
+# ① provider 官网调研刷新（F-AC8）：抓 meta.source_urls → M16 归档 + proposal；--apply 仅刷新 fetched_at/status
+.\.venv\Scripts\python.exe .\scripts\refresh-providers.py --check                  # 到期判定（不联网）
+.\.venv\Scripts\python.exe .\scripts\refresh-providers.py --fetch --apply          # 真实抓取 + 刷新元数据（模型名变更需人工确认）
+.\.venv\Scripts\python.exe .\scripts\refresh-providers.py --migrate                # 旧 providers.json 拆成 providers/*.json
+
+# ② 定时底座（TG-5）：单一入口，供手动 / 进程内调度 / Windows 任务计划调用
+.\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --list                     # 任务、间隔、上次运行、花费
+.\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --task nightly-suite --check-due   # 到期才跑（fail-closed 预算闸门）
+.\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --task nightly-suite --record-cost 3.5  # 回填实测花费，解除 unknown
+powershell -ExecutionPolicy Bypass -File .\scripts\register-scheduled-tasks.ps1 -Action register   # 注册周频任务计划（可选）
+
+# ③ 分层验证（fail-closed；上限可配置）
+.\.venv\Scripts\python.exe .\verify\run_suite.py --tier offline                    # 离线档（CI/日常）
+.\.venv\Scripts\python.exe .\verify\run_suite.py --tier gui                        # GUI 档（需前后端已启动）
+.\.venv\Scripts\python.exe .\verify\run_suite.py --tier network --budget-cny 10    # 联网档（预估超上限直接拒绝启动）
+```
+
+> HF 网络不可达时（模型已在本地缓存）设 `$env:HF_HUB_OFFLINE = "1"`（+ `TRANSFORMERS_OFFLINE=1`）避免 sentence-transformers 的 HEAD 重试阻塞调用。
 
 ### 5.5 验收脚本
 

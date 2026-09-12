@@ -25,6 +25,14 @@ paper-qa-script/providers.json
 data/arxiv_pdf_sep/
 tmp.log
 
+# 本地 agent 框架参考目录（skills/notes，工具侧运行时内容，不入库）
+.agents/
+# TG-5 运行时状态与套件结果（本地运行时产物）
+agents/runtime/schedule.json
+agents/runtime/provider_refresh_proposal.json
+agents/runtime/provider_refresh_status.json
+verify/suite_result.json
+
 # --- secrets (use .env.example as template) ---
 .env
 **/.env
@@ -56,5 +64,3 @@ docs/iteration/sprint/config_schema.json
 docs/iteration/sprint/*.png
 verify/*.png
 
-# DSH skills
-.agents

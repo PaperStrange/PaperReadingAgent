@@ -102,6 +102,18 @@ class EngineAdapter(ABC):
         ...
 
     @abstractmethod
+    def export_doc(self, docs: Docs, docname: str) -> dict[str, Any] | None:
+        """F-AC10：把某篇已 add 的文档（Doc + 其 texts 含向量）导出为可序列化载荷（供文献级 checkpoint 落盘）。"""
+        ...
+
+    @abstractmethod
+    async def restore_doc(
+        self, docs: Docs, payload: dict[str, Any], settings: Settings
+    ) -> tuple[bool, int]:
+        """F-AC10：从 checkpoint 载荷还原文档（texts 已带向量 → `aadd_texts` 短路，不再调用嵌入模型；返回 (是否还原, texts 数)）。"""
+        ...
+
+    @abstractmethod
     async def get_evidence(self, docs: Docs, question: str, settings: Settings) -> Any:
         """evidence：对 docs 做证据检索，返回 paperqa EvidenceResult。"""
         ...
@@ -291,6 +303,38 @@ class LocalVendorAdapter(EngineAdapter):
 
     async def add_doc(self, docs: Docs, path: str, settings: Settings) -> str:
         return await docs.aadd(path=path, settings=settings)
+
+    def export_doc(self, docs: Docs, docname: str) -> dict[str, Any] | None:
+        """导出 doc + 其 texts（含 embedding / media）为 JSON 可序列化载荷；texts 内嵌 doc 排除以省体积。"""
+        doc = next((d for d in docs.docs.values() if d.docname == docname), None)
+        if doc is None:
+            return None
+        texts = [
+            t
+            for t in docs.texts
+            if getattr(getattr(t, "doc", None), "docname", None) == docname
+        ]
+        return {
+            "schema": 1,
+            "doc": doc.model_dump(mode="json"),
+            "texts": [t.model_dump(mode="json", exclude={"doc"}) for t in texts],
+        }
+
+    async def restore_doc(
+        self, docs: Docs, payload: dict[str, Any], settings: Settings
+    ) -> tuple[bool, int]:
+        """还原：texts 带 embedding → paperqa `aadd_texts` 步骤 1 短路（零嵌入调用）；media 经 json 模式 base64 往返。"""
+        from paperqa.docs import Doc, Text
+
+        doc = Doc(**payload["doc"])
+        texts: list[Any] = []
+        for raw in payload.get("texts", []):
+            # `Text.doc` 为必填：dump 时排除（省体积），还原时统一指回同一 Doc 实例
+            texts.append(Text(doc=doc, **raw))
+        if not texts:
+            return False, 0
+        ok = await docs.aadd_texts(texts=texts, doc=doc, settings=settings)
+        return bool(ok), len(texts)
 
     async def get_evidence(self, docs: Docs, question: str, settings: Settings) -> Any:
         return await docs.aget_evidence(question, settings=settings)

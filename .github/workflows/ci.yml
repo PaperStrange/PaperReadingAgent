@@ -55,11 +55,11 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $true
-          python verify/verify_smoke.py
-          python verify/verify_prune_callbacks.py
-          python verify/verify_agentops.py
-          python verify/verify_config_schema.py
-          python verify/verify_index_health.py
+          # TG-5（Sprint-16）：改为经分层 runner 跑 **整个 offline 档**（按 VERIFY_META.tier 自动选择，
+          # fail-closed：任一脚本失败即整体失败）——修复此前"新增 offline 脚本忘记登记进 CI"的覆盖缺口
+          # （Sprint-15 的 local_dir/f12_preview 与 Sprint-16 的 archive/checkpoint/providers/runner 均因此未进 CI）。
+          python verify/run_suite.py --tier offline
+          # 矩阵防漂移必须独立执行（verify_matrix.py 自身不参与 tier 选择）
           python verify/verify_matrix.py check
 
       - name: Build reactflow frontend

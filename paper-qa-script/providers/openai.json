@@ -1,0 +1,27 @@
+{
+  "$schema_version": 1,
+  "name": "openai",
+  "api_base": null,
+  "model": "gpt-4o-mini",
+  "vision_model": "gpt-4o-mini",
+  "embedding": "text-embedding-3-large",
+  "embedding_local": false,
+  "has_embedding_api": true,
+  "key_envs": ["OPENAI_API_KEY"],
+  "thinking_disabled": false,
+  "meta": {
+    "source": "curated（Sprint-16 F-AC8 拆分自 provider_config.PROVIDERS，行为保持）",
+    "source_urls": [
+      "https://platform.openai.com/docs/models",
+      "https://platform.openai.com/docs/guides/embeddings"
+    ],
+    "fetched_at": null,
+    "last_refresh_status": "error",
+    "last_evidence_run": "run-2026-09-12-provider-refresh-001",
+    "refresh_notes": [
+      "2026-09-12 官网调研：platform.openai.com 返回 403（反爬）→ **fail-closed 保留现值**，未做任何改动（证据见归档 evidence/05、06 的 failed + reason）",
+      "后续可改用官方 API 列表端点（https://api.openai.com/v1/models，需 key）或人工核对"
+    ],
+    "notes": "api_base 为空 = 使用 OpenAI 官方默认端点；更省可改 text-embedding-3-small"
+  }
+}
