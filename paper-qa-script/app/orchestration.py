@@ -14,6 +14,7 @@ import json
 import hashlib
 import os
 import re
+import shutil
 import time
 import traceback
 import uuid
@@ -199,6 +200,30 @@ def _write_embed_cache(p: Path, data: dict[str, Any]) -> None:
 # - 复用走 paperqa `aadd_texts`（texts 已带向量 → 不再调用嵌入模型，零嵌入成本）。
 
 _EMBED_CHECKPOINT_SCHEMA = 1
+# checkpoint 无 TTL（重建代价高，不能像 embed 缓存那样过期），改为**按命名空间数量收敛**防无界增长
+_CHECKPOINT_NAMESPACE_KEEP = 20
+
+
+def _prune_checkpoints(root: Path, keep: int = _CHECKPOINT_NAMESPACE_KEEP, protect: str = "") -> list[str]:
+    """按 mtime 保留最近 keep 个命名空间（manifest + 载荷目录），删除更旧的；protect 指定的 key 永不删。"""
+    try:
+        manifests = sorted(root.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        return []
+    removed: list[str] = []
+    for m in manifests[keep:]:
+        key = m.stem
+        if key == protect:
+            continue
+        try:
+            m.unlink()
+            payload_dir = root / key
+            if payload_dir.is_dir():
+                shutil.rmtree(payload_dir, ignore_errors=True)
+            removed.append(key)
+        except OSError:
+            continue
+    return removed
 
 
 def _embed_checkpoint_root() -> Path:
@@ -295,6 +320,7 @@ class PipelineOrchestrator:
         root = _embed_checkpoint_root()
         manifest_path = root / f"{ckpt_key}.json"
         payload_dir = root / ckpt_key
+        _prune_checkpoints(root, protect=ckpt_key)  # 防无界增长（保留最近 N 个命名空间，绝不删本轮用的）
 
         manifest = _read_checkpoint_json(manifest_path) or {}
         model_match = (

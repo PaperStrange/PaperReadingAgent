@@ -17,6 +17,7 @@ VERIFY_META = {'features': 'F-AC10 文献级 checkpoint：逐篇落盘 + 零成�
 
 import asyncio
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -83,6 +84,37 @@ async def run_parse(client, base: str, sid: str, run_id: str, paths: list[str]) 
     )
     r.raise_for_status()
     return r.json()
+
+
+def prune_checks() -> None:
+    """纯函数自检：命名空间收敛（不需要后端/端口，可独立运行）。"""
+    sys.path.insert(0, str(ROOT / "paper-qa-script"))
+    from app.orchestration import _prune_checkpoints  # noqa: E402
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        keys = ["old", "mid", "new"]
+        for i, k in enumerate(keys):
+            (root / f"{k}.json").write_text(json.dumps({"schema": 1, "docs": {}}), encoding="utf-8")
+            (root / k).mkdir()
+            (root / k / "x.json.gz").write_bytes(b"x")
+            ts = time.time() - (len(keys) - i) * 60
+            os.utime(root / f"{k}.json", (ts, ts))
+        removed = _prune_checkpoints(root, keep=2)
+        ok("⑦ 收敛删除最旧命名空间（manifest + 载荷目录）",
+           removed == ["old"] and not (root / "old.json").exists() and not (root / "old").exists()
+           and (root / "mid.json").exists() and (root / "new.json").exists(),
+           json.dumps({"removed": removed, "left": sorted(p.stem for p in root.glob("*.json"))}))
+        # keep=1 时次新的 mid 成为删除候选；protect 指定它则不得删除（且 newest 保留）
+        removed2 = _prune_checkpoints(root, keep=1, protect="mid")
+        ok("⑦ protect 指定的命名空间不被删除（其余收敛逻辑不变）",
+           removed2 == [] and (root / "mid.json").exists() and (root / "new.json").exists(),
+           json.dumps({"removed": removed2, "left": sorted(p.stem for p in root.glob("*.json"))}))
+        # 反证：同一状态下不 protect，则 mid 会被删除（证明 protect 才是保护来源）
+        removed3 = _prune_checkpoints(root, keep=1)
+        ok("⑦ 反证：不 protect 时次新命名空间被删除",
+           removed3 == ["mid"] and not (root / "mid.json").exists() and (root / "new.json").exists(),
+           json.dumps({"removed": removed3, "left": sorted(p.stem for p in root.glob("*.json"))}))
 
 
 async def main() -> int:
@@ -213,9 +245,16 @@ async def main() -> int:
     finally:
         stop_backend(server, False)
         shutil.rmtree(tmp, ignore_errors=True)
+    # ⑦ 边界：命名空间收敛（防无界增长）——保留最近 N 个，protect 指定的永不删（纯函数，不需要后端）
+    prune_checks()
+
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
 
 
 if __name__ == "__main__":
+    if "--prune-only" in sys.argv:
+        prune_checks()
+        print(f"\nALL PASS ({PASSED} assertions)［--prune-only：跳过需要后端的链路断言］")
+        sys.exit(0)
     sys.exit(asyncio.run(main()))
