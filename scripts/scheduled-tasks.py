@@ -55,9 +55,9 @@ TASKS: dict[str, dict] = {
     },
     "providers": {
         "interval_days": 14,
-        "cmd": [PY, str(ROOT / "scripts" / "refresh-providers.py"), "--apply"],
+        "cmd": [PY, str(ROOT / "scripts" / "refresh-providers.py"), "--fetch", "--apply"],
         "budgeted": False,
-        "desc": "provider 官网调研刷新（F-AC8 提供实现）",
+        "desc": "provider 官网调研刷新（F-AC8：抓取 + M16 归档 + proposal；模型名变更需人工确认）",
     },
 }
 

@@ -1,0 +1,29 @@
+{
+  "$schema_version": 1,
+  "name": "openrouter",
+  "api_base": "https://openrouter.ai/api/v1",
+  "model": "openrouter/auto",
+  "vision_model": "",
+  "embedding": "st-multi-qa-MiniLM-L6-cos-v1",
+  "embedding_local": true,
+  "has_embedding_api": false,
+  "key_envs": [
+    "OPENROUTER_API_KEY",
+    "OPENAI_API_KEY"
+  ],
+  "thinking_disabled": false,
+  "meta": {
+    "source": "curated（Sprint-16 F-AC8 拆分自 provider_config.PROVIDERS，行为保持）",
+    "source_urls": [
+      "https://openrouter.ai/models",
+      "https://openrouter.ai/docs/quickstart"
+    ],
+    "fetched_at": "2026-09-12T23:52:36+0900",
+    "last_refresh_status": "needs_review",
+    "notes": "通用网关；vision_model 留空 → engine 回落使用 model",
+    "last_evidence_run": "run-2026-09-12-provider-refresh-001",
+    "refresh_notes": [
+      "2026-09-12 官网调研（/api/v1/models JSON + quickstart）：现值 openrouter/auto 是**路由别名**（不在具体模型列表中）→ 抽取器判 needs_review 属预期；人工确认**保留 auto**（智能路由为官方特性），如需固定模型可改 openrouter/<vendor>/<model>"
+    ]
+  }
+}
