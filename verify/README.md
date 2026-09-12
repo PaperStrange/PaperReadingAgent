@@ -36,9 +36,9 @@
 | `gui_check_dashboard_fanout.mjs` | Sprint-10：看板 fan-out 配置页截图（两条流水线可视化 + JSON 编辑器） | 同 `gui_check_dashboard.mjs` |
 | `gui_check_config_schema.mjs` | Sprint-11/12/13：Config 节点 schema 清单/全字段表单截图 + 字段级校验证据（非法温度值 → 错误态）+ defaults-derived-from-schema 断言 | 后端 8787 + 前端 5173 已启动；Playwright Chromium 已安装 |
 | `verify_matrix.py` | TG-2：覆盖矩阵 SSOT——从各脚本头部 `VERIFY_META` 派生 `TEST-MATRIX.MD`；`check` 模式逐字节防漂移（CI 离线套件内） | 离线；`derive` 生成矩阵 / `check` 校验 |
-| `verify_local_dir.py` | Sprint-15/F-AC3：引擎接线实证——临时目录 `paper_directory` → config → load_index(build) → retrieve，断言候选来自该临时目录 | 离线自举后端（8787 需空闲）；本地 st- 向量模型 |
+| `verify_local_dir.py` | Sprint-15/F-AC3：引擎接线实证——临时目录 `paper_directory` → config → load_index(build) → retrieve，断言候选来自该临时目录 | **offline 档**：自举后端（8787 需空闲）；本地 st- 向量模型；**免密**（CSV manifest 提供 citation + 占位 key → 构建全程无 LLM 调用，见 3-LEARNED 1.30 追加） |
 | `verify_f12_preview_res.py` | Sprint-15/F-AC12：论文截图预览分辨率护栏（缩放 1.0 + 尺寸上限）实证 | 离线；本地 st- 向量模型 |
-| `verify_checkpoint.py` | Sprint-16/F-AC10：**文献级 embedding checkpoint**——首跑全嵌入 → 重跑 `reused=2/embedded=0`（零成本）→ 文件变更/载荷损坏/模型不匹配/同内容去重四重边界 | 离线自举后端（8787 需空闲）；本地 st- 向量模型；`HF_HUB_OFFLINE=1` 可避免联网校验 |
+| `verify_checkpoint.py` | Sprint-16/F-AC10：**文献级 embedding checkpoint**——首跑全嵌入 → 重跑 `reused=2/embedded=0`（零成本）→ 文件变更/载荷损坏/模型不匹配/切块口径/同内容去重五重边界 | **network 档**（parse 链路含真实 LLM 引用推断调用）：需 `DEEPSEEK_API_KEY`；自举后端（8787 需空闲）；本地 st- 向量模型；`HF_HUB_OFFLINE=1` 可避免联网校验 |
 | `verify_archive.py` | Sprint-16/M16：**调研归档完整性门禁**（report/context/reasoning/evidence 五字段 + verbatim 引用块 + 证据索引表交叉引用；quick 档豁免）；`--selftest` 内置合规/缺件双例 | 离线；`python verify\verify_archive.py <run_dir> --depth expert` |
 | `verify_providers.py` | Sprint-16/F-AC8：**provider 一文件**加载/来源标记/覆盖优先级/非法文件跳过/无密钥泄漏/调研 meta 契约 + 离线刷新链（归档+proposal+meta 刷新）与**抓取失败保留旧文件**、到期判定可配置 | 离线（目录重定向到临时目录，不改动仓库文件） |
 | `verify_runner.py` | Sprint-16/TG-5：分层 runner + 定时底座断言（offline 全绿 / 注入失败 fail-closed / 预算超限拒绝启动退出 3 / env 上限可配置 / due 未到期跳过 / cost unknown 拒绝放行退出 4 / record-cost 回填 / providers 未就绪 UNAVAILABLE） | 离线（合成 fixture，不跑真实套件） |

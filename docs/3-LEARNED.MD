@@ -138,6 +138,7 @@
 - 现象：M1 离线验证脚本真实构建索引时报 `unhandled errors in a TaskGroup (1 sub-exception)`，编排层只透出这句话，**真因被 TaskGroup 掩埋**；去掉封装直接调 `get_directory_index` 复现，真因是 `Docs.aadd` 对首块文本做 **citation 推断 LLM 调用**（`citation_prompt`），占位 key → 401。
 - 解决：① 诊断方法——**报错被 TaskGroup 聚合时，剥掉编排层直接复现拿完整 traceback**（别猜）；② 离线化——`aadd` 的 citation 调用可用 **manifest（CSV：file_location,citation,title）** 提供 citation 跳过（结构化提取另受 `use_doc_details` 门控，默认 False 不触发）；PDF 图片还会触发视觉增强 LLM，改用**无图 txt 语料**即可零 LLM 构建（索引探针/指纹/files.zip 逻辑与文件类型无关）。`verify/verify_index_health.py` 因此完全离线。
 - 教训：**"构建索引"不是纯本地操作**——paperqa 的 `aadd` 默认会对每个文件做 LLM 引用推断（PDF 还有图片视觉增强），离线测试/无 key 场景必须显式提供 citation（manifest）或换无图语料；**框架把异常包进 TaskGroup 时，验证脚本要保留"直连复现"路径**。
+- **追加（Sprint-16，2026-09-12 —— 同型坑复发于 CI）**：CI 的 offline 套件改经分层 runner 跑全档后失败，本机复现（临时移开 `.env` 复刻 CI 无密钥条件）显示挂在 `verify_local_dir.py` 的 `load_index`，仍是 `TaskGroup` 掩埋 + `aadd` citation 401；修复=该脚本改用 CSV manifest 提供 citation + 占位 key（构建全程无 LLM），并把 `verify_checkpoint.py` 从 offline 改判 **network**（其 parse 链路确有真实 LLM 调用）。教训升级：**新增"离线"脚本时必须先证明链路真的零 LLM 调用（索引构建也算），并在 CI 无密钥条件下实测；tier 不是自我声明，是可复现的属性**——分层 runner 把新脚本自动纳入 CI 才让这个潜伏问题暴露（此前硬编码 6 条命令的 CI 根本不会跑到它）。
 
 ### 1.26 维护批清技术账：把"建议修"沉淀为可执行的维护卡 + 关闭前全量 review（Sprint-7 PM 实践）
 - 现象：历次 Sprint Retro/三查的"建议修/后续"散落各处，长期不做会累积成隐蔽技术账；用户要求"清完无遗漏"。
