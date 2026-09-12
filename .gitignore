@@ -25,6 +25,9 @@ paper-qa-script/providers.json
 data/arxiv_pdf_sep/
 tmp.log
 
+# 本地 agent 框架参考目录（skills/notes，工具侧运行时内容，不入库）
+.agents/
+
 # --- secrets (use .env.example as template) ---
 .env
 **/.env
@@ -57,4 +60,4 @@ docs/iteration/sprint/*.png
 verify/*.png
 
 # DSH skills
-.agents
+.agents*.log
