@@ -29,6 +29,7 @@
 | `gui_check_s7.mjs` | 多节点并发计时显示 + 完成后冻结 | gui | — | 60s | ¥0 | — | playwright, servers |
 | `verify_agent.py` | Agent 流程（fake agent）+ 翻译接口 | network | deepseek | 60s | ¥0.3 | /api/translate_preview, /api/run_step | keys, network, index |
 | `verify_agentops.py` | AgentOps 账本 CLI 用例断言 UC-1~UC-13（离线；UC-11/12=M10，UC-13=M9） | offline | — | 10s | ¥0 | — | none |
+| `verify_archive.py` | M16 调研归档完整性校验：report/context/reasoning/evidence 契约 + 证据索引表交叉引用（fail-closed） | offline | — | 5s | ¥0 | — |  |
 | `verify_config_schema.py` | 配置 SSOT 一致性 + M7 前端零硬编码 + Settings 升级基线护栏（114 断言，离线） | offline | — | 5s | ¥0 | /api/config_schema, /api/config/validate | none |
 | `verify_e2e.py` | deepseek 全链路 6 步（LLM+vision + 本地 st- 向量） | network | deepseek | 120s | ¥0.3 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
 | `verify_e2e_dashscope.py` | dashscope 全链路 6 步 + 同进程 deepseek 切换隔离回归 | network | dashscope, deepseek | 150s | ¥0.5 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
@@ -42,4 +43,4 @@
 | `verify_remote_e2e.py` | remote 数据源全链路（arXiv 下载+索引+6 步） | network | deepseek | 180s | ¥0.4 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
 | `verify_smoke.py` | 冒烟 8 项：paperqa 导入/后端 10 路由加载/runtime_trace 目标/PDF 解析等（离线） | offline | — | 10s | ¥0 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session, /api/health, /api/providers, /api/config_schema, /api/config/validate, /api/translate_preview | none |
 
-共 36 个脚本：offline 7 / network 9 / gui 20。
+共 37 个脚本：offline 8 / network 9 / gui 20。
