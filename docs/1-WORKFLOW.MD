@@ -94,6 +94,13 @@
 
 > 三查可委托评审代理并行执行；**发现项必须修复闭环后（修复 → 回归 → 文档同步 → PR 同步 main）才允许 Close**；结论写入该 Sprint 文档的「评审/同步记录」节。
 
+**fan-out 执行纪律（2026-09-12 制度化，Sprint-15/16 两次子代理无产出超时后固化）**：
+
+1. **报告先行**：派发子代理时必须在 prompt 里要求"**第一步先落盘报告文件**（骨架→逐条覆盖更新）"；只把发现留在上下文中不落盘的运行视为未产出（超时后无任何资产可回收）。各派发型 spec（tech-research / impact-assessment / code-review / doc-audit / lessons-learned）已在正文加 Output discipline 段固化该要求。
+2. **接管判据**：子代理**超过 spec Timebox（或 15 分钟无报告文件产出/无回报）** → 主代理**直接接管**，按同一 spec 全维度执行并落盘报告；在 Sprint §9 注明"子代理超时，主代理接管执行"及账本 run 状态。
+3. **账本诚实**：接管运行同样登记账本（register→finish），报告写入 `agents/runs/<run_id>/<role>.report.md`；不得把未产出的子代理记为 succeeded 而不留报告。
+4. **范围纪律**：Finding cap / Timebox 是硬约束——宁可交回"已写下的部分 + 覆盖度说明"，也不要为凑完整性无限扩张。
+
 #### 证据 checklist（按需选取，尽可能覆盖）
 
 | 类别 | 示例 |

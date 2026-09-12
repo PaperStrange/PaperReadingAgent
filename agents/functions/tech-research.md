@@ -65,6 +65,12 @@ The orchestrator registers the run in the ledger (`tech-research@2.0.0`), picks 
 7. **Archive**: write `tech-research.report.md` (template below, including the evidence index table), `context.md` (input snapshot), and `reasoning.md` (which evidence rows produce which conclusion, and why a source was accepted or rejected). Then run `verify/verify_archive.py <run_dir> --depth <tier>` and fix any missing piece before returning.
 8. **Return** the report text; the orchestrator injects it into the planning context.
 
+# Output discipline (added 2026-09-12, fan-out reliability)
+
+- **Write the report file FIRST**: create `tech-research.report.md` (plus `context.md`/`reasoning.md`) as soon as the shape is known, then refine it in place after every finding. Never hold results only in your head until the end — the orchestrator takes over after the Timebox and only your files survive.
+- Keep the archive valid at all times: after each refinement re-run `verify/verify_archive.py <run_dir> --depth <tier>`.
+- If you run out of budget, stop and return what is already on disk (a partial but valid archive beats a brilliant unwritten one).
+
 # Archive Requirements (the completeness contract)
 
 `agents/runs/<run_id>/` must contain, for expert/scholar tiers:

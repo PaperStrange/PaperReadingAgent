@@ -22,6 +22,7 @@
 - **审查范围不得默认收窄到 Sprint 交付物**：一律先由 impact-assessment 评估——composite>50 → 全量档（整个代码库）；≤50 → 窄档（Sprint 修改文件 ∪ 核心文件区域），recommended_scope 作为 code-review/doc-audit 的 `scope` 入参。
 - **fan-out 顺序与运行条件（可调配置）**：Sprint 关闭流程五步定义在 [`fanout.json`](fanout.json) 的 `sprint_close_pipeline`——`scope → doc-audit → code-review → lessons-learned → workspace-check`（条件/顺序/执行者可调）；用户可通过看板观察各 agent 对开发部署进度的影响并**随时调整顺序与运行判断条件**（1-WORKFLOW §4.1）。
 - 新增职能：复制 [`functions/_template-agent.md`](functions/_template-agent.md)（frontmatter 超集 + 五段式 + 可配置参数 + 输出模板，英文），升 `version`，跑 `agent-ops validate-spec` 后上线。
+- **fan-out 执行纪律（2026-09-12 制度化）**：① 派发时要求子代理**第一步先落盘报告文件**并增量覆写（各派发型 spec 已加 Output discipline 段）；② 子代理**超 Timebox / 15 分钟无报告产出 → 主代理接管**按同一 spec 执行，Sprint §9 注明接管原因；③ 接管运行照常登记账本（run + 报告文件），不得记为 succeeded 却无报告；④ Finding cap / Timebox 为硬约束，宁交"部分 + 覆盖度说明"。
 
 ## 2. 账本 CLI（`scripts/agent-ops.py`，纯 Python 标准库）
 

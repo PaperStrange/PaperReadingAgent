@@ -49,6 +49,11 @@ You are the **impact-scope assessor** (first gate of the fan-out). Assess only: 
 6. **Two-tier decision**: `composite > X` → **full tier** (entire codebase); `composite ≤ X` → **narrow tier** (Sprint modified files ∪ core region; the core region is always included in full).
 7. **Produce the report** (strict template below).
 
+# Output discipline (added 2026-09-12, fan-out reliability)
+
+- **Write the report file FIRST** (`<role>.report.md`, skeleton then in-place refinement): the orchestrator takes over after the Timebox and only your files survive.
+- The runtime self-check is mandatory: report `N_core`/`N_routes` as measured from the repo and any diff vs the spec lists — never restate the spec numbers without checking.
+
 # Core Function List (13 items; runtime self-check)
 
 | # | Core function | Host module | Key symbol (self-check) |
