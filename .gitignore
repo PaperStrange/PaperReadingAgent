@@ -29,6 +29,8 @@ tmp.log
 .agents/
 # TG-5 运行时状态与套件结果（本地运行时产物）
 agents/runtime/schedule.json
+agents/runtime/provider_refresh_proposal.json
+agents/runtime/provider_refresh_status.json
 verify/suite_result.json
 
 # --- secrets (use .env.example as template) ---
