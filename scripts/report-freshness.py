@@ -42,22 +42,41 @@ _FETCHED_RE = re.compile(r"fetched_at:\s*([0-9]{4}-[0-9]{2}-[0-9]{2}(?:[T ][0-9]
 _CURRENT_RE = re.compile(r'"current"\s*:\s*"([^"]+)"')
 # 只在 §7 证据索引表区间内找引用（与归档门禁同口径）——否则会把正文里提到的项目文档
 # （如 `1-WORKFLOW.MD`）误判成"缺失证据"（2026-09-21 在真实归档上实测到的假阳性）
-_SECTION7_RE = re.compile(r"^##\s*7\.[^\n]*(?:\n|$)(.*?)(?=^##\s|\Z)", re.M | re.S)
+# （原 `_SECTION7_RE` 单形态正则已由下方 `_extract_section7()` 取代，2026-09-21 删除死代码）
 
 # 教训 1.62（2026-09-21 关闭三查·二查 major）：§7 标题的真实写法有多种，单形态正则会**静默漏检**。
 # 旧实现只认 `^##\s*7\.` → `### 7.` / `## 7、` / `## §7` / `## 证据索引表` 全部定位失败 →
 # `cited=∅` → "点名证据缺失"完全静默（假阴性），与归档门禁 `verify_archive.py`（标题兜底 +
 # 定位失败显式 FAIL）口径不一致。现改为：按标题层级定位（多形态）＋定位失败**显式退化并标注来源**。
 _HEAD_RE = re.compile(r"^(#{1,6})[ \t]*(.+?)[ \t]*$", re.M)
-# 优先级（对齐 `verify/verify_archive.py::evidence_index_section` 的选取语义，见教训 1.62）：
-#   P1 = 任意 2~4 级标题、标题**含「证据索引」**（最可靠：名字就是契约）
-#   P2 = §7 编号标题（`7.`/`7、`/`§7`/`7 空格`），但**排除子节 `7.1`**（`(?!\.\d)`）
-#   P3 = 都找不到 → 显式退化为全文
-# 修复验证复核 run-060 major：上一版用"首个命中即返回"，于是更早的 `### 7.1 补充证据` 会抢走权威 §7，
-# 使"点名证据缺失"**静默变 fresh**（把假阴性从一个形态搬到另一个形态）。现按优先级择**最优**候选，
-# 而不是"最先出现的"候选。
+# 选取语义（教训 1.62 + 修复验证复核 run-060 Round 1/2）：
+#   P1 = **编号 §7 标题**（`7.`/`7、`/`§7`/`7 空格`，**排除子节 `7.x`**）——文档自身的结构声明，最可信
+#   P2 = 标题**含「证据索引」**（作为 P1 缺席时的兜底）
+#   同类多候选取**层级最浅**者；同层级取**最后**一个（后文更接近终稿）
+# Round 2 major：上一版让 P2（名称）优先于 P1（编号），于是更早的 `### 7.1 证据索引（旧版）` /
+# `### 9.1 证据索引（附录草稿）` 会夺权，使权威 §7 的缺失**静默变 fresh**（`cited` 非空还绕过了零引用门禁）。
+# 编号优先 + 排除子节后，这两类都不能再抢位。
 _S7_NAME_RE = re.compile(r"证据索引")
 _S7_NUMBER_RE = re.compile(r"^(?:§\s*)?7(?!\.\d)(?:[.、．:：)）]|\s|$)")
+_FENCE_RE = re.compile(r"^[ \t]*```.*$", re.M)
+
+
+def _blank_fences(text: str) -> str:
+    """把围栏代码块内的内容替换为**等长空白**（保留字符偏移），避免围栏里的 `## 7.` 被当成真标题。
+
+    修复验证复核 run-060 Round 2 指出的**既存**漏判形态（代码围栏内的 `## 7.`）——同轮一并屏蔽。
+    """
+    out: list[str] = []
+    in_fence = False
+    for ln in text.splitlines(keepends=True):
+        body = ln[:-1] if ln.endswith("\n") else ln
+        blank = " " * len(body) + ("\n" if ln.endswith("\n") else "")
+        if _FENCE_RE.match(body):
+            in_fence = not in_fence
+            out.append(blank)
+        else:
+            out.append(blank if in_fence else ln)
+    return "".join(out)
 
 
 def _extract_section7(text: str) -> tuple[str, str]:
@@ -66,22 +85,28 @@ def _extract_section7(text: str) -> tuple[str, str]:
     `whole-doc` = 没有可识别的 §7 标题：此时**退化为全文**（宁可多判、不可静默漏判），
     并把来源写进结果 JSON，使"为什么这次判成这样"可追溯。
     """
-    heads = [(m, len(m.group(1)), m.group(2).strip()) for m in _HEAD_RE.finditer(text)]
+    masked = _blank_fences(text)  # 偏移与 text 等长 → 可用同一组下标切回原文
+    heads = [(m, len(m.group(1)), m.group(2).strip()) for m in _HEAD_RE.finditer(masked)]
 
-    def _slice(i: int) -> str:
+    def _span(i: int) -> tuple[int, int]:
         m, level, _title = heads[i]
-        end = len(text)
+        end = len(masked)
         for nxt, nxt_level, _t in heads[i + 1:]:
             if nxt_level <= level:  # 同级或更高级标题 = 本节结束
                 end = nxt.start()
                 break
-        return text[m.end():end]
+        return m.end(), end
 
-    for matcher in (_S7_NAME_RE, _S7_NUMBER_RE):
-        for i, (_m, _level, title) in enumerate(heads):
-            hit = matcher.search(title) if matcher is _S7_NAME_RE else matcher.match(title)
-            if hit:
-                return _slice(i), "heading"
+    for matcher in (_S7_NUMBER_RE, _S7_NAME_RE):
+        cands = [
+            i for i, (_m, _lvl, title) in enumerate(heads)
+            if (matcher.match(title) if matcher is _S7_NUMBER_RE else matcher.search(title))
+        ]
+        if cands:
+            shallowest = min(heads[i][1] for i in cands)
+            i = [c for c in cands if heads[c][1] == shallowest][-1]
+            s, e = _span(i)
+            return text[s:e], "heading"
     return text, "whole-doc"
 
 
@@ -197,6 +222,11 @@ def _analyze_archive(run_dir: Path, providers: dict[str, dict], refresh_toleranc
     section7, section7_source = _extract_section7(text)
     rows = "\n".join(line for line in section7.splitlines() if line.strip().startswith("|"))
     scope_text = rows or section7
+    # 定位自检素材（Round 2 建议）：证据索引表**天然是表格**——定位到的区间一行表格都没有、
+    # 而文档别处有表格时，很可能定位错了区间。该判据只在"零引用门禁"内部用作**原因补充**，
+    # 不单独触发 suspect（否则会对老格式归档产生第二类误报：2026-09-21 实测 fresh=1/suspect=2）。
+    doc_has_table = any(ln.strip().startswith("|") for ln in text.splitlines())
+    no_table_in_section = (not rows.strip()) and doc_has_table
     cited = set(re.findall(r"evidence[/\\]([\w.\-]+\.(?:md|markdown))", scope_text, re.I))
     cited |= set(re.findall(r"(?<![\w/\\-])(\d{2}-[\w.\-]+\.(?:md|markdown))", scope_text, re.I))
     missing = sorted(n for n in cited if n.lower() not in have)
@@ -216,15 +246,16 @@ def _analyze_archive(run_dir: Path, providers: dict[str, dict], refresh_toleranc
     if missing:
         status = "stale"
         reasons.append(f"报告点名的证据文件缺失：{', '.join(missing[:3])}")
-    if ev_files and not cited and section7_source == "heading" and status == "fresh":
-        # 修复验证复核 run-060 建议 ③（fail-loud 门禁）：定位到了 §7 却**一条证据引用都没识别出来**，
+    if ev_files and not cited and section7_source == "heading" and status == "fresh":        # 修复验证复核 run-060 建议 ③（fail-loud 门禁）：定位到了 §7 却**一条证据引用都没识别出来**，
         # 很可能是定位到了错误区间（或引用写法未覆盖）。绝不静默判 fresh。
         # **触发条件必须限定"该归档确有证据文件"**（M16 归档契约）：真实数据回归（2026-09-21）实测，
         # 2026-08-30/31 的老格式归档只有 `## 7. 来源清单`（URL 清单）且**没有 evidence/ 目录**——
         # 对它们要求"§7 引用 evidence/*.md"是口径错配，会把两个合法归档误判为 suspect（新误报）。
         status = "suspect"
         reasons.append(f"§7 区间内未识别到任何 evidence 引用（该归档含 {len(ev_files)} 篇证据）"
-                       "——可能定位到错误区间，需人工确认")
+                       + ("；且该区间内**无表格行**而文档别处有表格——定位到错误区间的可能性较高"
+                          if no_table_in_section else "")
+                       + "——需人工确认")
     if ev_modified_after_report and status == "fresh":
         status = "suspect"
         reasons.append("有 evidence 文件在报告之后被改动（二者可能不一致）")

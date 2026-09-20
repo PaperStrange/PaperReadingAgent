@@ -161,7 +161,7 @@ def main() -> int:
         rp6 = v6 / "tech-research.report.md"
         rp6.write_text(
             "# tech-research report（pseudo section7 earlier）\n"
-            + "## 7.1 补充证据\n| 结论 | evidence | 状态 | 摘录 |\n|---|---|---|---|\n"
+            + "### 7.1 补充证据\n| 结论 | evidence | 状态 | 摘录 |\n|---|---|---|---|\n"
             + "| x | `evidence/00-present.md` | ok | y |\n"
             + rp6.read_text(encoding="utf-8"),
             encoding="utf-8",
@@ -170,13 +170,32 @@ def main() -> int:
         write_report(v7, "section7 without citations", [], heading="## 7. 证据索引表")
         write_evidence(v7, "00-present.md", "2026-09-19 10:00 +0800")
 
+        # ⑫e/⑫f（Round 2 major 的**同族残余**）：**名称命中（含「证据索引」）的更早子节**同样会夺权——
+        #   V2  = 更早的 `### 7.1 证据索引（旧版）`（自带表格、引用一个**存在**的文件）
+        #   V10 = 更早的 `### 9.1 证据索引（附录草稿）`
+        # 在"名称优先 + 首个命中即返回"的实现下，两者都会让权威 §7 点名的缺失文件**静默变 fresh**
+        # （因 `cited` 非空，零引用门禁也不会触发）。反向对照：这两条断言在 Round 2 修复前必须 FAIL。
+        for rid, decoy in (("run-v8", "### 7.1 证据索引（旧版）"),
+                           ("run-v9", "### 9.1 证据索引（附录草稿）")):
+            d = vroot / rid
+            write_report(d, f"{rid} decoy", ["98-missing.md"], heading="## 7. 证据索引表")
+            write_evidence(d, "00-present.md", "2026-09-19 10:00 +0800")
+            rp = d / "tech-research.report.md"
+            rp.write_text(
+                f"# tech-research report（{rid} decoy）\n"
+                + f"{decoy}\n| 结论 | evidence | 状态 | 摘录 |\n|---|---|---|---|\n"
+                + "| x | `evidence/00-present.md` | ok | y |\n"
+                + rp.read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+
         out_v = base / "freshness_variants.json"
         run(["--runs-dir", str(vroot), "--providers-dir", str(prov_old), "--json", str(out_v)])
         pv = json.loads(out_v.read_text(encoding="utf-8"))
         bv = {r["run_id"]: r for r in pv["reports"]}
         ok("⑫ §7 标题的 4 种真实形态（`### 7.` / `## 7、` / `## §7` / `## 证据索引表`）下"
            "点名证据缺失**仍判 stale**（不静默漏检）",
-           len(bv) == 7 and all(r["status"] == "stale" and any("缺失" in w for w in r["reasons"])
+           len(bv) == 9 and all(r["status"] == "stale" and any("缺失" in w for w in r["reasons"])
                                 for r in bv.values() if r["run_id"] in ("run-v1", "run-v2", "run-v3", "run-v4")),
            str({k: (v["status"], v["reasons"]) for k, v in bv.items()})[:220])
         ok("⑫ 结果 JSON 标注 §7 定位来源（`citation_scope`），使判定口径可追溯",
@@ -192,6 +211,12 @@ def main() -> int:
         ok("⑫d §7 区间内**零引用** → 不得静默 fresh（fail-loud：suspect + 记原因）",
            bv["run-v7"]["status"] == "suspect" and any("未识别" in w or "零引用" in w for w in bv["run-v7"]["reasons"]),
            json.dumps({k: bv["run-v7"][k] for k in ("citation_scope", "status", "reasons")}, ensure_ascii=False)[:200])
+        ok("⑫e 更早的 `### 7.1 证据索引（旧版）`（名称命中 + 引用存在文件）不得夺权 → 权威 §7 的缺失仍判 stale",
+           bv["run-v8"]["status"] == "stale" and any("缺失" in w for w in bv["run-v8"]["reasons"]),
+           json.dumps({k: bv["run-v8"][k] for k in ("citation_scope", "status", "reasons")}, ensure_ascii=False)[:200])
+        ok("⑫f 更早的 `### 9.1 证据索引（附录草稿）` 同样不得夺权 → 权威 §7 的缺失仍判 stale",
+           bv["run-v9"]["status"] == "stale" and any("缺失" in w for w in bv["run-v9"]["reasons"]),
+           json.dumps({k: bv["run-v9"][k] for k in ("citation_scope", "status", "reasons")}, ensure_ascii=False)[:200])
 
         # 有 stale 的场景（prov_new 晚于 run-a 证据）
         res = run(["--runs-dir", str(runs), "--providers-dir", str(prov_new), "--json", str(out_json)])
