@@ -18,13 +18,14 @@
 | 2026-08-30 | **规则已存在**：关闭 Sprint 前先跑〇查 impact-assessment；"**审查范围不得默认收窄到 Sprint 交付物**，偏离 recommended_scope 须在 Sprint §9 记录理由" | `1-WORKFLOW.MD` §4.2 三查表前注（现行 line 84） |
 | 同上（远早于本次） | code-review spec 明文：`scope` 来自 impact-assessment；`empty = full repo`；"**never a self-chosen narrow scope**"；关闭三查须 windows+main **两条**任务 | `agents/functions/code-review.md:26`、`:34`、`:18` |
 | 2026-09-12 23:49:04 → 23:57:06 | **Sprint-16 关闭三查五步全跑**：〇查 `run-…-impact-assessment-048` / 一查 `…-doc-audit-049` / 二查 `…-code-review-050`(windows) + `…-code-review-051`(main) / lessons `…-lessons-learned-052`；五条 `task_id` 均含 `Sprint-16 close` | `agents/runtime/registry.json` |
-| 2026-09-20 13:20 起 | **三查之后仍有提交落地**：`origin/windows..HEAD` 共 22 个未推送提交，其中 **20 个的 committer 时间 > 2026-09-12T23:57:06+08**（另 2 个 09-12 17:40/17:41 的提交位于三查覆盖窗口内）。这 20 个提交含走查修复、TG-7、Retro③ 成本可观测、F-AC16/M18 v1、TG-10 等全部交付 | `git log origin/windows..HEAD`（逐条比对 committer 时间） |
+| 2026-09-20 13:20 起 | **三查之后仍有提交落地**：`git rev-list --count 1389738..HEAD` = **26 个提交**（截至 2026-09-21；**事发当时为 20 个**∪ 另一种口径"未推送 ∧ committer 晚于三查结束 = 20"，其后至 09-21 又增加 6 个收尾文档提交）。这段增量含走查修复、TG-7、Retro③ 成本可观测、F-AC16/M18 v1、TG-10、口径修正 | `git log 1389738..HEAD`（两种数法口径不同，均如实记录） |
 | 2026-09-20 21:44:12 | 派 code-review 子代理 `run-2026-09-20-code-review-053`，`task_id = commit:539630e … (user walkthrough pre-check)`——**性质是"走查预检"**，不是关闭三查 | registry `run-053` |
 | 2026-09-20 21:45 → 09-21 00:45 | 同一 run 被追加 **5 轮**（`rounds=5`、`dur=241.3m`、`int=2`）；**每一轮 scope 都是主代理自选**（改动文件 + 直接调用方 + 相关断言）——无一轮来自 impact-assessment，无双分支，无 doc-audit / lessons | registry `run-053.rounds[]`；Sprint-16 §9 逐轮对账表 |
 | 2026-09-21 | 用户质疑"窄范围定点复核的判断依据是啥" → 我**此时才第一次读全 §4.2 三查表**，写下 "never a self-chosen narrow scope" 原文与逐轮对账；用户判定 **HOLD** | Sprint-16 §9（line 138–148）、§6 DoD |
 | 2026-09-12（更早的同类先例） | 我为"提前验证 CI"创建 PR #50 → 用户"**没验收前不要提PR**" → PR 关闭、分支删除、**规则事后**加固到 §3.4 | Sprint-16 §9 line 154 |
 
-**一句话结论**：三查**跑过**（09-12 23:49–23:57），但它覆盖的是**当时的 HEAD**；此后 20 个提交使其实质失效，而"**失效**"这件事**没有被任何规则、任何检查、任何文档结构表达出来**——于是"修复后的定点复核"成了唯一在做的复核，其 scope 由我自己挑。两份文字规则（`§4.2` 与 spec）就是这样在**无人察觉**的情况下同时被绕过。
+**一句话结论**：三查**跑过**（09-12 23:49–23:57），但它覆盖的是**当时的 HEAD**；此后 20→**26** 个提交使其实质失效，而"**失效**"这件事**没有被任何规则、任何检查、任何文档结构表达出来**——于是"修复后的定点复核"成了唯一在做的复核，其 scope 由我自己挑。两份文字规则（`§4.2` 与 spec）就是这样在**无人察觉**的情况下同时被绕过。
+> ✅ **本台账记录的缺口已于同日闭环**：2026-09-21 已按 `§4.2` 重跑完整三查（〇查 054 / 一查 055 / 二查 056 windows + 057 main / lessons 058），scope 全部来自〇查 `recommended_scope`（全量档 composite=69.2）；**档位由 048 的窄档翻转为全量档**。复盘（根因定稿与机制落地）仍留待 `TG-11` 卡执行时进行。
 
 ---
 

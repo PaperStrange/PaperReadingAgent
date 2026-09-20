@@ -8,7 +8,7 @@
 
 ## 1. 一句话结论
 
-**19 点全部交付、用户走查未通过 0 项、回归全绿**；但 Sprint-16 **不能关闭**——三查跑完（09-12）之后又落地 **20 个提交**，使原三查结论**实质失效**，而后续 5 轮复核的 scope 全部是自选范围（不构成二查覆盖）。关闭前置 = **重跑三查**，然后才谈 PR。
+**19 点全部交付、用户走查未通过 0 项、回归全绿**。原三查（09-12）因其后 **20→26 个提交**落地而失效 → **已于 2026-09-21 完成关闭三查重跑**（〇查 054 = 全量档 composite 69.2 / 一查 055 / 二查 056 windows + 057 main / lessons 058），**7 项代码 major + 一查 12 条文档项已修复**（commit `28ea52e` 起）并逐项留反向对照证据。**剩余仅：`git push origin windows` → 建 PR → CI 绿 → 关闭**（均待用户明确确认）。
 
 ---
 
@@ -31,7 +31,7 @@
 |---|---|
 | 离线套件 `run_suite.py --tier offline` | **SUITE PASSED（14 脚本）**，`suite_exit=0` |
 | 覆盖矩阵 `verify_matrix.py check` | **CHECK OK：45 脚本与 TEST-MATRIX.MD 一致**（offline 14 / gui 21 / network 10） |
-| 关键脚本断言数 | runner **42**、agentops **42**、providers **33**、checkpoint 33（network）、config_schema 114、usage **27**、checkpoint_index **29**、freshness **22**、ledger_rounds **13**、archive 28 + selftest 8 |
+| 关键脚本断言数 | runner **46**、agentops **43**、providers **33**、checkpoint 33（network）、config_schema 114、usage **29**、checkpoint_index **31**、freshness **25**、ledger_rounds **15**、archive 28 + selftest 8、smoke 8 项（新增 `/api` 路由数 = 12 钉桩）——均为 **2026-09-21 关闭三查修复后**实测 |
 | 前端构建 | 334.31 KB（2026-09-20 终态） |
 
 ---
@@ -78,14 +78,19 @@
 | 走查期子代理复核（run-053 5 轮） | ≈¥0.03（首轮记账值） | 估算（历史轮次未逐轮采集 token） |
 | **累计** | **≈¥2.06** | 明细见验收指南 §13.6 |
 
-> 估算偏差已校准：`N-1` ¥0.05→**0.02**、`N-2` ¥0.5→**1.1**（`est_cost_cny` 终态）；安全系数 `--est-factor` 默认 **1.3** 且可配置（CLI > env > 默认）。
+> 估算偏差已校准：`N-1` ¥0.05→**0.03**、`N-2` ¥0.5→**1.4**（＝实测 × 1.3 安全系数后向上取整，SSOT = `VERIFY_META`/`TEST-MATRIX`）；安全系数 `--est-factor` 默认 **1.3** 且可配置（CLI > env > 默认）。⚠️ 本报告初版曾写 0.02/1.1（加系数前的中间值）——已按 SSOT 更正（教训 **1.63**：数字类修正必须直取 SSOT，不得文档间转抄）。
 
 ---
 
 ## 8. 未解决待办（HOLD 复核清单）
 
-### ① 阻塞关闭（唯一硬阻塞，无需决策）
-**三查重跑**：〇查 impact-assessment → 一查 doc-audit → 二查 code-review（**windows + main 两个 run**）→ lessons-learned。**输入必须包含**：Round-5 的 3 个 major；**20 个未覆盖提交**清单（`895e811`→`bdc669b`）；"R4 的 4 条发现 = 作者已修、复核未复验"标注；变更集新增 1 条用户可见路由（11→12）+ 1 个面板 + 3 个新验证脚本（B 口径 10 条路由需复核）；矩阵 re-derive；两条未回填教训（NaN 穿透数值闸门、§7 行形态假阴性）。
+### ① 关闭路径（三查**已完成**，只剩手续）
+**✅ 关闭三查重跑（2026-09-21）已全部完成**：〇查 `run-2026-09-21-impact-assessment-054`（**全量档**，composite=69.2；档位相对 048 的 32.8 翻转）→ 一查 `…-doc-audit-055`（must-fix 8 / should-fix 4）→ 二查 `…-code-review-056`（windows，0 critical / **11 major** / 34 minor / 10 nit）+ `…-code-review-057`（main，2 critical / 5 major）→ lessons `…-lessons-learned-058`（1.61/1.62/1.63）→ 三查环境核验（主代理：端口全 FREE、远端三头、`.gitignore` 覆盖、离线套件 14 脚本 PASSED、矩阵 45 CHECK OK、前端构建 334.31 KB）。**7 项代码 major 与 12 条文档项已修复**（commit `28ea52e` 起），每项均留"未修复实现上先 FAIL"的反向对照证据。
+
+**剩余手续（须你明确确认后才做）**：
+1. **`git push origin windows`**（本地领先远端 **28 个提交**，不推则 PR 会静默丢件）；
+2. 建 `sync/sprint-16` PR（排除 `docs/iteration/**`；按二查 main 的"原子包"清单同步：`ci.yml`+`run_suite.py`+8 离线脚本 / `TEST-MATRIX`+`README`+`verify_smoke` 三件套 / `provider_config.py`+`providers/*.json` / `.gitignore` 同提交 / **4 个 `scripts/*.sh` 的删除不外传**）；
+3. CI 绿 → 合并 → 关闭 Sprint-16。
 
 ### ② 待你拍板
 | 项 | 状态 | 备注 |

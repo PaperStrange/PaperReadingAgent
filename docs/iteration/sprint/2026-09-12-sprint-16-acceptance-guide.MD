@@ -282,8 +282,8 @@ Invoke-RestMethod http://127.0.0.1:8787/api/providers | ConvertTo-Json -Depth 4
 
 | 编号 | 命令 | 估算成本 | 期望 | 判定 |
 |---|---|---|---|---|
-| `N-1` | `.\.venv\Scripts\python.exe .\verify\verify_checkpoint.py` | **¥0.02**（`est_cost_cny` 终态，已按实测 ¥0.016965 校准；跑前原估 ¥0.05） | `ALL PASS (33 assertions)`；含首跑 `embedded=2` → 重跑 `reused=2/embedded=0` | ☐ |
-| `N-2` | `.\.venv\Scripts\python.exe .\verify\verify_e2e_dashscope.py` | **¥1.1**（`est_cost_cny` 终态，已按实测 ¥1.013377 校准；跑前原估 ¥0.5） | 六步全链 PASS（答案含引用；同进程切 deepseek 隔离） | ☐ |
+| `N-1` | `.\.venv\Scripts\python.exe .\verify\verify_checkpoint.py` | **¥0.03**（SSOT = `VERIFY_META`/`TEST-MATRIX`＝实测 ¥0.016965 × 1.3 后向上取整；跑前原估 ¥0.05） | `ALL PASS (33 assertions)`；含首跑 `embedded=2` → 重跑 `reused=2/embedded=0` | ☐ |
+| `N-2` | `.\.venv\Scripts\python.exe .\verify\verify_e2e_dashscope.py` | **¥1.4**（SSOT = `VERIFY_META`/`TEST-MATRIX`＝实测 ¥1.013377 × 1.3 后向上取整；跑前原估 ¥0.5） | 六步全链 PASS（答案含引用；同进程切 deepseek 隔离） | ☐ |
 | `N-3` | `.\.venv\Scripts\python.exe .\scripts\refresh-providers.py --fetch --apply` | 免费（打第三方官网） | 产出 M16 归档 + proposal + status；**openai 403 为预期**（保留旧文件） | ☐ |
 | `N-4` | `.\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --task providers --check-due` | 免费（真实抓取） | 到期 → 执行刷新并写 `last_run`（**会创建 `agents/runtime/schedule.json`**） | ☐ |
 
@@ -405,7 +405,8 @@ Invoke-RestMethod http://127.0.0.1:8787/api/providers | ConvertTo-Json -Depth 4
 | 本轮小计 | ¥0.55 | **¥1.0303** | 估算整体偏低 **+87%** |
 
 - 价表刷新（免费）顺带补齐了 dashscope 两个模型的官方单价并捕获 openrouter 价格漂移 → 已提交 `agents/runtime/prices.json`。
-- **已按实测校准** `verify_checkpoint.py`（0.05 → 0.02）与 `verify_e2e_dashscope.py`（0.5 → 1.1）的 `est_cost_cny`；其余 network 脚本仍是未校准估算（后续跑一次即可校准）。
+- **已按实测校准** `verify_checkpoint.py`（0.05 → **0.03**）与 `verify_e2e_dashscope.py`（0.5 → **1.4**）的 `est_cost_cny`（＝实测 × 1.3 安全系数后向上取整，SSOT 见 `VERIFY_META` 与 `verify/TEST-MATRIX.MD`）；其余 network 脚本仍是未校准估算（后续跑一次即可校准）。
+  > ⚠️ **口径更正（2026-09-21，一查 doc-audit 抓出）**：本文档一度把这两个值写成 **0.02 / 1.1**——那是**加安全系数之前**的中间估算，仓库内**没有对应事实**（`verify/verify_checkpoint.py` 的 `est_cost_cny` 实为 0.03、`verify_e2e_dashscope.py` 实为 1.4）。起因是我在修"陈旧数字"时从 Sprint §7 转抄而非直取 SSOT，把废弃值扩散到了 3 处文档（教训 **1.63**）。现值已按 SSOT 统一。
 
 ### 13.4 `B-9` / `B-10` 零成本复现命令（可直接粘贴）
 
