@@ -97,13 +97,13 @@ $env:PYTHONIOENCODING='utf-8'      # 中文输出不乱码
 | # | 命令 | 期望输出（判据） | 09-20 实测 |
 |---|---|---|---|
 | 1 | `.\.venv\Scripts\python.exe .\verify\verify_providers.py` | `ALL PASS (33 assertions)`，退出 0 | ✅ 33/33 |
-| 2 | `.\.venv\Scripts\python.exe .\verify\verify_runner.py` | `ALL PASS (26 assertions)`，退出 0（20 原有 + TG-7 三例 + Retro③ 两例 + …） | ✅ 26/26 |
+| 2 | `.\.venv\Scripts\python.exe .\verify\verify_runner.py` | `ALL PASS (42 assertions)`，退出 0（20 原有 + TG-7 三例 + Retro③ 两例 + 成本口径 ⑪/⑫ 与 est 系数 ⑬ 等） | ✅ **42/42**（2026-09-21 终态；09-20 当日为 26） |
 | 3 | `.\.venv\Scripts\python.exe .\verify\verify_archive.py agents\runs\run-2026-09-12-provider-refresh-001 --depth expert` | `=== ALL PASS: 28 passed / 0 failed ===`（含**双向**交叉引用断言） | ✅ 28/28 |
 | 4 | `.\.venv\Scripts\python.exe .\verify\verify_archive.py --selftest` | `=== selftest PASS: 8 passed / 0 failed ===`（合规 expert/scholar 通过 + 空报告被拒 + **被引用证据缺失被拒** + **正文提及别处证据名不误判** + **索引表 `.markdown` 漏报被拦** + **已存在 `.markdown` 不假红** + **嵌套子目录不假红**） | ✅ 8/8 |
-| 5 | `.\.venv\Scripts\python.exe .\verify\verify_matrix.py check` | `CHECK OK: 44 脚本与 TEST-MATRIX.MD 一致` | ✅ 44 脚本（走查期依次加入 `verify_usage.py`/`verify_checkpoint_index.py`/`verify_freshness.py`/`gui_check_fac16_checkpoint.mjs`，40→41→44） |
+| 5 | `.\.venv\Scripts\python.exe .\verify\verify_matrix.py check` | `CHECK OK: 45 脚本与 TEST-MATRIX.MD 一致` | ✅ **45 脚本**（2026-09-21 终态；走查期依次加入 `verify_usage.py`/`verify_checkpoint_index.py`/`verify_freshness.py`/`gui_check_fac16_checkpoint.mjs`，40→41→44→**45**，最后一次为 TG-10 的 `verify_ledger_rounds.py`） |
 | 6 | `foreach ($f in Get-ChildItem agents\functions\*.md) { .\.venv\Scripts\python.exe .\scripts\agent-ops.py validate-spec $f.FullName }` | 8 个 spec 全 PASS | ✅ 8/8 |
-| 7 | `.\.venv\Scripts\python.exe .\verify\run_suite.py --tier offline` | `SUITE PASSED (11 scripts)`，退出 0（fail-closed；含 `verify_usage.py`） | ✅ 11/11（见 §5.1） |
-| 8 | `.\.venv\Scripts\python.exe .\verify\verify_usage.py` | `ALL PASS (21 assertions)`（Retro③ 用量采集与成本换算口径） | ✅ 21/21 |
+| 7 | `.\.venv\Scripts\python.exe .\verify\run_suite.py --tier offline` | `SUITE PASSED (14 scripts)`，退出 0（fail-closed） | ✅ **14/14**（2026-09-21 终态；含 `verify_usage.py`/`verify_checkpoint_index.py`/`verify_freshness.py`/`verify_ledger_rounds.py`；见 §5.1） |
+| 8 | `.\.venv\Scripts\python.exe .\verify\verify_usage.py` | `ALL PASS (27 assertions)`（Retro③ 用量采集与成本换算口径） | ✅ **27/27**（2026-09-21 终态；09-20 当日为 21） |
 
 ### 5.1 第 7 条的复跑记录（2026-09-20 现场）
 
@@ -138,7 +138,7 @@ SUITE PASSED (10 scripts)
 >
 > **修复后复跑（同日，三轮）**：`verify_archive.py` 补反向交叉引用 → 按独立复核收紧（判定限定证据索引表区间 + 大小写不敏感）→ 再按 round-2 统一两侧口径（`.md`/`.markdown` + 嵌套目录）。真实归档 `ALL PASS: 28 passed / 0 failed`、`--selftest` `8 passed / 0 failed`、原漏检变体 `FAILED 25/1`、`run_suite.py --tier offline` **`SUITE PASSED (11 scripts)`**（完整输出见预跑日志 `verify/acceptance-sprint16-2026-09-20.log`）。
 >
-> **注**：上表"档位构成"是加入 `verify_usage.py` **之前**的读数（10 脚本）；现行 offline 档为 **11 脚本**（新增 Retro③ 计量回归），用 `run_suite.py --tier offline --dry-run` 可复核。
+> **注**：上表"档位构成"与"实跑尾部"是 **2026-09-20 现场读数**（当时 10 脚本）；**终态（2026-09-21）offline 档为 14 脚本**——新增 `verify_usage.py`（Retro③ 计量）、`verify_checkpoint_index.py`（F-AC16）、`verify_freshness.py`（M18）、`verify_ledger_rounds.py`（TG-10）。终态实测：`run_suite.py --tier offline` → **`SUITE PASSED (14 scripts)`**、`--dry-run` 显示 `tier=offline scripts=14 est_cost=0.0 CNY`；两处均可用同一命令复核。
 
 > 说明：`verify_checkpoint.py`（33 断言）**不在 offline 档**——其 parse 链路含真实 LLM 调用，分级为 network 档（估算 ¥0.05），见 §9 `N-1`。
 
@@ -175,7 +175,7 @@ SUITE PASSED (10 scripts)
 
 | 编号 | 怎么验 | 通过判据 | 证据 | 判定 |
 |---|---|---|---|---|
-| `TG-1` | §5 第 7 条；另可用 `run_suite.py --tier network --dry-run` **零成本**看 network 档构成与预估花费 | `SUITE PASSED`，退出 0，**13 个 offline 脚本**全绿；`--tier gui\|network` 同样按 `VERIFY_META.tier` 分层（44 脚本 SSOT 见 `verify/README.md`） | `run_suite.py` | ☐ |
+| `TG-1` | §5 第 7 条；另可用 `run_suite.py --tier network --dry-run` **零成本**看 network 档构成与预估花费 | `SUITE PASSED`，退出 0，**14 个 offline 脚本**全绿；`--tier gui\|network` 同样按 `VERIFY_META.tier` 分层（**45 脚本** SSOT 见 `verify/README.md`） | `run_suite.py` | ☐ |
 | `TG-2` | §7 `B-7` | 任一脚本失败 → **整体非零**（不"部分通过"） | `verify_runner.py` 断言 ② | ☐ |
 | `TG-3` | §7 `B-8` / `B-9` + 看优先级 | 上限优先级 **CLI > env `PAPERQA_NIGHTLY_BUDGET_CNY` > 配置默认 10**；改 env 即生效 | 断言 ③、④ | ☐ |
 | `TG-4` | `.\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --list` | 三任务与间隔：`prices` 7 天、`nightly-suite` 7 天、`providers` **14 天**；`due` 判定与上次运行可见（当前状态文件不存在 → 显示"从未运行"） | 实测输出见 §6.3 附 | ☐ |
@@ -282,8 +282,8 @@ Invoke-RestMethod http://127.0.0.1:8787/api/providers | ConvertTo-Json -Depth 4
 
 | 编号 | 命令 | 估算成本 | 期望 | 判定 |
 |---|---|---|---|---|
-| `N-1` | `.\.venv\Scripts\python.exe .\verify\verify_checkpoint.py` | ¥0.05（network 档） | `ALL PASS (33 assertions)`；含首跑 `embedded=2` → 重跑 `reused=2/embedded=0` | ☐ |
-| `N-2` | `.\.venv\Scripts\python.exe .\verify\verify_e2e_dashscope.py` | ¥0.5（估，**本轮未测量**） | 六步全链 PASS（答案含引用；同进程切 deepseek 隔离） | ☐ |
+| `N-1` | `.\.venv\Scripts\python.exe .\verify\verify_checkpoint.py` | **¥0.02**（`est_cost_cny` 终态，已按实测 ¥0.016965 校准；跑前原估 ¥0.05） | `ALL PASS (33 assertions)`；含首跑 `embedded=2` → 重跑 `reused=2/embedded=0` | ☐ |
+| `N-2` | `.\.venv\Scripts\python.exe .\verify\verify_e2e_dashscope.py` | **¥1.1**（`est_cost_cny` 终态，已按实测 ¥1.013377 校准；跑前原估 ¥0.5） | 六步全链 PASS（答案含引用；同进程切 deepseek 隔离） | ☐ |
 | `N-3` | `.\.venv\Scripts\python.exe .\scripts\refresh-providers.py --fetch --apply` | 免费（打第三方官网） | 产出 M16 归档 + proposal + status；**openai 403 为预期**（保留旧文件） | ☐ |
 | `N-4` | `.\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --task providers --check-due` | 免费（真实抓取） | 到期 → 执行刷新并写 `last_run`（**会创建 `agents/runtime/schedule.json`**） | ☐ |
 
@@ -295,10 +295,10 @@ Invoke-RestMethod http://127.0.0.1:8787/api/providers | ConvertTo-Json -Depth 4
 
 | # | 事项 | 影响面 | 是否影响本轮验收 |
 |---|---|---|---|
-| 1 | **成本未测量**：e2e 脚本不采 token 用量 → `N-2` 实际花费未知（估算上限 ¥0.5）；TG-5 的 `unknown` 需 `--record-cost` 人工回填 | 成本可见性 | 否（闸门行为正确：未测量即拒绝放行）；已列 Sprint-17 行动项 |
+| 1 | ~~**成本未测量**：e2e 脚本不采 token 用量 → `N-2` 实际花费未知（估算上限 ¥0.5）；TG-5 的 `unknown` 需 `--record-cost` 人工回填~~ → **已解决（2026-09-20/21）**：Retro③ 计量链落地，`N-1` 实测 **¥0.016965**、`N-2` 实测 **¥1.013377**；`run_suite`/`scheduled-tasks` 自动回填三态闸门，`unknown` 不再需要人工 `--record-cost` | 成本可见性 | 否（已闭环） |
 | 2 | **openai 官网 403** → `fetched_at: null`，永远判 due | 数据新鲜度 | 否（fail-closed 预期行为，非缺陷） |
-| 3 | 首轮写入的 3 个文件（dashscope/deepseek/openrouter）`fetched_at` 为 `2026-09-12T23:52:36+0900`（UTC+8 口径修复**之前**写入）；修复后新写入为 `+08:00` | 时间口径一致性 | 否（时区感知解析正确，剩余天数偏差 1 小时）；如需统一可重跑 `N-3` |
-| 4 | `config_schema` 的 `provider` 字段 **hint 文案陈旧**：只提 `providers.json / PAPERQA_PROVIDERS_JSON`，未提新的 `providers/*.json` | **GUI 可见文案**（不改行为） | 否（文案级）；**需你决定**：本轮修（改文本 + 复跑 114 断言）或并入 Sprint-17 |
+| 3 | 首轮写入的 3 个文件（dashscope/deepseek/openrouter）`fetched_at` 曾为 `2026-09-12T23:52:36+0900`（UTC+8 口径修复**之前**写入）→ **已由二轮刷新覆盖（2026-09-20 23:23:45+08:00，`last_refresh_status=ok`）**；`openai.json` 仍为 `fetched_at=null` + `error`（403，见第 2 条） | 时间口径一致性 | 否（已统一为 `+08:00`） |
+| 4 | `config_schema` 的 `provider` 字段 **hint 文案陈旧**：只提 `providers.json / PAPERQA_PROVIDERS_JSON`，未提新的 `providers/*.json` | **GUI 可见文案**（不改行为） | 否（文案级）；⚠️ **仍未决策（2026-09-21 复核：全仓无决策记录）**——选项：① 随三查重跑后一并修（改文案 + 复跑 `verify_config_schema.py` 114 断言）；② 并入 Sprint-17。**注意**：任何代码/文案改动都会使三查覆盖范围扩大，故建议排在重跑之后 |
 | 5 | `HF_HUB_OFFLINE` 需手动设置；e2e/verify 脚本未统一处理 | 使用体验 | 否（已文档化）；Sprint-17 行动项 ② |
 | 6 | 端口冲突未在脚本内自检 | 使用体验 | 否（§3.2 已提示）；Sprint-17 行动项 ② |
 | 7 | 新脚本产物目录约定未写入 README/工作流 | 仓库卫生 | 否（`*.log`/运行时状态已 gitignore）；Sprint-17 行动项 ④ |
@@ -383,7 +383,7 @@ Invoke-RestMethod http://127.0.0.1:8787/api/providers | ConvertTo-Json -Depth 4
 
 用户 2026-09-20 口径：**可以先执行，但必须先给出预计花费报告并获批准**，以便用真实数据支撑 billing plan 设计。预算报告已给出（N-1 ≤¥0.05 / N-2 ≤¥0.5 / N-3、N-4 ¥0，小计 ≈¥0.55），用户选择"**先打通 token 计量再跑**"。
 
-**计量链路已落地并验证（2026-09-20，Retro③）**：`app/usage.py`（litellm 回调实测 token，抗 prune 裁剪；计费键取"能定价的名字"；缺价不臆测）→ `GET /api/usage` / step `output["usage"]` → `e2e_common.report_usage()`（`MEASURED_*` + 指标文件）→ `run_suite` 聚合 `cost_measured_cny` → `scheduled-tasks` **自动回填**三态闸门。回归：`verify_usage.py` **21 断言**、`verify_runner.py` ⑪a/⑪b；真实实测一次短调用 **¥0.0002**（42+7 tokens，计费键 `deepseek-v4-flash`）。
+**计量链路已落地并验证（2026-09-20，Retro③）**：`app/usage.py`（litellm 回调实测 token，抗 prune 裁剪；计费键取"能定价的名字"；缺价不臆测）→ `GET /api/usage` / step `output["usage"]` → `e2e_common.report_usage()`（`MEASURED_*` + 指标文件）→ `run_suite` 聚合 `cost_measured_cny` → `scheduled-tasks` **自动回填**三态闸门。回归：`verify_usage.py` **21 断言**（终态 **27**，同日随 Round-5 发现扩充）、`verify_runner.py` ⑪a/⑪b（终态 **42 断言**）；真实实测一次短调用 **¥0.0002**（42+7 tokens，计费键 `deepseek-v4-flash`）。
 
 > 因此本节的执行结果给出的是**实测成本**（token 实测 + 本地价表换算），不再是估算上界。价表缺价的模型（当前 dashscope `qwen3.5-omni-plus` / `text-embedding-v4` 无价目）会显式列入 `unpriced_models`，此时成本记 `unknown`——**不臆测**，并作为"补价目"的待办暴露出来。
 
@@ -438,7 +438,7 @@ $f3 = Join-Path $tmp 'fresh.json'
 
 准备 B-9 演示时，我用 PowerShell 5.1 的 `Set-Content -Encoding utf8` 写临时状态文件 → **带 BOM** → `load_state()` 解析失败但**静默返回默认空状态** → `nightly-suite` 被判"从未运行"并**真实启动联网套件**，约 3 分钟后随命令超时终止（已完成 `eval_retrieve` / `gui_check_s15_output_view` / `verify_agent` 三个脚本，`verify_checkpoint` 中断；**按 `VERIFY_META` 估算 ≈ ¥1.0**，实测花费仍缺测量）。已定位为**产品级 fail-open 缺陷**并立卡 `TG-7`。
 
-**TG-7 已闭环（2026-09-20 当日，用户选择"现在修"）**：`load_state()` 改为 **fail-closed**——文件不存在=全新状态；**存在但解析失败或结构非法 → 退出码 2 拒绝执行** + 损坏文件另存 `.corrupt` + 修复指引；读取用 `utf-8-sig` **容忍 BOM**（编码伪影不误判为损坏）。回归证据：`verify_runner.py` **24 断言全 PASS**（⑩a 截断 JSON→拒 2 且无 RUN + 留副本 / ⑩b 带 BOM 的合法状态仍被读到 → 闸门 REFUSED(4) / ⑩c 顶层非对象→拒 2）；**BOM 反证由 `RUN` 转为 `REFUSED(4)`**（§13.4 命令即可复现）。
+**TG-7 已闭环（2026-09-20 当日，用户选择"现在修"）**：`load_state()` 改为 **fail-closed**——文件不存在=全新状态；**存在但解析失败或结构非法 → 退出码 2 拒绝执行** + 损坏文件另存 `.corrupt` + 修复指引；读取用 `utf-8-sig` **容忍 BOM**（编码伪影不误判为损坏）。回归证据：`verify_runner.py` **24 断言全 PASS**（2026-09-20 当日读数；终态 **42 断言**，新增 ⑪~⑬ 成本/时效/est 系数组）（⑩a 截断 JSON→拒 2 且无 RUN + 留副本 / ⑩b 带 BOM 的合法状态仍被读到 → 闸门 REFUSED(4) / ⑩c 顶层非对象→拒 2）；**BOM 反证由 `RUN` 转为 `REFUSED(4)`**（§13.4 命令即可复现）。
 
 > 因此 §13.4 里"不可用 PS 5.1 的 utf8（会带 BOM）"这条现在**不再是风险**（BOM 被容忍），但**写损坏文件仍会被拒绝**——这正是我们要的行为。事故未影响验收结论，dev 服务与前端未受影响。
 
