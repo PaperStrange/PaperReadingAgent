@@ -26,6 +26,7 @@ VERIFY_META = {'features': 'TG-5 分层 runner + 定时底座：offline/gui/netw
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -41,6 +42,16 @@ PY = sys.executable
 RUN_SUITE = ROOT / "verify" / "run_suite.py"
 SCHED = ROOT / "scripts" / "scheduled-tasks.py"
 PASSED = 0
+
+
+def _has_marker(text: str, marker: str) -> bool:
+    """行首**协议标记**判定（RUN: / SKIP: / REFUSED: ...），不要用裸子串。
+
+    2026-09-21 CI 失败实证（PR #51）：⑩a 用裸子串判定"未放行"，而 GitHub runner 的临时
+    路径形如 C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\...（路径里含 RUN）→ **断言在 CI 上恒假**；
+    本地路径不含该子串故一直没暴露（上一次 CI 绿在 09-12，早于 TG-7 引入 ⑩a，该断言此前从未在 CI 跑过）。
+    """
+    return re.search(rf"(?m)^[ \t]*{re.escape(marker)}", text or "") is not None
 
 
 def ok(name: str, cond: bool, detail: str = "") -> None:
@@ -150,18 +161,18 @@ def main() -> int:
     # ⑤ 未到期 → SKIP
     state.write_text(json.dumps({"schema": 1, "config": {"interval_days": {"prices": 7}}, "tasks": {"prices": {"last_run": time.time(), "last_status": "ok"}}}, ensure_ascii=False), encoding="utf-8")
     res = run([PY, str(SCHED), "--task", "prices", "--check-due", "--dry-run", "--state", str(state)])
-    ok("⑤ 未到期 → SKIP（退出 0 且不执行）", res.returncode == 0 and "SKIP" in res.stdout, (res.stdout or "").strip()[:120])
+    ok("⑤ 未到期 → SKIP（退出 0 且不执行）", res.returncode == 0 and _has_marker(res.stdout, "SKIP"), (res.stdout or "").strip()[:120])
 
     # ⑥ 已到期 → RUN
     state.write_text(json.dumps({"schema": 1, "config": {"interval_days": {"prices": 7}}, "tasks": {"prices": {"last_run": time.time() - 8 * 86400}}}, ensure_ascii=False), encoding="utf-8")
     res = run([PY, str(SCHED), "--task", "prices", "--check-due", "--dry-run", "--state", str(state)])
-    ok("⑥ 已到期 → RUN（dry-run 报告将执行）", res.returncode == 0 and "RUN" in res.stdout, (res.stdout or "").strip()[:140])
+    ok("⑥ 已到期 → RUN（dry-run 报告将执行）", res.returncode == 0 and _has_marker(res.stdout, "RUN"), (res.stdout or "").strip()[:140])
 
     # ⑦ 三态闸门：上一轮花费未测量 → 拒绝放行
     state.write_text(json.dumps({"schema": 1, "tasks": {"nightly-suite": {"last_run": time.time() - 8 * 86400, "last_cost_status": "unknown"}}}, ensure_ascii=False), encoding="utf-8")
     res = run([PY, str(SCHED), "--task", "nightly-suite", "--check-due", "--dry-run", "--state", str(state)])
     ok("⑦ cost_status=unknown → 拒绝放行（退出 4，fail-closed）",
-       res.returncode == 4 and "REFUSED" in res.stdout, f"exit={res.returncode} out={(res.stdout or '').strip()[:140]}")
+       res.returncode == 4 and _has_marker(res.stdout, "REFUSED"), f"exit={res.returncode} out={(res.stdout or '').strip()[:140]}")
 
     # ⑧ 回填实际花费 → 闸门解除
     res = run([PY, str(SCHED), "--task", "nightly-suite", "--record-cost", "3.5", "--state", str(state)])
@@ -170,7 +181,7 @@ def main() -> int:
     ok("⑧ 状态记 measured + 金额", st["tasks"]["nightly-suite"].get("last_cost_status") == "measured"
        and st["tasks"]["nightly-suite"].get("last_cost_cny") == 3.5, json.dumps(st["tasks"]["nightly-suite"], ensure_ascii=False))
     res = run([PY, str(SCHED), "--task", "nightly-suite", "--check-due", "--dry-run", "--state", str(state)])
-    ok("⑧ 闸门解除后 due 检查放行（RUN）", res.returncode == 0 and "RUN" in res.stdout, (res.stdout or "").strip()[:140])
+    ok("⑧ 闸门解除后 due 检查放行（RUN）", res.returncode == 0 and _has_marker(res.stdout, "RUN"), (res.stdout or "").strip()[:140])
 
     # ⑨ 预算参数契约（code-review 050 minor：⑨ 原先在 F-AC8 交付后恒 SKIP，未覆盖"--budget-cny 是否真的注入"）
     state.write_text(json.dumps({"schema": 1, "tasks": {}}, ensure_ascii=False), encoding="utf-8")
@@ -187,20 +198,20 @@ def main() -> int:
        json.dumps(st9, ensure_ascii=False))
     res = run([PY, str(SCHED), "--task", "nightly-suite", "--check-due", "--dry-run", "--state", str(state)])
     ok("⑨b over_budget → 拒绝放行（退出 4）且记录 blocked 原因",
-       res.returncode == 4 and "REFUSED" in res.stdout,
+       res.returncode == 4 and _has_marker(res.stdout, "REFUSED"),
        f"exit={res.returncode} out={(res.stdout or '').strip()[:120]}")
     st9b = json.loads(state.read_text(encoding="utf-8"))["tasks"]["nightly-suite"]
     ok("⑨b REFUSED 写入 last_blocked_at/last_blocked_reason",
        bool(st9b.get("last_blocked_at")) and bool(st9b.get("last_blocked_reason")),
        json.dumps({k: st9b.get(k) for k in ("last_blocked_at", "last_blocked_reason")}, ensure_ascii=False))
     res = run([PY, str(SCHED), "--task", "nightly-suite", "--check-due", "--dry-run", "--force", "--state", str(state)])
-    ok("⑨b --force 可显式覆盖 over_budget", res.returncode == 0 and "OVERRIDE" in res.stdout,
+    ok("⑨b --force 可显式覆盖 over_budget", res.returncode == 0 and _has_marker(res.stdout, "OVERRIDE"),
        (res.stdout or "").strip()[:140])
     # ⑨c 失败后自愈（code-review 050 major）：unknown + 上一轮 failed → 允许重试，不静默停摆
     state.write_text(json.dumps({"schema": 1, "tasks": {"nightly-suite": {
         "last_run": time.time() - 8 * 86400, "last_cost_status": "unknown", "last_status": "failed:1"}}}, ensure_ascii=False), encoding="utf-8")
     res = run([PY, str(SCHED), "--task", "nightly-suite", "--check-due", "--dry-run", "--state", str(state)])
-    ok("⑨c unknown + 上轮失败 → 放行重试（不自愈则永久停摆）", res.returncode == 0 and "RUN" in res.stdout,
+    ok("⑨c unknown + 上轮失败 → 放行重试（不自愈则永久停摆）", res.returncode == 0 and _has_marker(res.stdout, "RUN"),
        f"exit={res.returncode} out={(res.stdout or '').strip()[:140]}")
 
     # ⑩ TG-7（2026-09-20 走查实证）：状态文件不可解析必须 **fail-closed**，不得静默回落默认状态
@@ -209,7 +220,7 @@ def main() -> int:
     res = run([PY, str(SCHED), "--task", "nightly-suite", "--check-due", "--dry-run", "--state", str(state)])
     corrupt = state.with_name(state.name + ".corrupt")
     ok("⑩a 状态文件损坏 → 拒绝执行（退出 2，无 due 判定、无 RUN）",
-       res.returncode == 2 and "STATE-ERROR" in res.stdout and "RUN" not in res.stdout,
+       res.returncode == 2 and _has_marker(res.stdout, "STATE-ERROR") and not _has_marker(res.stdout, "RUN"),
        f"exit={res.returncode} out={(res.stdout or '').strip()[:120]}")
     ok("⑩a 损坏文件另存 .corrupt 副本（供人工检查）",
        corrupt.exists() and corrupt.read_text(encoding="utf-8").startswith('{"schema"'),
@@ -219,13 +230,13 @@ def main() -> int:
         "last_run": time.time() - 8 * 86400, "last_cost_status": "unknown"}}}, ensure_ascii=False), encoding="utf-8-sig")
     res = run([PY, str(SCHED), "--task", "nightly-suite", "--check-due", "--dry-run", "--state", str(state)])
     ok("⑩b 带 BOM 的合法状态仍被读取（退出 4 REFUSED，且不判损坏）",
-       res.returncode == 4 and "REFUSED" in res.stdout and "STATE-ERROR" not in res.stdout,
+       res.returncode == 4 and _has_marker(res.stdout, "REFUSED") and not _has_marker(res.stdout, "STATE-ERROR"),
        f"exit={res.returncode} out={(res.stdout or '').strip()[:120]}")
     # ⑩c 结构非法（顶层非对象）同样 fail-closed
     state.write_text("[]", encoding="utf-8")
     res = run([PY, str(SCHED), "--task", "nightly-suite", "--check-due", "--dry-run", "--state", str(state)])
     ok("⑩c 顶层非 JSON 对象 → 拒绝执行（退出 2）",
-       res.returncode == 2 and "STATE-ERROR" in res.stdout,
+       res.returncode == 2 and _has_marker(res.stdout, "STATE-ERROR"),
        f"exit={res.returncode} out={(res.stdout or '').strip()[:120]}")
 
     # ⑪ Retro ③（2026-09-20）：实测成本链路——脚本回报用量 → suite 聚合 → 三态判定
