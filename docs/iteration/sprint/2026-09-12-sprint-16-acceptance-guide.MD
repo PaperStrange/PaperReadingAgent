@@ -365,8 +365,8 @@ Invoke-RestMethod http://127.0.0.1:8787/api/providers | ConvertTo-Json -Depth 4
 
 | # | 用户描述 | 代码事实（本次核查） | 卡 |
 |---|---|---|---|
-| 1 | 点节点 button 经常 1~2 次无反应，第 3 次后才 run，怀疑与拖拽 node 冲突 | **假设待验证**：`FlowNode.jsx` 的运行按钮只有 `className="run-btn"`，而同文件的文本区/输出块都带 `nodrag nopan`（line 120/177/242/249）→ 画布拖拽/选择可能在 `mousedown` 阶段吃掉首次点击 | `F-AC13`（2 点，候选） |
-| 2 | 点"复制答案"后"复制 output"也同步显示"已复制"，两个按钮同时变 | **已确认根因**：`FlowNode.jsx` 三个复制按钮共用同一个 `copied` state（line 42，被 187 / 199 / 224 三处消费）→ 任一按钮点击都会把三处一起置为"已复制 ✓" | `F-AC14`（2 点，候选；含用户要求的"全量审计所有按钮行为"） |
+| 1 | 点节点 button 经常 1~2 次无反应，第 3 次后才 run，怀疑与拖拽 node 冲突 | **根因已定位（2026-09-20 全量按钮审计）**：`FlowNode.jsx` 里带 `nodrag nopan` 的只有文本区与 output 块，**5 个运行按钮所在的 `.node-actions` 没有**该 class → 首次点击在 mousedown 阶段被画布拖拽/选择吃掉 | `F-AC13`（2 点，候选；**附带待确认项**：运行按钮无 `disabled`，`runSingleNode` 无 `running` 早退 → 重复点击是否并发触发需实测） |
+| 2 | 点"复制答案"后"复制 output"也同步显示"已复制"，两个按钮同时变 | **已确认根因**：`FlowNode.jsx` 三个复制按钮共用同一个 `copied` state（line 42，被 187 / 199 / 224 三处消费）→ 任一按钮点击都会把三处一起置为"已复制 ✓"。**全量审计结论**：同仓库其它按钮（`FunctionTraceNode` 的 `errCopied`、翻译按钮 `disabled`、`SchemaForm` 的 `readonly`、App 工具栏与子画布按钮的 `active`/计数/title）均正常，**问题只在这三个按钮** | `F-AC14`（2 点，候选；用户要求"检查所有按钮行为"→ 已完成，见左） |
 
 ### 13.2 存疑答复（编号为用户所给）
 
