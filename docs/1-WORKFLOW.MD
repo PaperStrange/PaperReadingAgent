@@ -94,6 +94,22 @@
 
 > 三查可委托评审代理并行执行；**发现项必须修复闭环后（修复 → 回归 → 文档同步 → PR 同步 main）才允许 Close**；结论写入该 Sprint 文档的「评审/同步记录」节。
 
+#### 修复验证复核（fix-verification review）——与"关闭三查"是两件事（2026-09-21 补定义）
+
+**由来**：主代理在 Sprint 中途修完一个 finding（或用户走查发现）后，会让评审子代理**增量复核**该修复，而这类轮次的 **scope 是主代理自己挑的**（"改动的文件 + 直接调用方 + 相关断言"）。但 `agents/functions/code-review.md` 明确写着：`scope` **必须来自 impact-assessment**（`empty = full repo`；**never a self-chosen narrow scope**）、关闭三查还要 **windows + main 双分支**。此前两者**没有区分定义**，因此容易被误读为"二查已覆盖"（2026-09-21 用户质疑"窄范围复核的判断依据是啥"即由此而来）。
+
+| | **关闭三查**（上表） | **修复验证复核**（本次补定义） |
+|---|---|---|
+| 触发 | Sprint 关闭前固定动作 | 主代理修完 finding 后（可多轮） |
+| scope | **必须**来自〇查 impact-assessment 的 `recommended_scope` | **fix blast radius** = 改动文件 ∪ 直接调用方/消费方 ∪ 受影响断言与脚本 ∪ 该 finding 本身 |
+| Timebox / cap | 60 min / 10 findings | **10~15 min / 5 findings**（§4.2 范围纪律：宁可交回部分 + 覆盖度说明） |
+| 目标 | 完整性与兼容性（含 main 分支合并完整性） | 该修复是否真生效、是否引入新问题 |
+| 交付 | **阻断 Close** | 不阻断；**不能替代**关闭三查 |
+| 记录 | Sprint §9 三查记录 | Sprint §5 执行记录 + §9 明写"**此为修复验证、非二查**" |
+
+**纪律**：① 每轮必须写明 scope 与**覆盖缺口**（哪些维度没看）；② 不得把修复验证计入三查覆盖；③ 关闭前仍须按 impact-assessment 范围跑齐 一查/二查（含 main）+ lessons 步骤——**修复验证不减少任何关闭项**。
+**账本支持（TG-10）**：多轮用 `agent-ops.py round <run_id> --note ... [--output-chars N] [--interrupted --impact ...]` 追加（终态 run 也可），中断/接管用 `agent-ops.py interrupt <run_id> --reason ... --impact ...` 留痕；`list` 显示 `rounds=/dur=/int=`。
+
 **fan-out 执行纪律（2026-09-12 制度化，Sprint-15/16 两次子代理无产出超时后固化）**：
 
 1. **报告先行**：派发子代理时必须在 prompt 里要求"**第一步先落盘报告文件**（骨架→逐条覆盖更新）"；只把发现留在上下文中不落盘的运行视为未产出（超时后无任何资产可回收）。各派发型 spec（tech-research / impact-assessment / code-review / doc-audit / lessons-learned）已在正文加 Output discipline 段固化该要求。

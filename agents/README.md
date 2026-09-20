@@ -31,11 +31,15 @@
 .\.venv\Scripts\python.exe .\scripts\agent-ops.py register --role code-review --task branch:windows --spec "code-review@1.2.0" --model deepseek-v4-flash --start
 .\.venv\Scripts\python.exe .\scripts\agent-ops.py finish <run_id> --status succeeded --usage-in 10000 --usage-out 2000 --output-chars 3000 --result-file path/to/report.md
 .\.venv\Scripts\python.exe .\scripts\agent-ops.py list --role code-review
+# TG-10：多轮次与中断留痕（终态 run 也可追加；list 显示 rounds=/dur=/int=）
+.\.venv\Scripts\python.exe .\scripts\agent-ops.py round <run_id> --note "Round 5：复核 v1" --output-chars 12000
+.\.venv\Scripts\python.exe .\scripts\agent-ops.py round <run_id> --note "Round 3：被中断" --interrupted --impact "评审顺延至下一轮补做"
+.\.venv\Scripts\python.exe .\scripts\agent-ops.py interrupt <run_id> --reason "端口争用，让出 8787" --impact "该轮顺延，后以 Round 4 补做"
 ```
 
 - 账本 = 文件真相源：`runtime/registry.json`（append + sha256 完整性校验，手改即拒——防双写；**本地实时态，gitignore 不入库**）；`runs/<run_id>/<role>.report.md` 为报告存档（memory 浏览入口，**本地留证不入库**）；`runtime/prices.json` 为价表（auto 段由 litellm 价表派生，manual 段人工覆盖，scraped 段官网抓取——**优先级 manual（非 null）> scraped > auto**；`null` = 待填价 → 估算标 `pending_price`，**配置文件，入库**）。
 - 成本估算：`usage × 单价`（含 cache 分列）；无 usage 时 `chars/4` 兜底并标 `estimated`；**单位 = CNY（用户决策 2026-08-30）**——价表单价为 USD/token，按 `prices.json meta.fx_usd_cny`（默认 7.2，可人工改）换算；口径 = **自报+估算**，精确账单以服务商后台为准。
-- 其余子命令：`update`（进入 running + 补 usage）、`validate-spec`（spec frontmatter 校验）、`fetch-spec`（source 块远程拉取：url+ref+sha256 校验、仅 http/https 且拒绝私网/保留地址，失败/`--offline` 回退本地）、`parse-report`（critical/major/minor/nit 结构化，位置含 file:line）、`prices-derive`（价表再派生，保留 manual 与 scraped）。
+- 其余子命令：`update`（进入 running + 补 usage）、`round`/`interrupt`（**TG-10**：同一 run 追加轮次 / 中断留痕，终态 run 也可用；`list` 显示 `rounds=/dur=/int=`）、`validate-spec`（spec frontmatter 校验）、`fetch-spec`（source 块远程拉取：url+ref+sha256 校验、仅 http/https 且拒绝私网/保留地址，失败/`--offline` 回退本地）、`parse-report`（critical/major/minor/nit 结构化，位置含 file:line）、`prices-derive`（价表再派生，保留 manual 与 scraped）。
 - **价表官网抓取（M9，2026-08-31）**：`python scripts/fetch-prices.py --check|--apply`——固定 URL 抓取 deepseek 官方定价页 / 阿里云百炼（dashscope）/ OpenRouter JSON API，写入 `prices.json` 的 **scraped** 段（manual 永不被覆盖；`--check` 只打印不写盘）；定时更新默认**两周一次**，与 F-AC8（provider_config 更新）共用调度底座（见 `docs/iteration/pre-research/2026-08-31-domain-governance.MD` §6）。
 - **run-id 日期口径**：`register` 自动生成的 run-id 日期取**本机时钟**；本机时钟偏移时（开发机曾 +09:00 且快约 13h），编排方必须用**网络时间（UTC+8）显式传 `--run-id`**（用户政策：时间以网络时间为准）。
 
@@ -56,3 +60,6 @@ spec 是纯 markdown（body = 可直接粘贴的完整 prompt），账本是纯 
 ## 4. 三查 fan-out（制度化后）
 
 Sprint 关闭三查 = 〇查 `impact-assessment`（先跑，出 recommended_scope）→ `code-review` × 2 任务（branch:windows、branch:main）与 `doc-audit` × 1 任务并行 → `lessons-learned`（fan-out 第 4 步）→ 主代理执行 `workspace-check`；每任务一个账本 run（register→finish），报告 `parse-report` 结构化后按 `1-WORKFLOW.MD` §4.4 分诊闭环，结论写入 Sprint 文档 §9。
+
+> **多轮次约定（TG-10，2026-09-21）**：同一 run 被追加复核轮次时用 `agent-ops round` **逐轮记账**（终态 run 也可）——否则账本只留首轮（run-053 曾显示"53 秒"，实际 5 轮约 241 分钟）；中断/接管用 `agent-ops interrupt` 按"何时/谁/为什么/影响范围"留痕，并在 Sprint §5/§9 同步。
+> **修复验证 vs 关闭三查**（`1-WORKFLOW.MD` §4.2）：修复后的增量复核（scope = fix blast radius，10~15min / cap 5）属**修复验证**，不阻断 Close、**不能替代**关闭三查（后者 scope 必须来自 impact-assessment，且含 main 分支 + doc-audit + lessons 步骤）。

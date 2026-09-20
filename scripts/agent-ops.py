@@ -13,6 +13,8 @@
   python scripts/agent-ops.py update <run_id> --status running
       [--usage-in N --usage-out N --usage-cache-read N --usage-cache-write N]
   python scripts/agent-ops.py finish <run_id> --status succeeded|failed|cancelled
+  python scripts/agent-ops.py round <run_id> --note "Round 5：..." --output-chars 12000   # TG-10① 追加轮次（终态也可）
+  python scripts/agent-ops.py interrupt <run_id> --reason "端口争用，让出 8787" --impact "round-3 顺延至 round-4"  # TG-10②
       [--output-chars N] [--result-file PATH] [--cost-override X] [--estimate-mode chars]
   python scripts/agent-ops.py list [--status S] [--role R] [--limit N]
   python scripts/agent-ops.py validate-spec <file.md>
@@ -61,6 +63,14 @@ _CHARS_PER_TOKEN = 4.0  # UC-4 兜底：无 token 上报时 tokens ≈ chars/4
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _duration_minutes(start: str, end: str) -> float | None:
+    """`_now()` 产出的 ISO 时间差（分钟）；解析失败返回 None（只影响展示，不影响记账）。"""
+    try:
+        return (datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds() / 60.0
+    except (TypeError, ValueError):
+        return None
 
 
 @contextlib.contextmanager
@@ -306,6 +316,81 @@ def cmd_finish(args: argparse.Namespace) -> None:
     print(f"finished {args.run_id} -> {r['status']} (cost_est={r['cost_est']})")
 
 
+def cmd_round(args: argparse.Namespace) -> None:
+    """TG-10①：给同一 run **追加轮次**记录（多轮复核/追加验证），不改首轮语义。
+
+    背景（用户 2026-09-21 疑虑："每个 agent 运行时间相比之前怎么短了很多…让我不太安心"）：
+    run-053 被追加了 4 个复核轮次（报告 60 KB / 5 轮、实际跨约 4h53m），但账本只留**首轮**
+    （`ended_at-started_at` = 53 秒、`output_chars` = 12800）——因为 `finish` 的状态机拒绝
+    `succeeded→succeeded`，后续轮次无处回写 → 看板显示的时长与产出**严重低估**，且看不出被中断过。
+
+    本子命令做**追加式**更新（允许对终态 run 使用）：
+    - 首次追加时把当前记录快照为 `rounds[0]`（保留首轮 ended_at/output_chars 作为历史）；
+    - 每轮追加 `{round, ended_at, note, output_chars, interrupted}`；
+    - `ended_at` 更新为末轮时间（于是 `ended_at-started_at` ≈ **累计墙钟时长**）、
+      `output_chars` **累加**、`rounds_count` = 轮次数。
+    """
+    data = _load_registry()
+    r = _find_run(data, args.run_id)
+    now = _now()
+    rounds = r.setdefault("rounds", [])
+    if not rounds:
+        rounds.append({
+            "round": 1,
+            "ended_at": r.get("ended_at"),
+            "note": "initial（finish 时记录）",
+            "output_chars": r.get("output_chars") or 0,
+            "usage": r.get("usage") or {},
+        })
+    n = len(rounds) + 1
+    entry = {
+        "round": n,
+        "ended_at": now,
+        "note": args.note or "",
+        "output_chars": args.output_chars,
+        "interrupted": bool(args.interrupted),
+    }
+    if args.usage_in is not None or args.usage_out is not None:
+        entry["usage"] = {"input_tokens": args.usage_in or 0, "output_tokens": args.usage_out or 0}
+    rounds.append(entry)
+    if args.output_chars:
+        r["output_chars"] = int(r.get("output_chars") or 0) + int(args.output_chars)
+    r["ended_at"] = now
+    r["rounds_count"] = n
+    if args.interrupted:
+        evs = r.setdefault("interruptions", [])
+        evs.append({
+            "at": now,
+            "by": args.by or "main-agent",
+            "reason": args.note or "",
+            "impact": args.impact or "",
+        })
+        r["interruptions_count"] = len(evs)
+    _save_registry(data)
+    print(f"appended round {n} to {args.run_id} (rounds_count={n}, output_chars={r['output_chars']}, "
+          f"ended_at={r['ended_at']})")
+
+
+def cmd_interrupt(args: argparse.Namespace) -> None:
+    """TG-10②：记录一次**中断/接管**事件（何时、谁、为什么、影响范围）。
+
+    依据 `1-WORKFLOW.MD` §4.2："主代理中断/杀进程/接管子代理必须留痕"——2026-09-20 我中断复核者
+    1 次、误杀其派生进程 3 次，当时**账本与看板完全看不出**（这正是用户不安的来源）。
+    """
+    data = _load_registry()
+    r = _find_run(data, args.run_id)
+    evs = r.setdefault("interruptions", [])
+    evs.append({
+        "at": _now(),
+        "by": args.by or "main-agent",
+        "reason": args.reason or "",
+        "impact": args.impact or "",
+    })
+    r["interruptions_count"] = len(evs)
+    _save_registry(data)
+    print(f"logged interruption #{len(evs)} on {args.run_id}: {args.reason}")
+
+
 def cmd_list(args: argparse.Namespace) -> None:
     data = _load_registry()
     rows = data["runs"]
@@ -316,8 +401,12 @@ def cmd_list(args: argparse.Namespace) -> None:
     if args.limit:
         rows = rows[-args.limit:]
     for r in rows:
+        rounds = r.get("rounds_count") or len(r.get("rounds") or []) or 1
+        mins = _duration_minutes(r.get("started_at") or "", r.get("ended_at") or "")
+        dur = f" dur={mins:.1f}m" if mins is not None else ""
+        intr = f" int={r['interruptions_count']}" if r.get("interruptions_count") else ""
         print(f"{r['run_id']:30s} {r['role']:20s} {r['status']:10s} "
-              f"cost={r.get('cost_est', {}).get('total')} spec={r['spec_source']}")
+              f"cost={r.get('cost_est', {}).get('total')} spec={r['spec_source']} rounds={rounds}{dur}{intr}")
     print(f"--- {len(rows)} runs ---")
 
 
@@ -494,6 +583,22 @@ def main() -> int:
     p.add_argument("--role")
     p.add_argument("--limit", type=int)
 
+    p = sub.add_parser("round", help="TG-10①：给同一 run 追加轮次记录（允许对终态 run 使用）")
+    p.add_argument("run_id")
+    p.add_argument("--note", default="", help="本轮做了什么（如 'Round 5：F-AC16/M18 v1 复核'）")
+    p.add_argument("--output-chars", type=int, default=0, help="本轮产出字符数（累加到 run 总计）")
+    p.add_argument("--interrupted", action="store_true", help="本轮是否被中断（同时写一条 interruption 事件）")
+    p.add_argument("--by", default="main-agent")
+    p.add_argument("--impact", default="", help="中断影响范围（哪一轮评审/验证缺失、如何补做）")
+    p.add_argument("--usage-in", type=int)
+    p.add_argument("--usage-out", type=int)
+
+    p = sub.add_parser("interrupt", help="TG-10②：记录一次中断/接管事件（何时/谁/为什么/影响）")
+    p.add_argument("run_id")
+    p.add_argument("--reason", required=True)
+    p.add_argument("--impact", default="")
+    p.add_argument("--by", default="main-agent")
+
     p = sub.add_parser("validate-spec")
     p.add_argument("spec_file")
     p = sub.add_parser("fetch-spec")
@@ -508,6 +613,7 @@ def main() -> int:
         "register": cmd_register, "update": cmd_update, "finish": cmd_finish,
         "list": cmd_list, "validate-spec": cmd_validate_spec, "fetch-spec": cmd_fetch_spec,
         "parse-report": cmd_parse_report, "prices-derive": _derive_prices,
+        "round": cmd_round, "interrupt": cmd_interrupt,
     }[args.cmd](args)
     return 0
 
