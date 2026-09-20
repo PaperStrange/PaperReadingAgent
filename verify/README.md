@@ -11,19 +11,19 @@
 
 | 脚本 | 内容 | 运行前提（显式化，Sprint-7 M5） |
 |---|---|---|
-| `verify_smoke.py` | 8 项冒烟检查：paperqa 导入、后端 FastAPI 路由、RuntimeTracer、streamlit、litellm、PyMuPDF 页渲染、graphviz(py)、PDF 解析器自动发现 | 无 API 调用，纯离线；无需启动服务 |
+| `verify_smoke.py` | 8 项冒烟检查：paperqa 导入、后端 FastAPI 12 条路由、RuntimeTracer、streamlit、litellm、PyMuPDF 页渲染、graphviz(py)、PDF 解析器自动发现 | 无 API 调用，纯离线；无需启动服务 |
 | `verify_prune_callbacks.py` | Sprint-5/M2：litellm 回调去重裁剪单元证据（超上限 32 项 → 去重保留最近 N；`PAPERQA_LITELLM_CALLBACK_LIMIT` 可覆盖默认 20） | 无 API 调用，纯离线 |
 | `verify_agentops.py` | Sprint-8/A-UC：AgentOps 账本 CLI 用例断言（UC-1~UC-13：状态机/成本/防双写/价表/并发锁/抓取解析 + 三查修正回归；UC-11/12=M10、UC-13=M9；隔离到临时 `AGENT_OPS_DIR`） | 无 API 调用，纯离线 |
 | `verify_index_health.py` | Sprint-7/M1：索引一致性三重探测（files.zip / index/meta.json / tantivy 段）合成形态 + 真实构建后篡改 meta.json → 整目录重建自愈 | 无 API key、无远程 LLM 调用（manifest 提供 citation；本地 ST 权重从 HF 缓存加载，首次需联网下载）；索引隔离到临时 `PQA_HOME` |
 | `verify_config_schema.py` | Sprint-11/13/F2：配置 SSOT 一致性断言——schema 结构/默认值/pydantic_path、validate_config 行为、**M7 前端零硬编码**（App.jsx n1 不得含 16 个配置键字面量）、**Settings 升级基线护栏**（77 字段路径 vs `settings_baseline.json`，`--regen-baseline` 重建） | 无 API 调用，纯离线 |
 | `verify_provider_switch.py` | 验证服务商切换（内置 4 家 + 自定义）：配置解析、密钥优先级、build_settings、**路由实证断言**（deepseek 真实 key 应 SUCCESS；dashscope/openai/openrouter/自定义 用占位 key 应拿到端点级拒绝=路由正确） | 联网；deepseek 真实 key（`.env` 或 `OPENAI_API_KEY`）；**真实 openrouter key 实测为用户资源门控**（占位 key 只证路由不证配额） |
 | `verify_e2e.py` | 启动真实后端（8787）→ 全链路 6 步，校验答案长度并保存结构化结果到 `verify_e2e_result.json`；**TG-4 起共享 `e2e_common.py` 基座（config 恒显式 provider/vision_model）** | 需要 `DEEPSEEK_API_KEY` + 本地 st- 向量模型；联网 |
-| `verify_e2e_openai.py` | Sprint-7 追加：**OpenAI 作为 provider + embedding**（gpt-4o-mini + text-embedding-3-large）全流程 + 同进程 deepseek→openai 切换（key 隔离回归）；**TG-4 修复 1.46**：config 恒显式携带 vision_model，共享 `e2e_common.py` 基座 | 需要真实 `OPENAI_API_KEY`（**账户需有余额**）+ `DEEPSEEK_API_KEY`（Phase 2）；联网 |
+| `verify_e2e_openai.py` | Sprint-7 追加：**OpenAI 作为 provider + embedding**（gpt-4o-mini + text-embedding-3-large）全流程 + 同进程 deepseek→openai 切换（key 隔离回归）；**TG-4 修复 1.46**：config 恒显式携带 vision_model，共享 `e2e_common.py` 基座 | 需要真实 `OPENAI_API_KEY`（**账户需有余额**，无 DeepSeek 兜底）+ `DEEPSEEK_API_KEY`（Phase 2，或通用 `OPENAI_API_KEY` 兜底）；联网 |
 | `verify_e2e_dashscope.py` | 校验 deepseek→dashscope 全流程切换：Phase 1 dashscope 全链路 6 步 + Phase 2 同进程 deepseek 全流程（key/配置隔离回归）；**TG-4 起共享 `e2e_common.py` 基座** | 需要 `DASHSCOPE_API_KEY` + `DEEPSEEK_API_KEY`；联网 |
 | `verify_agent.py` | Agent 流程（fake agent）+ 翻译接口 | 同上，且索引 `verify_e2e_index` 已存在（e2e 先跑过） |
-| `verify_embed_load.py` | parse_chunk_embed 三种模式：run（重跑）/load 同会话（秒级）/load 新会话（embed 缓存），校验 texts 数量一致 | 需要 `OPENAI_API_KEY`（DeepSeek）+ 本地 st- 向量模型 |
+| `verify_embed_load.py` | parse_chunk_embed 三种模式：run（重跑）/load 同会话（秒级）/load 新会话（embed 缓存），校验 texts 数量一致 | 需要 `DEEPSEEK_API_KEY`（或通用 `OPENAI_API_KEY` 兜底）+ 本地 st- 向量模型 |
 | `verify_remote_e2e.py` | remote 数据源全链路（Sprint-3）：config(remote+arXiv) → load_index（下载+索引）→ retrieve → parse → evidence → answer | 需要 `OPENAI_API_KEY`；联网（export.arxiv.org） |
-| `eval_retrieve.py` | Sprint-6/F4：检索质量小样本评测（双语料 + 策略断言 + 负对照，报告 hit@1） | 需要 `OPENAI_API_KEY` + 本地 st- 向量模型 |
+| `eval_retrieve.py` | Sprint-6/F4：检索质量小样本评测（双语料 + 策略断言 + 负对照，报告 hit@1） | 需要 `DEEPSEEK_API_KEY`（或通用 `OPENAI_API_KEY` 兜底）+ 本地 st- 向量模型 |
 | `gui_check.mjs` | GUI 全链路：Playwright 打开前端 → 点 "Run All (Left-to-Right)" → 等待答案出现 → 截图 | 后端 8787 + 前端 5173 **已启动**；Playwright Chromium 已安装；`.env`/`OPENAI_API_KEY` 已配；`node verify\gui_check.mjs`（playwright 取前端 node_modules） |
 | `gui_check_remote.mjs` | GUI 远程数据源（Sprint-3）：Config 面板切 remote + 填 arXiv ID → Run All → 答案出现 → 截图 `us3-remote.png` | 同 `gui_check.mjs` + 联网（export.arxiv.org） |
 | `gui_check_s4.mjs` | Sprint-4：光标不跳末尾 + provider 下拉联动（openrouter/deepseek 自动带出） | 同 `gui_check.mjs` |
@@ -46,6 +46,7 @@
 | `verify_usage.py` | Sprint-16/Retro③：**token 用量采集与成本换算回归**（对象/dict 响应解析、累计与增量、价表查找与 `openai/` 前缀归一化、**缺价不臆测**、token×单价×fx 换算式、回调幂等与**抗 prune 裁剪**、**计费键取"能定价的名字"**+`reported_as` 可追溯） | 离线；`python verify\verify_usage.py` |
 | `verify_checkpoint_index.py` | Sprint-16/F-AC16 v1：**checkpoint 只读索引回归**（扫描/排序/逐篇 `payload_path`+`payload_exists`+字节数、坏 manifest fail-soft、`namespace_detail` 与 `resolve_payload`、字段白名单、空目录） | 离线（合成 fixture，不碰真实 `~/.pqa`）；`python verify\verify_checkpoint_index.py` |
 | `verify_freshness.py` | Sprint-16/M18 v1：**报告时效检测回归**（stale/suspect/fresh 三态、只分析调研归档、正文提及不算引用、**无时区信息按 UTC+8**、容差可配、`--check` 退出码、容错） | 离线（合成 fixture）；`python verify\verify_freshness.py` |
+| `verify_ledger_rounds.py` | Sprint-16/TG-10：**账本多轮次记录回归**（终态 run 仍可 `round` 追加、`rounds[0]` 保留首轮快照、`rounds_count`/`output_chars` 累加、`list` 的 `dur` 反映累计时长、`round --interrupted` 与独立 `interrupt` 写原因/影响/来源、非法 run 非零退出；`AGENT_OPS_DIR` 重定向到临时目录） | 离线（`AGENT_OPS_DIR` 重定向到临时目录，不碰真实账本）；`python verify\verify_ledger_rounds.py` |
 | `gui_check_fac16_checkpoint.mjs` | Sprint-16/F-AC16 v1：**Checkpoints 只读面板**（API 形状 + 面板开关 + 真实命名空间行数一致 + 逐篇载荷路径形如 `<key>/<dockey>.json.gz` + 复制按钮）；**零成本**，不触发 LLM | 后端 8787 + 前端 5173 + Playwright |
 | `gui_check_s15_*.mjs`（10 个） | Sprint-15 F2 验收修复族：`typography`（字体统一）/`hints_title`（聚合+限高）/`local_dir`（条件隐藏）/`collapse`（完成后收起）/`status_scope`（状态作用域）/`responsive`（三档分辨率）/`bidi_link`（双向联动）/`error_copy`（复制+报错定位 19 断言）/`output_view`（output/答案全文）/`cursor`（光标不跳+改动计数） | 后端 8787 + 前端 5173 已启动 + Playwright（`output_view` 为 network 档，需 key） |
 

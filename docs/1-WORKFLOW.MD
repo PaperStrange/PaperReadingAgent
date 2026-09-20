@@ -81,11 +81,11 @@
 #### 三查（每个 Sprint 关闭前的固定动作，2026-08-30 起制度化；Sprint-8 起按职能 spec fan-out）
 
 > 执行方式：按 `agents/functions/` 固定 spec 派出子代理（prompt 零漂移），每任务经 `scripts/agent-ops.py` 记账（register→finish，见 `agents/README.md`）；报告用 `parse-report` 结构化后按 §4.4 分诊闭环。
-> **执行顺序（用户问题①修正，2026-08-30）**：先跑 **impact-assessment（影响范围评估，新子代理）**——复合指标 `(0.8×A + 0.2×B)×100`（A=核心功能覆盖率/13、B=核心 API 覆盖率/10），**阈值 X=50**：`>50` → 全量档（整个代码库）；`≤50` → 窄档（Sprint 修改文件 ∪ 核心文件区域）。再按该范围执行一查/二查——**审查范围不得默认收窄到 Sprint 交付物**，偏离 recommended_scope 须在 Sprint §9 记录理由。
+> **执行顺序（用户问题①修正，2026-08-30）**：先跑 **impact-assessment（影响范围评估，新子代理）**——复合指标 `(0.8×A + 0.2×B)×100`（A=核心功能覆盖率/13、B=核心 API 覆盖率/12），**阈值 X=50**：`>50` → 全量档（整个代码库）；`≤50` → 窄档（Sprint 修改文件 ∪ 核心文件区域）。再按该范围执行一查/二查——**审查范围不得默认收窄到 Sprint 交付物**，偏离 recommended_scope 须在 Sprint §9 记录理由。
 
 | # | 检查 | 内容 | 执行者（spec） |
 |---|---|---|---|
-| 〇查 范围 | **影响范围评估**（fan-out 第一道闸门） | 变更模块归类 → A（13 项核心功能触达）/B（10 条路由触达）→ composite（阈值 X=50）→ 两档 recommended_scope | 子代理 `functions/impact-assessment.md` × 1 任务 |
+| 〇查 范围 | **影响范围评估**（fan-out 第一道闸门） | 变更模块归类 → A（13 项核心功能触达）/B（12 条路由触达）→ composite（阈值 X=50）→ 两档 recommended_scope | 子代理 `functions/impact-assessment.md` × 1 任务 |
 | 一查 文档 | 文档一致性审计（范围 = 〇查 recommended_scope） | 死链/陈旧事实/跨文档矛盾/缺失知识/**时间记录准确性**；**4-ALGORITHM.MD 逐条对照代码**（其 §12 防漂移清单） | 子代理 `functions/doc-audit.md` × 1 任务（target=working-tree，scope 入参） |
 | 二查 代码 | windows + main 双分支 code review（范围 = 〇查 recommended_scope） | 正确性/安全/SSOT/兼容性/架构分层；main 侧重合并完整性与悬空引用；**功能-测试配对核查（TG-1，2026-08-31）**：用户可见功能（节点/路由/数据源/provider/表单字段）必须同 PR 交付对应 verify case（离线断言或联网 e2e/GUI check），并在覆盖矩阵登记（TG-2 落地后） | 子代理 `functions/code-review.md` × 2 任务（target=branch:windows、branch:main 并行，scope 入参） |
 | 三查 环境 | 工作区与功能完整性 | `git status` 零残留、本地已合并分支清理、.gitignore 覆盖、端口卫生、回归（smoke/e2e/新增端点/GUI）全绿 | **主代理** `functions/workspace-check.md`（起服务/杀进程不子代理化） |
@@ -102,7 +102,7 @@
 |---|---|---|
 | 触发 | Sprint 关闭前固定动作 | 主代理修完 finding 后（可多轮） |
 | scope | **必须**来自〇查 impact-assessment 的 `recommended_scope` | **fix blast radius** = 改动文件 ∪ 直接调用方/消费方 ∪ 受影响断言与脚本 ∪ 该 finding 本身 |
-| Timebox / cap | 60 min / 10 findings | **10~15 min / 5 findings**（§4.2 范围纪律：宁可交回部分 + 覆盖度说明） |
+| Timebox / cap | 关闭三查：cap 以各职能 spec 的 Configurable Parameters 为准（code-review 10 / **doc-audit 12** findings），Timebox 同见各 spec | **10~15 min / 5 findings**（§4.2 范围纪律：宁可交回部分 + 覆盖度说明） |
 | 目标 | 完整性与兼容性（含 main 分支合并完整性） | 该修复是否真生效、是否引入新问题 |
 | 交付 | **阻断 Close** | 不阻断；**不能替代**关闭三查 |
 | 记录 | Sprint §9 三查记录 | Sprint §5 执行记录 + §9 明写"**此为修复验证、非二查**" |

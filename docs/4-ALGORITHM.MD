@@ -641,7 +641,7 @@ classDiagram
 > **范围口径**：`delta()` 是**进程级时间窗**增量（`scope="process"`），不做请求/会话隔离——8787 长驻多会话时逐步 `output["usage"]` 会把并发调用算进来（偏高）；精确归属需 contextvars 记账（候选卡）。
 
 ### 13.4 验证证据
-- `verify/verify_usage.py`（offline，**27 断言**）：响应解析 / 累计与增量 / 价表查找与前缀归一化 / **缺价与空账都不臆测（`None` + `no_data`）** / token×单价×fx 换算式 / 回调幂等与**抗 prune** / 计费键解析与 `reported_as` / **快照键白名单** / `settle()` 有界。
+- `verify/verify_usage.py`（offline，**29 断言**）：响应解析 / 累计与增量 / 价表查找与前缀归一化 / **缺价与空账都不臆测（`None` + `no_data`）** / token×单价×fx 换算式 / 回调幂等与**抗 prune** / 计费键解析与 `reported_as` / **快照键白名单** / `settle()` 有界。
 - `verify/verify_runner.py` ⑪a/⑪b/⑪c/⑫：合成 fixture 回报成本 → 断言 `cost_status=measured` 且金额被聚合；缺价 fixture → 断言保持 `unknown` 且点名模型；**calls=0 的空账 → 仍 `unknown`**；`_suite_measured_cost` 的**新鲜度绑定**（fresh 采信 / stale·缺 `finished_at`·非 measured 一律不采信）。
 - **真实链路实测（2026-09-20）**：一次短翻译调用 → `/api/usage` 得 `calls=1, prompt_tokens=42, completion_tokens=7`，`cost_cny=0.0002`（计费键 `deepseek-v4-flash`，`reported_as=['deepseek-flash']`）；付费项 `N-1`/`N-2` 实测 **¥0.016965 / ¥1.013377**。
 - **复核收紧记录（code-review run-053 round-4）**：2 major（异步落地导致空账被当 measured；自动回填未与本轮绑定）+ 3 minor 全部闭环；同时确认**无双计**、`ensure_installed` 幂等、`prune` 无递归、缺价未被当 0、`/api/usage` 无密钥泄漏路径。
@@ -660,7 +660,7 @@ classDiagram
 | 数据层 | `paper-qa-script/app/checkpoint_index.py`：`checkpoint_root()`（`~/.pqa/embed_cache/checkpoints`，与编排层同口径）、`scan()`（命名空间按 `updated_at` 倒序；**坏 manifest → `readable=False` + 原因，fail-soft**）、`namespace_detail(key)`、`resolve_payload(key, dockey)`。逐篇字段：`name/docname/dockey/status/texts_count/reused/embedded_at/error/payload_path/payload_exists/payload_bytes` |
 | API | `GET /api/checkpoints`（第 **12** 条路由）→ `{root, checkpoints[]}`；`?key=<k>` → 单命名空间明细（未命中 404）。**只读、无密钥** |
 | 前端 | 工具按钮 `Checkpoints（本地复用/载荷路径）` → `CheckpointPanel.jsx`：命名空间行（key/状态/文献数/载荷字节/模型与切块口径）+ 展开逐篇明细（**载荷路径一键复制**）→ 支撑"按路径定位 / 用既有 checkpoint 单独复现 / 人工核查幻觉" |
-| 验证 | `verify_checkpoint_index.py`（offline，**29 断言**，含 `?key=` 路径穿越防护）+ `gui_check_fac16_checkpoint.mjs`（gui，**10 断言**，**零成本**不触发 LLM） |
+| 验证 | `verify_checkpoint_index.py`（offline，**31 断言**，含 `?key=` 路径穿越防护）+ `gui_check_fac16_checkpoint.mjs`（gui，**10 断言**，**零成本**不触发 LLM） |
 
 **v1 边界**：只读展示；"用某个 checkpoint 复现答案"目前=复制路径 + 既有收敛保护（`protect`），**未**提供一键重放动作（列为 Sprint-17 原型验证候选）。
 
@@ -670,7 +670,7 @@ classDiagram
 - **三条判定**：① provider `fetched_at` 晚于归档最新证据抓取时间 **+ 容差（默认 3600s）** → `stale`；② **§7 表格行**点名的 evidence 缺失 → `stale`；③ evidence mtime 晚于报告 mtime → `suspect`；其余 `fresh`。
 - **口径要点（均为实测踩坑）**：只分析**调研归档**（有 `evidence/` 或报告名以 `tech-research` 开头）——否则会把其它 role 报告引用的 `1-WORKFLOW.MD` 误判为缺失证据；引用只在 §7 **表格行**内判定——否则 §7 之后的自由段落也会被算进来；**无时区信息的时间一律按 UTC+8 解析**（本机 UTC+9；证据头 `... UTC+8` 是字面标签，按本机解析会整体差 1 小时→同轮产出的归档被自己判 stale）。
 - **真实结论（2026-09-21）**：3 fresh / 2 stale —— `run-2026-09-12-tech-research-047` 与 `run-2026-09-12-provider-refresh-001` 因 09-20 官网刷新而**依据已变**；`run-2026-09-20-provider-refresh-001` fresh。
-- **验证**：`verify_freshness.py`（offline，**17 断言**：三态规则 / 跳过非调研归档 / 正文提及不算引用 / 时区口径 / CLI 契约 / 容错）。
+- **验证**：`verify_freshness.py`（offline，**25 断言**：三态规则 / 跳过非调研归档 / 正文提及不算引用 / 时区口径 / CLI 契约 / 容错）。
 - **v1 边界**：只读检测，不改写报告、不自动重跑、**不做逐结论溯源**（模型值漂移的自动归因留待下一增量；现值在 JSON 中列出供人工比对）。
 
 ### 14.3 与 Sprint-17 的衔接（原型验证候选）

@@ -126,13 +126,13 @@ PaperReading-Windows/
 │   └── reactflow-paperqa-prototype/
 │       ├── backend/main.py             # FastAPI 路由层（Sprint-2 解耦后：12 条 API 路由 + RunEventBroker/SSE + 组合根）
 │       ├── backend/requirements.txt
-│       └── frontend/                   # React+Vite（App.jsx / FlowNode.jsx / SchemaForm.jsx / FunctionTraceNode.jsx / JsonTree.jsx）
+│       └── frontend/                   # React+Vite（App.jsx / FlowNode.jsx / SchemaForm.jsx / FunctionTraceNode.jsx / JsonTree.jsx / CheckpointPanel.jsx / vite.config.mjs）
 ├── src/                       # ACL/ICLR/NeurIPS 语料采集
 ├── data/pdf/PaperQA2.pdf      # 示例论文
 ├── data/remote/               # Sprint-3 远程源下载暂存（.gitignore 忽略，运行时生成）
 ├── scripts/                   # setup-env.ps1 / start-backend.ps1 / start-frontend.ps1 / start-streamlit.ps1（+ .bat 双击版）/ agent-ops.py（账本 CLI）/ fetch-prices.py（M9 价表抓取）/ github-pr.ps1（PR 助手）/ **refresh-providers.py（F-AC8 官网调研刷新 + M16 归档）/ scheduled-tasks.py（TG-5 定时底座）/ register-scheduled-tasks.ps1（Windows 任务计划）**
 │                              # 注：`scripts/*.sh`（setup-env/start-backend/start-frontend/start-streamlit）**仅 main/mac 侧存在**；windows 侧以 .ps1/.bat 等价替换且不回流 main（code-review 050 记录的"有意分叉"，非缺失项）
-├── verify/                    # 验收脚本（40 个，SSOT=TEST-MATRIX.MD）：smoke/e2e×3/agent/provider_switch/embed_load/remote_e2e/prune_callbacks/index_health/agentops/config_schema/local_dir/checkpoint（F-AC10）/archive（M16 归档门禁）/providers（F-AC8）/runner（TG-5）/f12_preview_res + **run_suite.py（分层 runner：offline/gui/network + 预算闸门）** + verify_matrix（覆盖矩阵 SSOT）+ TEST-MATRIX.MD + e2e_common（共享基座）+ eval_retrieve + gui_check*.mjs（含 s15 十件套）
+├── verify/                    # 验收脚本（45 个，SSOT=TEST-MATRIX.MD）：smoke/e2e×3/agent/provider_switch/embed_load/remote_e2e/prune_callbacks/index_health/agentops/config_schema/local_dir/checkpoint（F-AC10）/usage（Retro③ 成本）/checkpoint_index（F-AC16 v1）/freshness（M18 v1）/ledger_rounds（TG-10）/archive（M16 归档门禁）/providers（F-AC8）/runner（TG-5）/f12_preview_res + **run_suite.py（分层 runner：offline/gui/network + 预算闸门）** + verify_matrix（覆盖矩阵 SSOT）+ TEST-MATRIX.MD + e2e_common（共享基座）+ eval_retrieve + gui_check*.mjs（含 s15 十件套 + gui_check_fac16_checkpoint.mjs）
 ├── requirements-windows.txt   # Windows 依赖清单
 ├── requirements.txt           # 原语料采集依赖（未动）
 ├── docs/                      # 1-WORKFLOW / 2-ARCHITECTURE / 3-LEARNED
