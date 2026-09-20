@@ -5,7 +5,7 @@
 - 六步流水线编排 → `app.orchestration.PipelineOrchestrator`；
 - paperqa 引擎调用 → `app.engine.EngineAdapter`；
 - 事件模型 → `app.events`；配置 SSOT → `app.config_schema`。
-- 10 条 API 路由（Sprint-4 新增 /api/providers；Sprint-11 新增 /api/config_schema、/api/config/validate）与线上协议（run_step 请求/响应、SSE 消息字段）与拆分前完全一致。
+- 12 条 API 路由（Sprint-4 新增 /api/providers；Sprint-11 新增 /api/config_schema、/api/config/validate；Sprint-16 新增 /api/usage、/api/checkpoints）与线上协议（run_step 请求/响应、SSE 消息字段）与拆分前完全一致。
 """
 import sys
 import uuid
@@ -31,6 +31,8 @@ from app.engine import ENGINE  # noqa: E402
 from app.orchestration import StepRequest, StepResponse, make_orchestrator  # noqa: E402
 from app.session_store import MemorySessionStore, SessionState  # noqa: E402
 from app.config_schema import get_config_schema, validate_config  # noqa: E402
+from app import usage as usage_meter  # noqa: E402
+from app import checkpoint_index  # noqa: E402
 from provider_config import list_providers_safe  # noqa: E402
 
 
@@ -82,6 +84,9 @@ class TranslatePreviewRequest(BaseModel):
 
 app = FastAPI(title="PaperQA ReactFlow Prototype API")
 
+# Retro ③（2026-09-20）：挂载 token 用量采集回调（幂等；prune_litellm_callbacks 后会自动重挂）
+usage_meter.ensure_installed()
+
 app.add_middleware(
     CORSMiddleware,
     # 安全加固：只允许本地前端来源跨域访问，避免公网任意页面调用本地后端
@@ -104,6 +109,28 @@ def build_settings(params: dict[str, Any]) -> Settings:
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/usage")
+async def usage() -> dict[str, Any]:
+    # Retro ③：本进程累计 token 用量（实测）与成本换算（按本地价表；缺价模型列入 unpriced_models）
+    return {"usage": usage_meter.snapshot()}
+
+
+@app.get("/api/checkpoints")
+async def checkpoints(key: str = "") -> dict[str, Any]:
+    # F-AC16 v1：checkpoint 只读索引——本地已有哪些命名空间、逐篇文献状态与**载荷路径**
+    # （供前端展示 + 人工按路径定位/复现；不修改任何 checkpoint，也不含密钥）
+    root = str(checkpoint_index.checkpoint_root())
+    if key:
+        try:
+            detail = checkpoint_index.namespace_detail(key)
+        except ValueError as exc:  # key 非法（防路径穿越）→ 400
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if detail is None:
+            raise HTTPException(status_code=404, detail=f"未找到 checkpoint 命名空间 {key!r}")
+        return {"root": root, "checkpoint": detail}
+    return {"root": root, "checkpoints": checkpoint_index.scan()}
 
 
 @app.get("/api/providers")

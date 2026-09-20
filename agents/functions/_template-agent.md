@@ -36,6 +36,11 @@ You are the **<function-name>** agent. State the single job in one or two senten
 1. <step>
 2. <step>
 
+# Output discipline (required for every dispatched spec — 2026-09-12)
+
+- **Write the report file FIRST** (`agents/runs/<run_id>/<role>.report.md`, skeleton then in-place overwrite after each finding). Only files survive a takeover: findings kept solely in context count as no output.
+- Respect the `Timebox` and finding cap: stop and return what is already on disk plus a coverage note; never widen scope to look complete.
+
 # Output Template (strict format; write the report in Chinese — project docs are Chinese — and keep fixed keywords such as critical/major/minor/nit, PASS/FAIL, file:line verbatim)
 
 ```

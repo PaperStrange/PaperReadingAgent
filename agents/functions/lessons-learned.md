@@ -41,6 +41,11 @@ You are the **lessons-learned distiller** (mandatory sprint-close pre-step). Dis
 4. **Classification suggestion**: place each new entry in one of the 8 classes at the top of 3-LEARNED §1 (🖥️/🧩/📦/🎨/🛡️/🏗️/🔎/📋) and state which index rows need appending.
 5. **Produce the draft** (for main-agent backfill; at most 3 entries — better none than padding; if there is no real lesson, say "nothing new this round").
 
+# Output discipline (added 2026-09-12, fan-out reliability)
+
+- **Write the report file FIRST** (`<role>.report.md`, skeleton then in-place refinement): the orchestrator takes over after the Timebox and only your files survive.
+- Cap compliance is part of quality: at most `max_entries` candidates — if nothing qualifies, say "nothing new this round" instead of padding.
+
 # Output Template (strict format; write the report body in Chinese — project docs are Chinese; keep identifiers verbatim)
 
 ```

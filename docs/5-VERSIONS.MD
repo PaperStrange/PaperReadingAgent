@@ -24,7 +24,7 @@
 
 ## 3. 首个版本 v1.0.0 的范围与进度（roadmap 全景）
 
-| 主题 | 内容 | 状态（2026-08-31） |
+| 主题 | 内容 | 状态（2026-09-12） |
 |---|---|---|
 | A 配置模型 SSOT | 策展 schema + `validate_config` + 前端展示（config_notes/影响提示） | ✅ Sprint-2 完成 |
 | 分层地基 | 编排/引擎适配/事件模型/SessionStore（行为不变） | ✅ Sprint-2 完成 |
@@ -33,7 +33,11 @@
 | 实战修复（插队） | 自动重跑 config、retrieve 来源标记、litellm 回调防护、SSE 断连静默、UI 三件套 | ✅ Sprint-5（插队）完成 |
 | F1 检索体验（新增候选） | 多语检索 v1（CJK 零命中关键词重试 + 命中理由）+ F4 评测基准起步 | ✅ Sprint-6 完成（v1） |
 | 维护批清账（插队） | M1 索引三重探针 / M2 回调上限 env 配置 / M4 并发计时与清理 / M5 verify 路由实证 + gui 依赖显式化 / M6 文档勘误 + **全量 code review（windows+main）清技术账** | ✅ Sprint-7（插队）完成；M3 按用户指示留待后续 |
-| F2 配置面板深化（新增候选） | 阶段 A=SSOT 地基（`/api/config_schema` + `/api/config/validate` 端点、M7 默认值收敛锁）；阶段 B=SchemaForm 全字段交互表单（类型控件/字段级校验/impacts 常驻/provider 联动，取代手写面板）；阶段 C=手写字面量退役（schema 派生默认值 + 前端零硬编码）+ Settings 升级基线护栏 | ✅ 完成（阶段 A=Sprint-11、B=Sprint-12、C=Sprint-13；F2 整体转用户验收） |
+| AgentOps 基础设施（阶段） | 六职能 spec（调研/影响评估/代码审阅/文档审计/经验教训/工作区核验）+ 账本 CLI + 本地看板 + 轻量 CI | ✅ 阶段完成（Sprint-8 PM #23 · Sprint-9 PR #31 · Sprint-10 收口）；阶段已归档封存，剩余卡迁出 |
+| 底座提前批次 | 领域治理壳 M15 / 测试矩阵 SSOT（TG-1/2）/ 账本互斥锁 M10 / 价表官网抓取 M9 / 新 agent 门禁 M14 | ✅ Sprint-14 完成（PR #48） |
+| F2 配置面板深化（新增候选） | 阶段 A=SSOT 地基（`/api/config_schema` + `/api/config/validate` 端点、M7 默认值收敛锁）；阶段 B=SchemaForm 全字段交互表单（类型控件/字段级校验/impacts 常驻/provider 联动，取代手写面板）；阶段 C=手写字面量退役（schema 派生默认值 + 前端零硬编码）+ Settings 升级基线护栏 | ✅ 完成（阶段 A=Sprint-11、B=Sprint-12、C=Sprint-13） |
+| F2 验收修复（交互信息类） | F-AC1~7/9/11/12：字体 token/hints 聚合/local 条件隐藏/完成后收起/响应式/失败复制与报错定位/状态作用域/双向联动/output 全文/截图清晰度 + TG-3 case-first | ✅ Sprint-15 完成（用户 2026-09-10 验收通过；PR #49） |
+| 数据准确性 + 成本韧性 + 调研工作流 | F-AC8 一 provider 一文件 + 官网调研刷新（两周定时）；F-AC10 文献级 checkpoint（零成本续跑）；TG-5 分层 runner + 定时底座 + 三态预算闸门；M16 调研工作流 v2.0（三级深度 + 证据落档 + 归档门禁） | 🔄 **Sprint-16 四卡 19/19 DONE；用户走查已于 2026-09-20（UTC+8）完成、未通过 0 项（45 判定格无 FAIL）；三查重跑进行中（原三查因走查后 26 提交落地而失效）；待三查闭环 + PR/关闭** |
 | C 可观测 + E3 v1 | Agent 结构化事件→时间线 + 工作流**只读可视化 v1** | ⏸ hold（**v1 需用户 review 后方可迭代**） |
 | E1/E2 框架适配 | pip 注入 + 版本检查/更新/回滚 | ⏸ hold |
 | D 基础设施 | 单机多 worker + 会话外置 + 网关分流 | ⏸ hold |

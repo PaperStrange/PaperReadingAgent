@@ -87,8 +87,14 @@ def _host_allowed(url: str) -> bool:
     return any(host == d or host.endswith("." + d) for d in _ALLOW_DOMAINS)
 
 
-class _SafeRedirectHandler(urllib.request.HTTPSHandler):
-    """重定向逐跳复检：任一跳落到非 https 或白名单外域名 → 抛错（拒绝跟随）。"""
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """重定向逐跳复检：任一跳落到非 https 或白名单外域名 → 抛错（拒绝跟随）。
+
+    2026-09-21 关闭三查·二查 major：原实现继承的是 `HTTPSHandler`，而 `redirect_request` 定义在
+    `HTTPRedirectHandler` 上 → 本方法**从不被 urllib 调用**（死代码），`build_opener` 仍会挂默认
+    重定向处理器，白名单可被一次 302 绕过。基类必须是 `HTTPRedirectHandler`（`refresh-providers.py:63`
+    的同类实现一直是正确写法，可直接对照）。
+    """
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         if not _host_allowed(newurl):
@@ -160,7 +166,7 @@ def parse_dashscope(html: str) -> dict:
     取行内第 1 个 $ = input、第 2 个 $ = output（USD/1M tokens）；只有一个价格格（如
     embedding 模型）时 output 复用 input。解析失败/越界 → 该模型跳过。"""
     out: dict[str, dict] = {}
-    targets = ["qwen-omni-turbo", "qwen3-max", "text-embedding-v3"]
+    targets = ["qwen-omni-turbo", "qwen3.5-omni-plus", "qwen3-max", "text-embedding-v3", "text-embedding-v4"]
     for token in targets:
         m = re.search(r"<p>\s*" + re.escape(token) + r"\s*</p>.*?</tr>", html, re.S)
         if not m:
