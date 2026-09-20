@@ -5,19 +5,24 @@
 - expert/scholar 档：report.md + context.md + reasoning.md + evidence/*.md
   * evidence 文件必须含 url / tier / fetched_at / fetch_status / supports 五个字段
     与一段 verbatim 原文引用块（fetch_status=failed 时须有 reason，可无引用）
-  * report.md ↔ evidence/ **双向**交叉引用（2026-09-20 走查修复）：
+  * report.md ↔ evidence/ **双向**交叉引用（2026-09-20 走查修复；同日复核 run-053 收紧范围）：
     ① 索引表必须点名每个 evidence 文件（正向）；
     ② 索引表点名的文件必须真实存在于磁盘（反向）。缺②则"删掉被引用的证据文件"仍判 PASS
-       （spec 契约：a citation without an evidence file is a violation）
+       （spec 契约：a citation without an evidence file is a violation）。
+    **两条都只在"证据索引表所在小节"（§7 或标题含『证据索引表』）内判定**：正文顺带提及
+    别处的 evidence 文件名（跨 run 引用、URL 片段）不是"结论 ↔ 证据行"的引用，扫全文会误红；
+    文件名比较**大小写不敏感**（Windows 语义，避免跨平台判定不一致）。
 
 用法：
   .venv\\Scripts\\python.exe verify\\verify_archive.py <run_dir> --depth expert
   .venv\\Scripts\\python.exe verify\\verify_archive.py --selftest
 """
 from __future__ import annotations
-VERIFY_META = {'features': 'M16 调研归档完整性校验：report/context/reasoning/evidence 契约 + 证据索引表双向交叉引用（正向点名 + 反向落地，fail-closed）', 'tier': 'offline', 'providers': [], 'est_seconds': 5, 'est_cost_cny': 0, 'routes': [], 'requires': []}
+VERIFY_META = {'features': 'M16 调研归档完整性校验：report/context/reasoning/evidence 契约 + 证据索引表双向交叉引用（限定 §7 索引表区间、大小写不敏感；fail-closed）', 'tier': 'offline', 'providers': [], 'est_seconds': 5, 'est_cost_cny': 0, 'routes': [], 'requires': []}
 
 import argparse
+import contextlib
+import io
 import re
 import shutil
 import sys
@@ -49,6 +54,26 @@ def ok(name: str, cond: bool, detail: str = "") -> None:
 def norm_depth(depth: str) -> str:
     d = (depth or "expert").strip().lower()
     return ALIASES.get(d, d)
+
+
+# 索引表内的证据文件引用形态：`evidence/NN-slug.md`（可带反斜杠）或裸名 `NN-slug.md`。
+# 复核 run-053 后放宽：接受 .markdown 与 1~3 位编号（只用于"点名的文件是否存在"判定，
+# 区间限定在证据索引表，故不会误伤正文里的普通文件名）。
+_EVIDENCE_NAME = r"[A-Za-z0-9._-]+\.(?:md|markdown)"
+EVIDENCE_REF_RE = re.compile(rf"evidence[/\\]({_EVIDENCE_NAME})", re.I)
+BARE_EVIDENCE_REF_RE = re.compile(rf"(?<![\w/\\-])(\d{{1,3}}-{_EVIDENCE_NAME})", re.I)
+
+
+def evidence_index_section(report_text: str) -> str:
+    """取"证据索引表所在小节"正文（§7，或任意标题含『证据索引表』的小节）。
+
+    交叉引用只在此区间内判定——契约约束的是"结论 ↔ 证据行"的索引表，不是全文。
+    """
+    m = re.search(r"^##\s*7\.[^\n]*\n(.*?)(?=^##\s|\Z)", report_text, re.M | re.S)
+    if m:
+        return m.group(1)
+    m = re.search(r"^#{2,4}[^\n]*证据索引表[^\n]*\n(.*?)(?=^#{2,4}\s|\Z)", report_text, re.M | re.S)
+    return m.group(1) if m else ""
 
 
 def find_report(run_dir: Path) -> Path | None:
@@ -104,15 +129,21 @@ def check_archive(run_dir: Path, depth: str) -> bool:
             ok(f"{ev.name} 含 verbatim 原文引用块", "> " in text, "quote block")
 
     if depth in ("expert", "scholar"):
-        # 交叉引用①（正向）：报告的证据索引表必须点名每个 evidence 文件
-        unreferenced = [ev.name for ev in ev_files if ev.name not in report_text and ev.stem not in report_text]
-        ok("证据索引表引用全部 evidence 文件", not unreferenced, f"unreferenced={unreferenced}")
-        # 交叉引用②（反向，2026-09-20 走查修复）：索引表点名的文件必须真实存在于磁盘。
-        # 修复前只查正向 → 删掉"被报告引用的"证据文件仍 ALL PASS（漏检）。
-        cited = set(re.findall(r"evidence[/\\]([A-Za-z0-9._-]+\.md)", report_text))
-        cited |= set(re.findall(r"(?<![\w/\\-])(\d{2}-[A-Za-z0-9._-]+\.md)", report_text))
-        dangling = sorted(n for n in cited if not (ev_dir / n).is_file())
-        ok("索引表点名的 evidence 文件全部存在", not dangling, f"dangling={dangling}")
+        # 交叉引用（2026-09-20 走查修复 + 同日复核 run-053 收紧）：只判定证据索引表区间。
+        idx_text = evidence_index_section(report_text)
+        if not idx_text:
+            ok("证据索引表引用全部 evidence 文件", False, "未定位到证据索引表区间（§7 或标题含『证据索引表』的小节）")
+            ok("索引表点名的 evidence 文件全部存在", False, "同上：区间缺失，无法做反向校验")
+        else:
+            lowered = idx_text.lower()
+            # ① 正向：索引表必须点名每个 evidence 文件（大小写不敏感）
+            unreferenced = [ev.name for ev in ev_files if ev.name.lower() not in lowered and ev.stem.lower() not in lowered]
+            ok("证据索引表引用全部 evidence 文件", not unreferenced, f"unreferenced={unreferenced}")
+            # ② 反向：索引表点名的文件必须在 evidence/ 里真实存在（修复前只查正向 → 漏检）
+            cited = set(EVIDENCE_REF_RE.findall(idx_text)) | set(BARE_EVIDENCE_REF_RE.findall(idx_text))
+            have = {ev.name.lower() for ev in ev_files}
+            dangling = sorted(n for n in cited if n.lower() not in have)
+            ok("索引表点名的 evidence 文件全部存在", not dangling, f"dangling={dangling} cited={len(cited)}")
 
     if depth == "scholar":
         low = report_text
@@ -122,20 +153,31 @@ def check_archive(run_dir: Path, depth: str) -> bool:
 
 
 def _run_isolated(fn, *args):
-    """跑一次校验并隔离计数器（自检里的负例不计入全局 failed）。"""
+    """跑一次校验并隔离计数器（自检里的负例不计入全局 failed）。
+
+    返回 `(result, (passed, failed), failures)`；`failures` = 失败断言名列表——
+    负例判据据此核对"失败项**是**目标断言"，而不是只看失败条数（复核 run-053 minor）。
+    捕获到的逐项输出在返回前原样回放到 stdout，保持自检可读性。
+    """
     global passed, failed
     saved = (passed, failed)
     passed = failed = 0
+    buf = io.StringIO()
     try:
-        result = fn(*args)
+        with contextlib.redirect_stdout(buf):
+            result = fn(*args)
         local = (passed, failed)
     finally:
         passed, failed = saved
-    return result, local
+    text = buf.getvalue()
+    sys.stdout.write(text)
+    failures = [ln.split("FAIL: ", 1)[1].strip() for ln in text.splitlines() if ln.startswith("FAIL: ")]
+    return result, local, failures
 
 
 def selftest() -> int:
-    """自检：合规档案（PASS）+ 空报告档案（FAIL）+ **被引用证据缺失**（FAIL）+ scholar 档（PASS）。"""
+    """自检：合规档案（PASS）+ scholar 档（PASS）+ 空报告（FAIL）+ 被引用证据缺失（FAIL）
+    + 正文提及别处证据名（PASS，防误报）+ 索引表点名不存在的 .markdown（FAIL，防漏报）。"""
     global passed, failed
     with tempfile.TemporaryDirectory() as td:
         good = Path(td) / "run-good"
@@ -158,28 +200,66 @@ def selftest() -> int:
             encoding="utf-8",
         )
         print("== selftest: 合规档案（期望 PASS）==")
-        good_result, (_, good_failed) = _run_isolated(check_archive, good, "expert")
+        good_result, (_, good_failed), _ = _run_isolated(check_archive, good, "expert")
         print("== selftest: 合规档案在 scholar 档（期望 PASS）==")
-        scholar_result, (_, scholar_failed) = _run_isolated(check_archive, good, "scholar")
+        scholar_result, (_, scholar_failed), _ = _run_isolated(check_archive, good, "scholar")
 
         print("== selftest: 缺件档案（期望 FAIL）==")
         bad = Path(td) / "run-bad"
         bad.mkdir()
         (bad / "tech-research.report.md").write_text("# empty\n", encoding="utf-8")
-        bad_result, (_, bad_failed) = _run_isolated(check_archive, bad, "expert")
+        bad_result, (_, bad_failed), _ = _run_isolated(check_archive, bad, "expert")
 
         # 2026-09-20 走查修复的回归负例：索引表仍点名 02，但 02 已被删除 → 必须判 FAIL，
-        # 且**仅此一项**失败（证明反向交叉引用断言确实在起作用，而不是被别的断言顺带拦下）。
-        print("== selftest: 索引表引用的证据文件缺失（期望 FAIL，仅此一项）==")
+        # 且**唯一失败项就是反向断言**（证明红灯确实来自它，而不是被别的断言顺带拦下）。
+        print("== selftest: 索引表引用的证据文件缺失（期望 FAIL，唯一失败项=反向断言）==")
         dangling = Path(td) / "run-dangling"
         shutil.copytree(good, dangling)
         (dangling / "evidence" / "02-second.md").unlink()
-        dangling_result, (_, dangling_failed) = _run_isolated(check_archive, dangling, "expert")
+        dangling_result, (_, dangling_failed), dangling_fails = _run_isolated(check_archive, dangling, "expert")
+
+        # 防**误报**回归（复核 run-053 major#1）：正文顺带提及别处的 evidence 文件名
+        # （跨 run 引用 / URL 片段）不算悬空引用 → 期望 PASS。
+        print("== selftest: 正文提及别处证据文件名（期望 PASS，防误报）==")
+        prose = Path(td) / "run-prose"
+        shutil.copytree(good, prose)
+        rp = prose / "tech-research.report.md"
+        rp.write_text(
+            rp.read_text(encoding="utf-8")
+            + "\n另可对照 run-047 的 `evidence/01-elsewhere.md`、相对路径 03-third.md 与 https://example.com/evidence/09-third.md 。\n",
+            encoding="utf-8",
+        )
+        prose_result, (_, prose_failed), _ = _run_isolated(check_archive, prose, "expert")
+
+        # 防**漏报**回归（复核 run-053 minor）：索引表点名不存在的 .markdown / 一位数编号也要拦住。
+        print("== selftest: 索引表点名不存在的 .markdown（期望 FAIL，唯一失败项=反向断言）==")
+        weird = Path(td) / "run-weird"
+        shutil.copytree(good, weird)
+        wp = weird / "tech-research.report.md"
+        wp.write_text(
+            wp.read_text(encoding="utf-8").replace(
+                "| c2 | 02-second.md |\n", "| c2 | 02-second.md |\n| c3 | 07-third.markdown |\n"
+            ),
+            encoding="utf-8",
+        )
+        weird_result, (_, weird_failed), weird_fails = _run_isolated(check_archive, weird, "expert")
 
         ok("selftest 合规档案全部断言通过", good_result and good_failed == 0)
         ok("selftest 合规档案在 scholar 档通过", scholar_result and scholar_failed == 0)
         ok("selftest 缺件档案被拒（且确有失败项）", (not bad_result) and bad_failed > 0)
-        ok("selftest 被引用证据缺失被拒（且仅此一项失败）", (not dangling_result) and dangling_failed == 1)
+        ok(
+            "selftest 被引用证据缺失被拒（唯一失败项=反向断言）",
+            (not dangling_result)
+            and len(dangling_fails) == 1
+            and dangling_fails[0].startswith("索引表点名的 evidence 文件全部存在"),
+        )
+        ok("selftest 正文提及别处证据文件名不误判（防误报回归）", prose_result and prose_failed == 0)
+        ok(
+            "selftest 索引表点名不存在的 .markdown 被拒（唯一失败项=反向断言）",
+            (not weird_result)
+            and len(weird_fails) == 1
+            and weird_fails[0].startswith("索引表点名的 evidence 文件全部存在"),
+        )
     print(f"\n=== selftest {'PASS' if failed == 0 else 'FAIL'}: {passed} passed / {failed} failed ===")
     return 0 if failed == 0 else 1
 

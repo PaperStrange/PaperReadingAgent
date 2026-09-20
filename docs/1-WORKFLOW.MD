@@ -174,7 +174,7 @@
 1. **三级深度路由**（`agents/fanout.json` planning_pipeline 的 `depth` 字段）：**quick 工程级**（实现问题/工具用法/快速查证；3~5 源、1 维；**主代理直接执行**，零子代理成本——P2）/ **expert 领域专家级**（方案选型/最佳实践/跨方案对比；6~10 源、≥3 维、对比矩阵；默认档，子代理）/ **scholar 研究学者级**（架构决策/长期路线/发布级判断；≥12 源 + 全 tradeoff + 反向证据）。**阈值一律在 spec 可配置参数节**（P3：可调，不写死）；级别由任务难度自动建议、**用户可覆盖**；兼容旧别名 normal=expert、deep=scholar。
 2. **决策证据落档（唯一真相）**：expert/scholar 档的 run 目录必须含 `context.md`（输入上下文快照：问题/深度/注入的预研基线与用户决策/约束/网络时间日期）、`evidence/<nn>-<slug>.md`（每条引用 = URL + 来源层级 + 抓取时间 + **逐字原文段落** + 支撑点；抓取失败须记 reason）、`reasoning.md`（证据→结论推导链 + 采信/排除理由 + 未决风险）。
 3. **段落级溯源**：报告 §7 证据索引表把每条结论映射到 evidence 文件与段落摘录，供后续"引经据典"式讨论直接回溯。
-4. **归档门禁**：`verify/verify_archive.py <run_dir> --depth <tier>`（缺件/空证据/字段缺失/索引表未引用/**索引表点名但磁盘缺失（悬空引用）** → fail-closed，退出非 0）；报告注入规划上下文前须过门禁（`agents/fanout.json` 的 `archive` 字段）。
+4. **归档门禁**：`verify/verify_archive.py <run_dir> --depth <tier>`（缺件/空证据/字段缺失/索引表未引用/**索引表点名但磁盘缺失（悬空引用）**；交叉引用判定**限定在证据索引表区间内**、文件名**大小写不敏感** → fail-closed，退出非 0）；报告注入规划上下文前须过门禁（`agents/fanout.json` 的 `archive` 字段）。
 
 ## 5. 运行手册（Windows）
 

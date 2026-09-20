@@ -29,7 +29,7 @@
 | `gui_check_s7.mjs` | 多节点并发计时显示 + 完成后冻结 | gui | — | 60s | ¥0 | — | playwright, servers |
 | `verify_agent.py` | Agent 流程（fake agent）+ 翻译接口 | network | deepseek | 60s | ¥0.3 | /api/translate_preview, /api/run_step | keys, network, index |
 | `verify_agentops.py` | AgentOps 账本 CLI 用例断言 UC-1~UC-13（离线；UC-11/12=M10，UC-13=M9） | offline | — | 10s | ¥0 | — | none |
-| `verify_archive.py` | M16 调研归档完整性校验：report/context/reasoning/evidence 契约 + 证据索引表双向交叉引用（正向点名 + 反向落地，fail-closed） | offline | — | 5s | ¥0 | — |  |
+| `verify_archive.py` | M16 调研归档完整性校验：report/context/reasoning/evidence 契约 + 证据索引表双向交叉引用（限定 §7 索引表区间、大小写不敏感；fail-closed） | offline | — | 5s | ¥0 | — |  |
 | `verify_checkpoint.py` | F-AC10 文献级 checkpoint：逐篇落盘 + 零成本复用 + 文件变更/载荷损坏/模型不匹配/切块口径/同内容去重五重边界 fail-closed | network | deepseek | 240s | ¥0.05 | /api/new_session, /api/run_step | keys, network, self-boots-backend |
 | `verify_config_schema.py` | 配置 SSOT 一致性 + M7 前端零硬编码 + Settings 升级基线护栏（114 断言，离线） | offline | — | 5s | ¥0 | /api/config_schema, /api/config/validate | none |
 | `verify_e2e.py` | deepseek 全链路 6 步（LLM+vision + 本地 st- 向量） | network | deepseek | 120s | ¥0.3 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
