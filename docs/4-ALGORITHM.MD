@@ -660,7 +660,7 @@ classDiagram
 | 数据层 | `paper-qa-script/app/checkpoint_index.py`：`checkpoint_root()`（`~/.pqa/embed_cache/checkpoints`，与编排层同口径）、`scan()`（命名空间按 `updated_at` 倒序；**坏 manifest → `readable=False` + 原因，fail-soft**）、`namespace_detail(key)`、`resolve_payload(key, dockey)`。逐篇字段：`name/docname/dockey/status/texts_count/reused/embedded_at/error/payload_path/payload_exists/payload_bytes` |
 | API | `GET /api/checkpoints`（第 **12** 条路由）→ `{root, checkpoints[]}`；`?key=<k>` → 单命名空间明细（未命中 404）。**只读、无密钥** |
 | 前端 | 工具按钮 `Checkpoints（本地复用/载荷路径）` → `CheckpointPanel.jsx`：命名空间行（key/状态/文献数/载荷字节/模型与切块口径）+ 展开逐篇明细（**载荷路径一键复制**）→ 支撑"按路径定位 / 用既有 checkpoint 单独复现 / 人工核查幻觉" |
-| 验证 | `verify_checkpoint_index.py`（offline，**19 断言**）+ `gui_check_fac16_checkpoint.mjs`（gui，**10 断言**，**零成本**不触发 LLM） |
+| 验证 | `verify_checkpoint_index.py`（offline，**29 断言**，含 `?key=` 路径穿越防护）+ `gui_check_fac16_checkpoint.mjs`（gui，**10 断言**，**零成本**不触发 LLM） |
 
 **v1 边界**：只读展示；"用某个 checkpoint 复现答案"目前=复制路径 + 既有收敛保护（`protect`），**未**提供一键重放动作（列为 Sprint-17 原型验证候选）。
 

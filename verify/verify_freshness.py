@@ -172,6 +172,58 @@ def main() -> int:
            res_tz.returncode == 0 and tz_payload["reports"][0]["status"] == "fresh",
            json.dumps(tz_payload["reports"][0]["reasons"], ensure_ascii=False))
 
+        # ⑨c 复核 Round 5 major#2：§7 写成**项目符号**（无表格行）时，点名缺失的证据也必须报出来
+        #     （此前只认表格行 → 该形态完全静默假阴性，且与归档门禁口径不一致）
+        bullet = runs / "run-bullet"
+        bullet.mkdir(parents=True, exist_ok=True)
+        (bullet / "tech-research.report.md").write_text(
+            "# tech-research report（bullet §7）\n" + "填充" * 120
+            + "\n## 7. 证据索引表\n- 结论 c1 → `evidence/01-b.md`\n- 结论 c9 → `evidence/09-ghost.md`\n",
+            encoding="utf-8",
+        )
+        write_evidence(bullet, "01-b.md", "2026-09-19 10:00 +0800")
+        res_bullet = run(["--runs-dir", str(runs), "--providers-dir", str(prov_tz), "--json", str(base / "b.json"),
+                          "--only", "run-bullet"])
+        bp = json.loads((base / "b.json").read_text(encoding="utf-8"))
+        ok("⑨c §7 用项目符号时也能报出点名缺失（Round 5 major#2 回归）",
+           res_bullet.returncode == 0 and bp["reports"][0]["status"] == "stale"
+           and any("09-ghost.md" in w for w in bp["reports"][0]["reasons"]),
+           json.dumps(bp["reports"][0]["reasons"], ensure_ascii=False))
+
+        # ⑨d 复核 minor#2：只有空 `evidence/` 目录、报告名又不是 tech-research → 不算调研归档（跳过）
+        empty_ev = runs / "run-empty-ev"
+        (empty_ev / "evidence").mkdir(parents=True, exist_ok=True)
+        (empty_ev / "code-review.report.md").write_text("# code-review\n" + "正文" * 60, encoding="utf-8")
+        res_skip = run(["--runs-dir", str(runs), "--providers-dir", str(prov_tz), "--json", str(base / "e.json")])
+        ep = json.loads((base / "e.json").read_text(encoding="utf-8"))
+        ok("⑨d 空 evidence/ + 非 tech-research 报告 → 跳过",
+           all(r["run_id"] != "run-empty-ev" for r in ep["reports"]), str([r["run_id"] for r in ep["reports"]]))
+
+        # ⑨e 复核 minor#3：同目录多报告时按 `find_report` 口径取 `tech-research.report.md`
+        multi = runs / "run-multi-report"
+        write_report(multi, "multi case", ["01-m.md"])
+        write_evidence(multi, "01-m.md", "2026-09-19 10:00 +0800")
+        (multi / "code-review.report.md").write_text("# other role report\n" + "正文" * 60, encoding="utf-8")
+        run(["--runs-dir", str(runs), "--providers-dir", str(prov_tz), "--json", str(base / "m.json"),
+             "--only", "run-multi-report"])
+        mp = json.loads((base / "m.json").read_text(encoding="utf-8"))
+        ok("⑨e 多报告目录按 tech-research.report.md 口径分析（与归档门禁一致）",
+           bool(mp["reports"]) and mp["reports"][0]["report"].endswith("tech-research.report.md"),
+           mp["reports"][0]["report"] if mp["reports"] else "no report")
+
+        # ⑨f 复核 minor#6：`--fail-on suspect` 时"仅 suspect"也要退 1（默认阈值下退 0）
+        only_suspect = runs / "run-only-suspect"
+        rp_os = write_report(only_suspect, "only suspect", ["01-s.md"])
+        ev_os = write_evidence(only_suspect, "01-s.md", "2026-09-19 10:00 +0800")
+        os.utime(rp_os, (time.time() - 7200, time.time() - 7200))
+        os.utime(ev_os, (time.time(), time.time()))
+        res_s = run(["--runs-dir", str(runs), "--providers-dir", str(prov_old), "--json", str(base / "s.json"),
+                     "--only", "run-only-suspect", "--check", "--fail-on", "suspect"])
+        ok("⑨f --fail-on suspect → 仅 suspect 也退 1", res_s.returncode == 1, f"exit={res_s.returncode}")
+        res_s0 = run(["--runs-dir", str(runs), "--providers-dir", str(prov_old), "--json", str(base / "s0.json"),
+                      "--only", "run-only-suspect", "--check"])
+        ok("⑨f 默认阈值下仅 suspect → 退 0", res_s0.returncode == 0, f"exit={res_s0.returncode}")
+
         # ⑦ --check：有 stale → 退出 1
         res_check = run(["--runs-dir", str(runs), "--providers-dir", str(prov_new), "--json", str(out_json), "--check"])
         ok("⑦ --check 有 stale → 退出 1", res_check.returncode == 1, f"exit={res_check.returncode}")

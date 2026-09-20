@@ -45,8 +45,13 @@ def _safe_int(value, default=0) -> int:
 
 
 def _doc_row(name: str, entry: dict, payload_dir: Path) -> dict:
-    """把 manifest 里的一篇记录翻成前端可直接展示的行（含载荷路径与大小）。"""
-    dockey = str(entry.get("dockey") or "")
+    """把 manifest 里的一篇记录翻成前端可直接展示的行（含载荷路径与大小）。
+
+    **dockey 取 basename**（复核 Round 5 minor）：manifest 是磁盘文件，可能被手工改坏；
+    不归一化就会把 `..\\..` 拼进路径、探到命名空间之外（只读探测，但仍是越界读取面）。
+    """
+    raw_dockey = Path(str(entry.get("dockey") or "")).name
+    dockey = "" if raw_dockey in (".", "..") else raw_dockey
     payload = payload_dir / f"{dockey}.json.gz" if dockey else None
     size = None
     exists = False

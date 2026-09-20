@@ -100,7 +100,7 @@ $env:PYTHONIOENCODING='utf-8'      # 中文输出不乱码
 | 2 | `.\.venv\Scripts\python.exe .\verify\verify_runner.py` | `ALL PASS (26 assertions)`，退出 0（20 原有 + TG-7 三例 + Retro③ 两例 + …） | ✅ 26/26 |
 | 3 | `.\.venv\Scripts\python.exe .\verify\verify_archive.py agents\runs\run-2026-09-12-provider-refresh-001 --depth expert` | `=== ALL PASS: 28 passed / 0 failed ===`（含**双向**交叉引用断言） | ✅ 28/28 |
 | 4 | `.\.venv\Scripts\python.exe .\verify\verify_archive.py --selftest` | `=== selftest PASS: 8 passed / 0 failed ===`（合规 expert/scholar 通过 + 空报告被拒 + **被引用证据缺失被拒** + **正文提及别处证据名不误判** + **索引表 `.markdown` 漏报被拦** + **已存在 `.markdown` 不假红** + **嵌套子目录不假红**） | ✅ 8/8 |
-| 5 | `.\.venv\Scripts\python.exe .\verify\verify_matrix.py check` | `CHECK OK: 41 脚本与 TEST-MATRIX.MD 一致` | ✅ 41 脚本（当轮加入 `verify_usage.py`，40→41） |
+| 5 | `.\.venv\Scripts\python.exe .\verify\verify_matrix.py check` | `CHECK OK: 44 脚本与 TEST-MATRIX.MD 一致` | ✅ 44 脚本（走查期依次加入 `verify_usage.py`/`verify_checkpoint_index.py`/`verify_freshness.py`/`gui_check_fac16_checkpoint.mjs`，40→41→44） |
 | 6 | `foreach ($f in Get-ChildItem agents\functions\*.md) { .\.venv\Scripts\python.exe .\scripts\agent-ops.py validate-spec $f.FullName }` | 8 个 spec 全 PASS | ✅ 8/8 |
 | 7 | `.\.venv\Scripts\python.exe .\verify\run_suite.py --tier offline` | `SUITE PASSED (11 scripts)`，退出 0（fail-closed；含 `verify_usage.py`） | ✅ 11/11（见 §5.1） |
 | 8 | `.\.venv\Scripts\python.exe .\verify\verify_usage.py` | `ALL PASS (21 assertions)`（Retro③ 用量采集与成本换算口径） | ✅ 21/21 |
@@ -175,7 +175,7 @@ SUITE PASSED (10 scripts)
 
 | 编号 | 怎么验 | 通过判据 | 证据 | 判定 |
 |---|---|---|---|---|
-| `TG-1` | §5 第 7 条；另可用 `run_suite.py --tier network --dry-run` **零成本**看 network 档构成与预估花费 | `SUITE PASSED`，退出 0，**11 个 offline 脚本**全绿；`--tier gui\|network` 同样按 `VERIFY_META.tier` 分层（41 脚本 SSOT 见 `verify/README.md`） | `run_suite.py` | ☐ |
+| `TG-1` | §5 第 7 条；另可用 `run_suite.py --tier network --dry-run` **零成本**看 network 档构成与预估花费 | `SUITE PASSED`，退出 0，**13 个 offline 脚本**全绿；`--tier gui\|network` 同样按 `VERIFY_META.tier` 分层（44 脚本 SSOT 见 `verify/README.md`） | `run_suite.py` | ☐ |
 | `TG-2` | §7 `B-7` | 任一脚本失败 → **整体非零**（不"部分通过"） | `verify_runner.py` 断言 ② | ☐ |
 | `TG-3` | §7 `B-8` / `B-9` + 看优先级 | 上限优先级 **CLI > env `PAPERQA_NIGHTLY_BUDGET_CNY` > 配置默认 10**；改 env 即生效 | 断言 ③、④ | ☐ |
 | `TG-4` | `.\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --list` | 三任务与间隔：`prices` 7 天、`nightly-suite` 7 天、`providers` **14 天**；`due` 判定与上次运行可见（当前状态文件不存在 → 显示"从未运行"） | 实测输出见 §6.3 附 | ☐ |
@@ -373,7 +373,7 @@ Invoke-RestMethod http://127.0.0.1:8787/api/providers | ConvertTo-Json -Depth 4
 | 编号 | 你的疑问 | 现状事实（已核代码 / 已实跑） | 处置 |
 |---|---|---|---|
 | `M16-5` | 模型信息更新后会影响更新前的报告吗？现在怎么处理 | **不改写旧报告**：evidence 是**抓取快照**（verbatim 原文 + `fetched_at`），报告只引用不重写；provider 更新写 `refresh_notes` + proposal/status。**但目前没有"依据已变"的提示机制**——旧报告不会自动标记"其依据已被新版官网文档取代" | 立卡 `M18`（报告时效与依据变更治理） |
-| `CK-1` | 前端能看到载入的 checkpoint 文件吗（pro 用户成本感知 + 定位复现 + 幻觉核查） | **前端零展示**。后端 step 输出里**已有**`checkpoint{checkpoint_key, manifest, reused, embedded, deduped, failed, model_match, chunk_chars, chunk_overlap}`——点"复制 output"能看到 JSON；但没有 UI 面板，也没有"逐篇文献 → checkpoint 文件路径"的清单 | 立卡 `F-AC16`（checkpoint 可见性与可复现；用户自评 hard，待验证） |
+| `CK-1` | 前端能看到载入的 checkpoint 文件吗（pro 用户成本感知 + 定位复现 + 幻觉核查） | **v1 已交付（2026-09-21）**：新增只读索引 `app/checkpoint_index.py` + 第 **12** 条路由 `GET /api/checkpoints`（`?key=` 明细）+ 前端工具按钮 `Checkpoints（本地复用/载荷路径）` → `CheckpointPanel.jsx`：命名空间列表（key/状态/文献数/载荷字节/模型与切块口径）+ 展开**逐篇载荷路径（可一键复制）**；回归 `verify_checkpoint_index.py` **29 断言** + `gui_check_fac16_checkpoint.mjs` **10 断言**（真实 15 个命名空间、零成本）。交付前状态为"仅后端 step 输出 `checkpoint{...}`、前端零展示"——已不再是现状 | 卡 `F-AC16`（v1 ✅；增量"一键用该 checkpoint 重放 / 按文献粒度成本展示"**待真实用户数据**，Sprint-17 再定） |
 | `TG-1`~`TG-5` | 看起来都是脚本执行结果的校验，不像给我看的，跳过 | 属实：TG-5 这张卡的性质是**回归与调度底座**，判据天然是脚本断言（退出码 / 闸门 / 到期判定）；"人工可感面"在 §7/§8 | 计入 `TG-6`：验收指南须**分栏标注**"机器回归项 / 人工可感项"，机器项不占用户走查时间 |
 | `B-9` | 预算超限场景没能模拟，跳过 | 已用**临时状态文件 + `--dry-run`** 复现全部五分支，零成本零风险（命令见 §13.4）：`unknown` → REFUSED(4)、`over_budget` → REFUSED(4)、`unknown`+上轮失败 → 自愈放行、`over_budget`+`--force` → 覆盖放行、`measured` → 放行 | 无需你操作；若你想自己复跑，命令已给 |
 | `B-10` | "未到期 / 到期"指代不明，像是说 provider 列表到期导致原大模型不能用 | 是**我措辞的问题**：这里的到期指**定时任务**（`prices` 7 天 / `providers` 14 天 / `nightly-suite` 7 天）按 `interval_days` 的 due 判定，**与模型或服务到期无关** | 已改 §7 `B-10` 措辞 + 给复现命令（§13.4） |

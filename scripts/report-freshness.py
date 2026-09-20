@@ -103,22 +103,34 @@ def _provider_current(providers_dir: Path) -> dict[str, dict]:
     return out
 
 
+def _find_report(run_dir: Path) -> Path | None:
+    """与 `verify/verify_archive.py::find_report()` **同口径**（复核 Round 5 minor#3）：
+    优先 `tech-research.report.md` / `report.md`，再退回任意 `*.report.md`——
+    避免多报告目录下两个工具分析不同报告。"""
+    for name in ("tech-research.report.md", "report.md"):
+        p = run_dir / name
+        if p.is_file():
+            return p
+    hits = sorted(run_dir.glob("*.report.md"))
+    return hits[0] if hits else None
+
+
 def _analyze_archive(run_dir: Path, providers: dict[str, dict], refresh_tolerance_s: float = 3600.0) -> dict | None:
     """分析单个归档；**只分析调研（tech-research）归档**，其余 agent 的 run 直接跳过。
 
     跳过理由：其它 role 的报告引用的是项目文档（`1-WORKFLOW.MD` 之类），与"provider 官网依据"
     的时效无关；把它们纳入会产出大量假阳性（2026-09-21 实测 16 条 stale 里多数如此）。
-    判定"是调研归档" = 有 `evidence/` 目录，或报告文件名以 `tech-research` 开头。
+    判定"是调研归档" = **至少 1 篇 `evidence/*.md`**，或报告文件名以 `tech-research` 开头
+    （复核 Round 5 minor#2：只要求"有 evidence/ 目录"过宽，空目录也会被当成调研归档）。
     """
-    reports = sorted(run_dir.glob("*.report.md"))
-    if not reports:
+    report = _find_report(run_dir)
+    if report is None:
         return None
-    report = reports[0]
     ev_dir = run_dir / "evidence"
-    if not (ev_dir.is_dir() or report.name.startswith("tech-research")):
-        return None
     text = report.read_text(encoding="utf-8", errors="replace")
     ev_files = sorted(p for p in ev_dir.glob("*.md") if p.is_file()) if ev_dir.is_dir() else []
+    if not (ev_files or report.name.startswith("tech-research")):
+        return None
 
     newest_ev_ts: float | None = None
     ev_modified_after_report = False
@@ -137,15 +149,17 @@ def _analyze_archive(run_dir: Path, providers: dict[str, dict], refresh_toleranc
         except OSError:
             pass
 
-    # §7 证据索引表点名的 evidence 是否都在磁盘（**只认索引表的表格行**、只在 §7 区间内、大小写不敏感）
-    # —— 范围收紧两次的依据：① 全文扫描会把正文提到的项目文档（`1-WORKFLOW.MD`）误判为缺失证据；
-    #    ② 只按区间截取时，§7 之后的自由段落仍会被算进来（实测假阳性），故再限定为表格行。
+    # §7 证据索引表点名的 evidence 是否都在磁盘。
+    # 口径（复核 Round 5 major#2）：**优先只认表格行**（避免把 §7 之后的自由段落算成引用），
+    # 但若 §7 内**没有表格行**（写成项目符号/自由段落），则退化为整段 §7 —— 否则"点名证据缺失"
+    # 会完全静默（假阴性），且与归档门禁（只要求文件名出现在 §7 文本、不要求表格行）口径不一致。
     have = {p.name.lower() for p in ev_files}
     m7 = _SECTION7_RE.search(text)
     section7 = m7.group(1) if m7 else ""
     rows = "\n".join(line for line in section7.splitlines() if line.strip().startswith("|"))
-    cited = set(re.findall(r"evidence[/\\]([\w.\-]+\.(?:md|markdown))", rows, re.I))
-    cited |= set(re.findall(r"(?<![\w/\\-])(\d{2}-[\w.\-]+\.(?:md|markdown))", rows, re.I))
+    scope_text = rows or section7
+    cited = set(re.findall(r"evidence[/\\]([\w.\-]+\.(?:md|markdown))", scope_text, re.I))
+    cited |= set(re.findall(r"(?<![\w/\\-])(\d{2}-[\w.\-]+\.(?:md|markdown))", scope_text, re.I))
     missing = sorted(n for n in cited if n.lower() not in have)
 
     reasons: list[str] = []
@@ -185,6 +199,8 @@ def main() -> int:
     ap.add_argument("--providers-dir", default=str(DEFAULT_PROVIDERS))
     ap.add_argument("--json", default=str(DEFAULT_STATE), help="结果 JSON 落盘路径（默认 agents/runtime/report_freshness.json）")
     ap.add_argument("--check", action="store_true", help="有 stale 时退出 1")
+    ap.add_argument("--fail-on", choices=["stale", "suspect"], default="stale",
+                    help="--check 的告警阈值：默认 stale；suspect 会把『证据被改动』也纳入（复核 Round 5 minor#6）")
     ap.add_argument("--only", default="", help="只分析匹配该子串的 run 目录")
     ap.add_argument("--refresh-tolerance-s", type=float, default=3600.0,
                     help="provider 刷新晚于证据多久才算 stale（默认 3600s，容忍同轮刷新的写入延迟）")
@@ -228,7 +244,8 @@ def main() -> int:
         tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(out)
         print(f"结果 → {out}")
-    return 1 if (args.check and stale) else 0
+    fail = bool(stale) or (args.fail_on == "suspect" and bool(suspect))
+    return 1 if (args.check and fail) else 0
 
 
 if __name__ == "__main__":

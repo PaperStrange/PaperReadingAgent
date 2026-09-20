@@ -22,6 +22,7 @@ VERIFY_META = {'features': 'TG-5 分层 runner：offline/gui/network 分层 + fa
 
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
@@ -44,16 +45,23 @@ REFUSE_EXIT = 3
 
 
 def budget_from(args) -> float:
-    """上限优先级：CLI > env PAPERQA_NIGHTLY_BUDGET_CNY > 默认 10（可配置，不写死常量语义）。"""
-    if args.budget_cny is not None:
-        return float(args.budget_cny)
-    raw = os.environ.get("PAPERQA_NIGHTLY_BUDGET_CNY")
-    if raw:
-        try:
-            return float(raw)
-        except ValueError:
-            print(f"WARN: PAPERQA_NIGHTLY_BUDGET_CNY 非法（{raw!r}）→ 回落默认 {DEFAULT_BUDGET_CNY}")
-    return DEFAULT_BUDGET_CNY
+    """上限优先级：CLI > env PAPERQA_NIGHTLY_BUDGET_CNY > 默认 10（可配置，不写死常量语义）。
+
+    **必须是有限正数**：`nan` 会让 `est_cost > budget` 恒为 False（裸比较）→ 闸门被静默绕过
+    （复核 run-053 Round 5 major#1 同型问题；预算与系数两条入口都要挡）。
+    """
+    raw: object = args.budget_cny if args.budget_cny is not None else os.environ.get("PAPERQA_NIGHTLY_BUDGET_CNY")
+    if raw is None or raw == "":
+        return DEFAULT_BUDGET_CNY
+    try:
+        val = float(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        print(f"WARN: PAPERQA_NIGHTLY_BUDGET_CNY 非法（{raw!r}）→ 回落默认 {DEFAULT_BUDGET_CNY}")
+        return DEFAULT_BUDGET_CNY
+    if not math.isfinite(val) or val <= 0:
+        print(f"WARN: 预算上限必须为有限正数（{raw!r}）→ 回落默认 {DEFAULT_BUDGET_CNY}（不放松闸门）")
+        return DEFAULT_BUDGET_CNY
+    return val
 
 
 def est_factor_from(args) -> float:
@@ -61,21 +69,25 @@ def est_factor_from(args) -> float:
 
     为什么需要系数：`VERIFY_META.est_cost_cny` 记的是"近次实测值"，而预检闸门需要的是**上界**——
     实测 ¥1.013 而 est 定 1.1 时只剩 8.6% 余量，一次略长的运行就会被误拒（真花钱反而更少），
-    故默认 ×1.3 留余量；非法/非正值 → 回落默认。
+    故默认 ×1.3 留余量。
+
+    **必须是有限正数**（复核 run-053 Round 5 major#1 实测）：只挡 `<=0` 不够——`--est-factor nan`
+    或 env `=nan` 会让 `est_cost=nan`，而闸门是裸比较 `est_cost > budget` → **NaN 比较恒 False → 直接放行**。
+    故用 `math.isfinite` 一并挡掉 `nan/inf`，非法值一律回落默认（绝不放松闸门）。
     """
-    raw = args.est_factor
-    if raw is None:
-        raw = os.environ.get("PAPERQA_EST_SAFETY_FACTOR")
+    raw: object = args.est_factor if args.est_factor is not None else os.environ.get("PAPERQA_EST_SAFETY_FACTOR")
     if raw is None or raw == "":
         return EST_SAFETY_FACTOR_DEFAULT
     try:
-        val = float(raw)
+        val = float(raw)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         print(f"WARN: est 安全系数非法（{raw!r}）→ 回落默认 {EST_SAFETY_FACTOR_DEFAULT}")
         return EST_SAFETY_FACTOR_DEFAULT
-    if val <= 0:
-        print(f"WARN: est 安全系数必须为正（{val}）→ 回落默认 {EST_SAFETY_FACTOR_DEFAULT}")
+    if not math.isfinite(val) or val <= 0:
+        print(f"WARN: est 安全系数必须为有限正数（{raw!r}）→ 回落默认 {EST_SAFETY_FACTOR_DEFAULT}（不放松闸门）")
         return EST_SAFETY_FACTOR_DEFAULT
+    if val < 1.0:
+        print(f"WARN: est 安全系数 {val} < 1 → 预检上界低于实测值，闸门更紧（可能误拒真实运行）")
     return val
 
 

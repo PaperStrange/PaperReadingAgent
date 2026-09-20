@@ -300,6 +300,28 @@ def main() -> int:
        res.returncode == 3 and s13c.get("est_safety_factor") == 1.3 and s13c.get("status") == "refused_budget",
        f"exit={res.returncode} factor={s13c.get('est_safety_factor')} status={s13c.get('status')}")
 
+    # ⑬d 复核 Round 5 major#1：`nan` 会让裸比较 `est_cost > budget` 恒 False → **闸门被静默绕过**；
+    #     连同 inf/零/非数字/空串一起断言"一律回落默认且仍拒绝启动"
+    for bad in ("nan", "inf", "-1", "0", "abc", ""):
+        res = run([PY, str(RUN_SUITE), "--tier", "network", "--verify-dir", str(fixture),
+                   "--json", str(tmp / "r13d.json"), "--budget-cny", "10", "--est-factor", bad])
+        s13d = json.loads((tmp / "r13d.json").read_text(encoding="utf-8"))
+        ok(f"⑬d 非法 est 系数 {bad!r} → 回落 1.3 且拒绝启动（退 3）",
+           res.returncode == 3 and s13d.get("est_safety_factor") == 1.3 and s13d.get("status") == "refused_budget",
+           f"exit={res.returncode} factor={s13d.get('est_safety_factor')} status={s13d.get('status')}")
+    res = run([PY, str(RUN_SUITE), "--tier", "network", "--verify-dir", str(fixture), "--json", str(tmp / "r13e.json"),
+               "--budget-cny", "10"], env_extra={"PAPERQA_EST_SAFETY_FACTOR": "nan"})
+    s13e = json.loads((tmp / "r13e.json").read_text(encoding="utf-8"))
+    ok("⑬e env 系数 nan 同样回落默认（不穿透闸门）",
+       res.returncode == 3 and s13e.get("est_safety_factor") == 1.3,
+       f"exit={res.returncode} factor={s13e.get('est_safety_factor')}")
+    res = run([PY, str(RUN_SUITE), "--tier", "network", "--verify-dir", str(fixture), "--json", str(tmp / "r13f.json"),
+               "--budget-cny", "nan"])
+    s13f = json.loads((tmp / "r13f.json").read_text(encoding="utf-8"))
+    ok("⑬f 预算 nan → 回落默认 10（不因 NaN 比较放行）",
+       res.returncode == 3 and s13f.get("budget_cny") == 10.0 and s13f.get("status") == "refused_budget",
+       f"exit={res.returncode} budget={s13f.get('budget_cny')} status={s13f.get('status')}")
+
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
 

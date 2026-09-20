@@ -114,6 +114,16 @@ def main() -> int:
         ok("② 载荷缺失被显式标出（不静默）", dk3["payload_exists"] is False and dk3["payload_path"] != "",
            dk3["payload_path"])
 
+        # ②b 复核 Round 5 minor：manifest 被改坏（dockey 带 `..`）时路径必须归一化，**不得探出命名空间**
+        (root / "eee444.json").write_text(json.dumps({
+            "checkpoint_key": "eee444", "status": "ready", "updated_at": 4_000_000_100.0,
+            "docs": {"E.pdf": {"dockey": "..\\..\\outside", "docname": "E", "texts_count": 1, "status": "ready"}},
+        }, ensure_ascii=False), encoding="utf-8")
+        evil = {r["checkpoint_key"]: r for r in CI.scan(root)}["eee444"]["docs"][0]
+        ok("②b manifest 的 dockey 带 `..` → 路径归一化到命名空间内（不探出根外）",
+           ".." not in Path(evil["payload_path"]).name and Path(evil["payload_path"]).parent.name == "eee444",
+           evil["payload_path"])
+
         ccc = by_key["ccc333"]
         ok("③ 坏 manifest：fail-soft（readable=False + status=corrupt + 记原因）",
            ccc["readable"] is False and ccc["status"] == "corrupt" and bool(ccc["error"]) and ccc["docs"] == [],
