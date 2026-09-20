@@ -90,6 +90,7 @@ $env:PYTHONIOENCODING='utf-8'      # 中文输出不乱码
 ## 五、零成本自动证据（建议第一步；2026-09-20 现场复跑）
 
 > 全部命令在仓库根目录执行；**不调用付费模型、0 成本**（第 7 条是纯本地套件，走 st- 本地向量）。若你的网络到 HuggingFace 不通、本地模型加载变慢，先 `$env:HF_HUB_OFFLINE='1'` 再跑第 7 条。
+> **走查前主代理已按本表预跑一遍**（含 GUI 与边界演示），完整原始输出在 `verify/acceptance-sprint16-2026-09-20.log`（gitignore，本地留证）；下表的"09-20 实测"就是它的结论，你可以直接抽查复跑。
 
 | # | 命令 | 期望输出（判据） | 09-20 实测 |
 |---|---|---|---|
@@ -254,6 +255,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-frontend.ps1    # 端�
 |---|---|---|---|
 | `G-1` | `node .\verify\gui_check_s4.mjs` | **光标三断言**（中部插入 / 插入后光标位置 232 / 连续编辑）+ **provider 联动四断言**（下拉四项含 `openrouter` / 切 `openrouter` 带出 `api_base`+`model` 且**不写** `embedding_model` / 切 `deepseek` 同上 / 自动提示含"多语言"）逐行均 PASS | ☐ |
 | `G-2` | `node .\verify\gui_check_config_schema.mjs` | `US-13.1 defaults-derived-from-schema: PASS`（表单默认值全部由 schema 派生，无手写字面量） | ☐ |
+
+> 09-20 预跑截图（可直接打开看，无需重跑）：`verify/gui_check_s4.png`、`verify/f2-schema-form.png`、`verify/f2-schema-form-validation.png`。
 | `G-3` | 页面手动：Config 节点 → provider 下拉切 `dashscope` / `deepseek` | 切 dashscope 带出 `openai/qwen3.5-omni-plus`（**你本轮拍板的新模型**）与 `openai/text-embedding-v4`；切回 deepseek 时 `embedding_model` 被删除 | ☐ |
 | `G-4` | 手动：Config 表单温度填 `5` | 字段红框 + 错误文案（防抖约 1 秒）；清空后消失 | ☐ |
 
@@ -307,6 +310,8 @@ Invoke-RestMethod http://127.0.0.1:8787/api/providers | ConvertTo-Json -Depth 4
 > 教训已入 `docs/3-LEARNED.MD` **1.57**：交叉引用必须双向；自检负例必须命中"被判据点名的那个失效模式"（"仅此一项失败"才是最小充分证据）。
 
 ---
+
+## 十一、判定汇总（回传用）
 
 | 区块 | 判定格数 | PASS | FAIL | 备注 |
 |---|---|---|---|---|
