@@ -97,12 +97,13 @@ $env:PYTHONIOENCODING='utf-8'      # 中文输出不乱码
 | # | 命令 | 期望输出（判据） | 09-20 实测 |
 |---|---|---|---|
 | 1 | `.\.venv\Scripts\python.exe .\verify\verify_providers.py` | `ALL PASS (33 assertions)`，退出 0 | ✅ 33/33 |
-| 2 | `.\.venv\Scripts\python.exe .\verify\verify_runner.py` | `ALL PASS (20 assertions)`，退出 0 | ✅ 20/20 |
+| 2 | `.\.venv\Scripts\python.exe .\verify\verify_runner.py` | `ALL PASS (26 assertions)`，退出 0（20 原有 + TG-7 三例 + Retro③ 两例 + …） | ✅ 26/26 |
 | 3 | `.\.venv\Scripts\python.exe .\verify\verify_archive.py agents\runs\run-2026-09-12-provider-refresh-001 --depth expert` | `=== ALL PASS: 28 passed / 0 failed ===`（含**双向**交叉引用断言） | ✅ 28/28 |
 | 4 | `.\.venv\Scripts\python.exe .\verify\verify_archive.py --selftest` | `=== selftest PASS: 8 passed / 0 failed ===`（合规 expert/scholar 通过 + 空报告被拒 + **被引用证据缺失被拒** + **正文提及别处证据名不误判** + **索引表 `.markdown` 漏报被拦** + **已存在 `.markdown` 不假红** + **嵌套子目录不假红**） | ✅ 8/8 |
-| 5 | `.\.venv\Scripts\python.exe .\verify\verify_matrix.py check` | `CHECK OK: 40 脚本与 TEST-MATRIX.MD 一致` | ✅ 40 脚本 |
+| 5 | `.\.venv\Scripts\python.exe .\verify\verify_matrix.py check` | `CHECK OK: 41 脚本与 TEST-MATRIX.MD 一致` | ✅ 41 脚本（当轮加入 `verify_usage.py`，40→41） |
 | 6 | `foreach ($f in Get-ChildItem agents\functions\*.md) { .\.venv\Scripts\python.exe .\scripts\agent-ops.py validate-spec $f.FullName }` | 8 个 spec 全 PASS | ✅ 8/8 |
-| 7 | `.\.venv\Scripts\python.exe .\verify\run_suite.py --tier offline` | `SUITE PASSED (10 scripts)`，退出 0（fail-closed） | ✅ 10/10（见 §5.1） |
+| 7 | `.\.venv\Scripts\python.exe .\verify\run_suite.py --tier offline` | `SUITE PASSED (11 scripts)`，退出 0（fail-closed；含 `verify_usage.py`） | ✅ 11/11（见 §5.1） |
+| 8 | `.\.venv\Scripts\python.exe .\verify\verify_usage.py` | `ALL PASS (21 assertions)`（Retro③ 用量采集与成本换算口径） | ✅ 21/21 |
 
 ### 5.1 第 7 条的复跑记录（2026-09-20 现场）
 
@@ -135,7 +136,9 @@ SUITE PASSED (10 scripts)
 
 > 套件全程 `est_cost=0`（无付费调用；`verify_local_dir.py` 走 st- 本地向量 + CSV manifest 提供 citation，故无需密钥）；**fail-closed**：任一脚本失败即整体非零（见 §7 `B-7`）。
 >
-> **修复后复跑（同日，三轮）**：`verify_archive.py` 补反向交叉引用 → 按独立复核收紧（判定限定证据索引表区间 + 大小写不敏感）→ 再按 round-2 统一两侧口径（`.md`/`.markdown` + 嵌套目录）。真实归档 `ALL PASS: 28 passed / 0 failed`、`--selftest` `8 passed / 0 failed`、原漏检变体 `FAILED 25/1`、`run_suite.py --tier offline` 仍 `SUITE PASSED (10 scripts)`（完整输出见预跑日志 `verify/acceptance-sprint16-2026-09-20.log`）。
+> **修复后复跑（同日，三轮）**：`verify_archive.py` 补反向交叉引用 → 按独立复核收紧（判定限定证据索引表区间 + 大小写不敏感）→ 再按 round-2 统一两侧口径（`.md`/`.markdown` + 嵌套目录）。真实归档 `ALL PASS: 28 passed / 0 failed`、`--selftest` `8 passed / 0 failed`、原漏检变体 `FAILED 25/1`、`run_suite.py --tier offline` **`SUITE PASSED (11 scripts)`**（完整输出见预跑日志 `verify/acceptance-sprint16-2026-09-20.log`）。
+>
+> **注**：上表"档位构成"是加入 `verify_usage.py` **之前**的读数（10 脚本）；现行 offline 档为 **11 脚本**（新增 Retro③ 计量回归），用 `run_suite.py --tier offline --dry-run` 可复核。
 
 > 说明：`verify_checkpoint.py`（33 断言）**不在 offline 档**——其 parse 链路含真实 LLM 调用，分级为 network 档（估算 ¥0.05），见 §9 `N-1`。
 
@@ -172,7 +175,7 @@ SUITE PASSED (10 scripts)
 
 | 编号 | 怎么验 | 通过判据 | 证据 | 判定 |
 |---|---|---|---|---|
-| `TG-1` | §5 第 7 条；另可用 `run_suite.py --tier network --dry-run` **零成本**看 network 档构成与预估花费 | `SUITE PASSED`，退出 0，**10 个 offline 脚本**全绿；`--tier gui\|network` 同样按 `VERIFY_META.tier` 分层（40 脚本 SSOT 见 `verify/README.md`） | `run_suite.py` | ☐ |
+| `TG-1` | §5 第 7 条；另可用 `run_suite.py --tier network --dry-run` **零成本**看 network 档构成与预估花费 | `SUITE PASSED`，退出 0，**11 个 offline 脚本**全绿；`--tier gui\|network` 同样按 `VERIFY_META.tier` 分层（41 脚本 SSOT 见 `verify/README.md`） | `run_suite.py` | ☐ |
 | `TG-2` | §7 `B-7` | 任一脚本失败 → **整体非零**（不"部分通过"） | `verify_runner.py` 断言 ② | ☐ |
 | `TG-3` | §7 `B-8` / `B-9` + 看优先级 | 上限优先级 **CLI > env `PAPERQA_NIGHTLY_BUDGET_CNY` > 配置默认 10**；改 env 即生效 | 断言 ③、④ | ☐ |
 | `TG-4` | `.\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --list` | 三任务与间隔：`prices` 7 天、`nightly-suite` 7 天、`providers` **14 天**；`due` 判定与上次运行可见（当前状态文件不存在 → 显示"从未运行"） | 实测输出见 §6.3 附 | ☐ |
