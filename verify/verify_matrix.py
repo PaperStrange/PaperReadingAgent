@@ -123,9 +123,19 @@ def collect(verify_dir: Path) -> list[tuple[Path, dict]]:
             continue
         entries.append((p, meta))
     if problems:
-        print("FAIL: 以下脚本未登记元数据（TG-2 规则：verify 脚本必须带 VERIFY_META 头部）:")
-        for prob in problems:
-            print(f"  - {prob}")
+        # 修复验证复核 run-060 minor：**"缺元数据"与"元数据非法"必须分开报**——
+        # 旧实现把两类混在同一条标题下（"以下脚本未登记元数据"），对"字段非法/nan"这类问题
+        # 给出误导性指引（让人去补头部，实际是要改字段），排障时容易走错方向。
+        missing = [x for x in problems if x.startswith("缺元数据")]
+        invalid = [x for x in problems if not x.startswith("缺元数据")]
+        if missing:
+            print("FAIL: 以下脚本未登记元数据（TG-2 规则：verify 脚本必须带 VERIFY_META 头部）:")
+            for prob in missing:
+                print(f"  - {prob}")
+        if invalid:
+            print("FAIL: 以下脚本的元数据**非法**（字段类型/tier/非有限数值等，头部存在但内容不合法）:")
+            for prob in invalid:
+                print(f"  - {prob}")
         raise SystemExit(1)
     return entries
 

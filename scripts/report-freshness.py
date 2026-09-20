@@ -49,7 +49,15 @@ _SECTION7_RE = re.compile(r"^##\s*7\.[^\n]*(?:\n|$)(.*?)(?=^##\s|\Z)", re.M | re
 # `cited=∅` → "点名证据缺失"完全静默（假阴性），与归档门禁 `verify_archive.py`（标题兜底 +
 # 定位失败显式 FAIL）口径不一致。现改为：按标题层级定位（多形态）＋定位失败**显式退化并标注来源**。
 _HEAD_RE = re.compile(r"^(#{1,6})[ \t]*(.+?)[ \t]*$", re.M)
-_SECTION7_TITLE_RE = re.compile(r"^(?:§\s*)?7(?:[.、．:：)）]|\s|$)|证据索引")
+# 优先级（对齐 `verify/verify_archive.py::evidence_index_section` 的选取语义，见教训 1.62）：
+#   P1 = 任意 2~4 级标题、标题**含「证据索引」**（最可靠：名字就是契约）
+#   P2 = §7 编号标题（`7.`/`7、`/`§7`/`7 空格`），但**排除子节 `7.1`**（`(?!\.\d)`）
+#   P3 = 都找不到 → 显式退化为全文
+# 修复验证复核 run-060 major：上一版用"首个命中即返回"，于是更早的 `### 7.1 补充证据` 会抢走权威 §7，
+# 使"点名证据缺失"**静默变 fresh**（把假阴性从一个形态搬到另一个形态）。现按优先级择**最优**候选，
+# 而不是"最先出现的"候选。
+_S7_NAME_RE = re.compile(r"证据索引")
+_S7_NUMBER_RE = re.compile(r"^(?:§\s*)?7(?!\.\d)(?:[.、．:：)）]|\s|$)")
 
 
 def _extract_section7(text: str) -> tuple[str, str]:
@@ -58,18 +66,22 @@ def _extract_section7(text: str) -> tuple[str, str]:
     `whole-doc` = 没有可识别的 §7 标题：此时**退化为全文**（宁可多判、不可静默漏判），
     并把来源写进结果 JSON，使"为什么这次判成这样"可追溯。
     """
-    heads = list(_HEAD_RE.finditer(text))
-    for i, m in enumerate(heads):
-        title = m.group(2).strip()
-        if not _SECTION7_TITLE_RE.match(title):
-            continue
-        level = len(m.group(1))
+    heads = [(m, len(m.group(1)), m.group(2).strip()) for m in _HEAD_RE.finditer(text)]
+
+    def _slice(i: int) -> str:
+        m, level, _title = heads[i]
         end = len(text)
-        for nxt in heads[i + 1:]:
-            if len(nxt.group(1)) <= level:  # 同级或更高级标题 = 本节结束
+        for nxt, nxt_level, _t in heads[i + 1:]:
+            if nxt_level <= level:  # 同级或更高级标题 = 本节结束
                 end = nxt.start()
                 break
-        return text[m.end():end], "heading"
+        return text[m.end():end]
+
+    for matcher in (_S7_NAME_RE, _S7_NUMBER_RE):
+        for i, (_m, _level, title) in enumerate(heads):
+            hit = matcher.search(title) if matcher is _S7_NAME_RE else matcher.match(title)
+            if hit:
+                return _slice(i), "heading"
     return text, "whole-doc"
 
 
@@ -204,6 +216,15 @@ def _analyze_archive(run_dir: Path, providers: dict[str, dict], refresh_toleranc
     if missing:
         status = "stale"
         reasons.append(f"报告点名的证据文件缺失：{', '.join(missing[:3])}")
+    if ev_files and not cited and section7_source == "heading" and status == "fresh":
+        # 修复验证复核 run-060 建议 ③（fail-loud 门禁）：定位到了 §7 却**一条证据引用都没识别出来**，
+        # 很可能是定位到了错误区间（或引用写法未覆盖）。绝不静默判 fresh。
+        # **触发条件必须限定"该归档确有证据文件"**（M16 归档契约）：真实数据回归（2026-09-21）实测，
+        # 2026-08-30/31 的老格式归档只有 `## 7. 来源清单`（URL 清单）且**没有 evidence/ 目录**——
+        # 对它们要求"§7 引用 evidence/*.md"是口径错配，会把两个合法归档误判为 suspect（新误报）。
+        status = "suspect"
+        reasons.append(f"§7 区间内未识别到任何 evidence 引用（该归档含 {len(ev_files)} 篇证据）"
+                       "——可能定位到错误区间，需人工确认")
     if ev_modified_after_report and status == "fresh":
         status = "suspect"
         reasons.append("有 evidence 文件在报告之后被改动（二者可能不一致）")

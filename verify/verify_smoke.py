@@ -48,13 +48,15 @@ def t_backend() -> str:
     spec.loader.exec_module(mod)
     assert hasattr(mod, "app")
     routes = sorted({r.path for r in mod.app.routes if hasattr(r, "path")})
-    # 2026-09-21 关闭三查·二查 major：VERIFY_META 声称"12 路由"，但原实现只 `hasattr(app)` →
-    # 该声明**没有断言在守**（docstring/元数据与实测可能漂移）。此处把声明钉在实测上：
-    # ① 实际 /api 路由数必须等于 12；② VERIFY_META.routes 声明的路由必须真实存在。
+    # 2026-09-21 关闭三查·二查 major + 修复验证复核 run-060 minor：
+    # ① 断言必须是**双向集合相等**——单向断言在"删掉 2 条真路由 + 塞进 2 条幻影路由、总数仍为 12"时
+    #    会双双通过（复核用该变体实测），等于没钉住；
+    # ② 实际 /api 路由集合必须与 `VERIFY_META.routes` 声明**逐项相等**（含数量与内容）。
     api_routes = sorted(p for p in routes if p.startswith("/api/"))
-    assert len(api_routes) == 12, f"后端 API 路由数应为 12，实测 {len(api_routes)}：{api_routes}"
-    declared_missing = [p for p in VERIFY_META["routes"] if p not in api_routes]
-    assert not declared_missing, f"VERIFY_META.routes 声明了后端不存在的路由：{declared_missing}"
+    declared = sorted(VERIFY_META["routes"])
+    assert api_routes == declared, (
+        f"后端 /api 路由集合必须与 VERIFY_META.routes 逐项相等：实测 {api_routes} vs 声明 {declared}"
+    )
     return f"FastAPI title={mod.app.title!r} api_routes={len(api_routes)} routes={routes}"
 
 
