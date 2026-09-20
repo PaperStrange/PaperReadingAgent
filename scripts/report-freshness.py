@@ -58,7 +58,7 @@ _HEAD_RE = re.compile(r"^(#{1,6})[ \t]*(.+?)[ \t]*$", re.M)
 # 编号优先 + 排除子节后，这两类都不能再抢位。
 _S7_NAME_RE = re.compile(r"证据索引")
 _S7_NUMBER_RE = re.compile(r"^(?:§\s*)?7(?!\.\d)(?:[.、．:：)）]|\s|$)")
-_FENCE_RE = re.compile(r"^[ \t]*```.*$", re.M)
+_FENCE_RE = re.compile(r"^[ \t]*(?:```|~~~).*$", re.M)  # Round 3 minor：`~~~` 围栏同样须屏蔽
 
 
 def _blank_fences(text: str) -> str:
@@ -246,11 +246,14 @@ def _analyze_archive(run_dir: Path, providers: dict[str, dict], refresh_toleranc
     if missing:
         status = "stale"
         reasons.append(f"报告点名的证据文件缺失：{', '.join(missing[:3])}")
-    if ev_files and not cited and section7_source == "heading" and status == "fresh":        # 修复验证复核 run-060 建议 ③（fail-loud 门禁）：定位到了 §7 却**一条证据引用都没识别出来**，
-        # 很可能是定位到了错误区间（或引用写法未覆盖）。绝不静默判 fresh。
-        # **触发条件必须限定"该归档确有证据文件"**（M16 归档契约）：真实数据回归（2026-09-21）实测，
-        # 2026-08-30/31 的老格式归档只有 `## 7. 来源清单`（URL 清单）且**没有 evidence/ 目录**——
-        # 对它们要求"§7 引用 evidence/*.md"是口径错配，会把两个合法归档误判为 suspect（新误报）。
+    # 修复验证复核 run-060 建议 ③（fail-loud 门禁）：定位到了 §7 却**一条证据引用都没识别出来**，
+    # 很可能是定位到了错误区间（或引用写法未覆盖）。绝不静默判 fresh。
+    # **触发条件必须限定"该归档确有证据文件"**（M16 归档契约）：真实数据回归（2026-09-21）实测，
+    # 2026-08-30/31 的老格式归档只有 `## 7. 来源清单`（URL 清单）且**没有 evidence/ 目录**——
+    # 对它们要求"§7 引用 evidence/*.md"是口径错配，会把两个合法归档误判为 suspect（新误报）。
+    # Round 3 minor：原写法把注释并进 `if` 行（~141 字符）→ 提取具名变量、注释独立成行。
+    zero_cited = ev_files and not cited and section7_source == "heading" and status == "fresh"
+    if zero_cited:
         status = "suspect"
         reasons.append(f"§7 区间内未识别到任何 evidence 引用（该归档含 {len(ev_files)} 篇证据）"
                        + ("；且该区间内**无表格行**而文档别处有表格——定位到错误区间的可能性较高"
