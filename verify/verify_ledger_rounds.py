@@ -101,6 +101,30 @@ def main() -> int:
         res = run(["round", "run-不存在", "--note", "x"], env)
         ok("⑨ 不存在的 run → 非零退出", res.returncode != 0, f"exit={res.returncode}")
 
+        # ⑪/⑫（2026-09-21 关闭三查·二查 windows major）：`round`/`interrupt` **未持 registry 锁**，
+        # 且 `_save_registry` 是非原子 `write_text`（截断 + 写入）→ 并发下账本可被截断/丢更新。
+        # 反向对照：⑪ 检查装饰器接线（确定性），⑫ 用 6 个并发 round 检查实际无丢失（行为面）。
+        import importlib.util as _ilu
+
+        _spec = _ilu.spec_from_file_location("agent_ops_mod", OPS)
+        _ao = _ilu.module_from_spec(_spec)
+        assert _spec.loader is not None
+        _spec.loader.exec_module(_ao)
+        ok("⑪ round/interrupt 走加锁路径（装饰器接线可自检）",
+           hasattr(_ao.cmd_round, "__wrapped__") and hasattr(_ao.cmd_interrupt, "__wrapped__"),
+           f"round={getattr(_ao.cmd_round, '__wrapped__', None)} interrupt={getattr(_ao.cmd_interrupt, '__wrapped__', None)}")
+
+        base_rounds = json.loads(reg.read_text(encoding="utf-8"))["runs"][0].get("rounds_count")
+        conc = [subprocess.Popen([PY, str(OPS), "round", run_id, "--note", f"并发轮次 {i}", "--output-chars", "10"],
+                                 cwd=str(ROOT), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+                for i in range(6)]
+        for p in conc:
+            p.wait(timeout=60)
+        after = json.loads(reg.read_text(encoding="utf-8"))["runs"][0]
+        ok("⑫ 6 个并发 round 无丢失更新（rounds_count = 基线 + 6，账本仍是合法 JSON）",
+           after.get("rounds_count") == int(base_rounds) + 6,
+           f"base={base_rounds} after={after.get('rounds_count')}")
+
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
 

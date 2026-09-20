@@ -48,7 +48,14 @@ def t_backend() -> str:
     spec.loader.exec_module(mod)
     assert hasattr(mod, "app")
     routes = sorted({r.path for r in mod.app.routes if hasattr(r, "path")})
-    return f"FastAPI title={mod.app.title!r} routes={routes}"
+    # 2026-09-21 关闭三查·二查 major：VERIFY_META 声称"12 路由"，但原实现只 `hasattr(app)` →
+    # 该声明**没有断言在守**（docstring/元数据与实测可能漂移）。此处把声明钉在实测上：
+    # ① 实际 /api 路由数必须等于 12；② VERIFY_META.routes 声明的路由必须真实存在。
+    api_routes = sorted(p for p in routes if p.startswith("/api/"))
+    assert len(api_routes) == 12, f"后端 API 路由数应为 12，实测 {len(api_routes)}：{api_routes}"
+    declared_missing = [p for p in VERIFY_META["routes"] if p not in api_routes]
+    assert not declared_missing, f"VERIFY_META.routes 声明了后端不存在的路由：{declared_missing}"
+    return f"FastAPI title={mod.app.title!r} api_routes={len(api_routes)} routes={routes}"
 
 
 def t_tracer() -> str:

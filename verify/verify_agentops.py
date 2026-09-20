@@ -256,6 +256,19 @@ def main() -> int:
             "<tr><td>PEAK</td><td>$1.32</td><td>$3.96</td><td>$1.32</td></tr></table>Concurrency 10"
         )
         ds = fp.parse_deepseek(deepseek_html)
+
+        # ⑬（2026-09-21 关闭三查·二查 windows major）：重定向逐跳复检必须挂在 **HTTPRedirectHandler** 上。
+        # 旧实现 `class _SafeRedirectHandler(urllib.request.HTTPSHandler)` —— `redirect_request` 定义在
+        # `HTTPRedirectHandler` 上，HTTPSHandler 子类的该方法**从不被 urllib 调用** = 死代码，
+        # 而 `build_opener` 仍会挂默认重定向处理器 → 白名单可被一次 302 绕过（SSRF 面）。
+        import urllib.request as _ur
+
+        _opener = _ur.build_opener(fp._SafeRedirectHandler())
+        ok("⑬ fetch-prices 的重定向复检挂在 HTTPRedirectHandler 上（非死代码），且是 opener 实际使用的处理器",
+           issubclass(fp._SafeRedirectHandler, _ur.HTTPRedirectHandler)
+           and any(isinstance(h, fp._SafeRedirectHandler) for h in _opener.handlers),
+           f"mro={[c.__name__ for c in fp._SafeRedirectHandler.__mro__[:3]]}")
+
         ok("UC-13 deepseek 表格解析（PEAK 口径）",
            "deepseek-v4-flash" in ds
            and abs(ds["deepseek-v4-flash"]["input_cost_per_token"] - 4.4e-7) < 1e-12

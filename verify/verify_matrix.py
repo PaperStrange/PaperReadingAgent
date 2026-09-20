@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -90,6 +91,13 @@ def validate_meta(path: Path, meta: dict) -> None:
         raise SystemExit(f"FAIL: {path.name} est_seconds 必须是数字")
     if not isinstance(meta["est_cost_cny"], (int, float)):
         raise SystemExit(f"FAIL: {path.name} est_cost_cny 必须是数字")
+    # 2026-09-21 关闭三查·二查 major（教训 1.61）：**非有限值必须在元数据层就被拒**。
+    # NaN 从 .mjs 的 `// VERIFY_META: {...}` 进来时走 `json.loads`，而 Python 的 json **默认接受**
+    # `NaN/Infinity` → 若此处只查 isinstance，NaN 会一路走到 `est_cost > budget`（恒 False）并静默放行付费档。
+    if not math.isfinite(float(meta["est_cost_cny"])):
+        raise SystemExit(f"FAIL: {path.name} est_cost_cny 必须为有限数（nan/inf/-inf 会静默绕过预算闸门）")
+    if not math.isfinite(float(meta["est_seconds"])):
+        raise SystemExit(f"FAIL: {path.name} est_seconds 必须为有限数（nan 会让超时判定失效）")
 
 
 def collect(verify_dir: Path) -> list[tuple[Path, dict]]:

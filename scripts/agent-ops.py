@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import hashlib
 import json
 import os
@@ -113,8 +114,13 @@ def _prices_lock():
 
 
 def _with_registry_lock(fn):
-    """写命令装饰器：整条命令（含异常路径）都在锁内执行，异常自动释放锁。"""
+    """写命令装饰器：整条命令（含异常路径）都在锁内执行，异常自动释放锁。
 
+    `functools.wraps`（2026-09-21 关闭三查·二查 major）：保留 `__wrapped__` 与函数元信息，
+    使"某子命令是否真的走了加锁路径"可以被回归断言直接自检（`round`/`interrupt` 曾漏加锁）。
+    """
+
+    @functools.wraps(fn)
     def wrapper(args: argparse.Namespace):
         with _registry_lock():
             return fn(args)
@@ -145,9 +151,18 @@ def _integrity(data: dict) -> str:
 
 
 def _save_registry(data: dict) -> None:
+    """**原子**写账本（2026-09-21 关闭三查·二查 major）：先写同目录临时文件再 `os.replace`。
+
+    原实现直接 `write_text`（截断 + 写入），并发写或写入中途被打断会留下**截断的 registry.json**
+    （账本=唯一真相源，截断即数据损坏）。`os.replace` 在同一文件系统内是原子的：读者要么看到旧文件、
+    要么看到完整新文件。配合 `_registry_lock` 使用。
+    """
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     data["integrity"] = _integrity(data)
-    REGISTRY_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    payload = json.dumps(data, ensure_ascii=False, indent=2)
+    tmp = REGISTRY_PATH.with_suffix(".json.tmp")
+    tmp.write_text(payload, encoding="utf-8")
+    os.replace(tmp, REGISTRY_PATH)
 
 
 def _find_run(data: dict, run_id: str) -> dict:
@@ -316,6 +331,7 @@ def cmd_finish(args: argparse.Namespace) -> None:
     print(f"finished {args.run_id} -> {r['status']} (cost_est={r['cost_est']})")
 
 
+@_with_registry_lock
 def cmd_round(args: argparse.Namespace) -> None:
     """TG-10①：给同一 run **追加轮次**记录（多轮复核/追加验证），不改首轮语义。
 
@@ -371,6 +387,7 @@ def cmd_round(args: argparse.Namespace) -> None:
           f"ended_at={r['ended_at']})")
 
 
+@_with_registry_lock
 def cmd_interrupt(args: argparse.Namespace) -> None:
     """TG-10②：记录一次**中断/接管**事件（何时、谁、为什么、影响范围）。
 

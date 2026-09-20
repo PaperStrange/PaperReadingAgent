@@ -43,12 +43,12 @@ def run(args: list[str]) -> subprocess.CompletedProcess:
                           encoding="utf-8", errors="replace", check=False)
 
 
-def write_report(run_dir: Path, title: str, cites: list[str]) -> Path:
+def write_report(run_dir: Path, title: str, cites: list[str], heading: str = "## 7. 证据索引表") -> Path:
     run_dir.mkdir(parents=True, exist_ok=True)
     rows = "\n".join(f"| 结论 | `evidence/{n}` | ok | 摘录 |" for n in cites)
     rp = run_dir / "tech-research.report.md"
     rp.write_text(
-        f"# tech-research report（{title}）\n" + "填充" * 120 + f"\n## 7. 证据索引表\n| 结论 | evidence | 状态 | 摘录 |\n|---|---|---|---|\n{rows}\n",
+        f"# tech-research report（{title}）\n" + "填充" * 120 + f"\n{heading}\n| 结论 | evidence | 状态 | 摘录 |\n|---|---|---|---|\n{rows}\n",
         encoding="utf-8",
     )
     return rp
@@ -126,6 +126,47 @@ def main() -> int:
             rp_bm.read_text(encoding="utf-8") + "\n另见正文提及 `9-gone.md` 与 `evidence/08-ghost.md`（非索引表引用）。\n",
             encoding="utf-8",
         )
+
+        # ⑫（2026-09-21 关闭三查·二查 major，教训 1.62）：§7 标题的**真实写法有多种**。旧实现只认
+        #    `^##\s*7\.` → 其余形态定位失败 → cited=∅ → "点名证据缺失"**完全静默**（假阴性），
+        #    与归档门禁（标题兜底 + 定位失败显式 FAIL）口径不一致。此处 4 种形态各建一份归档，
+        #    每份各引用一个**不存在**的证据（同时放一个存在的证据，隔离 provider 刷新这条 stale 原因）。
+        vroot = base / "variants"
+        variants = {
+            "run-v1": "### 7. 证据索引表",
+            "run-v2": "## 7、证据索引表",
+            "run-v3": "## §7 证据索引表",
+            "run-v4": "## 证据索引表",
+        }
+        for rid, hd in variants.items():
+            d = vroot / rid
+            write_report(d, f"{rid} heading variant", ["01-missing.md"], heading=hd)
+            write_evidence(d, "00-present.md", "2026-09-19 10:00 +0800")
+        out_v = base / "freshness_variants.json"
+        run(["--runs-dir", str(vroot), "--providers-dir", str(prov_old), "--json", str(out_v)])
+        pv = json.loads(out_v.read_text(encoding="utf-8"))
+        bv = {r["run_id"]: r for r in pv["reports"]}
+        # ⑫b 完全没有可识别的 §7 标题 → 必须**显式退化**为全文判定（`citation_scope=whole-doc`）并仍然抓出缺失，
+        #     绝不"定位不到 ⇒ 集合为空 ⇒ 静默 fresh"。
+        v5 = vroot / "run-v5"
+        write_report(v5, "no section7 heading", ["02-missing.md"], heading="## 8. 其他说明")
+        write_evidence(v5, "00-present.md", "2026-09-19 10:00 +0800")
+        out_v = base / "freshness_variants.json"
+        run(["--runs-dir", str(vroot), "--providers-dir", str(prov_old), "--json", str(out_v)])
+        pv = json.loads(out_v.read_text(encoding="utf-8"))
+        bv = {r["run_id"]: r for r in pv["reports"]}
+        ok("⑫ §7 标题的 4 种真实形态（`### 7.` / `## 7、` / `## §7` / `## 证据索引表`）下"
+           "点名证据缺失**仍判 stale**（不静默漏检）",
+           len(bv) == 5 and all(r["status"] == "stale" and any("缺失" in w for w in r["reasons"])
+                                for r in bv.values() if r["run_id"] != "run-v5"),
+           str({k: (v["status"], v["reasons"]) for k, v in bv.items()})[:220])
+        ok("⑫ 结果 JSON 标注 §7 定位来源（`citation_scope`），使判定口径可追溯",
+           all(bv[k].get("citation_scope") == "heading" for k in ("run-v1", "run-v2", "run-v3", "run-v4")),
+           str({k: v.get("citation_scope") for k, v in bv.items()}))
+        ok("⑫b 无 §7 标题 → 显式退化为全文（`whole-doc`）且**仍抓出缺失**（不是静默 fresh）",
+           bv["run-v5"].get("citation_scope") == "whole-doc" and bv["run-v5"]["status"] == "stale"
+           and any("缺失" in w for w in bv["run-v5"]["reasons"]),
+           json.dumps({k: bv["run-v5"][k] for k in ("citation_scope", "status", "reasons")}, ensure_ascii=False)[:180])
 
         # 有 stale 的场景（prov_new 晚于 run-a 证据）
         res = run(["--runs-dir", str(runs), "--providers-dir", str(prov_new), "--json", str(out_json)])

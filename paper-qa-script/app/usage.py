@@ -189,7 +189,11 @@ def record_response(response: Any, model_hint: str = "") -> None:
         reported = str(getattr(response, "model", "") or "")
     key, raw = _resolve_key(reported, model_hint)
     if usage is None:
-        _record(key, 0, 0, 0, raw)
+        # 2026-09-21 关闭三查·二查 major（教训 1.61）：**无 usage 的响应不得记 0 次调用**。
+        # 旧实现 `_record(key, 0, 0, 0, raw)` 会让 `by_model` 非空 → `cost_cny` 算成 0.0 且 `no_data=False`
+        # → 经 `e2e_common.report_usage` → `run_suite`（`calls>0` 即判 measured）→ `scheduled-tasks` 自动回填，
+        # 即"回调未落地"被当成"已测且花费 0"——正是 3-LEARNED 1.54「未测量 ≠ 未超预算」禁止的口径。
+        # 无 usage = 无数据：保持空账，由上游如实判 `cost_cny=None` + `no_data=True`。
         return
     if isinstance(usage, dict):
         prompt = _as_int(usage.get("prompt_tokens") or usage.get("input_tokens"))
@@ -294,11 +298,17 @@ def settle(quiet_s: float = 0.4, max_s: float = 3.0, poll_s: float = 0.05) -> di
     stable_since = time.monotonic()
     while True:
         time.sleep(max(0.01, poll_s))
+        t = time.monotonic()
         cur = snapshot()
         if (cur["calls"], cur["total_tokens"]) != (last["calls"], last["total_tokens"]):
-            last, stable_since = cur, time.monotonic()
+            last, stable_since = cur, t
+            # 2026-09-21 关闭三查·二查 major（教训 1.61）：**增长分支也必须受 deadline 约束**。
+            # 旧实现此处直接 `continue`，跳过了下面的 `t >= deadline` → 只要持续有流量就永不返回
+            # （复核实测 >115s；本仓回归 ⑨ 在有界断言下实测 `alive=True elapsed=2.00s`）。
+            # `/api/run_step` 每步收尾都会调用本函数，故这等于请求路径可被挂死。
+            if t >= deadline:
+                return last
             continue
-        t = time.monotonic()
         if t - stable_since >= quiet_s or t >= deadline:
             return last
 

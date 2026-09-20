@@ -44,6 +44,34 @@ _CURRENT_RE = re.compile(r'"current"\s*:\s*"([^"]+)"')
 # （如 `1-WORKFLOW.MD`）误判成"缺失证据"（2026-09-21 在真实归档上实测到的假阳性）
 _SECTION7_RE = re.compile(r"^##\s*7\.[^\n]*(?:\n|$)(.*?)(?=^##\s|\Z)", re.M | re.S)
 
+# 教训 1.62（2026-09-21 关闭三查·二查 major）：§7 标题的真实写法有多种，单形态正则会**静默漏检**。
+# 旧实现只认 `^##\s*7\.` → `### 7.` / `## 7、` / `## §7` / `## 证据索引表` 全部定位失败 →
+# `cited=∅` → "点名证据缺失"完全静默（假阴性），与归档门禁 `verify_archive.py`（标题兜底 +
+# 定位失败显式 FAIL）口径不一致。现改为：按标题层级定位（多形态）＋定位失败**显式退化并标注来源**。
+_HEAD_RE = re.compile(r"^(#{1,6})[ \t]*(.+?)[ \t]*$", re.M)
+_SECTION7_TITLE_RE = re.compile(r"^(?:§\s*)?7(?:[.、．:：)）]|\s|$)|证据索引")
+
+
+def _extract_section7(text: str) -> tuple[str, str]:
+    """定位 §7（证据索引表）区间 → (正文, 来源)；来源 ∈ {`heading`, `whole-doc`}。
+
+    `whole-doc` = 没有可识别的 §7 标题：此时**退化为全文**（宁可多判、不可静默漏判），
+    并把来源写进结果 JSON，使"为什么这次判成这样"可追溯。
+    """
+    heads = list(_HEAD_RE.finditer(text))
+    for i, m in enumerate(heads):
+        title = m.group(2).strip()
+        if not _SECTION7_TITLE_RE.match(title):
+            continue
+        level = len(m.group(1))
+        end = len(text)
+        for nxt in heads[i + 1:]:
+            if len(nxt.group(1)) <= level:  # 同级或更高级标题 = 本节结束
+                end = nxt.start()
+                break
+        return text[m.end():end], "heading"
+    return text, "whole-doc"
+
 
 def _parse_ts(raw: str) -> float | None:
     """宽松时间解析 → epoch。
@@ -154,8 +182,7 @@ def _analyze_archive(run_dir: Path, providers: dict[str, dict], refresh_toleranc
     # 但若 §7 内**没有表格行**（写成项目符号/自由段落），则退化为整段 §7 —— 否则"点名证据缺失"
     # 会完全静默（假阴性），且与归档门禁（只要求文件名出现在 §7 文本、不要求表格行）口径不一致。
     have = {p.name.lower() for p in ev_files}
-    m7 = _SECTION7_RE.search(text)
-    section7 = m7.group(1) if m7 else ""
+    section7, section7_source = _extract_section7(text)
     rows = "\n".join(line for line in section7.splitlines() if line.strip().startswith("|"))
     scope_text = rows or section7
     cited = set(re.findall(r"evidence[/\\]([\w.\-]+\.(?:md|markdown))", scope_text, re.I))
@@ -188,6 +215,7 @@ def _analyze_archive(run_dir: Path, providers: dict[str, dict], refresh_toleranc
         "evidence_files": len(ev_files),
         "evidence_newest_fetched_at": newest_ev_ts,
         "recorded_current_values": sorted(current_values),
+        "citation_scope": section7_source,
         "status": status,
         "reasons": reasons,
     }

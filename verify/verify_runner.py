@@ -322,6 +322,83 @@ def main() -> int:
        res.returncode == 3 and s13f.get("budget_cny") == 10.0 and s13f.get("status") == "refused_budget",
        f"exit={res.returncode} budget={s13f.get('budget_cny')} status={s13f.get('status')}")
 
+    # ⑭（2026-09-21 关闭三查·二查 windows major）：**Σ 入口**与**裸比较**必须同样拒绝非有限值。
+    # 失效模式（复核实测）：`est_cost_cny: NaN` 让 `nan > budget` 恒为 False → 付费 network 档被静默放行。
+    # 反向对照（TG-6 ⑤"倒过来试"）：以下三条断言在未修复实现上必须 FAIL。
+    nan_fix = tmp / "fixture_nan"
+    nan_fix.mkdir()
+    nan_marker = tmp / "nan.marker"
+    (nan_fix / "gui_check_nan.mjs").write_text(
+        "// VERIFY_META: {\"features\": \"fixture nan\", \"tier\": \"network\", \"providers\": [], "
+        "\"est_seconds\": 1, \"est_cost_cny\": NaN, \"routes\": [], \"requires\": []}\n"
+        "import { writeFileSync } from 'node:fs';\n"
+        f"writeFileSync(String.raw`{nan_marker}`, 'ran');\n"
+        "process.exit(0);\n",
+        encoding="utf-8",
+    )
+    res = run([PY, str(RUN_SUITE), "--tier", "network", "--verify-dir", str(nan_fix),
+               "--budget-cny", "10", "--json", str(tmp / "r14.json")])
+    s14 = json.loads((tmp / "r14.json").read_text(encoding="utf-8")) if (tmp / "r14.json").exists() else {}
+    ok("⑭a est_cost_cny=NaN → fail-closed（非零退出）且付费档**未执行**（元数据层或 runner 守卫层拦截均可）",
+       res.returncode != 0 and not nan_marker.exists(),
+       f"exit={res.returncode} status={s14.get('status')} executed={nan_marker.exists()} "
+       f"out={(res.stdout or '').strip().splitlines()[-1][:90] if res.stdout else ''}")
+
+    inf_fix = tmp / "fixture_inf"
+    inf_fix.mkdir()
+    inf_marker = tmp / "inf.marker"
+    (inf_fix / "gui_check_inf.mjs").write_text(
+        "// VERIFY_META: {\"features\": \"fixture inf\", \"tier\": \"network\", \"providers\": [], "
+        "\"est_seconds\": 1, \"est_cost_cny\": Infinity, \"routes\": [], \"requires\": []}\n"
+        "import { writeFileSync } from 'node:fs';\n"
+        f"writeFileSync(String.raw`{inf_marker}`, 'ran');\n"
+        "process.exit(0);\n",
+        encoding="utf-8",
+    )
+    res = run([PY, str(RUN_SUITE), "--tier", "network", "--verify-dir", str(inf_fix),
+               "--budget-cny", "10", "--json", str(tmp / "r14b.json")])
+    s14b = json.loads((tmp / "r14b.json").read_text(encoding="utf-8")) if (tmp / "r14b.json").exists() else {}
+    ok("⑭b est_cost_cny=Infinity → fail-closed（非零退出）且不执行",
+       res.returncode != 0 and not inf_marker.exists(),
+       f"exit={res.returncode} status={s14b.get('status')} executed={inf_marker.exists()}")
+
+    import importlib.util as _ilu
+
+    # ⑭d runner 自身的非有限守卫（纯函数直测，覆盖"元数据层没挡住"的旁路）
+    _spec_rs = _ilu.spec_from_file_location("run_suite_mod", RUN_SUITE)
+    _rs = _ilu.module_from_spec(_spec_rs)
+    assert _spec_rs.loader is not None
+    _spec_rs.loader.exec_module(_rs)
+    ok("⑭d nonfinite_sources() 逐入口点名（脚本值 / Σ 原始 / Σ 乘积），正常输入返回空",
+       set(_rs.nonfinite_sources([("a.mjs", float("nan"))], float("nan"), float("nan")))
+       == {"a.mjs", "<Σ est_cost_raw>"}
+       and _rs.nonfinite_sources([("a.py", 1.0)], float("inf"), float("inf")) == ["<Σ est_cost_raw>"]
+       and _rs.nonfinite_sources([("a.py", 0.5)], 0.5, 0.65) == [],
+       f"nan={_rs.nonfinite_sources([('a.mjs', float('nan'))], float('nan'), float('nan'))} "
+       f"inf={_rs.nonfinite_sources([('a.py', 1.0)], float('inf'), float('inf'))} "
+       f"ok={_rs.nonfinite_sources([('a.py', 0.5)], 0.5, 0.65)}")
+
+    # ⑭c 元数据校验层同样必须拒绝非有限值（NaN 正是从 .mjs 的 JSON 元数据进来的：json.loads 默认接受 NaN/Infinity）
+    import importlib.util as _ilu
+
+    _spec = _ilu.spec_from_file_location("verify_matrix_mod", ROOT / "verify" / "verify_matrix.py")
+    _vm = _ilu.module_from_spec(_spec)
+    assert _spec.loader is not None
+    _spec.loader.exec_module(_vm)
+
+    def _meta_rejects(value) -> bool:
+        try:
+            _vm.validate_meta(Path("verify_fake.mjs"), {"features": "x", "tier": "network", "providers": [],
+                                                        "est_seconds": 1, "est_cost_cny": value,
+                                                        "routes": [], "requires": []})
+            return False
+        except SystemExit:
+            return True
+
+    ok("⑭c validate_meta 拒绝 nan / inf / -inf 的 est_cost_cny",
+       all(_meta_rejects(v) for v in (float("nan"), float("inf"), float("-inf"))),
+       f"nan={_meta_rejects(float('nan'))} inf={_meta_rejects(float('inf'))} -inf={_meta_rejects(float('-inf'))}")
+
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
 

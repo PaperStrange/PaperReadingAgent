@@ -44,15 +44,18 @@ def _safe_int(value, default=0) -> int:
         return default
 
 
-def _doc_row(name: str, entry: dict, payload_dir: Path) -> dict:
+def _doc_row(name: str, entry: dict, payload_dir: Path | None) -> dict:
     """把 manifest 里的一篇记录翻成前端可直接展示的行（含载荷路径与大小）。
 
     **dockey 取 basename**（复核 Round 5 minor）：manifest 是磁盘文件，可能被手工改坏；
     不归一化就会把 `..\\..` 拼进路径、探到命名空间之外（只读探测，但仍是越界读取面）。
+
+    `payload_dir=None`（2026-09-21 关闭三查·二查 major）：命名空间 key 非法时**不回显任何载荷路径**，
+    也就不再对外部文件做存在性/大小探测。
     """
     raw_dockey = Path(str(entry.get("dockey") or "")).name
     dockey = "" if raw_dockey in (".", "..") else raw_dockey
-    payload = payload_dir / f"{dockey}.json.gz" if dockey else None
+    payload = payload_dir / f"{dockey}.json.gz" if (payload_dir is not None and dockey) else None
     size = None
     exists = False
     if payload is not None:
@@ -77,8 +80,27 @@ def _doc_row(name: str, entry: dict, payload_dir: Path) -> dict:
 
 
 def _summarize(manifest_path: Path, data: dict) -> dict:
-    key = str(data.get("checkpoint_key") or manifest_path.stem)
-    payload_dir = manifest_path.parent / key
+    """汇总一个命名空间；**key 必须过 `_safe_key`**（2026-09-21 关闭三查·二查 major，教训 1.61）。
+
+    `checkpoint_key` 与 dockey 同源（都来自磁盘 manifest、都可能被手工改坏），上一轮只归一化了 dockey，
+    于是 key 直接拼进 `payload_dir` → 绝对路径或 `../..` 可逃出 checkpoint 根，再经
+    `GET /api/checkpoints` 回显 `payload_exists`/`payload_bytes` = 任意文件存在性与大小探测。
+    这里改为：非法 key 先回退到目录名；目录名也不合法 → **完全不回显/不探测载荷路径**，并记 `key_warning`。
+    """
+    raw_key = str(data.get("checkpoint_key") or manifest_path.stem)
+    key_warning = ""
+    safe_key = ""
+    try:
+        safe_key = _safe_key(raw_key)
+    except ValueError:
+        key_warning = f"checkpoint_key 非法（{raw_key[:60]!r}）→ 忽略，按目录名回退"
+        try:
+            safe_key = _safe_key(manifest_path.stem)
+        except ValueError:
+            safe_key = ""
+            key_warning += "；目录名亦非合法 key → 载荷路径不回显（防越界探测）"
+    key = safe_key or raw_key
+    payload_dir = (manifest_path.parent / safe_key) if safe_key else None
     docs_raw = data.get("docs") or {}
     rows = [_doc_row(str(name), (entry or {}), payload_dir) for name, entry in sorted(docs_raw.items())]
     by_status: dict[str, int] = {}
@@ -88,7 +110,8 @@ def _summarize(manifest_path: Path, data: dict) -> dict:
     return {
         "checkpoint_key": key,
         "manifest_path": str(manifest_path),
-        "payload_dir": str(payload_dir),
+        "payload_dir": str(payload_dir) if payload_dir is not None else "",
+        "key_warning": key_warning,
         "status": str(data.get("status") or "unknown"),
         "paper_dir": str(data.get("paper_dir") or ""),
         "index_name": str(data.get("index_name") or ""),

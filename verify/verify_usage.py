@@ -51,24 +51,28 @@ class _Resp:
 def main() -> int:
     U.reset()
 
-    # ① 解析：对象形态 + dict 形态 + 无 usage（仍记一次调用，不抛）
+    # ① 解析：对象形态 + dict 形态 + **无 usage（不记调用、不抛）**
+    #    语义变更（2026-09-21 关闭三查·二查 major，教训 1.61）：旧实现把无 usage 的响应记成"1 次调用 + 0 token"，
+    #    对**有价**模型会产出 `cost_cny=0.0` + `no_data=False` → 被判 measured 并自动回填 0 成本。
+    #    现口径：无 usage = 无数据（保持空账，由上游判 None + no_data=True）。
     U.record_response(_Resp("openai/deepseek-v4-flash", 1000, 200))
     U.record_response({"model": "openai/deepseek-v4-flash", "usage": {"prompt_tokens": 500, "completion_tokens": 100, "total_tokens": 600}})
-    U.record_response(object())  # 无 usage 字段
+    U.record_response(object())  # 无 usage 字段 → 不记
     s1 = U.snapshot()
-    ok("① 对象+dict 两种形态都被累计（calls=3）", s1["calls"] == 3, f"calls={s1['calls']}")
+    ok("① 有 usage 的两种形态都被累计、无 usage 的不计入（calls=2）", s1["calls"] == 2, f"calls={s1['calls']}")
     ok("① token 汇总正确（prompt=1500 completion=300 total=1800）",
        (s1["prompt_tokens"], s1["completion_tokens"], s1["total_tokens"]) == (1500, 300, 1800),
        f"{s1['prompt_tokens']}/{s1['completion_tokens']}/{s1['total_tokens']}")
-    ok("① by_model 明细按模型归集", s1["by_model"].get("openai/deepseek-v4-flash", {}).get("calls") == 2
-       and s1["by_model"].get("unknown", {}).get("calls") == 1, str(list(s1["by_model"])))
+    ok("① by_model 只含真实模型（无 usage 的响应不再产出 'unknown' 0-token 桶）",
+       s1["by_model"].get("openai/deepseek-v4-flash", {}).get("calls") == 2 and "unknown" not in s1["by_model"],
+       str(list(s1["by_model"])))
 
     # ② 增量：再记一笔后 delta 只含新增
     before = U.snapshot()
     U.record_response(_Resp("openai/deepseek-v4-flash", 100, 50))
     d = U.delta(before)
     ok("② delta 只含新增（calls=1, prompt=100）", d["calls"] == 1 and d["prompt_tokens"] == 100, f"{d['calls']}/{d['prompt_tokens']}")
-    ok("② delta 带累计视图（cumulative.calls=4）", d["cumulative"]["calls"] == 4, str(d["cumulative"]))
+    ok("② delta 带累计视图（cumulative.calls=3，无 usage 的那次不计入）", d["cumulative"]["calls"] == 3, str(d["cumulative"]))
     ok("② delta.by_model 只含增量模型", list(d["by_model"]) == ["openai/deepseek-v4-flash"], str(list(d["by_model"])))
 
     # ③ 价表查找：前缀归一化 + scraped + auto 兜底
@@ -136,6 +140,52 @@ def main() -> int:
     elapsed = time.monotonic() - t0s
     ok("⑧b settle() 返回快照且包含已记录调用", settled["calls"] == 1, f"calls={settled['calls']}")
     ok("⑧b settle() 有界（未超过 max_s + 余量）", elapsed <= 1.5, f"elapsed={elapsed:.2f}s")
+
+    # ⑨（2026-09-21 关闭三查·二查 major，教训 1.61）：**计数持续增长时也必须受 deadline 约束**。
+    # 失效模式：旧实现在"计数变化"分支 `continue`，跳过 `t >= deadline` 判定 → max_s 形同虚设，
+    # 复核实测注入持续流量后 >115s 未返回，而 `/api/run_step` 每步都调用它 → 请求路径可挂死。
+    import threading as _th
+
+    U.reset()
+    stop = _th.Event()
+
+    def _churn() -> None:
+        while not stop.is_set():
+            U.record_response({"model": "openai/deepseek-v4-flash",
+                               "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}})
+            time.sleep(0.005)
+
+    churn = _th.Thread(target=_churn, daemon=True)
+    churn.start()
+    box: dict = {}
+
+    def _call_settle() -> None:
+        box["snap"] = U.settle(quiet_s=0.05, max_s=0.3, poll_s=0.02)
+
+    # 断言自身必须**有界**（否则未修复实现会让回归脚本一起挂死——本断言的反向对照正是这样暴露的：
+    # 首次运行 180s 超时未返回）。故把 settle 放进工作线程，join 超时即判 FAIL。
+    t0c = time.monotonic()
+    worker = _th.Thread(target=_call_settle, daemon=True)
+    worker.start()
+    worker.join(timeout=2.0)
+    elapsed_c = time.monotonic() - t0c
+    stop.set()
+    churn.join(timeout=2.0)
+    ok("⑨ settle() 在计数持续增长时仍有界（≤ max_s + 余量，不挂死）",
+       not worker.is_alive() and elapsed_c < 1.5 and (box.get("snap") or {}).get("calls", 0) > 0,
+       f"alive={worker.is_alive()} elapsed={elapsed_c:.2f}s calls={(box.get('snap') or {}).get('calls')}")
+
+    # ⑩ 无 usage 的响应**不得**被记成"1 次调用 + 花费 0"——那会让 suite 判 measured 并自动回填 0 成本
+    #    （正是本模块注释禁止的口径；复核实测旧实现给出 cost_cny=0.0 + no_data=False）。
+    class _NoUsage:
+        model = "openai/deepseek-v4-flash"
+
+    U.reset()
+    U.record_response(_NoUsage())
+    s10 = U.snapshot()
+    ok("⑩ usage 缺失的响应 → 不记调用、cost_cny=None + no_data=True（不得伪造 0 花费）",
+       int(s10["calls"]) == 0 and s10["cost"]["cost_cny"] is None and s10["cost"]["no_data"] is True,
+       f"calls={s10['calls']} cost={s10['cost']['cost_cny']} no_data={s10['cost']['no_data']}")
 
     # ⑥ 回调挂载：幂等 + prune 后仍挂载（防被裁剪）
     import litellm  # noqa: E402

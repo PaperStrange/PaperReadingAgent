@@ -33,7 +33,7 @@ PASSED = 0
 ALLOWED_KEYS = {
     "checkpoint_key", "manifest_path", "payload_dir", "status", "paper_dir", "index_name",
     "embedding_model", "chunk_chars", "chunk_overlap", "updated_at", "docs_total",
-    "docs_by_status", "payload_bytes_total", "readable", "error", "docs",
+    "docs_by_status", "payload_bytes_total", "readable", "error", "docs", "key_warning",
 }
 
 
@@ -123,6 +123,39 @@ def main() -> int:
         ok("②b manifest 的 dockey 带 `..` → 路径归一化到命名空间内（不探出根外）",
            ".." not in Path(evil["payload_path"]).name and Path(evil["payload_path"]).parent.name == "eee444",
            evil["payload_path"])
+
+        # ⑨（2026-09-21 关闭三查·二查 windows major，教训 1.61）：**`checkpoint_key` 与 dockey 同源（都来自磁盘
+        # manifest）也必须校验**。旧实现只归一化了 dockey，`checkpoint_key` 直接拼进 payload_dir → 绝对路径/
+        # `../..` 可逃出 checkpoint 根，经 `GET /api/checkpoints` 回显 `payload_exists`/`payload_bytes`
+        # = 任意文件存在性与大小探测。用独立 root/outside 目录验证，避免扰动上文计数。
+        evil_root = Path(td) / "evil"
+        evil_root.mkdir(parents=True, exist_ok=True)
+        outside = Path(td) / "outside"
+        outside.mkdir(parents=True, exist_ok=True)
+        (outside / "probe.json.gz").write_text("x", encoding="utf-8")
+        (evil_root / "evil1.json").write_text(json.dumps({
+            "checkpoint_key": "../../outside", "status": "ready", "updated_at": 1.0,
+            "docs": {"X.pdf": {"dockey": "probe", "status": "ready", "texts_count": 1}},
+        }, ensure_ascii=False), encoding="utf-8")
+        (evil_root / "evil2.json").write_text(json.dumps({
+            "checkpoint_key": str(outside.resolve()), "status": "ready", "updated_at": 2.0,
+            "docs": {"Y.pdf": {"dockey": "probe", "status": "ready", "texts_count": 1}},
+        }, ensure_ascii=False), encoding="utf-8")
+        evil_items = {Path(r["manifest_path"]).name: r for r in CI.scan(evil_root)}
+        root_res = evil_root.resolve()
+        escapes: list[str] = []
+        for nm, r in evil_items.items():
+            pd = r.get("payload_dir") or ""
+            if pd and not Path(pd).resolve().is_relative_to(root_res):
+                escapes.append(f"{nm}:payload_dir={pd}")
+            for d in r.get("docs") or []:
+                if d.get("payload_exists") or (d.get("payload_path") or "").strip():
+                    escapes.append(f"{nm}:doc={d.get('payload_path')}")
+        ok("⑨ `checkpoint_key` 被改坏（`../..` / 绝对路径）→ 不回显根外载荷、不探测外部文件（2 件均被扫描到且 fail-soft）",
+           len(evil_items) == 2 and not escapes, f"escapes={escapes} n={len(evil_items)}")
+        ok("⑨ 非法 key 有**显式告警**（不静默）",
+           all(bool(evil_items[n].get("key_warning")) for n in evil_items),
+           str({n: (evil_items[n].get("key_warning") or "")[:60] for n in evil_items}))
 
         ccc = by_key["ccc333"]
         ok("③ 坏 manifest：fail-soft（readable=False + status=corrupt + 记原因）",

@@ -87,8 +87,14 @@ def _host_allowed(url: str) -> bool:
     return any(host == d or host.endswith("." + d) for d in _ALLOW_DOMAINS)
 
 
-class _SafeRedirectHandler(urllib.request.HTTPSHandler):
-    """重定向逐跳复检：任一跳落到非 https 或白名单外域名 → 抛错（拒绝跟随）。"""
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """重定向逐跳复检：任一跳落到非 https 或白名单外域名 → 抛错（拒绝跟随）。
+
+    2026-09-21 关闭三查·二查 major：原实现继承的是 `HTTPSHandler`，而 `redirect_request` 定义在
+    `HTTPRedirectHandler` 上 → 本方法**从不被 urllib 调用**（死代码），`build_opener` 仍会挂默认
+    重定向处理器，白名单可被一次 302 绕过。基类必须是 `HTTPRedirectHandler`（`refresh-providers.py:63`
+    的同类实现一直是正确写法，可直接对照）。
+    """
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         if not _host_allowed(newurl):

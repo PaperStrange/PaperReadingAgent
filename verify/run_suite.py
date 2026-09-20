@@ -91,6 +91,22 @@ def est_factor_from(args) -> float:
     return val
 
 
+def nonfinite_sources(est_values: list[tuple[str, float]], est_raw: float, est_cost: float) -> list[str]:
+    """返回"使预估花费非有限"的来源名（空列表 = 正常）。
+
+    教训 1.61（2026-09-21 关闭三查·二查 major）：`est_cost_cny: NaN` 会让 `nan > budget` 恒为 False
+    → **付费 network 档被静默放行**（修复前实测 `exit=0 status=ok executed=True`）。故 Σ 入口、
+    乘积入口都必须挡，不能只挡 CLI/env 两个入口（`budget_from`/`est_factor_from`）。
+    抽成纯函数是为了让该守卫本身可被回归断言直接驱动（而不是只能靠端到端 fixture 间接触发）。
+    """
+    bad = sorted({n for n, v in est_values if not math.isfinite(v)})
+    if not math.isfinite(est_raw):
+        bad = sorted(set(bad) | {"<Σ est_cost_raw>"})
+    if not math.isfinite(est_cost) and not bad:
+        bad = ["<Σ est_cost>"]
+    return bad
+
+
 def select(verify_dir: Path, tier: str, only: list[str] | None) -> list[tuple[Path, dict]]:
     try:
         entries = collect(verify_dir)
@@ -141,8 +157,9 @@ def main() -> int:
     only = [s.strip() for s in args.scripts.split(",") if s.strip()] or None
 
     picked = select(verify_dir, args.tier, only)
-    est_raw = round(sum(float(m.get("est_cost_cny") or 0) for _, m in picked), 4)
+    est_values = [(p.name, float(m.get("est_cost_cny") or 0)) for p, m in picked]
     est_factor = est_factor_from(args)
+    est_raw = round(sum(v for _, v in est_values), 4)
     est_cost = round(est_raw * est_factor, 4)
     budget = budget_from(args)
     started = time.time()
@@ -167,7 +184,20 @@ def main() -> int:
     for p, m in picked:
         print(f"  - {p.name} (est {m.get('est_seconds')}s / {m.get('est_cost_cny')} CNY)")
 
-    if est_cost > budget:
+    # 非有限值守卫（2026-09-21 关闭三查·二查 windows major，教训 1.61）：
+    # `est_cost_cny: NaN` 会让 `nan > budget` 恒为 False → **付费 network 档被静默放行**（实测复现）。
+    # 反向对照证据：修复前该 fixture 得到 `exit=0 status=ok executed=True`。
+    # 关键：**Σ 入口与乘积入口都必须挡**——只挡 CLI/env 两个入口（budget_from / est_factor_from）等于没挡。
+    bad = nonfinite_sources(est_values, est_raw, est_cost)
+    if bad:
+        summary["status"] = "refused_nonfinite_est"
+        summary["finished_at"] = time.time()
+        print(f"REFUSED: 预估花费含非有限值（{'、'.join(bad)}）→ 拒绝启动（fail-closed）。"
+              f"NaN/inf/-inf 会使预算比较恒为 False 从而静默绕过闸门；请修脚本 VERIFY_META.est_cost_cny。")
+        _write_json(args.json, summary)
+        return REFUSE_EXIT
+
+    if not math.isfinite(est_cost) or est_cost > budget:
         # 三态之"超限"：直接拒绝启动（fail-closed，不降级、不部分执行）
         summary["status"] = "refused_budget"
         summary["finished_at"] = time.time()
