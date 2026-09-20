@@ -3,6 +3,7 @@
 > 归属：`docs/iteration/phases/refactor-analysis/`。卡状态流转：`候选 → 计划中 → 完成 / 取消`；
 > 进入 Sprint 后由 Sprint 文档引用卡号（如 `F1`），本表仅维护卡级信息。
 > 启动判定引用 `1-WORKFLOW.MD` §4.4（Sprint/Bug/维护边界）。
+> **卡片来源与时间口径（2026-09-20 用户要求）**：来源带类型前缀 `[规划]`/`[用户插入]`/`[Bug]`/`[走查]`/`[三查]`/`[评审]`；时间字段一律用**网络时间 UTC+8**（`YYYY-MM-DD（UTC+8）`），不得用本机时区（本机 UTC+9）。细则见 `1-WORKFLOW.MD` §3。
 
 ## 1. 功能卡
 
@@ -28,10 +29,14 @@
 | F-AC10 | F2 验收⑧：**文献级 embedding checkpoint**——每篇完成即落盘，失败续跑未完成文献；持续迭代主题 | 4 | ✅ 完成（Sprint-16：逐篇原子落盘 + 零成本复用 + 四重边界，22 断言 PASS） | Sprint-16 | 用户 F2 验收 2026-08-31（Q2 粒度）；调研结论 run-047 |
 | F-AC11 | 走查 N1（2026-09-10）：卡片 output 字段**完整查看**（展开/一键复制全文），answer 节点**答案全文展示**（当前 JsonTree 截断 180 字且无复制） | 2 | ✅ 完成（Sprint-15 收尾批，四轮定稿；tooltip 按用户要求移除） | Sprint-15 | 用户走查 2026-09-10 |
 | F-AC12 | 走查 N2（2026-09-10）：fn 卡**论文截图清晰度**提升（runtime_trace 0.45 缩放 → 高分辨率渲染；关联 `docs/iteration/embed-optimization.MD` 预分割卡「文本/图片/表格/公式」US-5 后续） | 2 | ✅ 完成（Sprint-15 收尾批，预览 1.0 缩放 + 1.2MB 护栏，612×792 实证） | Sprint-15 | 用户走查 2026-09-10 |
+| F-AC13 | `[Bug]` 节点运行按钮**点击 1~2 次无响应**（第 3 次才生效），疑似与画布拖拽/选择交互冲突——需在真实点击序列下定位（假设：`run-btn` 未带 `nodrag`/`nopan` 类，`FlowNode.jsx` 的 textarea/output 有该类而运行按钮没有，mousedown 可能被 ReactFlow 拖拽/选择劫持） | 2 | 候选 | — | **用户走查 2026-09-20（UTC+8）**：Sprint-16 走查新增问题① |
+| F-AC14 | `[Bug]` **复制按钮状态串台**：点"复制答案"后"复制 output"/"复制报错"同时显示"已复制 ✓"——`FlowNode.jsx` 三个按钮共用同一个 `copied` state（line 42，用于 187/199/224 三处）；须改为按按钮独立状态，并**全量审计**其它节点/按钮的反馈状态（`FunctionTraceNode.jsx` 的 `errCopied` 已独立，需核对同类问题） | 2 | 候选 | — | **用户走查 2026-09-20（UTC+8）**：Sprint-16 走查新增问题②（用户要求"检查所有按钮行为"） |
+| F-AC15 | `[用户插入]` **运行参数显式配置面**：把目前只存在于 CLI/env/spec 的参数（调研深度阈值、provider 刷新周期、夜间套件预算与频率、checkpoint 保留数等）在**前端显式可见/可配置**，并输出"引擎配置（已在前端 schema）vs 运维/研究设置（当前仅 CLI/env）"清单——用户走查 B-15 质疑"深度阈值为何只能命令传参" | 3 | 候选 | — | **用户走查 2026-09-20（UTC+8）**：B-15 存疑 |
+| F-AC16 | `[用户插入]` **checkpoint 可见性与可复现**（用户自评 hard，待验证）：前端展示本次运行命中的 checkpoint 明细（`checkpoint_key`、`manifest` 路径、`reused/embedded/deduped`、逐篇文献状态），支持按路径定位并用既有 checkpoint 复现结果——目的：pro 用户成本感知 + 单篇复现 + 幻觉核查。**现状**：后端 step 输出已含 `checkpoint{...}`，前端零展示 | 3 | 候选 | — | **用户走查 2026-09-20（UTC+8）**：CK-1 存疑 |
 
 ## 2. 维护卡
 
-| 卡号 | 主题 | 规模(点) | 状态 | 来源 |
+| 卡号 | 主题 | 规模(点) | 状态 | 所属 Sprint | 来源/备注 | 依据 |
 |---|---|---|---|---|
 | M1 | 索引一致性增强：Tantivy 段损坏探测升级（files.zip + meta.json + tantivy open 三重探针） | 3 | ✅ 完成 | Sprint-7 | `verify/verify_index_health.py`（合成六形态 + 真实构建自愈） |
 | M2 | `prune_litellm_callbacks` 上限配置化（env `PAPERQA_LITELLM_CALLBACK_LIMIT`） | 1 | ✅ 完成 | Sprint-7 | `verify_prune_callbacks.py` 覆盖默认/覆盖/非法回落 |
@@ -50,6 +55,7 @@
 | M15 | 领域治理壳落地：product/marketing 笔记目录 + 追溯索引登记 + fanout 路由预留（完整 spec 等对应领域讨论启动时再填） | 1 | ✅ 完成 | Sprint-14（2026-08-31，PR #48） | 用户 2026-08-31（底座批次） | 依据 `pre-research/2026-08-31-domain-governance.MD` §3/§6 |
 | M16 | **调研工作流深化（知识沉淀）**：① 三级深度响应（工程级/领域专家级/研究学者级，场景自适应+用户可覆盖；工程级=主代理直接执行）；② 决策证据落档（context.md + evidence/ 快照，唯一真相）；③ 段落级溯源 + 思考过程附件（reasoning.md + 证据索引表，支持引经据典讨论） | 6 | ✅ 完成（Sprint-16：tech-research v2.0 + fanout v5 depth 路由 + `verify_archive.py` 门禁 + 首跑演示 provider 官网调研 28/28 PASS；2026-09-20 走查修复交叉引用双向校验） | Sprint-16 | 用户 2026-09-07 | 设计草案 `pre-research/tech/2026-09-07-research-workflow.MD`；阈值可配置（spec 可配置参数节/fanout 可调） |
 | M17 | ~~思维模型管理~~ → **迁出（2026-09-07 用户拍板）**：成立独立阶段 `phases/mental-models/`（MM-1~MM-5，9 点），M17 内容并入 | — | 迁出 | 用户 2026-09-07 | 预研基线 `pre-research/tech/2026-09-07-mental-models.MD` |
+| M18 | `[走查]` **报告时效与依据变更治理**：provider 模型信息/证据源更新后，旧调研报告与其证据快照**如何标记"依据已变/被取代"**——现状=快照不改写、无时效标记（用户问"M16-5：模型信息更新后会影响更新前的报告吗"）。需：报告头记录依据版本（evidence `fetched_at` + provider meta 版本）→ 影响面提示（哪些结论的依据已变）→ 重跑建议 | 2 | 候选 | — | **用户走查 2026-09-20（UTC+8）**：M16-5 存疑 | M16 spec v2.0 归档契约 + `provider_refresh_status.json` |
 
 ### 2.1 与 hold 状态的关系
 

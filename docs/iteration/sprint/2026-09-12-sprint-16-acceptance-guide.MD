@@ -228,8 +228,8 @@ providers: 4（间隔 14 天）
 | `B-6` | 同内容文件 | `verify_checkpoint.py` 自动注入：放入同内容文件 | 记 `deduped`，**不算失败**（paperqa 按 content_hash 去重） | checkpoint ⑥ | ☐ |
 | `B-7` | 套件中有脚本失败 | `verify_runner.py`（§5 第 2 条，**0 成本**）注入失败脚本 | 整体**退出非 0**（fail-closed，不"部分通过"） | runner ② | ☐ |
 | `B-8` | 预算超限 | `.\.venv\Scripts\python.exe .\verify\run_suite.py --tier network --budget-cny 0.01` | **拒绝启动**、退出 **3**、明确文案、**不执行任何脚本**（闸门在启动前判定，故该命令 **0 成本**可复现） | runner ③ | ☐ |
-| `B-9` | 成本未测量 / 超限 | **用 `verify_runner.py` 的临时 state 复现**（它注入 `unknown` / `over_budget` 到临时状态文件）。⚠ **不要**直接对真实 state 跑 `--check-due`——首次运行按设计是放行的，会真的启动夜间套件 | **拒绝放行、退出 4**；记录 `last_blocked_at/reason`；`--record-cost` 回填或 `--force` 可解除；上轮失败可**自愈重试** | runner ⑦⑧⑨b⑨c | ☐ |
-| `B-10` | 未到期 / 到期 | `scheduled-tasks.py --task providers --check-due --dry-run`（当前=从未运行→到期） | 未到期 **SKIP 且不动状态**；到期执行并**原子写** `schedule.json` 的 `last_run` | runner ⑤⑥ | ☐ |
+| `B-9` | 成本未测量 / 超限 | **零成本安全复现**（临时状态文件 + `--dry-run`；`last_run` 取 8 天前以便"到期"）：见 §13.4 命令 | **拒绝放行、退出 4**；记录 `last_blocked_at/reason`；`--record-cost` 回填或 `--force` 可解除；`unknown` + 上轮失败 → **自愈放行** | runner ⑦⑧⑨b⑨c | ☐ |
+| `B-10` | **定时任务**未到期 / 已到期（prices / providers / nightly-suite 按 `interval_days` 判定；**与"provider 模型或服务到期"无关**） | 见 §13.4 命令（未到期 / 到期两例） | 未到期 → `SKIP` 且**不动状态**；已到期 → 执行并**原子写** `schedule.json` 的 `last_run` | runner ⑤⑥ | ☐ |
 | `B-11` | 官网不可达 | 看 `provider_refresh_status.json` 的 `openai`（403） | **旧文件逐字节保留** + 状态记 `error`；不写坏文件 | providers ⑩ | ☐ |
 | `B-12` | 非法 provider 文件 | `verify_providers.py`（§5 第 1 条，**0 成本**）自动注入：坏 JSON / 缺 model / name 不符 | 只跳过该文件并**给出原因**，其余 provider 照常可用 | providers ④ | ☐ |
 | `B-13` | 未知 provider | `verify_providers.py` 自动 | `ValueError` 并列出可选值（含自定义来源提示） | providers ⑦ | ☐ |
@@ -347,6 +347,65 @@ Invoke-RestMethod http://127.0.0.1:8787/api/providers | ConvertTo-Json -Depth 4
 ```
 
 约定：不用分析原因，给"实际 vs 期望"的差距即可；命令报错请附**退出码**（`$LASTEXITCODE`）与最后 10 行输出。
+
+---
+
+## 十三、走查反馈与答复（2026-09-20，UTC+8）
+
+> 用户走查结论：**未通过 = 暂未发现**（45 个判定格无 FAIL）；另有**新增问题 2 项**、**存疑 6 项**。本章为答复与处置记录（用户的措辞与编号原样保留）。
+
+### 13.1 新增问题（已立卡，来源=用户走查）
+
+| # | 用户描述 | 代码事实（本次核查） | 卡 |
+|---|---|---|---|
+| 1 | 点节点 button 经常 1~2 次无反应，第 3 次后才 run，怀疑与拖拽 node 冲突 | **假设待验证**：`FlowNode.jsx` 的运行按钮只有 `className="run-btn"`，而同文件的文本区/输出块都带 `nodrag nopan`（line 120/177/242/249）→ 画布拖拽/选择可能在 `mousedown` 阶段吃掉首次点击 | `F-AC13`（2 点，候选） |
+| 2 | 点"复制答案"后"复制 output"也同步显示"已复制"，两个按钮同时变 | **已确认根因**：`FlowNode.jsx` 三个复制按钮共用同一个 `copied` state（line 42，被 187 / 199 / 224 三处消费）→ 任一按钮点击都会把三处一起置为"已复制 ✓" | `F-AC14`（2 点，候选；含用户要求的"全量审计所有按钮行为"） |
+
+### 13.2 存疑答复（编号为用户所给）
+
+| 编号 | 你的疑问 | 现状事实（已核代码 / 已实跑） | 处置 |
+|---|---|---|---|
+| `M16-5` | 模型信息更新后会影响更新前的报告吗？现在怎么处理 | **不改写旧报告**：evidence 是**抓取快照**（verbatim 原文 + `fetched_at`），报告只引用不重写；provider 更新写 `refresh_notes` + proposal/status。**但目前没有"依据已变"的提示机制**——旧报告不会自动标记"其依据已被新版官网文档取代" | 立卡 `M18`（报告时效与依据变更治理） |
+| `CK-1` | 前端能看到载入的 checkpoint 文件吗（pro 用户成本感知 + 定位复现 + 幻觉核查） | **前端零展示**。后端 step 输出里**已有**`checkpoint{checkpoint_key, manifest, reused, embedded, deduped, failed, model_match, chunk_chars, chunk_overlap}`——点"复制 output"能看到 JSON；但没有 UI 面板，也没有"逐篇文献 → checkpoint 文件路径"的清单 | 立卡 `F-AC16`（checkpoint 可见性与可复现；用户自评 hard，待验证） |
+| `TG-1`~`TG-5` | 看起来都是脚本执行结果的校验，不像给我看的，跳过 | 属实：TG-5 这张卡的性质是**回归与调度底座**，判据天然是脚本断言（退出码 / 闸门 / 到期判定）；"人工可感面"在 §7/§8 | 计入 `TG-6`：验收指南须**分栏标注**"机器回归项 / 人工可感项"，机器项不占用户走查时间 |
+| `B-9` | 预算超限场景没能模拟，跳过 | 已用**临时状态文件 + `--dry-run`** 复现全部五分支，零成本零风险（命令见 §13.4）：`unknown` → REFUSED(4)、`over_budget` → REFUSED(4)、`unknown`+上轮失败 → 自愈放行、`over_budget`+`--force` → 覆盖放行、`measured` → 放行 | 无需你操作；若你想自己复跑，命令已给 |
+| `B-10` | "未到期 / 到期"指代不明，像是说 provider 列表到期导致原大模型不能用 | 是**我措辞的问题**：这里的到期指**定时任务**（`prices` 7 天 / `providers` 14 天 / `nightly-suite` 7 天）按 `interval_days` 的 due 判定，**与模型或服务到期无关** | 已改 §7 `B-10` 措辞 + 给复现命令（§13.4） |
+| `B-15` | 深度阈值为什么是命令传参？不应该是前端显式配置吗？还有哪些类似 | 现状三类入口：① **前端可见可改**＝引擎配置（`/api/config_schema`，7 分组 23 字段，含 provider/model/embedding/chunk 等）；② **spec/配置节**＝调研深度阈值（`agents/functions/tech-research.md` 可配置参数节）与 `fanout.json` 的 `depth` 路由；③ **CLI/env/state**＝provider 刷新周期、夜间套件频率与预算、checkpoint 保留数。**②③ 目前前端不可见**——用户要用就得改文件或传参 | 立卡 `F-AC15`（运行参数显式配置面 + "哪些该上前端"清单） |
+
+### 13.3 付费项（§9）执行审批流程（用户口径）
+
+用户 2026-09-20 口径：**可以先执行，但必须先给出预计花费报告并获批准**，以便用真实数据支撑 billing plan 设计。成本报告见对话记录（估算来源=`VERIFY_META.est_cost_cny` 上界；**token 用量当前未采集**，故实测值缺失——Retro 行动项 ③）。批准后按"先计量、再跑"的顺序执行。
+
+### 13.4 `B-9` / `B-10` 零成本复现命令（可直接粘贴）
+
+```powershell
+$py = '.\.venv\Scripts\python.exe'
+$tmp = Join-Path $env:TEMP 'sprint16-b9b10'; New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+$old = [long]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) - 8*86400   # 8 天前 → 保证"已到期"
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)                 # 关键：不可用 PS 5.1 的 utf8（会带 BOM → 状态被静默忽略）
+
+# B-9① 到期 + 上轮成本未回填 → 期望 REFUSED / 退出 4
+$f1 = Join-Path $tmp 'unknown.json'
+[System.IO.File]::WriteAllText($f1, '{"schema":1,"tasks":{"nightly-suite":{"last_run":' + $old + ',"last_cost_status":"unknown"}}}', $utf8NoBom)
+& $py .\scripts\scheduled-tasks.py --task nightly-suite --check-due --dry-run --state $f1
+
+# B-9② 到期 + 上轮实测超上限 → 期望 REFUSED / 退出 4
+$f2 = Join-Path $tmp 'over.json'
+[System.IO.File]::WriteAllText($f2, '{"schema":1,"tasks":{"nightly-suite":{"last_run":' + $old + ',"last_cost_status":"over_budget","last_cost_cny":999.0,"last_cost_cap_cny":10.0}}}', $utf8NoBom)
+& $py .\scripts\scheduled-tasks.py --task nightly-suite --check-due --dry-run --state $f2
+
+# B-10 未到期 → SKIP（last_run=刚刚）；已到期 → RUN（last_run=0）
+$now = [long]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
+$f3 = Join-Path $tmp 'fresh.json'
+[System.IO.File]::WriteAllText($f3, '{"schema":1,"tasks":{"providers":{"last_run":' + $now + '}}}', $utf8NoBom)
+& $py .\scripts\scheduled-tasks.py --task providers --check-due --dry-run --state $f3
+```
+
+> 全程 `--dry-run`：**只打印不执行、不写状态**；`--state` 指向临时文件，真实 `agents/runtime/schedule.json` 不受影响。
+
+### 13.5 走查期间发生的事故（如实记录）
+
+准备 B-9 演示时，我用 PowerShell 5.1 的 `Set-Content -Encoding utf8` 写临时状态文件 → **带 BOM** → `load_state()` 解析失败但**静默返回默认空状态** → `nightly-suite` 被判"从未运行"并**真实启动联网套件**，约 3 分钟后随命令超时终止（已完成 `eval_retrieve` / `gui_check_s15_output_view` / `verify_agent` 三个脚本，`verify_checkpoint` 中断；**按 `VERIFY_META` 估算 ≈ ¥1.0**，实测花费仍缺测量）。已定位为**产品级 fail-open 缺陷**并立卡 `TG-7`（含"PS 5.1 utf8 带 BOM"这一操作陷阱）。事故未影响验收结论，dev 服务与前端未受影响。
 
 ---
 
