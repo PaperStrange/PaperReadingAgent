@@ -1,6 +1,4 @@
 {
-  "$schema_version": 1,
-  "name": "deepseek",
   "api_base": "https://api.deepseek.com",
   "model": "openai/deepseek-v4-flash",
   "vision_model": "openai/deepseek-v4-flash-vision-exp",
@@ -18,10 +16,10 @@
       "https://api-docs.deepseek.com/quick_start/pricing",
       "https://api-docs.deepseek.com/"
     ],
-    "fetched_at": "2026-09-12T23:52:36+0900",
+    "fetched_at": "2026-09-20T23:23:45+08:00",
     "last_refresh_status": "ok",
     "notes": "DeepSeek 无 embedding API → 默认本地 st- 向量；思考模式需关闭以支持多轮工具调用",
-    "last_evidence_run": "run-2026-09-12-provider-refresh-001",
+    "last_evidence_run": "run-2026-09-20-provider-refresh-001",
     "refresh_notes": [
       "2026-09-12 官网调研（api-docs.deepseek.com 定价页/首页）：候选含 deepseek-v4-flash / deepseek-v4-pro / deepseek-v4-flash-vision-exp → 现值 **有官方依据（no_change）**；另有 DeepSeek-V4.1-Flash 等新代次，未自动替换"
     ]

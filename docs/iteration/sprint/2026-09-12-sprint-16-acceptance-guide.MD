@@ -380,14 +380,25 @@ Invoke-RestMethod http://127.0.0.1:8787/api/providers | ConvertTo-Json -Depth 4
 
 > 因此本节的执行结果给出的是**实测成本**（token 实测 + 本地价表换算），不再是估算上界。价表缺价的模型（当前 dashscope `qwen3.5-omni-plus` / `text-embedding-v4` 无价目）会显式列入 `unpriced_models`，此时成本记 `unknown`——**不臆测**，并作为"补价目"的待办暴露出来。
 
-### 13.6 付费项执行记录（2026-09-20，实测）
+### 13.6 付费项执行记录（2026-09-20，**实测**）
 
 | 编号 | 命令 | 结果 | 实测用量 / 成本 |
 |---|---|---|---|
-| `N-1` | `verify_checkpoint.py` | 待填 | 待填 |
-| `N-2` | `verify_e2e_dashscope.py` | 待填 | 待填 |
-| `N-3` | `refresh-providers.py --fetch --apply` | 待填 | ¥0（不调模型） |
-| `N-4` | `scheduled-tasks.py --task providers --check-due` | 待填 | ¥0 |
+| `N-1` | `verify_checkpoint.py` | ✅ **ALL PASS 33 断言**，退出 0 | **¥0.016965** —— 12 次调用 / **4,473 tokens**（4,032 prompt + 441 completion），计费键 `deepseek-v4-flash`，无缺价 |
+| `N-2` | `verify_e2e_dashscope.py` | ✅ 六步全链（dashscope + 同进程切 deepseek 隔离），退出 0 | **¥1.013377** —— 40 次调用 / **125,670 tokens**：`qwen3.5-omni-plus` 18 次/48,348、`deepseek-v4-flash-vision-exp` 16 次/43,225、`text-embedding-v4` 4 次/31,435、`deepseek-v4-flash` 2 次/2,662。**注**：运行时 dashscope 两模型缺价目 → 成本如实记 `unknown`（不臆测）；随后用 `fetch-prices.py --apply`（免费）补齐价目，按**同一批实测 token** 重算得此值 |
+| `N-3` | `refresh-providers.py --fetch --apply` | ✅ 由 `N-4` 经调度器执行**同一条命令**（避免重复抓取同一批官网） | ¥0（不调模型） |
+| `N-4` | `scheduled-tasks.py --task providers --check-due` | ✅ **首次创建** `agents/runtime/schedule.json`（`last_status=ok`，29.87s）；真实抓取 3 家成功 + `openai` 403 **fail-closed 保留旧文件**；产出归档 `run-2026-09-20-provider-refresh-001`（**M16 门禁 28/28 PASS**，`cited=8 dangling=[]`） | ¥0 |
+
+**估算 vs 实测（billing plan 的直接输入）**
+
+| 项 | `VERIFY_META` 估算上界 | 实测 | 偏差 |
+|---|---|---|---|
+| `N-1` | ¥0.05 | **¥0.0170** | 实测 ≈ 估算的 **1/3** |
+| `N-2` | ¥0.5 | **¥1.0134** | 实测 ≈ 估算的 **2 倍**（`qwen3.5-omni-plus` 输出单价 1.1e-05 USD/token 偏高） |
+| 本轮小计 | ¥0.55 | **¥1.0303** | 估算整体偏低 **+87%** |
+
+- 价表刷新（免费）顺带补齐了 dashscope 两个模型的官方单价并捕获 openrouter 价格漂移 → 已提交 `agents/runtime/prices.json`。
+- **已按实测校准** `verify_checkpoint.py`（0.05 → 0.02）与 `verify_e2e_dashscope.py`（0.5 → 1.1）的 `est_cost_cny`；其余 network 脚本仍是未校准估算（后续跑一次即可校准）。
 
 ### 13.4 `B-9` / `B-10` 零成本复现命令（可直接粘贴）
 
