@@ -39,6 +39,7 @@ from verify.verify_matrix import collect  # noqa: E402
 
 SELF_NAMES = {"run_suite.py"}
 DEFAULT_BUDGET_CNY = 10.0
+EST_SAFETY_FACTOR_DEFAULT = 1.3  # 预检上界 = Σest_cost_cny × 系数（可配置：--est-factor / PAPERQA_EST_SAFETY_FACTOR）
 REFUSE_EXIT = 3
 
 
@@ -53,6 +54,29 @@ def budget_from(args) -> float:
         except ValueError:
             print(f"WARN: PAPERQA_NIGHTLY_BUDGET_CNY 非法（{raw!r}）→ 回落默认 {DEFAULT_BUDGET_CNY}")
     return DEFAULT_BUDGET_CNY
+
+
+def est_factor_from(args) -> float:
+    """预估安全系数（**可配置**，2026-09-21 用户口径）：CLI `--est-factor` > env `PAPERQA_EST_SAFETY_FACTOR` > 默认 1.3。
+
+    为什么需要系数：`VERIFY_META.est_cost_cny` 记的是"近次实测值"，而预检闸门需要的是**上界**——
+    实测 ¥1.013 而 est 定 1.1 时只剩 8.6% 余量，一次略长的运行就会被误拒（真花钱反而更少），
+    故默认 ×1.3 留余量；非法/非正值 → 回落默认。
+    """
+    raw = args.est_factor
+    if raw is None:
+        raw = os.environ.get("PAPERQA_EST_SAFETY_FACTOR")
+    if raw is None or raw == "":
+        return EST_SAFETY_FACTOR_DEFAULT
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        print(f"WARN: est 安全系数非法（{raw!r}）→ 回落默认 {EST_SAFETY_FACTOR_DEFAULT}")
+        return EST_SAFETY_FACTOR_DEFAULT
+    if val <= 0:
+        print(f"WARN: est 安全系数必须为正（{val}）→ 回落默认 {EST_SAFETY_FACTOR_DEFAULT}")
+        return EST_SAFETY_FACTOR_DEFAULT
+    return val
 
 
 def select(verify_dir: Path, tier: str, only: list[str] | None) -> list[tuple[Path, dict]]:
@@ -91,6 +115,8 @@ def main() -> int:
     ap.add_argument("--tier", default="offline", choices=["offline", "gui", "network"])
     ap.add_argument("--budget-cny", dest="budget_cny", type=float, default=None,
                     help="本轮花费上限（CNY）；缺省读 env PAPERQA_NIGHTLY_BUDGET_CNY，再缺省 10")
+    ap.add_argument("--est-factor", dest="est_factor", default=None,
+                    help="预估安全系数（预检上界 = Σest_cost_cny × 系数）；缺省读 env PAPERQA_EST_SAFETY_FACTOR，再缺省 1.3")
     ap.add_argument("--verify-dir", default=str(ROOT / "verify"))
     ap.add_argument("--scripts", default="", help="只跑这些脚本（逗号分隔文件名）")
     ap.add_argument("--json", default="", help="结果 JSON 落盘路径")
@@ -103,7 +129,9 @@ def main() -> int:
     only = [s.strip() for s in args.scripts.split(",") if s.strip()] or None
 
     picked = select(verify_dir, args.tier, only)
-    est_cost = round(sum(float(m.get("est_cost_cny") or 0) for _, m in picked), 4)
+    est_raw = round(sum(float(m.get("est_cost_cny") or 0) for _, m in picked), 4)
+    est_factor = est_factor_from(args)
+    est_cost = round(est_raw * est_factor, 4)
     budget = budget_from(args)
     started = time.time()
     summary: dict = {
@@ -111,6 +139,8 @@ def main() -> int:
         "verify_dir": str(verify_dir),
         "budget_cny": budget,
         "est_cost_cny": est_cost,
+        "est_cost_cny_raw": est_raw,
+        "est_safety_factor": est_factor,
         "cost_measured_cny": None,
         "cost_status": "not_applicable" if args.tier != "network" else "unknown",
         "started_at": started,
@@ -118,7 +148,8 @@ def main() -> int:
         "status": "unknown",
     }
 
-    print(f"== run_suite tier={args.tier} scripts={len(picked)} est_cost={est_cost} CNY budget={budget} CNY ==")
+    print(f"== run_suite tier={args.tier} scripts={len(picked)} est_raw={est_raw} × factor={est_factor} "
+          f"→ est_cost={est_cost} CNY budget={budget} CNY ==")
     if args.tier == "gui":
         print("NOTE: gui 档需要后端 8787 + 前端 5173 已启动（并用 Playwright）；请先确认端口空闲/服务在线，否则本档必然失败。")
     for p, m in picked:

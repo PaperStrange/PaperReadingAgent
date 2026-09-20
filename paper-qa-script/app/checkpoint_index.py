@@ -15,7 +15,21 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
+
+# checkpoint key = `sha1(...)[:16]`（编排层生成，实测 16 位）→ 接受 6~64 位十六进制。
+# 下限放宽到 6 是为了兼容历史键与测试键；**安全性来自"仅十六进制 + 锚定匹配"**（长度不是安全属性），
+# `?key=` 来自 HTTP 查询串，若直接拼进路径可被 `../` 穿越到 checkpoint 根之外，故按 key 的接口都必须过本函数。
+_KEY_RE = re.compile(r"^[0-9a-f]{6,64}$")
+
+
+def _safe_key(key: str) -> str:
+    """校验并归一化 checkpoint key（小写十六进制）；非法 → ValueError（调用方转 400）。"""
+    k = (key or "").strip().lower()
+    if not _KEY_RE.match(k):
+        raise ValueError("checkpoint key 非法：应为 6~64 位十六进制字符串")
+    return k
 
 
 def checkpoint_root() -> Path:
@@ -135,9 +149,10 @@ def scan(root: Path | None = None, *, include_docs: bool = True) -> list[dict]:
 
 
 def namespace_detail(key: str, root: Path | None = None) -> dict | None:
-    """取单个命名空间明细（含逐篇载荷路径）；不存在 → None。"""
+    """取单个命名空间明细（含逐篇载荷路径）；不存在 → None；key 非法 → ValueError。"""
     base = Path(root) if root is not None else checkpoint_root()
-    manifest = base / f"{key}.json"
+    k = _safe_key(key)
+    manifest = base / f"{k}.json"
     if not manifest.is_file():
         return None
     try:
@@ -156,7 +171,14 @@ def namespace_detail(key: str, root: Path | None = None) -> dict | None:
 
 
 def resolve_payload(key: str, dockey: str, root: Path | None = None) -> Path | None:
-    """按 (key, dockey) 解析载荷路径（存在才返回）——供"用既有 checkpoint 复现"的 CLI/脚本使用。"""
+    """按 (key, dockey) 解析载荷路径（存在才返回）——供"用既有 checkpoint 复现"的 CLI/脚本使用。
+
+    key 非法 → ValueError；dockey 只取 basename（防 `../` 拼接）。
+    """
     base = Path(root) if root is not None else checkpoint_root()
-    p = base / key / f"{dockey}.json.gz"
+    k = _safe_key(key)
+    name = Path(str(dockey or "")).name
+    if not name or name in (".", ".."):
+        return None
+    p = base / k / f"{name}.json.gz"
     return p if p.is_file() else None

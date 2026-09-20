@@ -174,6 +174,8 @@
 
 时间写法统一 `YYYY-MM-DD（UTC+8）`（**取网络时间校准，不得用本机时区**——本机为 UTC+9，直接取本地时间会与仓库口径差一天）；历史卡按原样保留、不回填。
 
+**交互类检查的反向对照规则（2026-09-21 用户拍板，称"倒过来试试"）**：新增的 **GUI / 交互类**检查**必须先在"未修复（或旧实现）"的代码上跑出 FAIL**，再在修复后转 PASS，并把该反例写进检查脚本注释与验收指南。理由：只证明"改完能过"不构成验证——`gui_check_s5/s7` 用程序化 `.click()` 点运行按钮，**结构上无法触发** F-AC13 的"首次点击被拖拽吃掉"，于是该 bug 存活了 4 个 sprint。记录在 `TG-6` ⑤。
+
 **预研上下文传递（2026-08-31 制度化，用户建议）**：
 
 1. 探讨性预研（涉及用户选择/确认的调研讨论，如方案菜单、采纳范围、成本拍板）在结束或中断时，**必须落盘**为预研笔记（**仅 windows 分支维护**，main 无此目录 → 注入规则在 main 为 no-op）：按领域归档 `docs/iteration/pre-research/<领域>/<日期>-<主题>.MD`（领域 = tech/product/marketing，跨领域治理笔记放根目录；**一领域 = 一 agent = 一账本 role = 一笔记目录**，隔离与侧重点见 `docs/iteration/pre-research/2026-08-31-domain-governance.MD`）。要素：背景 / 现状证据 / 结论（方案菜单+推荐）/ 来源 / **用户决策记录（chronological）** / 注入指引；落盘后同步更新 `docs/iteration/pre-research/README.md` 追溯索引。
@@ -251,6 +253,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\register-scheduled-tasks.ps1 
 .\.venv\Scripts\python.exe .\verify\run_suite.py --tier offline                    # 离线档（CI/日常）
 .\.venv\Scripts\python.exe .\verify\run_suite.py --tier gui                        # GUI 档（需前后端已启动）
 .\.venv\Scripts\python.exe .\verify\run_suite.py --tier network --budget-cny 10    # 联网档（预估超上限直接拒绝启动）
+.\.venv\Scripts\python.exe .\verify\run_suite.py --tier network --est-factor 1.0   # 预估安全系数可配（默认 1.3；亦可 env PAPERQA_EST_SAFETY_FACTOR）
 
 # ④ 运行时可观测（后端已启动时）
 Invoke-RestMethod http://127.0.0.1:8787/api/usage                                   # Retro③：本进程实测 token 用量与成本（CNY）

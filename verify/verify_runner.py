@@ -15,6 +15,9 @@
   ⑪ Retro ③：实测成本链路——脚本经 `PAPERQA_SUITE_METRICS` 回报用量 → suite 聚合出
     `cost_measured_cny`；**只有全部脚本都给出可换算成本**才转 `measured`，否则保持 `unknown`；
     **空账（calls=0）不得被当成 measured**；自动回填要求结果 JSON 的 `finished_at` 不早于本轮 t0
+  ⑫ 自动回填的新鲜度门槛（fresh 采信 / stale·缺 finished_at·非 measured 不采信）
+  ⑬ **预估安全系数可配置**：`--est-factor` > env `PAPERQA_EST_SAFETY_FACTOR` > 默认 1.3；
+    非法/非正值回落默认（不放松闸门）
 
 Run: .venv\\Scripts\\python.exe verify\\verify_runner.py
 """
@@ -105,7 +108,8 @@ def main() -> int:
 
     write_fixture(fixture, "verify_fake_pass.py", "offline", 0, 0, marker_pass)
     write_fixture(fixture, "verify_fake_fail.py", "offline", 0, 2, None)
-    write_fixture(fixture, "verify_fake_cost.py", "network", 25, 0, marker_cost)
+    # est=20：× 默认系数 1.3 = 26 → ③（上限 10）拒绝、④（env 上限 30）放行，两个断言语义同时成立
+    write_fixture(fixture, "verify_fake_cost.py", "network", 20, 0, marker_cost)
 
     # ① offline 档全绿
     res = run([PY, str(RUN_SUITE), "--tier", "offline", "--verify-dir", str(fixture),
@@ -273,6 +277,28 @@ def main() -> int:
         got = sched_mod._suite_measured_cost(p, since=since)
         ok(f"⑫ {name} → {'采信' if expect is not None else '不采信'}",
            got == expect, f"got={got} expect={expect}")
+
+    # ⑬ 预估安全系数**可配置**（2026-09-21 用户口径：实测值 × 系数 = 预检上界，系数不写死）
+    res = run([PY, str(RUN_SUITE), "--tier", "network", "--verify-dir", str(fixture), "--json", str(tmp / "r13.json"),
+               "--budget-cny", "10", "--est-factor", "0.1"])
+    s13 = json.loads((tmp / "r13.json").read_text(encoding="utf-8"))
+    ok("⑬a CLI --est-factor 生效（20 × 0.1 = 2 ≤ 10 → 放行并执行）",
+       res.returncode == 0 and s13.get("est_safety_factor") == 0.1 and s13.get("est_cost_cny") == 2.0
+       and marker_cost.exists(),
+       f"exit={res.returncode} factor={s13.get('est_safety_factor')} est={s13.get('est_cost_cny')}")
+    marker_cost.unlink(missing_ok=True)
+    res = run([PY, str(RUN_SUITE), "--tier", "network", "--verify-dir", str(fixture), "--json", str(tmp / "r13b.json")],
+              env_extra={"PAPERQA_EST_SAFETY_FACTOR": "0.1"})
+    s13b = json.loads((tmp / "r13b.json").read_text(encoding="utf-8"))
+    ok("⑬b env PAPERQA_EST_SAFETY_FACTOR 生效（优先级低于 CLI）",
+       res.returncode == 0 and s13b.get("est_safety_factor") == 0.1 and s13b.get("est_cost_cny_raw") == 20.0,
+       f"exit={res.returncode} factor={s13b.get('est_safety_factor')} raw={s13b.get('est_cost_cny_raw')}")
+    res = run([PY, str(RUN_SUITE), "--tier", "network", "--verify-dir", str(fixture), "--json", str(tmp / "r13c.json"),
+               "--budget-cny", "10", "--est-factor", "-1"])
+    s13c = json.loads((tmp / "r13c.json").read_text(encoding="utf-8"))
+    ok("⑬c 非法系数（负值）→ 回落默认 1.3（fail-closed 不放松闸门）",
+       res.returncode == 3 and s13c.get("est_safety_factor") == 1.3 and s13c.get("status") == "refused_budget",
+       f"exit={res.returncode} factor={s13c.get('est_safety_factor')} status={s13c.get('status')}")
 
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0

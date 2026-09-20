@@ -123,7 +123,8 @@ def main() -> int:
         ok("④ namespace_detail 命中且与扫描一致",
            bool(detail) and detail["docs_total"] == 2 and detail["embedding_model"] == "st-demo",
            json.dumps({k: (detail or {}).get(k) for k in ("docs_total", "embedding_model")}, ensure_ascii=False))
-        ok("④ namespace_detail 未命中 → None", CI.namespace_detail("nope", root) is None)
+        ok("④ namespace_detail 合法但不存在 → None（非法格式由 ⑧ 断言）",
+           CI.namespace_detail("deadbeefdeadbeef", root) is None)
         bad_detail = CI.namespace_detail("ccc333", root)
         ok("④ namespace_detail 坏件 → readable=False", bool(bad_detail) and bad_detail["readable"] is False,
            str((bad_detail or {}).get("error", ""))[:48])
@@ -145,6 +146,23 @@ def main() -> int:
         empty = Path(td) / "empty"
         empty.mkdir()
         ok("⑦ 空目录 → 空列表", CI.scan(empty) == [])
+
+        # ⑧ 安全：`?key=` 来自 HTTP 查询串，必须防路径穿越（2026-09-21 自查发现并修复）
+        for bad in ("../evil", "..\\evil", "aaa/bbb", "a" * 65, "", "not-hex!", "abc12"):
+            raised = False
+            try:
+                CI.namespace_detail(bad, root)
+            except ValueError:
+                raised = True
+            ok(f"⑧ 非法 key 被拒（路径穿越防护）：{bad[:12]!r}", raised, "expected ValueError")
+        ok("⑧ 合法 key 大小写归一（大写 hex 也可用）+ 不存在的合法 key → None",
+           bool(CI.namespace_detail("AAA111", root)) and CI.namespace_detail("deadbeefdeadbeef", root) is None,
+           "AAA111 → aaa111；deadbeefdeadbeef → None")
+        legit = CI.resolve_payload("aaa111", "dk1", root)
+        ok("⑧ resolve_payload 的 dockey basename 收敛（`../../dk1` → 同一个合法载荷，未逃逸；`../nope` → None）",
+           legit is not None and CI.resolve_payload("aaa111", "../../dk1", root) == legit
+           and CI.resolve_payload("aaa111", "../nope", root) is None,
+           f"legit={legit}")
 
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0

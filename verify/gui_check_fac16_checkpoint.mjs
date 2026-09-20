@@ -52,8 +52,16 @@ try {
   ok("② 点击工具按钮后面板出现", true);
 
   // ③ 面板内容：根路径 + 真实命名空间行
+  // 注意：面板先渲染占位（root 显示 "…"），数据到达后才填值 → 必须**等条件成立**再断言，不能立即读
+  const rootLoaded = await page
+    .waitForFunction(() => (document.querySelector(".ck-panel-root")?.textContent || "").includes(".pqa"), null, { timeout: 15000 })
+    .then(() => true)
+    .catch(() => false);
   const rootText = await page.locator(".ck-panel-root").first().innerText();
-  ok("③ 面板展示 checkpoint 根路径", rootText.includes(".pqa"), rootText);
+  ok("③ 面板展示 checkpoint 根路径", rootLoaded && rootText.includes(".pqa"), rootText);
+  await page
+    .waitForFunction((n) => document.querySelectorAll('[data-testid="checkpoint-item"]').length === n, list.length, { timeout: 15000 })
+    .catch(() => {});
   const itemCount = await page.locator('[data-testid="checkpoint-item"]').count();
   ok("③ 渲染出真实命名空间行（>0）", itemCount > 0, `items=${itemCount}`);
   ok("③ 行数与 API 一致", itemCount === list.length, `ui=${itemCount} api=${list.length}`);

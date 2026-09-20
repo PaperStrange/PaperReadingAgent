@@ -123,7 +123,10 @@ async def checkpoints(key: str = "") -> dict[str, Any]:
     # （供前端展示 + 人工按路径定位/复现；不修改任何 checkpoint，也不含密钥）
     root = str(checkpoint_index.checkpoint_root())
     if key:
-        detail = checkpoint_index.namespace_detail(key)
+        try:
+            detail = checkpoint_index.namespace_detail(key)
+        except ValueError as exc:  # key 非法（防路径穿越）→ 400
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         if detail is None:
             raise HTTPException(status_code=404, detail=f"未找到 checkpoint 命名空间 {key!r}")
         return {"root": root, "checkpoint": detail}
