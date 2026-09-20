@@ -623,18 +623,22 @@ classDiagram
 ### 13.2 成本换算（口径 = 实测 token × 本地价表单价 × fx）
 - 价表 = `agents/runtime/prices.json`（M9 抓取）：`scraped.<provider>.models.<model>` → `auto.<model>` 兜底；汇率取 `meta.fx_usd_cny`（缺省 7.2）；按 mtime 缓存。
 - **计费键解析**：litellm 响应里的模型名常是**上游别名**（实测：请求 `openai/deepseek-v4-flash` → 响应 `deepseek-flash`），故按"**请求名 → 响应名**取第一个能定价者"作为计费键，原始回报名记入 `by_model[...].reported_as` 供追溯。
-- **缺价不臆测（fail-closed 口径）**：任一模型无价 → `cost_cny=None` + `unpriced_models` 点名 + `partial_cost_cny` 只给已计价部分；**绝不用估算值冒充实测**。
+- **缺价不臆测（fail-closed 口径）**：任一模型无价 → `cost_cny=None` + `unpriced_models` 点名 + `partial_cost_cny` 只给已计价部分；**空账（一条调用都没记到）同样 → `None` 且 `no_data=True`**（复核 round-4 major：空账若算成 `0.0`，"回调还没落地"会被下游当成"已测且花费 0"，把闸门从 unknown 误推到 measured 并低估金额）。**绝不用估算值冒充实测**。
+- **`est_cost_cny` 校准规则（复核建议）**：est 是**预检上界**（超限即 exit 3 拒绝启动），故取"近次实测最大值 × 1.3"留余量，避免略长的运行被闸门误拒；2026-09-20 校准 `verify_checkpoint` 0.05→**0.03**（实测 0.016965）、`verify_e2e_dashscope` 0.5→**1.4**（实测 1.013377）；其余 network 脚本仍待校准。
 
 ### 13.3 暴露与聚合链路
 | 环节 | 形态 |
 |---|---|
-| step 输出 | `output["usage"]` = 本步增量 + `cumulative` + `cost`（`orchestration.run_step` 收尾统一注入） |
-| 进程累计 | `GET /api/usage`（第 11 条 API 路由）返回 `usage.snapshot()` |
-| 脚本回报 | `verify/e2e_common.report_usage()` 打印 `MEASURED_CALLS / MEASURED_TOKENS / MEASURED_COST_CNY [/ MEASURED_UNPRICED_MODELS]`，并在设置了 `PAPERQA_SUITE_METRICS` 时追加一行 JSONL |
-| 套件聚合 | `verify/run_suite.py` 读指标文件 → `metrics[]` / `cost_measured_cny` / `cost_unpriced_models`；**仅当所有被执行脚本都回报可换算成本**才 `cost_status=measured`，否则保持 `unknown` |
-| 闸门联动 | `scripts/scheduled-tasks.py` 跑完 budgeted 任务后读 `verify/suite_result.json`：`measured` → 自动回填 `last_cost_cny/status`（`last_cost_note` 说明来源）；拿不到 → 保持 `unknown`（未测量不放行） |
+| step 输出 | `output["usage"]` = 本步增量 + `cumulative` + `cost`（`orchestration.run_step` 收尾统一注入；**结算前 `settle()` 有界等待**，见下） |
+| 进程累计 | `GET /api/usage`（第 11 条 API 路由）返回 `usage.snapshot()`（**无鉴权**：仅整数计数 + 模型名 + 别名，绝无密钥；白名单由 `verify_usage.py` 断言钉死） |
+| 脚本回报 | `verify/e2e_common.report_usage()` 先做**客户端有界稳定等待**（轮询 `/api/usage` 到计数不再增长，覆盖 litellm 回调**异步落地**，实测调用返回时计数仍为 0、约 1.5s 后才可见），再打印 `MEASURED_CALLS / MEASURED_TOKENS / MEASURED_COST_CNY [/ MEASURED_UNPRICED_MODELS]`，并在设置了 `PAPERQA_SUITE_METRICS` 时追加一行 JSONL |
+| 套件聚合 | `verify/run_suite.py` 读指标文件 → `metrics[]` / `cost_measured_cny` / `cost_unpriced_models` / `cost_no_data_scripts`；**只有全部被执行脚本都回报"calls>0 且可换算成本"** 才 `cost_status=measured`，否则保持 `unknown`（指标文件在**确定执行后**才创建，环境变量在 `finally` 清理） |
+| 闸门联动 | `scripts/scheduled-tasks.py` 跑完 budgeted 任务后读 `verify/suite_result.json`：要求 **退出码 0** 且结果 `finished_at ≥ 本轮 t0`（防"本轮崩溃 → 上一轮 measured 被当本轮"），`measured` → 自动回填 `last_cost_cny/status`；拿不到 → 保持 `unknown`（未测量不放行） |
+
+> **范围口径**：`delta()` 是**进程级时间窗**增量（`scope="process"`），不做请求/会话隔离——8787 长驻多会话时逐步 `output["usage"]` 会把并发调用算进来（偏高）；精确归属需 contextvars 记账（候选卡）。
 
 ### 13.4 验证证据
-- `verify/verify_usage.py`（offline，**21 断言**）：响应解析 / 累计与增量 / 价表查找与前缀归一化 / 缺价不臆测 / token×单价×fx 换算式 / 回调幂等与**抗 prune** / 计费键解析与 `reported_as`。
-- `verify/verify_runner.py` ⑪a/⑪b：合成 fixture 回报成本 → 断言 `cost_status=measured` 且金额被聚合；缺价 fixture → 断言保持 `unknown` 且点名模型。
-- **真实链路实测（2026-09-20）**：一次短翻译调用 → `/api/usage` 得 `calls=1, prompt_tokens=42, completion_tokens=7`，`cost_cny=0.0002`（计费键 `deepseek-v4-flash`，`reported_as=['deepseek-flash']`）。
+- `verify/verify_usage.py`（offline，**27 断言**）：响应解析 / 累计与增量 / 价表查找与前缀归一化 / **缺价与空账都不臆测（`None` + `no_data`）** / token×单价×fx 换算式 / 回调幂等与**抗 prune** / 计费键解析与 `reported_as` / **快照键白名单** / `settle()` 有界。
+- `verify/verify_runner.py` ⑪a/⑪b/⑪c/⑫：合成 fixture 回报成本 → 断言 `cost_status=measured` 且金额被聚合；缺价 fixture → 断言保持 `unknown` 且点名模型；**calls=0 的空账 → 仍 `unknown`**；`_suite_measured_cost` 的**新鲜度绑定**（fresh 采信 / stale·缺 `finished_at`·非 measured 一律不采信）。
+- **真实链路实测（2026-09-20）**：一次短翻译调用 → `/api/usage` 得 `calls=1, prompt_tokens=42, completion_tokens=7`，`cost_cny=0.0002`（计费键 `deepseek-v4-flash`，`reported_as=['deepseek-flash']`）；付费项 `N-1`/`N-2` 实测 **¥0.016965 / ¥1.013377**。
+- **复核收紧记录（code-review run-053 round-4）**：2 major（异步落地导致空账被当 measured；自动回填未与本轮绑定）+ 3 minor 全部闭环；同时确认**无双计**、`ensure_installed` 幂等、`prune` 无递归、缺价未被当 0、`/api/usage` 无密钥泄漏路径。

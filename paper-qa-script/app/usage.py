@@ -23,6 +23,7 @@ import asyncio
 import copy
 import json
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -104,28 +105,35 @@ def fx_usd_cny() -> float:
 def cost_cny(by_model: dict[str, dict]) -> dict:
     """按模型明细算成本（USD→CNY）。
 
-    返回 {cost_cny, partial_cost_cny, unpriced_models, fx_usd_cny}：
+    返回 {cost_cny, partial_cost_cny, unpriced_models, no_data, fx_usd_cny}：
     - 全部模型都有价 → `cost_cny` = 总额；
-    - 有模型缺价 → `cost_cny=None`（**不臆测**）、`partial_cost_cny` 给已计价部分、`unpriced_models` 点名。
+    - 有模型缺价 → `cost_cny=None`（**不臆测**）、`partial_cost_cny` 给已计价部分、`unpriced_models` 点名；
+    - **空账（一条调用都没记到）→ `cost_cny=None` + `no_data=True`**（复核 round-4 major：空账绝不能算成
+      `0.0`，否则"回调还没落地"会被下游当成"已测且花费为 0"，把三态闸门从 unknown 误推到 measured 并低估金额）。
     """
     partial = 0.0
     unpriced: list[str] = []
+    priced = 0
     for model, t in sorted((by_model or {}).items()):
         price = price_for(model)
         if not price:
             unpriced.append(model)
             continue
+        priced += 1
         pin = float(price.get("input_cost_per_token") or 0.0)
         pout = float(price.get("output_cost_per_token") or 0.0)
         partial += float(t.get("prompt_tokens") or 0) * pin
         partial += float(t.get("completion_tokens") or 0) * pout
     fx = fx_usd_cny()
     partial_cny = round(partial * fx, 6)
+    empty = not by_model
     return {
-        "cost_cny": None if unpriced else partial_cny,
+        "cost_cny": None if (unpriced or empty) else partial_cny,
         "partial_cost_cny": partial_cny,
         "unpriced_models": unpriced,
+        "no_data": empty,
         "fx_usd_cny": fx,
+        "priced_models": priced,
     }
 
 
@@ -242,8 +250,13 @@ def snapshot() -> dict:
     return snap
 
 
-def delta(before: dict) -> dict:
-    """`before`（早先的 snapshot）→ 当前的增量，字段与 snapshot 对齐。"""
+def delta(before: dict, scope: str = "process") -> dict:
+    """`before`（早先的 snapshot）→ 当前的增量，字段与 snapshot 对齐。
+
+    **范围口径（复核 round-4 minor）**：这是**进程级时间窗**增量，不做请求/会话隔离——
+    8787 长驻且可能同时服务多会话时，逐步 `output["usage"]` 会把并发的他人调用算进来（偏高）。
+    字段 `scope` 显式标注该口径；需要精确归属时应改 contextvars 按请求记账（候选卡）。
+    """
     now = snapshot()
     by_model: dict[str, dict] = {}
     for model, t in (now.get("by_model") or {}).items():
@@ -252,6 +265,7 @@ def delta(before: dict) -> dict:
         if any(item.values()):
             by_model[model] = item
     out = {
+        "scope": scope,
         "calls": int(now.get("calls") or 0) - int((before or {}).get("calls") or 0),
         "prompt_tokens": int(now.get("prompt_tokens") or 0) - int((before or {}).get("prompt_tokens") or 0),
         "completion_tokens": int(now.get("completion_tokens") or 0) - int((before or {}).get("completion_tokens") or 0),
@@ -266,6 +280,27 @@ def delta(before: dict) -> dict:
     }
     out["cost"] = cost_cny(by_model)
     return out
+
+
+def settle(quiet_s: float = 0.4, max_s: float = 3.0, poll_s: float = 0.05) -> dict:
+    """等待"在途"用量落地后再取快照（复核 round-4 major 的对策之一）。
+
+    litellm 的成功回调是**异步派发**的（复核用离线 `mock_response` 实测：调用返回时计数仍为 0，
+    约 1.5s 后才可见），因此"调用刚结束就读账"会漏掉尾部用量。本函数轮询到计数在 `quiet_s`
+    内不再增长为止，或达到 `max_s` 上限（有界等待，绝不无限挂）。
+    """
+    deadline = time.monotonic() + max(0.0, max_s)
+    last = snapshot()
+    stable_since = time.monotonic()
+    while True:
+        time.sleep(max(0.01, poll_s))
+        cur = snapshot()
+        if (cur["calls"], cur["total_tokens"]) != (last["calls"], last["total_tokens"]):
+            last, stable_since = cur, time.monotonic()
+            continue
+        t = time.monotonic()
+        if t - stable_since >= quiet_s or t >= deadline:
+            return last
 
 
 def reset() -> None:

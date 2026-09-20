@@ -141,31 +141,41 @@ def main() -> int:
         return 0
 
     failed: list[str] = []
-    # Retro ③（2026-09-20）：子脚本把实测用量写成 JSONL 指标文件，suite 据此聚合出真实成本
+    # Retro ③（2026-09-20）：子脚本把实测用量写成 JSONL 指标文件，suite 据此聚合出真实成本。
+    # 复核 round-4 minor：文件在**确定要执行之后**才创建（避免 --dry-run/拒绝启动路径遗留文件）。
     fd, metrics_name = tempfile.mkstemp(prefix="suite_metrics_", suffix=".jsonl")
     os.close(fd)  # 关键：立即关闭句柄，否则子进程继承 fd → unlink 报 WinError 32
     metrics_path = Path(metrics_name)
     os.environ["PAPERQA_SUITE_METRICS"] = str(metrics_path)
-    for p, m in picked:
-        timeout_s = int((m.get("est_seconds") or 60) * 4 + 60)
-        print(f"--- {p.name} ---", flush=True)
-        code, secs = run_one(p, m, timeout_s)
-        summary["scripts"].append({"name": p.name, "exit": code, "seconds": secs})
-        print(f"--- {p.name}: exit={code} ({secs}s) ---", flush=True)
-        if code != 0:
-            failed.append(p.name)
-
-    metrics = _read_metrics(metrics_path)
     try:
-        metrics_path.unlink(missing_ok=True)
-    except OSError:
-        pass  # 被占用也不影响结论（临时文件，系统会清）
-    measured = [m for m in metrics if isinstance(m.get("cost_cny"), (int, float))]
+        for p, m in picked:
+            timeout_s = int((m.get("est_seconds") or 60) * 4 + 60)
+            print(f"--- {p.name} ---", flush=True)
+            code, secs = run_one(p, m, timeout_s)
+            summary["scripts"].append({"name": p.name, "exit": code, "seconds": secs})
+            print(f"--- {p.name}: exit={code} ({secs}s) ---", flush=True)
+            if code != 0:
+                failed.append(p.name)
+
+        metrics = _read_metrics(metrics_path)
+    finally:
+        # 复核 round-4 minor：环境变量必须清理，否则会泄漏到同进程的后续非套件运行
+        os.environ.pop("PAPERQA_SUITE_METRICS", None)
+        try:
+            metrics_path.unlink(missing_ok=True)
+        except OSError:
+            pass  # 被占用也不影响结论（临时文件，系统会清）
+
+    # 复核 round-4 major：只有**确有调用**（calls>0）且成本可换算的记录才算"已回报实测成本"，
+    # 空账（回调尚未落地）不得被当成 measured，否则闸门会从 unknown 误推到 measured 且金额低估。
+    measured = [m for m in metrics if isinstance(m.get("cost_cny"), (int, float)) and int(m.get("calls") or 0) > 0]
     unpriced = sorted({u for m in metrics for u in (m.get("unpriced_models") or [])})
+    no_data = sorted({m.get("script") for m in metrics if not int(m.get("calls") or 0)})
     executed = [s["name"] for s in summary["scripts"]]
     summary["metrics"] = metrics
     summary["cost_measured_cny"] = round(sum(float(m["cost_cny"]) for m in measured), 6) if measured else None
     summary["cost_unpriced_models"] = unpriced
+    summary["cost_no_data_scripts"] = no_data
     if args.tier == "network":
         # 三态之"未测量"：只有**所有被执行脚本**都给出可换算成本才转 measured；否则保持 unknown（不臆测）
         summary["cost_status"] = (
@@ -179,7 +189,8 @@ def main() -> int:
 
     if args.tier == "network":
         print(f"MEASURED: cost={summary['cost_measured_cny']} CNY status={summary['cost_status']} "
-              f"scripts_reporting={len(measured)}/{len(executed)} unpriced={unpriced}")
+              f"scripts_reporting={len(measured)}/{len(executed)} unpriced={unpriced}"
+              + (f" no_data={no_data}" if no_data else ""))
     if failed:
         print(f"\nSUITE FAILED ({len(failed)}/{len(picked)}): {', '.join(failed)}")
         return 1

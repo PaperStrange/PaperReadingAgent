@@ -30,10 +30,10 @@
 | `verify_agent.py` | Agent 流程（fake agent）+ 翻译接口 | network | deepseek | 60s | ¥0.3 | /api/translate_preview, /api/run_step | keys, network, index |
 | `verify_agentops.py` | AgentOps 账本 CLI 用例断言 UC-1~UC-13（离线；UC-11/12=M10，UC-13=M9） | offline | — | 10s | ¥0 | — | none |
 | `verify_archive.py` | M16 调研归档完整性校验：report/context/reasoning/evidence 契约 + 证据索引表双向交叉引用（限定 §7 索引表区间、大小写不敏感；fail-closed） | offline | — | 5s | ¥0 | — |  |
-| `verify_checkpoint.py` | F-AC10 文献级 checkpoint：逐篇落盘 + 零成本复用 + 文件变更/载荷损坏/模型不匹配/切块口径/同内容去重五重边界 fail-closed（est 已按 2026-09-20 实测 ¥0.017 校准） | network | deepseek | 240s | ¥0.02 | /api/new_session, /api/run_step | keys, network, self-boots-backend |
+| `verify_checkpoint.py` | F-AC10 文献级 checkpoint：逐篇落盘 + 零成本复用 + 文件变更/载荷损坏/模型不匹配/切块口径/同内容去重五重边界 fail-closed（est = 近次实测 ¥0.016965 × 1.3 ≈ 0.03，2026-09-20 校准） | network | deepseek | 240s | ¥0.03 | /api/new_session, /api/run_step | keys, network, self-boots-backend |
 | `verify_config_schema.py` | 配置 SSOT 一致性 + M7 前端零硬编码 + Settings 升级基线护栏（114 断言，离线） | offline | — | 5s | ¥0 | /api/config_schema, /api/config/validate | none |
 | `verify_e2e.py` | deepseek 全链路 6 步（LLM+vision + 本地 st- 向量） | network | deepseek | 120s | ¥0.3 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
-| `verify_e2e_dashscope.py` | dashscope 全链路 6 步 + 同进程 deepseek 切换隔离回归（est 已按 2026-09-20 实测 ¥1.013 校准） | network | dashscope, deepseek | 150s | ¥1.1 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
+| `verify_e2e_dashscope.py` | dashscope 全链路 6 步 + 同进程 deepseek 切换隔离回归（est = 近次实测 ¥1.013377 × 1.3 ≈ 1.4，2026-09-20 校准，留余量防预检误拒） | network | dashscope, deepseek | 150s | ¥1.4 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
 | `verify_e2e_openai.py` | OpenAI provider+embedding 全流程 + 同进程 deepseek→openai 切换隔离回归 | network | openai, deepseek | 150s | ¥1 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network, balance |
 | `verify_embed_load.py` | parse_chunk_embed 三种模式：run/load 同会话/load 新会话（embed 缓存） | network | deepseek | 90s | ¥0.3 | /api/run_step | keys, network |
 | `verify_f12_preview_res.py` | F-AC12 预览清晰度实证：1.0 缩放渲染，PNG 宽度 ≥500px（旧 0.45 为 ~268px） | offline | — | 10s | ¥0 | — | none |

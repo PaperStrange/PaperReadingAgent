@@ -856,7 +856,9 @@ class PipelineOrchestrator:
                 else:
                     raise ValueError(f"Unknown step: {step}")
 
-            # Retro ③（2026-09-20）：逐步用量与成本（实测 token + 本地价表换算；缺价则 cost_cny=None）
+            # Retro ③（2026-09-20）：逐步用量与成本（实测 token + 本地价表换算；缺价则 cost_cny=None）。
+            # 复核 round-4 major：litellm 成功回调异步落地 → 结算前做**有界**稳定等待，避免漏掉尾部调用。
+            usage_meter.settle(quiet_s=0.15, max_s=1.0)
             output = {**output, "usage": usage_meter.delta(usage_start)}
             ok_resp = StepResponse(
                 session_id=session.session_id,

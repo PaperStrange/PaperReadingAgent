@@ -9,6 +9,8 @@
   ⑥ 回调挂载：`ensure_installed()` 幂等；`prune_litellm_callbacks()` 之后仍挂载（防被裁剪）
   ⑦ 计费键解析：响应名是上游别名（无价）而请求名有价 → 按请求名计费 + `reported_as` 可追溯；
     两者都无价 → 仍 `cost_cny=None`（不臆测）
+  ⑧ 边界与白名单：空账 → `cost_cny=None` + `no_data=True`（**不是 0.0**）；快照键 ⊆ 白名单
+    （钉死 `/api/usage` 与 `output["usage"]` 的暴露面）；`settle()` 有界等待可用且不挂死
 
 Run: .venv\\Scripts\\python.exe verify\\verify_usage.py
 """
@@ -16,6 +18,7 @@ from __future__ import annotations
 VERIFY_META = {'features': 'Retro③ token 用量采集与成本换算：解析/累计/增量/价表查找/缺价不臆测/换算式/回调防裁剪（离线）', 'tier': 'offline', 'providers': [], 'est_seconds': 5, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
 
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -106,6 +109,33 @@ def main() -> int:
     s7b = U.snapshot()
     ok("⑦b 两个名字都无价 → cost_cny=None 且用回报名点名",
        s7b["cost"]["cost_cny"] is None and s7b["cost"]["unpriced_models"] == ["mystery-1"], str(s7b["cost"]))
+
+    # ⑧ 边界与白名单（复核 round-4 nit/minor）：
+    #    ① 快照键必须落在白名单内（钉死 /api/usage 与 output["usage"] 的暴露面，防将来泄密）；
+    #    ② **空账 → cost_cny=None + no_data=True**（绝不能是 0.0：否则"回调未落地"会被当成"已测且花费 0"）；
+    #    ③ settle(...) 有界等待可用且不挂死。
+    U.reset()
+    empty = U.snapshot()
+    ok("⑧a 空账 cost_cny=None（不是 0.0）且 no_data=True",
+       empty["cost"]["cost_cny"] is None and empty["cost"]["no_data"] is True, str(empty["cost"]))
+    allowed_top = {"calls", "prompt_tokens", "completion_tokens", "total_tokens", "by_model", "cost"}
+    ok("⑧a 快照顶层键 ⊆ 白名单", set(empty) <= allowed_top, str(sorted(set(empty) - allowed_top)))
+    allowed_cost = {"cost_cny", "partial_cost_cny", "unpriced_models", "no_data", "fx_usd_cny", "priced_models"}
+    ok("⑧a cost 键 ⊆ 白名单", set(empty["cost"]) <= allowed_cost, str(sorted(set(empty["cost"]) - allowed_cost)))
+    U.record_response(_Resp("openai/deepseek-v4-flash", 10, 5))
+    snap8 = U.snapshot()
+    allowed_entry = {"calls", "prompt_tokens", "completion_tokens", "total_tokens", "reported_as"}
+    entry_keys = set()
+    for v in snap8["by_model"].values():
+        entry_keys |= set(v)
+    ok("⑧a by_model 条目键 ⊆ 白名单（不含密钥类字段）", entry_keys <= allowed_entry,
+       str(sorted(entry_keys - allowed_entry)))
+    # ⑧b settle 有界等待：已记录的调用可见，且耗时不超过上限 + 余量
+    t0s = time.monotonic()
+    settled = U.settle(quiet_s=0.1, max_s=1.0, poll_s=0.02)
+    elapsed = time.monotonic() - t0s
+    ok("⑧b settle() 返回快照且包含已记录调用", settled["calls"] == 1, f"calls={settled['calls']}")
+    ok("⑧b settle() 有界（未超过 max_s + 余量）", elapsed <= 1.5, f"elapsed={elapsed:.2f}s")
 
     # ⑥ 回调挂载：幂等 + prune 后仍挂载（防被裁剪）
     import litellm  # noqa: E402

@@ -63,11 +63,14 @@ TASKS: dict[str, dict] = {
 }
 
 
-def _suite_measured_cost(path: Path) -> float | None:
+def _suite_measured_cost(path: Path, since: float | None = None) -> float | None:
     """读 suite 结果里的**实测**成本（Retro ③）。
 
-    只在 `cost_status=measured` 且金额是数值时才认（suite 内部已保证"所有脚本都回报了可换算成本"）；
-    否则返回 None → 保持三态闸门的 `unknown`（未测量不放行），绝不把部分值当总额。
+    三重门槛（复核 round-4 major#2 加固）：
+    ① `cost_status == "measured"`（suite 内部已保证"所有脚本都回报了可换算成本"）；
+    ② 金额是数值；
+    ③ `since` 给定时要求结果的 `finished_at` **不早于**本轮开始时间——否则本轮 suite 在重写
+       结果前就崩了/被杀，会把**上一轮**的 measured 当成本轮实测（并顺带放行闸门）。
     """
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -75,6 +78,12 @@ def _suite_measured_cost(path: Path) -> float | None:
         return None
     if data.get("cost_status") != "measured":
         return None
+    if since is not None:
+        try:
+            if float(data.get("finished_at") or 0.0) < float(since):
+                return None
+        except (TypeError, ValueError):
+            return None
     try:
         return float(data.get("cost_measured_cny"))
     except (TypeError, ValueError):
@@ -277,7 +286,7 @@ def main() -> int:
         print("DRY-RUN: 未执行、未写状态。")
         return 0
 
-    t0 = time.perf_counter()
+    t0 = time.time()
     proc = subprocess.run(cmd, cwd=str(ROOT), check=False)
     secs = round(time.perf_counter() - t0, 2)
     entry = state.setdefault("tasks", {}).setdefault(args.task, {})
@@ -285,21 +294,22 @@ def main() -> int:
     entry["last_duration_s"] = secs
     entry["last_status"] = "ok" if proc.returncode == 0 else f"failed:{proc.returncode}"
     if spec["budgeted"]:
-        # Retro ③（2026-09-20）：优先用 suite 的**实测**成本自动回填；拿不到完整实测才保持 unknown
-        measured = _suite_measured_cost(SUITE_RESULT)
+        # Retro ③（2026-09-20）：优先用 suite 的**实测**成本自动回填；拿不到完整且**本轮新鲜**的实测才保持 unknown
+        measured = _suite_measured_cost(SUITE_RESULT, since=t0) if proc.returncode == 0 else None
         cap = budget_cny(state)
         if measured is None:
             entry["last_cost_status"] = "unknown"
             entry["last_cost_cny"] = None
             entry["last_cost_note"] = (
-                "suite 未给出完整实测成本（脚本未回报用量或价表缺单价）→ 需 `--record-cost` 人工回填"
+                "本轮未取得可采信的实测成本（suite 未成功重写结果 JSON / 脚本未回报用量 / 价表缺单价）"
+                "→ 保持 unknown（未测量不放行），需 `--record-cost` 人工回填"
             )
         else:
             entry["last_cost_cny"] = measured
             entry["last_cost_cap_cny"] = cap
             entry["last_cost_status"] = "measured" if measured <= cap else "over_budget"
             entry["cost_measured_at"] = time.time()
-            entry["last_cost_note"] = "由 verify/suite_result.json 的实测成本自动回填（Retro ③）"
+            entry["last_cost_note"] = "由 verify/suite_result.json 的实测成本自动回填（Retro ③；finished_at ≥ 本轮 t0）"
     save_state(sp, state)
     cost_s = entry.get("last_cost_status", "-")
     print(f"DONE: {args.task} exit={proc.returncode} ({secs}s)；cost_status={cost_s}"

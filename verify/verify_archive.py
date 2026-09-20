@@ -12,6 +12,9 @@
     **两条都只在"证据索引表所在小节"（§7 或标题含『证据索引表』）内判定**：正文顺带提及
     别处的 evidence 文件名（跨 run 引用、URL 片段）不是"结论 ↔ 证据行"的引用，扫全文会误红；
     文件名比较**大小写不敏感**（Windows 语义，避免跨平台判定不一致）。
+  * 证据文件遍历**不跟随目录 junction/软链**，且有文件数上限（超限 FAIL）——
+    `rglob` 跟随 junction 且无环检测会让门禁**挂死不返回**（round-3 major#4 实测）：
+    门禁宁可"快速判 FAIL"，也不允许"永不结束"。
 
 用法：
   .venv\\Scripts\\python.exe verify\\verify_archive.py <run_dir> --depth expert
@@ -23,6 +26,7 @@ VERIFY_META = {'features': 'M16 调研归档完整性校验：report/context/rea
 import argparse
 import contextlib
 import io
+import os
 import re
 import shutil
 import sys
@@ -36,6 +40,7 @@ ROOT = Path(__file__).resolve().parent.parent
 TIERS = ("quick", "expert", "scholar")
 ALIASES = {"normal": "expert", "deep": "scholar"}
 EVIDENCE_FIELDS = ("url:", "tier:", "fetched_at:", "fetch_status:", "supports:")
+EVIDENCE_FILE_CAP = 500  # 证据文件数上限（超限判 FAIL：防异常目录/junction 造成的爆炸式遍历）
 
 passed = 0
 failed = 0
@@ -87,8 +92,46 @@ def find_report(run_dir: Path) -> Path | None:
     return hits[0] if hits else None
 
 
+def _is_linklike(p: Path) -> bool:
+    """目录是否是链接类（符号链接 / Windows junction）——用于遍历时剪枝。"""
+    try:
+        if p.is_symlink():
+            return True
+        isj = getattr(os.path, "isjunction", None)  # Python 3.12+
+        if isj and isj(p):
+            return True
+    except OSError:
+        return True
+    return False
+
+
+def iter_evidence_files(ev_dir: Path) -> list[Path]:
+    """列出 `evidence/` 下的证据文件（含子目录）。
+
+    - **不跟随目录 junction/软链**（复核 round-3 major#4：`rglob` 会跟随且无环检测 →
+      `evidence/` 内若有指回自身的 junction，`check_archive` 会**挂死不返回**；实测 25s 未返回、
+      3 层 junction 拖到 5 分钟 / 632MB。归档由 agent 正常生成时不会出现 junction，
+      但门禁宁可"快速判 FAIL"也不能"永不结束"）；
+    - 遍历顺序确定（排序），便于断言可复现。
+    """
+    out: list[Path] = []
+    if not ev_dir.is_dir():
+        return out
+    for root, dirs, files in os.walk(ev_dir, followlinks=False):
+        dirs[:] = sorted(d for d in dirs if not _is_linklike(Path(root) / d))
+        for fn in sorted(files):
+            if fn.lower().endswith((".md", ".markdown")):
+                p = Path(root) / fn
+                if p.is_file() and not p.is_symlink():
+                    out.append(p)
+        if len(out) > EVIDENCE_FILE_CAP:
+            break
+    return sorted(out)
+
+
 def check_archive(run_dir: Path, depth: str) -> bool:
     """返回值 = 是否通过；同时打印逐项断言。"""
+    global passed, failed
     depth = norm_depth(depth)
     ok("档案目录存在", run_dir.is_dir(), str(run_dir))
     ok("深度档位合法", depth in TIERS, f"depth={depth}")
@@ -111,12 +154,13 @@ def check_archive(run_dir: Path, depth: str) -> bool:
 
     ev_dir = run_dir / "evidence"
     # 清单侧与解析侧口径一致（major#3）：`.md` + `.markdown` 都算证据文件；
-    # 用 rglob 容忍 evidence/ 下的子目录（minor#6：否则嵌套文件既漏校验又被误判悬空）。
-    ev_files = (
-        sorted(p for p in list(ev_dir.rglob("*.md")) + list(ev_dir.rglob("*.markdown")) if p.is_file())
-        if ev_dir.is_dir()
-        else []
-    )
+    # 用受限遍历容忍 evidence/ 子目录（minor#6）且**不跟随 junction**（round-3 major#4 防挂死）。
+    ev_files = iter_evidence_files(ev_dir)
+    if len(ev_files) > EVIDENCE_FILE_CAP:
+        # 直接判 FAIL（不新增常驻断言，保持既有断言语义稳定）
+        failed += 1
+        print(f"FAIL: evidence/ 文件数超上限（防异常目录爆炸） files={len(ev_files)} > {EVIDENCE_FILE_CAP}")
+        ev_files = ev_files[:EVIDENCE_FILE_CAP]
     ok("evidence/ 目录存在且非空", bool(ev_files), f"files={len(ev_files)}")
 
     for ev in ev_files:

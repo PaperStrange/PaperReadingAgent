@@ -13,7 +13,8 @@
   ⑩ TG-7（走查实证）：状态文件损坏/结构非法 → **拒绝执行**（退出 2，不静默重置 last_run 与成本三态）；
     带 BOM 的合法状态仍被读取（`utf-8-sig`），不误判为损坏
   ⑪ Retro ③：实测成本链路——脚本经 `PAPERQA_SUITE_METRICS` 回报用量 → suite 聚合出
-    `cost_measured_cny`；**只有全部脚本都给出可换算成本**才转 `measured`，否则保持 `unknown`
+    `cost_measured_cny`；**只有全部脚本都给出可换算成本**才转 `measured`，否则保持 `unknown`；
+    **空账（calls=0）不得被当成 measured**；自动回填要求结果 JSON 的 `finished_at` 不早于本轮 t0
 
 Run: .venv\\Scripts\\python.exe verify\\verify_runner.py
 """
@@ -61,13 +62,14 @@ def write_fixture(
     marker: Path | None,
     metric_cny: float | None = None,
     unpriced: str = "",
+    calls: int = 1,
 ) -> None:
     marker_line = f'    Path(r"{marker}").write_text("ran", encoding="utf-8")\n' if marker else ""
     metric_line = ""
     if metric_cny is not None or unpriced:
         rec = {
             "script": name,
-            "calls": 1,
+            "calls": calls,
             "total_tokens": 10,
             "cost_cny": metric_cny,
             "unpriced_models": [unpriced] if unpriced else [],
@@ -240,6 +242,37 @@ def main() -> int:
     ok("⑪b 缺价模型 → cost_status 保持 unknown（不臆测）且点名模型",
        s11b.get("cost_status") == "unknown" and s11b.get("cost_unpriced_models") == ["mystery-model"],
        f"status={s11b.get('cost_status')} unpriced={s11b.get('cost_unpriced_models')}")
+
+    # ⑪c 复核 round-4 major：**空账**（脚本回报了数值成本但 calls=0，即回调尚未落地）不得被当成 measured
+    nodata = tmp / "fixture_nodata"
+    nodata.mkdir()
+    write_fixture(nodata, "verify_fake_nodata.py", "network", 0.2, 0, None, metric_cny=0.0, calls=0)
+    res = run([PY, str(RUN_SUITE), "--tier", "network", "--verify-dir", str(nodata), "--json", str(tmp / "r11c.json")])
+    s11c = json.loads((tmp / "r11c.json").read_text(encoding="utf-8"))
+    ok("⑪c 空账（calls=0 却报数值成本）→ 保持 unknown（防闸门被误推 measured）",
+       s11c.get("cost_status") == "unknown" and s11c.get("cost_no_data_scripts") == ["verify_fake_nodata.py"],
+       f"status={s11c.get('cost_status')} no_data={s11c.get('cost_no_data_scripts')}")
+
+    # ⑫ 复核 round-4 major#2：自动回填的**新鲜度绑定**（陈旧/缺 finished_at 的结果不得被采信）
+    import importlib.util
+
+    spec_m = importlib.util.spec_from_file_location("sched_mod", SCHED)
+    assert spec_m and spec_m.loader
+    sched_mod = importlib.util.module_from_spec(spec_m)
+    spec_m.loader.exec_module(sched_mod)
+    now = time.time()
+    cases = [
+        ("fresh", {"cost_status": "measured", "cost_measured_cny": 1.25, "finished_at": now}, now - 60, 1.25),
+        ("stale", {"cost_status": "measured", "cost_measured_cny": 9.99, "finished_at": now - 3600}, now - 60, None),
+        ("no_finished_at", {"cost_status": "measured", "cost_measured_cny": 2.0}, now - 60, None),
+        ("not_measured", {"cost_status": "unknown", "cost_measured_cny": 3.0, "finished_at": now}, now - 60, None),
+    ]
+    for name, payload, since, expect in cases:
+        p = tmp / f"sched_case_{name}.json"
+        p.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        got = sched_mod._suite_measured_cost(p, since=since)
+        ok(f"⑫ {name} → {'采信' if expect is not None else '不采信'}",
+           got == expect, f"got={got} expect={expect}")
 
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
