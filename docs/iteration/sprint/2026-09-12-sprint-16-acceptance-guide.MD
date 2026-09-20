@@ -252,6 +252,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-frontend.ps1    # 端�
 
 浏览器打开 http://127.0.0.1:5173 （页面打不开时先访问 http://127.0.0.1:8787/api/health 看后端是否存活）
 
+> **缓存口径（实测）**：Vite dev server 对 HTML 与模块发 `Cache-Control: no-cache` + `ETag`，`/api/*` 不带头（无启发式新鲜度）→ **普通刷新即可，无需硬刷新或清缓存**。若服务在走查前被重启过，**停服前开着的旧标签页必须重载一次**（否则连的是已死的旧实例）；想一步排除"旧标签页 + 缓存"两个变量，直接 **Ctrl+Shift+N 无痕窗口**打开。provider 带出的模型名由后端实时现读 `providers/*.json`，改配置不需要重启后端。
+
 | 编号 | 操作 | 通过判据 | 判定 |
 |---|---|---|---|
 | `G-1` | `node .\verify\gui_check_s4.mjs` | **光标三断言**（中部插入 / 插入后光标位置 232 / 连续编辑）+ **provider 联动四断言**（下拉四项含 `openrouter` / 切 `openrouter` 带出 `api_base`+`model` 且**不写** `embedding_model` / 切 `deepseek` 同上 / 自动提示含"多语言"）逐行均 PASS | ☐ |
