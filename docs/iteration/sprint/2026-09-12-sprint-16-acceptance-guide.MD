@@ -97,7 +97,7 @@ $env:PYTHONIOENCODING='utf-8'      # 中文输出不乱码
 | 1 | `.\.venv\Scripts\python.exe .\verify\verify_providers.py` | `ALL PASS (33 assertions)`，退出 0 | ✅ 33/33 |
 | 2 | `.\.venv\Scripts\python.exe .\verify\verify_runner.py` | `ALL PASS (20 assertions)`，退出 0 | ✅ 20/20 |
 | 3 | `.\.venv\Scripts\python.exe .\verify\verify_archive.py agents\runs\run-2026-09-12-provider-refresh-001 --depth expert` | `=== ALL PASS: 28 passed / 0 failed ===`（含**双向**交叉引用断言） | ✅ 28/28 |
-| 4 | `.\.venv\Scripts\python.exe .\verify\verify_archive.py --selftest` | `=== selftest PASS: 6 passed / 0 failed ===`（合规 expert/scholar 通过 + 空报告被拒 + **被引用证据缺失被拒** + **正文提及别处证据名不误判** + **索引表 `.markdown` 漏报被拦**） | ✅ 6/6 |
+| 4 | `.\.venv\Scripts\python.exe .\verify\verify_archive.py --selftest` | `=== selftest PASS: 8 passed / 0 failed ===`（合规 expert/scholar 通过 + 空报告被拒 + **被引用证据缺失被拒** + **正文提及别处证据名不误判** + **索引表 `.markdown` 漏报被拦** + **已存在 `.markdown` 不假红** + **嵌套子目录不假红**） | ✅ 8/8 |
 | 5 | `.\.venv\Scripts\python.exe .\verify\verify_matrix.py check` | `CHECK OK: 40 脚本与 TEST-MATRIX.MD 一致` | ✅ 40 脚本 |
 | 6 | `foreach ($f in Get-ChildItem agents\functions\*.md) { .\.venv\Scripts\python.exe .\scripts\agent-ops.py validate-spec $f.FullName }` | 8 个 spec 全 PASS | ✅ 8/8 |
 | 7 | `.\.venv\Scripts\python.exe .\verify\run_suite.py --tier offline` | `SUITE PASSED (10 scripts)`，退出 0（fail-closed） | ✅ 10/10（见 §5.1） |
@@ -133,7 +133,7 @@ SUITE PASSED (10 scripts)
 
 > 套件全程 `est_cost=0`（无付费调用；`verify_local_dir.py` 走 st- 本地向量 + CSV manifest 提供 citation，故无需密钥）；**fail-closed**：任一脚本失败即整体非零（见 §7 `B-7`）。
 >
-> **修复后复跑（同日，两轮）**：`verify_archive.py` 补反向交叉引用并按独立复核建议收紧（判定限定证据索引表区间 + 大小写不敏感）后，真实归档 `ALL PASS: 28 passed / 0 failed`、`--selftest` `6 passed / 0 failed`、原漏检变体 `FAILED 25/1`、`run_suite.py --tier offline` 仍 `SUITE PASSED (10 scripts)`（完整输出见预跑日志 `verify/acceptance-sprint16-2026-09-20.log`）。
+> **修复后复跑（同日，三轮）**：`verify_archive.py` 补反向交叉引用 → 按独立复核收紧（判定限定证据索引表区间 + 大小写不敏感）→ 再按 round-2 统一两侧口径（`.md`/`.markdown` + 嵌套目录）。真实归档 `ALL PASS: 28 passed / 0 failed`、`--selftest` `8 passed / 0 failed`、原漏检变体 `FAILED 25/1`、`run_suite.py --tier offline` 仍 `SUITE PASSED (10 scripts)`（完整输出见预跑日志 `verify/acceptance-sprint16-2026-09-20.log`）。
 
 > 说明：`verify_checkpoint.py`（33 断言）**不在 offline 档**——其 parse 链路含真实 LLM 调用，分级为 network 档（估算 ¥0.05），见 §9 `N-1`。
 
@@ -149,7 +149,7 @@ SUITE PASSED (10 scripts)
 |---|---|---|---|---|
 | `M16-1` | 看 `agents/functions/tech-research.md`：版本号 + 三级深度表 + Archive Requirements + 可配置参数节 | 版本 **v2.0.0**；`quick` 3~5 源/1 维/**主代理直执**、`expert` 6~10 源/≥3 维/子代理（默认）、`scholar` ≥12 源+反向证据；阈值全部落在**可配置参数节**（非硬编码） | spec 文件本身 | ☐ |
 | `M16-2` | 看 `agents/fanout.json` | 版本 **v5**；`planning_pipeline` 含 `depth` 路由 + `archive` 门禁字段；`executor` 按深度分流（subagent / main-agent） | fanout.json | ☐ |
-| `M16-3` | §5 第 3、4 条 | 真实归档 **28/28** PASS；`--selftest` **六例**（合规 expert/scholar + 空报告被拒 + 被引用证据缺失被拒 + 正文提及不误判 + `.markdown` 漏报被拦）；交叉引用为**双向**（点名 + 落地），判定**限定在证据索引表区间内**、文件名大小写不敏感 | `verify_archive.py` | ☐ |
+| `M16-3` | §5 第 3、4 条 | 真实归档 **28/28** PASS；`--selftest` **八例**（合规 expert/scholar + 空报告被拒 + 被引用证据缺失被拒 + 正文提及不误判 + `.markdown` 漏报被拦 + 已存在 `.markdown` 不假红 + 嵌套子目录不假红）；交叉引用为**双向**（点名 + 落地），判定**限定在证据索引表区间内**、文件名大小写不敏感、`.md`/`.markdown` 与嵌套目录口径两侧一致 | `verify_archive.py` | ☐ |
 | `M16-4` | 打开 `agents/runs/run-2026-09-12-provider-refresh-001/` | 四件齐备：`tech-research.report.md`、`context.md`、`reasoning.md`、`evidence/01..08-*.md`；报告含 **§7 证据索引表**；每个 evidence 文件含五字段（`url`/`tier`/`fetched_at`/`fetch_status`/`supports`）+ **verbatim 原文引用块** | 该归档目录 | ☐ |
 | `M16-5` | 看报告 §7 → 任选一行 → 打开对应 evidence 文件 | 能"引经据典"逐字回溯：例如 report 里 `qwen3.5-omni-plus` 的结论可定位到 `evidence/02-help-aliyun-com-zh-model-studio-models.md` 的 verbatim 段（阿里云『图像与视频理解』列表） | 报告 + evidence | ☐ |
 
@@ -308,8 +308,9 @@ Invoke-RestMethod http://127.0.0.1:8787/api/providers | ConvertTo-Json -Depth 4
 |---|---|---|
 | **第一轮（我预跑发现）**：M16 归档门禁的交叉引用**只有单向**：报告点名的证据文件缺失/悬空时不判 FAIL（违反 spec 归档契约 "a citation without an evidence file is a violation"）；自带"缺件"负例实为**空报告**，故自检长期假绿灯 | 删掉被引用的 `evidence/06-*.md`：`ALL PASS 25/0` → `FAILED 25/1`（`dangling=['06-...']`）；报告引用不存在文件：`ALL PASS 25/0` → `FAILED 25/1`；清空证据文件两版均 FAILED（未削弱） | 已修：交叉引用改**双向**（正向点名 + 反向落地）且 `expert`/`scholar` 两档都查；`--selftest` 2→4 例。复验：真实归档 28/28、selftest 4/4、矩阵一致、离线套件 **SUITE PASSED** |
 | **第二轮（独立 code-review `run-2026-09-20-code-review-053` 复核后收紧，2 major/5 minor/3 nit）**：① 反向校验扫了**整篇报告** → 正文顺带提及别处证据名（跨 run 引用 / 相对路径 / URL 片段）会**把合规归档误判 FAIL**（我此前"run-047 无回归"的结论因此不成立）；② 大小写口径不一致（正向不敏感 / 反向敏感）→ Windows 假绿、敏感 FS 假红；③ 索引表里 `.markdown`／一位数编号的悬空引用静默漏检 | 复核以逐字副本冻结反例：C2/C3/C4 误红 `FAILED 27/1`、C5 漏报 `ALL PASS 28/0`、C1 `28/0`、C5b（`.md` 对照）`27/1` | 已按建议收紧：判定区间**限定证据索引表**（区间缺失则 fail-closed）、basename **小写集合**比较、引用识别放宽到 `.md|.markdown` 与 1~3 位编号、`--selftest` 4→**6 例**（补防误报 + 防漏报回归）、负例判据改为"唯一失败项名 == 目标断言"。**复跑**：C2/C3/C4 转 `28/0`、C5 转 `27/1`、C5b 仍 `27/1`（旧行为对照）、真实归档 `28/0` 与 run-047 `22/0`、离线套件仍 **SUITE PASSED** |
+| **第三轮（同一复核的 round-2）**：确认前两项闭环，但抓到**我新引入的 major#3** —— 解析侧放宽到 `.md\|.markdown` 却没同步放宽**清单侧**（仍 `glob("*.md")`）→ **真实存在且被 §7 点名的 `.markdown` 证据被误判悬空（假红）**，而正向又因 stem 命中假绿（同一口径两侧不一致）；另有 minor：`evidence/` 子目录既漏校验又假红、根因断言与区间定位口径不一致、§7 标题行无换行匹配失败、非 ASCII 文件名不可见 | 复核样本 `R3b` 修复前 `FAIL dangling=['05-extra.markdown']` → 修复后 **`ALL PASS 18/0`** | 已修：清单侧同步 `rglob("*.md")+rglob("*.markdown")`（容忍子目录）、根因断言复用区间定位、标题行 `(?:\n\|$)`、字符类 `[\w.\-]`；`--selftest` 6→**8 例**（补"已存在 `.markdown` 不假红""嵌套子目录不假红"）。复跑：C5 仍 `27/1`、C5b 仍 `27/1`、真实归档 `28/0` 与 `22/0`、矩阵一致、离线套件 **SUITE PASSED** |
 
-> 教训已入 `docs/3-LEARNED.MD` **1.57**：交叉引用必须双向；自检负例必须命中"被判据点名的那个失效模式"（"仅此一项失败"才是最小充分证据）。
+> **教训已入** `docs/3-LEARNED.MD` 的 **1.57**：交叉引用必须双向；范围要限定在承载契约的区间；跨平台口径（大小写/路径分隔符）要显式统一；**同一口径的"解析侧/清单侧"必须同步放宽**（只放宽一侧 = 假红与假绿并存）；自检负例要成对（防误报 + 防漏报 + 防假红）并核对失败项名字。
 
 ---
 

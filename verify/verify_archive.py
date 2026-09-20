@@ -57,9 +57,9 @@ def norm_depth(depth: str) -> str:
 
 
 # 索引表内的证据文件引用形态：`evidence/NN-slug.md`（可带反斜杠）或裸名 `NN-slug.md`。
-# 复核 run-053 后放宽：接受 .markdown 与 1~3 位编号（只用于"点名的文件是否存在"判定，
-# 区间限定在证据索引表，故不会误伤正文里的普通文件名）。
-_EVIDENCE_NAME = r"[A-Za-z0-9._-]+\.(?:md|markdown)"
+# 复核 run-053 后放宽：接受 .markdown、1~3 位编号与非 ASCII 文件名（`\w` 含中日韩字符）。
+# **清单侧必须同步放宽**（round-2 major#3：只放宽解析侧会让真实存在的 .markdown 被误判悬空）。
+_EVIDENCE_NAME = r"[\w.\-]+\.(?:md|markdown)"
 EVIDENCE_REF_RE = re.compile(rf"evidence[/\\]({_EVIDENCE_NAME})", re.I)
 BARE_EVIDENCE_REF_RE = re.compile(rf"(?<![\w/\\-])(\d{{1,3}}-{_EVIDENCE_NAME})", re.I)
 
@@ -68,11 +68,12 @@ def evidence_index_section(report_text: str) -> str:
     """取"证据索引表所在小节"正文（§7，或任意标题含『证据索引表』的小节）。
 
     交叉引用只在此区间内判定——契约约束的是"结论 ↔ 证据行"的索引表，不是全文。
+    标题行末尾允许无换行（EOF 直接结束，nit#9）。
     """
-    m = re.search(r"^##\s*7\.[^\n]*\n(.*?)(?=^##\s|\Z)", report_text, re.M | re.S)
+    m = re.search(r"^##\s*7\.[^\n]*(?:\n|$)(.*?)(?=^##\s|\Z)", report_text, re.M | re.S)
     if m:
         return m.group(1)
-    m = re.search(r"^#{2,4}[^\n]*证据索引表[^\n]*\n(.*?)(?=^#{2,4}\s|\Z)", report_text, re.M | re.S)
+    m = re.search(r"^#{2,4}[^\n]*证据索引表[^\n]*(?:\n|$)(.*?)(?=^#{2,4}\s|\Z)", report_text, re.M | re.S)
     return m.group(1) if m else ""
 
 
@@ -96,10 +97,8 @@ def check_archive(run_dir: Path, depth: str) -> bool:
     ok("report 文件存在（<role>.report.md）", report is not None, str(report))
     report_text = report.read_text(encoding="utf-8") if report else ""
     ok("report 非空", len(report_text.strip()) > 200, f"chars={len(report_text)}")
-    ok(
-        "report 含证据索引表节",
-        bool(re.search(r"^##\s*7\.", report_text, re.M)) or "证据索引表" in report_text,
-    )
+    # 根因断言与区间定位复用同一实现（minor#7）：口径不一致会让"根因放行、区间失败"互相打架。
+    ok("report 含证据索引表节", bool(evidence_index_section(report_text)), "§7 或标题含『证据索引表』的小节")
 
     if depth == "quick":
         return failed == 0
@@ -111,7 +110,13 @@ def check_archive(run_dir: Path, depth: str) -> bool:
             ok(f"{name} 非空", len(p.read_text(encoding="utf-8").strip()) > 80)
 
     ev_dir = run_dir / "evidence"
-    ev_files = sorted(ev_dir.glob("*.md")) if ev_dir.is_dir() else []
+    # 清单侧与解析侧口径一致（major#3）：`.md` + `.markdown` 都算证据文件；
+    # 用 rglob 容忍 evidence/ 下的子目录（minor#6：否则嵌套文件既漏校验又被误判悬空）。
+    ev_files = (
+        sorted(p for p in list(ev_dir.rglob("*.md")) + list(ev_dir.rglob("*.markdown")) if p.is_file())
+        if ev_dir.is_dir()
+        else []
+    )
     ok("evidence/ 目录存在且非空", bool(ev_files), f"files={len(ev_files)}")
 
     for ev in ev_files:
@@ -177,7 +182,8 @@ def _run_isolated(fn, *args):
 
 def selftest() -> int:
     """自检：合规档案（PASS）+ scholar 档（PASS）+ 空报告（FAIL）+ 被引用证据缺失（FAIL）
-    + 正文提及别处证据名（PASS，防误报）+ 索引表点名不存在的 .markdown（FAIL，防漏报）。"""
+    + 正文提及别处证据名（PASS，防误报）+ 索引表点名不存在的 .markdown（FAIL，防漏报）
+    + 索引表点名已存在的 .markdown（PASS，防假红）+ 嵌套子目录证据（PASS，防假红）。"""
     global passed, failed
     with tempfile.TemporaryDirectory() as td:
         good = Path(td) / "run-good"
@@ -226,7 +232,8 @@ def selftest() -> int:
         rp = prose / "tech-research.report.md"
         rp.write_text(
             rp.read_text(encoding="utf-8")
-            + "\n另可对照 run-047 的 `evidence/01-elsewhere.md`、相对路径 03-third.md 与 https://example.com/evidence/09-third.md 。\n",
+            + "\n另可对照 run-047 的 `evidence/01-elsewhere.md`、裸名 03-third.md、"
+            + "相对路径 ..\\..\\agents\\runs\\run-047\\evidence\\11-elsewhere.md 与 https://example.com/evidence/09-third.md 。\n",
             encoding="utf-8",
         )
         prose_result, (_, prose_failed), _ = _run_isolated(check_archive, prose, "expert")
@@ -244,6 +251,36 @@ def selftest() -> int:
         )
         weird_result, (_, weird_failed), weird_fails = _run_isolated(check_archive, weird, "expert")
 
+        # 防**假红**回归（round-2 major#3）：解析侧放宽到 .markdown 时，清单侧必须同步放宽——
+        # 否则真实存在且被 §7 点名的 .markdown 证据会被误判悬空（自相矛盾）。
+        print("== selftest: 索引表点名已存在的 .markdown（期望 PASS，防假红）==")
+        md_ext = Path(td) / "run-md-ext"
+        shutil.copytree(good, md_ext)
+        (md_ext / "evidence" / "03-extra.markdown").write_text(
+            "# evidence 03\n- url: https://example.com/extra\n- tier: tier2\n- fetched_at: 2026-09-12\n"
+            "- fetch_status: ok\n- supports: c3\n## 原文段落（verbatim）\n> extra evidence statement\n",
+            encoding="utf-8",
+        )
+        mp = md_ext / "tech-research.report.md"
+        mp.write_text(
+            mp.read_text(encoding="utf-8").replace(
+                "| c2 | 02-second.md |\n", "| c2 | 02-second.md |\n| c3 | 03-extra.markdown |\n"
+            ),
+            encoding="utf-8",
+        )
+        md_ext_result, (_, md_ext_failed), _ = _run_isolated(check_archive, md_ext, "expert")
+
+        # 防**假红**回归（round-2 minor#6）：evidence/ 子目录里的文件按 basename 被点名 → 必须 PASS。
+        print("== selftest: 嵌套子目录证据被点名（期望 PASS，防假红）==")
+        nested = Path(td) / "run-nested"
+        shutil.copytree(good, nested)
+        (nested / "evidence" / "2026-09").mkdir()
+        shutil.move(
+            str(nested / "evidence" / "02-second.md"),
+            str(nested / "evidence" / "2026-09" / "02-second.md"),
+        )
+        nested_result, (_, nested_failed), _ = _run_isolated(check_archive, nested, "expert")
+
         ok("selftest 合规档案全部断言通过", good_result and good_failed == 0)
         ok("selftest 合规档案在 scholar 档通过", scholar_result and scholar_failed == 0)
         ok("selftest 缺件档案被拒（且确有失败项）", (not bad_result) and bad_failed > 0)
@@ -260,6 +297,8 @@ def selftest() -> int:
             and len(weird_fails) == 1
             and weird_fails[0].startswith("索引表点名的 evidence 文件全部存在"),
         )
+        ok("selftest 索引表点名已存在的 .markdown 通过（防假红）", md_ext_result and md_ext_failed == 0)
+        ok("selftest 嵌套子目录证据被点名通过（防假红）", nested_result and nested_failed == 0)
     print(f"\n=== selftest {'PASS' if failed == 0 else 'FAIL'}: {passed} passed / {failed} failed ===")
     return 0 if failed == 0 else 1
 
