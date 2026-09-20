@@ -62,6 +62,7 @@ $env:PYTHONIOENCODING='utf-8'      # 中文输出不乱码
 | `WinError 10048` 端口占用 | network 档脚本会自举后端，与 dev server 抢 8787 | 先停 dev 服务，或只跑 `--tier offline` |
 | 退出码 1（`refresh-providers.py --check`） | **1 = 有到期项**，是信号不是失败 | 见 §6 `PV-4`；退出 2 才是参数/环境错误 |
 | 退出码 3 / 4（`run_suite.py` / `scheduled-tasks.py`） | **3 = 超预算拒绝启动；4 = 成本未测量/超限拒绝放行** | 这是**设计行为**，见 §7 `B-8` / `B-9` |
+| 后端跑着跑着没了 / 8787 被别的进程占住 | ① 后端若用**会话托管作业**启动，包装器退出会带走子进程；② **套件脚本（含 offline 档）会使用 8787**：`verify/e2e_common.wait_healthy` 只探测端口、**不校验"响应的服务是不是自己启的"** → 已存在的 dev 后端会被静默复用/顶替（2026-09-20 走查实证：后端两次消失） | 走查期间**不要跑** §5 第 7 条（`run_suite.py --tier offline`）；跑套件前先停 dev 服务、跑完确认无残留进程。本次走查的后端以**独立进程**启动（`Start-Process`，不挂作业树；listener PID 记在 §3.3），若需重启：设 `HF_HUB_OFFLINE=1` 后用 `Start-Process` 拉起 `paper-qa-script\reactflow-paperqa-prototype\backend\main.py`，再验 `/api/health` |
 
 ### 3.3 状态文件与产物（都是 gitignore 的本地运行时状态，可安全删除重跑）
 
@@ -71,6 +72,7 @@ $env:PYTHONIOENCODING='utf-8'      # 中文输出不乱码
 | `agents/runtime/provider_refresh_status.json` | 首轮 provider 调研结论（4 家 verdict） |
 | `agents/runtime/provider_refresh_proposal.json` | 待人工确认的字段变更提案 |
 | `agents/runs/run-2026-09-12-provider-refresh-001/` | M16 首跑归档（报告 + context + reasoning + `evidence/01..08`） |
+| `verify/backend-dev.log` / `verify/backend-dev.err.log` | 本次走查 dev 后端的 stdout/stderr（`verify/*.log` 已 gitignore）；后端以独立进程运行，listener PID = **21900**（父进程 7196） |
 
 ---
 
