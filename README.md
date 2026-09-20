@@ -308,11 +308,11 @@ node .\verify\gui_check_config_schema.mjs      # Sprint-11/12/13：schema 清单
 | 服务商 | LLM / 视觉模型 | 向量化 | API Base |
 |---|---|---|---|
 | `deepseek`（默认） | `openai/deepseek-v4-flash` / `openai/deepseek-v4-flash-vision-exp` | `st-multi-qa-MiniLM-L6-cos-v1`（本地） | `https://api.deepseek.com` |
-| `dashscope` | `openai/qwen-omni-turbo` | `openai/text-embedding-v4`（API） | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `dashscope` | `openai/qwen3.5-omni-plus`（2026-09 官网调研更新） | `openai/text-embedding-v4`（API） | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | `openai` | `gpt-4o-mini` | `text-embedding-3-large`（API） | OpenAI 官方默认 |
 | `openrouter` | `openrouter/auto`（智能路由，可指定任意模型如 `openrouter/anthropic/claude-sonnet-4`） | 无 API → 自动 HF 多语言模型 | `https://openrouter.ai/api/v1` |
 
-**自定义 provider（Sprint-4）**：复制 `paper-qa-script/providers.example.json` 为 `providers.json`（gitignored）增改条目，或用环境变量 `PAPERQA_PROVIDERS_JSON`（JSON 字符串，优先级最高）；前端下拉经 `/api/providers` 自动列出（不含密钥）。字段：`api_base / model(必填) / vision_model / embedding / embedding_local / has_embedding_api / key_envs / thinking_disabled`。
+**自定义 provider（Sprint-4；Sprint-16 起主来源为 `paper-qa-script/providers/<name>.json`，一 provider 一文件）**：新增/覆盖 provider 推荐直接增改 `providers/<name>.json`（含 `meta.source_urls/fetched_at` 调研追溯字段，可用 `scripts/refresh-providers.py --fetch --apply` 自动刷新）；旧 `providers.json`（复制 `providers.example.json` 而来，gitignored）与环境变量 `PAPERQA_PROVIDERS_JSON`（JSON 字符串，优先级最高）继续兼容；前端下拉经 `/api/providers` 自动列出（不含密钥，含 `source`/`fetched_at`）。字段：`api_base / model(必填) / vision_model / embedding / embedding_local / has_embedding_api / key_envs / thinking_disabled`。
 
 密钥按顺序读取：服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY`）→ 通用 `OPENAI_API_KEY` → 本地 `paper-qa-script/.env`。
 

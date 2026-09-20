@@ -49,7 +49,7 @@
   1. **本地 commit**：按逻辑单元（卡/子步骤）提交，信息 `type: 说明`；commit 不触发任何远程动作；
   2. **push windows 节奏**：**会话结束 + 里程碑（卡/阶段完成、流程确认）批量 push**，不逐卡 push；风险操作（切分支/rebase）前或长时间离开前 push 兜底备份；push 前先本地跑受影响的最小检查；
   3. **windows CI 状态口径**：允许中途红（WIP 状态），但 **Sprint 关闭前必须绿**；连续红不修 → 暂停开新卡；CI 已加 `concurrency` 去重（同 ref 连续 push 只跑最新，防排队堆积）；
-  4. **PR main**：Sprint 关闭（三查通过）后**统一批量提交**，不逐卡 PR——main 只接收"已验证的里程碑快照"（1.45：先合门、后 ✅），减少 CI/评审噪音并保持 main 状态一致；**例外①** Blocker/Critical 或安全修复可即时同步（先修后补 sprint 记录）；**例外②** 跨 sprint 长任务可在**天然里程碑（阶段完成）**时补一次 PR（该阶段产物仍须三查）。
+  4. **PR main**：Sprint 关闭（三查通过）后**统一批量提交**，不逐卡 PR——main 只接收"已验证的里程碑快照"（1.45：先合门、后 ✅），减少 CI/评审噪音并保持 main 状态一致；**例外①** Blocker/Critical 或安全修复可即时同步（先修后补 sprint 记录）；**例外②** 跨 sprint 长任务可在**天然里程碑（阶段完成）**时补一次 PR（该阶段产物仍须三查）。**⚠️ 用户明确（2026-09-12）：用户走查验收通过之前不得创建 PR**——不得以"提前验证 CI"为由先建 PR；CI 校验走 windows 分支 push 触发，或经用户同意后再建。
 
 ## 4. Sprint（迭代）项目管理与关闭标准
 
@@ -81,11 +81,11 @@
 #### 三查（每个 Sprint 关闭前的固定动作，2026-08-30 起制度化；Sprint-8 起按职能 spec fan-out）
 
 > 执行方式：按 `agents/functions/` 固定 spec 派出子代理（prompt 零漂移），每任务经 `scripts/agent-ops.py` 记账（register→finish，见 `agents/README.md`）；报告用 `parse-report` 结构化后按 §4.4 分诊闭环。
-> **执行顺序（用户问题①修正，2026-08-30）**：先跑 **impact-assessment（影响范围评估，新子代理）**——复合指标 `(0.8×A + 0.2×B)×100`（A=核心功能覆盖率/13、B=核心 API 覆盖率/10），**阈值 X=50**：`>50` → 全量档（整个代码库）；`≤50` → 窄档（Sprint 修改文件 ∪ 核心文件区域）。再按该范围执行一查/二查——**审查范围不得默认收窄到 Sprint 交付物**，偏离 recommended_scope 须在 Sprint §9 记录理由。
+> **执行顺序（用户问题①修正，2026-08-30）**：先跑 **impact-assessment（影响范围评估，新子代理）**——复合指标 `(0.8×A + 0.2×B)×100`（A=核心功能覆盖率/13、B=核心 API 覆盖率/12），**阈值 X=50**：`>50` → 全量档（整个代码库）；`≤50` → 窄档（Sprint 修改文件 ∪ 核心文件区域）。再按该范围执行一查/二查——**审查范围不得默认收窄到 Sprint 交付物**，偏离 recommended_scope 须在 Sprint §9 记录理由。
 
 | # | 检查 | 内容 | 执行者（spec） |
 |---|---|---|---|
-| 〇查 范围 | **影响范围评估**（fan-out 第一道闸门） | 变更模块归类 → A（13 项核心功能触达）/B（10 条路由触达）→ composite（阈值 X=50）→ 两档 recommended_scope | 子代理 `functions/impact-assessment.md` × 1 任务 |
+| 〇查 范围 | **影响范围评估**（fan-out 第一道闸门） | 变更模块归类 → A（13 项核心功能触达）/B（12 条路由触达）→ composite（阈值 X=50）→ 两档 recommended_scope | 子代理 `functions/impact-assessment.md` × 1 任务 |
 | 一查 文档 | 文档一致性审计（范围 = 〇查 recommended_scope） | 死链/陈旧事实/跨文档矛盾/缺失知识/**时间记录准确性**；**4-ALGORITHM.MD 逐条对照代码**（其 §12 防漂移清单） | 子代理 `functions/doc-audit.md` × 1 任务（target=working-tree，scope 入参） |
 | 二查 代码 | windows + main 双分支 code review（范围 = 〇查 recommended_scope） | 正确性/安全/SSOT/兼容性/架构分层；main 侧重合并完整性与悬空引用；**功能-测试配对核查（TG-1，2026-08-31）**：用户可见功能（节点/路由/数据源/provider/表单字段）必须同 PR 交付对应 verify case（离线断言或联网 e2e/GUI check），并在覆盖矩阵登记（TG-2 落地后） | 子代理 `functions/code-review.md` × 2 任务（target=branch:windows、branch:main 并行，scope 入参） |
 | 三查 环境 | 工作区与功能完整性 | `git status` 零残留、本地已合并分支清理、.gitignore 覆盖、端口卫生、回归（smoke/e2e/新增端点/GUI）全绿 | **主代理** `functions/workspace-check.md`（起服务/杀进程不子代理化） |
@@ -93,6 +93,29 @@
 > 经验教训总结（lessons-learned）为 fan-out 五步第 4 步（在一查/二查之后、三查环境核验之前执行），见 §4.1 与 `agents/fanout.json`；不入上表（三查固定动作之外的关闭前置步骤）。
 
 > 三查可委托评审代理并行执行；**发现项必须修复闭环后（修复 → 回归 → 文档同步 → PR 同步 main）才允许 Close**；结论写入该 Sprint 文档的「评审/同步记录」节。
+
+#### 修复验证复核（fix-verification review）——与"关闭三查"是两件事（2026-09-21 补定义）
+
+**由来**：主代理在 Sprint 中途修完一个 finding（或用户走查发现）后，会让评审子代理**增量复核**该修复，而这类轮次的 **scope 是主代理自己挑的**（"改动的文件 + 直接调用方 + 相关断言"）。但 `agents/functions/code-review.md` 明确写着：`scope` **必须来自 impact-assessment**（`empty = full repo`；**never a self-chosen narrow scope**）、关闭三查还要 **windows + main 双分支**。此前两者**没有区分定义**，因此容易被误读为"二查已覆盖"（2026-09-21 用户质疑"窄范围复核的判断依据是啥"即由此而来）。
+
+| | **关闭三查**（上表） | **修复验证复核**（本次补定义） |
+|---|---|---|
+| 触发 | Sprint 关闭前固定动作 | 主代理修完 finding 后（可多轮） |
+| scope | **必须**来自〇查 impact-assessment 的 `recommended_scope` | **fix blast radius** = 改动文件 ∪ 直接调用方/消费方 ∪ 受影响断言与脚本 ∪ 该 finding 本身 |
+| Timebox / cap | 关闭三查：cap 以各职能 spec 的 Configurable Parameters 为准（code-review 10 / **doc-audit 12** findings），Timebox 同见各 spec | **10~15 min / 5 findings**（§4.2 范围纪律：宁可交回部分 + 覆盖度说明） |
+| 目标 | 完整性与兼容性（含 main 分支合并完整性） | 该修复是否真生效、是否引入新问题 |
+| 交付 | **阻断 Close** | 不阻断；**不能替代**关闭三查 |
+| 记录 | Sprint §9 三查记录 | Sprint §5 执行记录 + §9 明写"**此为修复验证、非二查**" |
+
+**纪律**：① 每轮必须写明 scope 与**覆盖缺口**（哪些维度没看）；② 不得把修复验证计入三查覆盖；③ 关闭前仍须按 impact-assessment 范围跑齐 一查/二查（含 main）+ lessons 步骤——**修复验证不减少任何关闭项**。
+**账本支持（TG-10）**：多轮用 `agent-ops.py round <run_id> --note ... [--output-chars N] [--interrupted --impact ...]` 追加（终态 run 也可），中断/接管用 `agent-ops.py interrupt <run_id> --reason ... --impact ...` 留痕；`list` 显示 `rounds=/dur=/int=`。
+
+**fan-out 执行纪律（2026-09-12 制度化，Sprint-15/16 两次子代理无产出超时后固化）**：
+
+1. **报告先行**：派发子代理时必须在 prompt 里要求"**第一步先落盘报告文件**（骨架→逐条覆盖更新）"；只把发现留在上下文中不落盘的运行视为未产出（超时后无任何资产可回收）。各派发型 spec（tech-research / impact-assessment / code-review / doc-audit / lessons-learned）已在正文加 Output discipline 段固化该要求。
+2. **接管判据**：子代理**超过 spec Timebox（或 15 分钟无报告文件产出/无回报）** → 主代理**直接接管**，按同一 spec 全维度执行并落盘报告；在 Sprint §9 注明"子代理超时，主代理接管执行"及账本 run 状态。
+3. **账本诚实**：接管运行同样登记账本（register→finish），报告写入 `agents/runs/<run_id>/<role>.report.md`；不得把未产出的子代理记为 succeeded 而不留报告。
+4. **范围纪律**：Finding cap / Timebox 是硬约束——宁可交回"已写下的部分 + 覆盖度说明"，也不要为凑完整性无限扩张。
 
 #### 证据 checklist（按需选取，尽可能覆盖）
 
@@ -110,9 +133,9 @@
 
 - 能**直观反映改动**：例如拖拽后的分栏比例、全屏后的整体视图、放大后的图片、新增按钮及其点击后的结果。
 - 标注**时间/环境**（可选）：截图文件名或 caption 标注日期与操作。
-- 存放到 `docs/iteration/sprint/<run>.png`（连同该 sprint 文档一起入库），在 Markdown 里用相对路径引用，例如：
+- 存放到 `docs/iteration/sprint/<run>.png`（连同该 sprint 文档一起入库），在 Markdown 里用相对路径引用（示意占位，非真实文件）：
   ```markdown
-  ![分栏拖拽](./2026-08-26-pane-resize.png)
+  ![分栏拖拽](./<sprint>-<run>.png)
   ```
 
 #### 关闭时的 Self-check
@@ -155,12 +178,36 @@
 
 **边界澄清（本项目经验）**：单文件"改了目录没生效"这类**流程缺陷**，若修复需要前后端协同+新增决策规则（如 Sprint-5 的自动重跑+状态失效），属于插队 sprint；若只是文案/样式单点问题，属 Bug/维护。判断先例见 `docs/iteration/sprint/2026-08-30-sprint-4.md`（插队，**仅 windows 分支维护**）与 Sprint-5（插队，后补三查整改）。
 
+**卡片来源与时间口径（2026-09-20 用户要求，全部 backlog 适用）**：卡除 卡号/主题/点/状态/Sprint 外，**来源必须带类型前缀**区分"原规划"与"后新增"，时间字段一律用**网络时间（UTC+8）**：
+
+| 前缀 | 含义 | 例 |
+|---|---|---|
+| `[规划]` | 原规划（roadmap/预研阶段即存在的卡） | `[规划] F-AC8（F2 验收⑥）` |
+| `[用户插入]` | 迭代中由用户新增的需求/要求 | `[用户插入] 前端运行参数显式配置面` |
+| `[Bug]` | 缺陷（用户走查、三查、评审、自测发现均可） | `[Bug] 复制按钮状态串台` |
+| `[走查]` | 用户走查/验收提出的疑问、改进建议 | `[走查] 报告时效与依据变更治理` |
+| `[三查]` / `[评审]` | 内部评审（impact-assessment / doc-audit / code-review / lessons-learned）发现 | `[评审] load_state fail-open` |
+
+时间写法统一 `YYYY-MM-DD（UTC+8）`（**取网络时间校准，不得用本机时区**——本机为 UTC+9，直接取本地时间会与仓库口径差一天）；历史卡按原样保留、不回填。
+
+**交互类检查的反向对照规则（2026-09-21 用户拍板，称"倒过来试试"）**：新增的 **GUI / 交互类**检查**必须先在"未修复（或旧实现）"的代码上跑出 FAIL**，再在修复后转 PASS，并把该反例写进检查脚本注释与验收指南。理由：只证明"改完能过"不构成验证——`gui_check_s5/s7` 用程序化 `.click()` 点运行按钮，**结构上无法触发** F-AC13 的"首次点击被拖拽吃掉"，于是该 bug 存活了 4 个 sprint。记录在 `TG-6` ⑤。
+
+**子代理中断/接管必须留痕（2026-09-21 用户对"运行时间变短/中途被停"提出疑虑后新增）**：主代理**中断（`interrupt_agent`）、杀掉子代理派生的进程、或按 §4.2 接管**时，必须记三件事——**何时、为什么、影响范围**（哪一轮评审/验证因此缺失、后来如何补做）。写入 Sprint 文档 §5/§9。
+> 依据：2026-09-20 我曾误杀复核子代理派生的套件进程树 3 次、并主动 `interrupt` 它 1 次（端口 8787 争用 + 避免在用户走查期间干扰前端）→ 其 round-3 因此顺延；若当时没留痕，账本里只会看到"首轮 53 秒 succeeded"，**看不出被中断过**（关联 `TG-10`：多轮次记录失真）。
+
 **预研上下文传递（2026-08-31 制度化，用户建议）**：
 
 1. 探讨性预研（涉及用户选择/确认的调研讨论，如方案菜单、采纳范围、成本拍板）在结束或中断时，**必须落盘**为预研笔记（**仅 windows 分支维护**，main 无此目录 → 注入规则在 main 为 no-op）：按领域归档 `docs/iteration/pre-research/<领域>/<日期>-<主题>.MD`（领域 = tech/product/marketing，跨领域治理笔记放根目录；**一领域 = 一 agent = 一账本 role = 一笔记目录**，隔离与侧重点见 `docs/iteration/pre-research/2026-08-31-domain-governance.MD`）。要素：背景 / 现状证据 / 结论（方案菜单+推荐）/ 来源 / **用户决策记录（chronological）** / 注入指引；落盘后同步更新 `docs/iteration/pre-research/README.md` 追溯索引。
 2. planning 时：任务主题命中某预研笔记（按笔记"注入指引"的关键词匹配）→ **笔记作为 tech-research 的 `context` 输入，并在任务分解前注入规划上下文**；开卡时卡片链接对应笔记（见 `agents/fanout.json` planning_pipeline 的 `pre_research` 字段）。
 3. **基线规则**：tech-research 以笔记记录的既定决策为基线——不重复调研已决路线、不静默改向；发现与既定决策矛盾 → 报告"翻案建议"交用户裁决，不得自行推翻。
 4. 目的：避免方案路线决策在后续流程中**重复出现/前后矛盾**，预研结论与用户确认是规划管线的资产而非一次性对话。
+
+**调研工作流分级与证据落档（M16，2026-09-12 落地；用户 2026-09-07 拍板 P1~P3）**：
+
+1. **三级深度路由**（`agents/fanout.json` planning_pipeline 的 `depth` 字段）：**quick 工程级**（实现问题/工具用法/快速查证；3~5 源、1 维；**主代理直接执行**，零子代理成本——P2）/ **expert 领域专家级**（方案选型/最佳实践/跨方案对比；6~10 源、≥3 维、对比矩阵；默认档，子代理）/ **scholar 研究学者级**（架构决策/长期路线/发布级判断；≥12 源 + 全 tradeoff + 反向证据）。**阈值一律在 spec 可配置参数节**（P3：可调，不写死）；级别由任务难度自动建议、**用户可覆盖**；兼容旧别名 normal=expert、deep=scholar。
+2. **决策证据落档（唯一真相）**：expert/scholar 档的 run 目录必须含 `context.md`（输入上下文快照：问题/深度/注入的预研基线与用户决策/约束/网络时间日期）、`evidence/<nn>-<slug>.md`（每条引用 = URL + 来源层级 + 抓取时间 + **逐字原文段落** + 支撑点；抓取失败须记 reason）、`reasoning.md`（证据→结论推导链 + 采信/排除理由 + 未决风险）。
+3. **段落级溯源**：报告 §7 证据索引表把每条结论映射到 evidence 文件与段落摘录，供后续"引经据典"式讨论直接回溯。
+4. **归档门禁**：`verify/verify_archive.py <run_dir> --depth <tier>`（缺件/空证据/字段缺失/索引表未引用/**索引表点名但磁盘缺失（悬空引用）**；交叉引用判定**限定在证据索引表区间内**、文件名**大小写不敏感** → fail-closed，退出非 0）；报告注入规划上下文前须过门禁（`agents/fanout.json` 的 `archive` 字段）。
 
 ## 5. 运行手册（Windows）
 
@@ -205,6 +252,34 @@ npm ci
 .\.venv\Scripts\python.exe .\paper-qa-script\manual_index_paper.py     # 建索引 + 交互问答
 .\.venv\Scripts\python.exe .\paper-qa-script\manual_test_internet_connection.py  # 连通性
 ```
+
+Sprint-16 追加（provider 刷新 / 定时底座 / 分层验证）：
+
+```powershell
+# ① provider 官网调研刷新（F-AC8）：抓 meta.source_urls → M16 归档 + proposal；--apply 仅刷新 fetched_at/status
+.\.venv\Scripts\python.exe .\scripts\refresh-providers.py --check                  # 到期判定（不联网）
+.\.venv\Scripts\python.exe .\scripts\refresh-providers.py --fetch --apply          # 真实抓取 + 刷新元数据（模型名变更需人工确认）
+.\.venv\Scripts\python.exe .\scripts\refresh-providers.py --migrate                # 旧 providers.json 拆成 providers/*.json
+
+# ② 定时底座（TG-5）：单一入口，供手动 / 进程内调度 / Windows 任务计划调用
+.\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --list                     # 任务、间隔、上次运行、花费
+.\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --task nightly-suite --check-due   # 到期才跑（fail-closed 预算闸门）
+.\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --task nightly-suite --record-cost 3.5  # 回填实测花费（联网档跑完后通常已由 suite 实测值**自动回填**，仅在未测量时人工补）
+powershell -ExecutionPolicy Bypass -File .\scripts\register-scheduled-tasks.ps1 -Action register   # 注册周频任务计划（可选）
+.\.venv\Scripts\python.exe .\scripts\report-freshness.py [--check]                 # M18 v1：调研报告时效（--check 有 stale 退出 1）
+
+# ③ 分层验证（fail-closed；上限可配置）
+.\.venv\Scripts\python.exe .\verify\run_suite.py --tier offline                    # 离线档（CI/日常）
+.\.venv\Scripts\python.exe .\verify\run_suite.py --tier gui                        # GUI 档（需前后端已启动）
+.\.venv\Scripts\python.exe .\verify\run_suite.py --tier network --budget-cny 10    # 联网档（预估超上限直接拒绝启动）
+.\.venv\Scripts\python.exe .\verify\run_suite.py --tier network --est-factor 1.0   # 预估安全系数可配（默认 1.3；亦可 env PAPERQA_EST_SAFETY_FACTOR）
+
+# ④ 运行时可观测（后端已启动时）
+Invoke-RestMethod http://127.0.0.1:8787/api/usage                                   # Retro③：本进程实测 token 用量与成本（CNY）
+Invoke-RestMethod http://127.0.0.1:8787/api/checkpoints                             # F-AC16 v1：本地 checkpoint 只读索引（含逐篇载荷路径）
+```
+
+> HF 网络不可达时（模型已在本地缓存）设 `$env:HF_HUB_OFFLINE = "1"`（+ `TRANSFORMERS_OFFLINE=1`）避免 sentence-transformers 的 HEAD 重试阻塞调用。
 
 ### 5.5 验收脚本
 

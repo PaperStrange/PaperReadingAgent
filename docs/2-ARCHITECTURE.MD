@@ -113,9 +113,10 @@ PaperReading-Windows/
 │   ├── count_paperqa_functions.py
 │   ├── paperqa_system_report.md       # 分析产物（371 函数）
 │   ├── .env                            # PAPERQA_PROVIDER + 服务商 key（旧 key 注释保留）
-│   ├── provider_config.py              # 服务商注册表（内置 4 家 + providers.json/环境变量自定义；PAPERQA_PROVIDER 切换）
+│   ├── provider_config.py              # 服务商注册表（**Sprint-16 F-AC8：providers/<name>.json 一文件一 provider 为主来源**；合并顺序=代码兜底 < providers/*.json < providers.json < PAPERQA_PROVIDERS_JSON；`provider_source()` 来源标记；PAPERQA_PROVIDER 切换）
+│   ├── providers/                      # Sprint-16 F-AC8：一 provider 一文件（deepseek/dashscope/openai/openrouter.json，含 meta 调研追溯字段）
 │   ├── app/                            # Sprint-2/3 分层（UI → API → 编排 → 引擎适配 → 基础设施）
-│   │   ├── orchestration.py            # 编排层：PipelineOrchestrator（六步流水线 + StepRequest/Response + embed 缓存）
+│   │   ├── orchestration.py            # 编排层：PipelineOrchestrator（六步流水线 + StepRequest/Response + embed 缓存 + **F-AC10 文献级 checkpoint 子系统**）
 │   │   ├── engine.py                   # 引擎适配层：EngineAdapter 接口 + LocalVendorAdapter（paperqa 透传）
 │   │   ├── config_schema.py            # 配置唯一真源：策展 schema + validate_config + CLI 生成 config_schema.json
 │   │   ├── events.py                   # 统一事件模型（StepEvent/FunctionTraceEvent/…，SSE 线协议兼容）
@@ -123,14 +124,15 @@ PaperReading-Windows/
 │   │   ├── data_sources.py             # 数据源领域模型（SourceKind/SourceSpec/RemoteSourceConfig，纯校验无 IO）
 │   │   └── remote_resolver.py          # 远程源解析器（arXiv API/Unpaywall DOI/直链 → data/remote/<index_name>/ 暂存）
 │   └── reactflow-paperqa-prototype/
-│       ├── backend/main.py             # FastAPI 路由层（Sprint-2 解耦后：10 条 API 路由 + RunEventBroker/SSE + 组合根）
+│       ├── backend/main.py             # FastAPI 路由层（Sprint-2 解耦后：12 条 API 路由 + RunEventBroker/SSE + 组合根）
 │       ├── backend/requirements.txt
-│       └── frontend/                   # React+Vite（App.jsx / FlowNode.jsx / SchemaForm.jsx / FunctionTraceNode.jsx / JsonTree.jsx）
+│       └── frontend/                   # React+Vite（App.jsx / FlowNode.jsx / SchemaForm.jsx / FunctionTraceNode.jsx / JsonTree.jsx / CheckpointPanel.jsx / vite.config.mjs）
 ├── src/                       # ACL/ICLR/NeurIPS 语料采集
 ├── data/pdf/PaperQA2.pdf      # 示例论文
 ├── data/remote/               # Sprint-3 远程源下载暂存（.gitignore 忽略，运行时生成）
-├── scripts/                   # setup-env.ps1 / start-backend.ps1 / start-frontend.ps1 / start-streamlit.ps1（+ .bat 双击版）
-├── verify/                    # 验收脚本（smoke/e2e×3/agent/provider_switch/embed_load/remote_e2e/prune_callbacks/index_health/agentops/config_schema + verify_matrix（覆盖矩阵 SSOT）+ TEST-MATRIX.MD + e2e_common（共享基座）+ eval_retrieve + gui_check*.mjs）+ e2e 结果
+├── scripts/                   # setup-env.ps1 / start-backend.ps1 / start-frontend.ps1 / start-streamlit.ps1（+ .bat 双击版）/ agent-ops.py（账本 CLI）/ fetch-prices.py（M9 价表抓取）/ github-pr.ps1（PR 助手）/ **refresh-providers.py（F-AC8 官网调研刷新 + M16 归档）/ scheduled-tasks.py（TG-5 定时底座）/ register-scheduled-tasks.ps1（Windows 任务计划）**
+│                              # 注：`scripts/*.sh`（setup-env/start-backend/start-frontend/start-streamlit）**仅 main/mac 侧存在**；windows 侧以 .ps1/.bat 等价替换且不回流 main（code-review 050 记录的"有意分叉"，非缺失项）
+├── verify/                    # 验收脚本（45 个，SSOT=TEST-MATRIX.MD）：smoke/e2e×3/agent/provider_switch/embed_load/remote_e2e/prune_callbacks/index_health/agentops/config_schema/local_dir/checkpoint（F-AC10）/usage（Retro③ 成本）/checkpoint_index（F-AC16 v1）/freshness（M18 v1）/ledger_rounds（TG-10）/archive（M16 归档门禁）/providers（F-AC8）/runner（TG-5）/f12_preview_res + **run_suite.py（分层 runner：offline/gui/network + 预算闸门）** + verify_matrix（覆盖矩阵 SSOT）+ TEST-MATRIX.MD + e2e_common（共享基座）+ eval_retrieve + gui_check*.mjs（含 s15 十件套 + gui_check_fac16_checkpoint.mjs）
 ├── requirements-windows.txt   # Windows 依赖清单
 ├── requirements.txt           # 原语料采集依赖（未动）
 ├── docs/                      # 1-WORKFLOW / 2-ARCHITECTURE / 3-LEARNED
@@ -139,15 +141,18 @@ PaperReading-Windows/
 
 ## 4. 文件级职责
 
-- **backend/main.py**（路由层，Sprint-2 US-2.2 解耦后纯路由）：FastAPI app + CORS、10 条 API 路由（Sprint-4 新增 `GET /api/providers` 脱敏注册表；Sprint-11 新增 `GET /api/config_schema`、`POST /api/config/validate` 配置 SSOT 端点）、`RunEventBroker`/SSE 传输（历史 500 条/键 + 键总数上限，Sprint-7 追加）、组合根（`SESSIONS`=MemorySessionStore、`ORCHESTRATOR`=make_orchestrator）；`build_settings()` 保留为 `ENGINE.make_settings` 薄包装（模型配置真源在 `app/engine.py` + `provider_config.py`）。
-- **app/orchestration.py**（编排层）：`PipelineOrchestrator.run_step`——六步流水线（config→load_index→retrieve→parse_chunk_embed→evidence→answer）、`StepRequest/StepResponse`、embed 缓存、`RuntimeTracer(on_event=…)` 接线；实时事件经 `on_event` 回调交路由层发布（SSE 消息由 `app/events` 模型构造，线协议兼容）。**增量**：config 步骤 embedding 推荐注入 + 重跑失效下游状态；load_index 目录存在检查与**索引一致性**（目录指纹 marker + **三重损坏探针**：files.zip zlib / index/meta.json / tantivy open+searcher → 整目录重建，Sprint-7 M1 升级）；retrieve 多语检索 v1（CJK 零命中关键词重试 + query_strategy/hit_note）。
-- **app/engine.py**（引擎适配层）：`EngineAdapter` 接口（config/index/query/add_doc/evidence/answer/run_agent/version）+ `LocalVendorAdapter` 透传现有 paperqa 调用；`make_settings` 含密钥优先级（显式→专属→通用）、**Windows `\\?\` 长路径前缀（UNC 转 `\\?\UNC\`）**、隐藏目录过滤、`recurse_subdirectories` 参数。**多 provider 共存（Sprint-7）**：不把解析出的 key 写回 `OPENAI_API_KEY`（key 一律经 litellm_params 显式携带；防 deepseek→openai 切换污染）。**生命周期维护**：`prune_litellm_callbacks`（7 列表去重保留最近 N，`PAPERQA_LITELLM_CALLBACK_LIMIT` 可配、默认 20，Sprint-7 M2）。
+- **backend/main.py**（路由层，Sprint-2 US-2.2 解耦后纯路由）：FastAPI app + CORS、**12 条 API 路由**（Sprint-4 新增 `GET /api/providers` 脱敏注册表；Sprint-11 新增 `GET /api/config_schema`、`POST /api/config/validate` 配置 SSOT 端点；**Sprint-16 新增 `GET /api/usage`**（进程实测 token 用量与成本换算）与 **`GET /api/checkpoints`**（F-AC16 v1：本地 checkpoint 只读索引，含逐篇载荷路径））、`RunEventBroker`/SSE 传输（历史 500 条/键 + 键总数上限，Sprint-7 追加）、组合根（`SESSIONS`=MemorySessionStore、`ORCHESTRATOR`=make_orchestrator）；`build_settings()` 保留为 `ENGINE.make_settings` 薄包装（模型配置真源在 `app/engine.py` + `provider_config.py`）。
+- **app/orchestration.py**（编排层）：`PipelineOrchestrator.run_step`——六步流水线（config→load_index→retrieve→parse_chunk_embed→evidence→answer）、`StepRequest/StepResponse`、embed 缓存、`RuntimeTracer(on_event=…)` 接线；实时事件经 `on_event` 回调交路由层发布（SSE 消息由 `app/events` 模型构造，线协议兼容）。**增量**：config 步骤 embedding 推荐注入 + 重跑失效下游状态；load_index 目录存在检查与**索引一致性**（目录指纹 marker + **三重损坏探针**：files.zip zlib / index/meta.json / tantivy open+searcher → 整目录重建，Sprint-7 M1 升级）；retrieve 多语检索 v1（CJK 零命中关键词重试 + query_strategy/hit_note）；**parse_chunk_embed 文献级 checkpoint（Sprint-16 F-AC10，算法见 `4-ALGORITHM.MD` §8.4：命名空间三元组 + 逐篇原子落盘 + 命中四条件 + 零成本复用 + fail-closed 就绪 + 命名空间收敛）**。
+- **app/engine.py**（引擎适配层）：`EngineAdapter` 接口（config/index/query/add_doc/evidence/answer/run_agent/version + **F-AC10 `export_doc`/`restore_doc` 载荷往返**）+ `LocalVendorAdapter` 透传现有 paperqa 调用；`make_settings` 含密钥优先级（显式→专属→通用）、**Windows `\\?\` 长路径前缀（UNC 转 `\\?\UNC\`）**、隐藏目录过滤、`recurse_subdirectories` 参数。**多 provider 共存（Sprint-7）**：不把解析出的 key 写回 `OPENAI_API_KEY`（key 一律经 litellm_params 显式携带；防 deepseek→openai 切换污染）。**生命周期维护**：`prune_litellm_callbacks`（7 列表去重保留最近 N，`PAPERQA_LITELLM_CALLBACK_LIMIT` 可配、默认 20，Sprint-7 M2；**Sprint-16 起裁剪后重挂用量采集回调**，防成本采集被静默裁掉）。
 - **app/config_schema.py**（配置唯一真源）：策展七组 schema（LLM/Embedding/Parsing/Agent/Answer/数据源/Index）+ 从 `Settings.model_fields` 自动提取默认值 + `validate_config`（errors/warnings/hints）；`python -m app.config_schema` 生成 `config_schema.json`。
+- **app/usage.py**（Sprint-16 Retro③，成本可观测）：litellm 回调采集**实测 token**（`success_callback` + `_async_success_callback`，`ensure_installed()` 幂等且被 `prune_litellm_callbacks` 裁剪后自动重挂）→ 按本地价表（`agents/runtime/prices.json` + `fx_usd_cny`）换算 CNY；**计费键取"能定价的名字"**（请求名 → 响应名，原始回报名记 `reported_as`）；**缺价不臆测**（`cost_cny=None` + `unpriced_models`），**空账也不当 0**（`no_data=True`）；`settle()` 有界等待覆盖回调异步落地。对外：step 输出 `output["usage"]`、`GET /api/usage`，并经 `PAPERQA_SUITE_METRICS` → `run_suite` → `scheduled-tasks` 自动回填三态闸门（算法见 `4-ALGORITHM.MD` §13）。
+- **app/checkpoint_index.py**（Sprint-16 F-AC16 v1，只读）：`checkpoint_root()`（与编排层同口径 `~/.pqa/embed_cache/checkpoints`）、`scan()`（命名空间 + 逐篇 `payload_path/payload_exists/payload_bytes`，坏 manifest `readable=False` fail-soft）、`namespace_detail()`、`resolve_payload()`；供 `GET /api/checkpoints` 与前端 `CheckpointPanel.jsx`（算法见 §14.1）。**写入仍归编排层的 F-AC10 子系统**，本模块只读。
+- **scripts/report-freshness.py**（Sprint-16 M18 v1，只读）：扫描调研归档，按"provider 是否在归档之后又刷新过 / §7 表格行点名的证据是否缺失 / 证据是否晚于报告被改动"判定 `stale|suspect|fresh`，输出 `agents/runtime/report_freshness.json`（gitignore）；`--check` 供定时任务/CI（算法与口径见 §14.2）。
 - **app/events.py / app/session_store.py**：统一事件模型（StepEvent/FunctionTraceEvent/AgentActionEvent/…）；`SessionStore` 接口 + `MemorySessionStore`。
 - **app/data_sources.py / app/remote_resolver.py**（Sprint-3 主题 B）：数据源领域模型与远程源解析——`data_source` 模式（local 默认 / remote 下载暂存）；URL/arXiv/DOI 经 `resolve_remote_sources` 统一下载到 `data/remote/<index_name>/`（幂等、逐源失败明细），复用现有索引/解析管线；`manifest_file` 元数据增强生效。**安全**：下载前 SSRF 校验（仅公网 http/https、拒绝内网/本机地址、重定向逐跳复检）、单文件 200MB 上限 + 流式临时文件；编排层对 `input_snapshot`/`run_records` 做 api_key 脱敏。
 - **App.jsx**（1000+ 行）：节点状态机（idle/running/success/failed/stale）；`runSingleNode`（EventSource 收流 + POST）；上下游拓扑（`getUpstreamIds/getDownstreamIds`）；`buildFunctionSubgraphForStep`（调用树布局：深度分组、列宽 340、软碰撞避让、最多 140 调用）；`runAllSequential`；**subcanvas 计时**（多节点并发逐个显示 + 完成冻结 + 计时起点随节点结束清理，Sprint-7 M4）。
 - **FlowNode.jsx / SchemaForm.jsx / FunctionTraceNode.jsx / JsonTree.jsx**：步骤节点卡片（参数 JSON 编辑——本地草稿态防光标跳、Run/Run Upstream/Run From Here、快照、trace 列表）；Config 节点**全字段表单**（Sprint-12 F2 阶段 B：`SchemaForm.jsx` 由 `/api/config_schema` 驱动渲染——类型控件/分组/中文标签/readonly 展示、字段级校验（防抖调 `/api/config/validate`）、impacts 影响提示切换前可见、provider 下拉联动带出；取代 Sprint-3/4 的 ModelConfigPanel/DataSourcePanel 手写面板，JSON 编辑区真相源契约不变）；函数节点卡片（文本全文/中文翻译按钮/图片预览）；JSON 树渲染。**样式规范（Sprint-4）**：节点内 block 标题一律 `.node-block-title`、字段标签一律 `.ds-label`、说明文字 `.ds-sub/.ds-hint`，新面板必须复用。
-- **runtime_trace.py**：`RuntimeTracer`（19 个显式 TARGETS + 8 个 MODULE_TARGETS 全量函数 + 可选 lmi embed）；上下文栈基于 contextvars；`_make_chunk` 的 result 载荷含 text_full/text_preview/media 信息/页码预览（fitz 渲染，0.45 缩放，≤400KB）。
+- **runtime_trace.py**：`RuntimeTracer`（19 个显式 TARGETS + 8 个 MODULE_TARGETS 全量函数 + 可选 lmi embed）；上下文栈基于 contextvars；`_make_chunk` 的 result 载荷含 text_full/text_preview/media 信息/页码预览（fitz 渲染，**1.0 缩放**，≤**1.2MB** 护栏——Sprint-15 F-AC12 提升清晰度，实测 612×792）。
 - **streamlit_paperqa_app.py**：`SessionLogHandler`、`_reset_litellm_logging_worker`（修复跨 event loop 队列问题）、`run_coro`、透明流水线（5 节点计时）、DOT 生成与 graphviz 渲染/下载。
 
 ## 5. 默认模型与密钥（Windows）
@@ -160,8 +165,9 @@ PaperReading-Windows/
 | 向量化 | `openai/text-embedding-v4`（API） | `st-multi-qa-MiniLM-L6-cos-v1`（本地，首次自动下载 ~90MB） |
 | API Base | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `https://api.deepseek.com` |
 | 思考模式 | 不适用 | `extra_body={"thinking":{"type":"disabled"}}` 关闭（详见 3-LEARNED） |
+| dashscope 侧默认值（Sprint-16 官网调研更新） | `openai/qwen-omni-turbo` | **`openai/qwen3.5-omni-plus`**（model + vision_model；embedding `openai/text-embedding-v4` 据官方文档确认；证据=本地调研归档 `agents/runs/<run_id>/`（gitignore 运行时产物，含 evidence 逐字摘录）） |
 
-密钥解析优先级：config 节点 `params.api_key` → 服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY`）→ 通用 `OPENAI_API_KEY` → 本地 `paper-qa-script/.env`（ps1 启动脚本导入）；服务商由 `PAPERQA_PROVIDER` 切换（内置 4 家 + `providers.json`/`PAPERQA_PROVIDERS_JSON` 自定义），显式 `api_base/model/vision_model/embedding_model` 参数优先级最高。
+密钥解析优先级：config 节点 `params.api_key` → 服务商专属环境变量（`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY`）→ 通用 `OPENAI_API_KEY` → 本地 `paper-qa-script/.env`（ps1 启动脚本导入）；服务商由 `PAPERQA_PROVIDER` 切换（**一 provider 一文件 `providers/*.json` 为主来源** + 旧 `providers.json`/`PAPERQA_PROVIDERS_JSON` 覆盖），显式 `api_base/model/vision_model/embedding_model` 参数优先级最高。
 
 ## 6. 数据与存储约定
 
@@ -169,3 +175,5 @@ PaperReading-Windows/
 - 远程源暂存：`data/remote/<index_name>/`（.gitignore 忽略；remote 模式下即 `paper_directory`，下载→索引→解析全流程复用本地管线）。
 - 前端只读后端返回的 JSON 快照；会话/索引在后端与磁盘；重启后端会话丢失、索引保留（`load_index{build:false}` 复用）。
 - `data/parsed/*.jsonl`（语料）不入库；`data/pdf/PaperQA2.pdf` 入库用于演示。
+- **embedding checkpoint（F-AC10，Sprint-16）**：`%USERPROFILE%\.pqa\embed_cache\checkpoints\`（命名空间 = sha1(paper_dir|index_name|embedding_model)；manifest `<key>.json` + 逐篇载荷 `<key>/<dockey>.json.gz`，均原子写；按 mtime 保留最近 20 个命名空间防无界增长；与 `embed_cache/*.json`（30 天 TTL 的展示缓存）互不影响）。
+- **运行时状态（本地，不入库）**：`agents/runtime/schedule.json`（定时任务 last_run/成本三态）、`agents/runtime/provider_refresh_{proposal,status}.json`（刷新候选与状态）、`agents/runs/`（调研/评审归档与证据）、`verify/suite_result.json`（分层 runner 结果）。

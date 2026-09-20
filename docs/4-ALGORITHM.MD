@@ -18,6 +18,8 @@
 10. [D8 事件模型与 SSE 线协议](#10-d8-事件模型与-sse-线协议)
 11. [UML 类图总览](#11-uml-类图总览)
 12. [防漂移核对清单](#12-防漂移核对清单)
+13. [成本可观测：token 实测 → 价表换算 → 三态闸门（Retro③）](#13-成本可观测token-实测--价表换算--三态闸门retro3)
+14. [走查追问的两项 v1：checkpoint 可见性（F-AC16）与报告时效（M18）](#14-走查追问的两项-v12026-09-21checkpoint-可见性f-ac16与报告时效m18)
 
 ---
 
@@ -60,15 +62,20 @@
 
 ```text
 REGISTRY :=
-    BUILTIN_PROVIDERS
-  ⊕ providers.json            // 文件存在且 JSON 合法时合并，同名覆盖内置
-  ⊕ PAPERQA_PROVIDERS_JSON    // 环境变量 JSON 字符串，最高优先级，同名覆盖
-                                [provider_config.py·_load_custom_providers / get_providers]
+    BUILTIN_PROVIDERS                 // 代码内引导兜底（providers/ 缺失/损坏时保证可用）
+  ⊕ providers/*.json                  // 【Sprint-16 F-AC8 主来源】一 provider 一文件，同名覆盖兜底
+  ⊕ providers.json                    // 旧版单文件（用户自定义/覆盖），兼容保留
+  ⊕ PAPERQA_PROVIDERS_JSON            // 环境变量 JSON 字符串，最高优先级，同名覆盖
+                                [provider_config.py·load_provider_files / _load_legacy_custom / get_providers]
 ```
 
+- 文件布局：`paper-qa-script/providers/<name>.json`，字段与内置条一致，另含 `meta{source, source_urls[], fetched_at, last_refresh_status, last_evidence_run, refresh_notes[]}`（**meta 不参与运行配置**，供 `/api/providers` 追溯与刷新脚本使用）。
+- 逐文件校验：JSON 非法 / 顶层非对象 / `name` 与文件名不一致 / 缺 `model` → **只跳过该文件**并记录原因（`load_provider_files` 返回 problems），不拖垮注册表。
+- 来源标记：`provider_source(name)` → `env | legacy | file | builtin | unknown`（与合并优先级一致）。
 - 内置 4 家：`deepseek / dashscope / openai / openrouter`（OpenRouter 为通用网关，`model=openrouter/auto` 智能路由）。
-- 自定义条目字段与默认值（缺失字段补齐 `_CUSTOM_DEFAULTS`）：`api_base=None, model=必填, vision_model="", embedding=st-multi-qa-MiniLM-L6-cos-v1, embedding_local=True, has_embedding_api=False, key_envs=("OPENAI_API_KEY",), thinking_disabled=False`。
-- 名称一律 `strip().lower()`；单个自定义条目非法（如缺 `model`）**只跳过该条目**，不拖垮注册表（review 修正）。
+- 自定义/文件条目字段与默认值（缺失字段补齐 `_ENTRY_DEFAULTS`）：`api_base=None, model=必填, vision_model="", embedding=st-multi-qa-MiniLM-L6-cos-v1, embedding_local=True, has_embedding_api=False, key_envs=("OPENAI_API_KEY",), thinking_disabled=False`。
+- 名称一律 `strip().lower()`；非法条目（如缺 `model`）**只跳过该条目**，不拖垮注册表（review 修正）。
+- 刷新链路：`scripts/refresh-providers.py`（`--fetch` 抓官方 `meta.source_urls` → M16 归档 + proposal；`--apply` 刷新 `fetched_at/status`；**模型名变更需人工确认或显式 `--accept-candidates`**；抓取失败**保留旧文件**）；定时：`scripts/scheduled-tasks.py --task providers`（默认 14 天，可配置）。
 
 ### 3.2 密钥解析（DSL）
 
@@ -102,7 +109,7 @@ flowchart LR
 
 ### 3.3 对外安全视图
 
-`GET /api/providers`（`backend/main.py::providers`）只返回：`name / api_base / model / vision_model / embedding / has_embedding_api / builtin`——**密钥一律不出现**（`list_providers_safe`）。
+`GET /api/providers`（`backend/main.py::providers`）只返回：`name / api_base / model / vision_model / embedding / has_embedding_api / builtin / source / fetched_at / source_urls`——**密钥与 `key_envs` 一律不出现**（`list_providers_safe`；`source`=生效来源，`fetched_at`/`source_urls`=调研追溯）。
 
 ---
 
@@ -368,7 +375,7 @@ stateDiagram-v2
 | config | 无 | 推荐注入 → make_settings | `settings`, `data_source_params` | paper_directory/index_name/llm/embedding/config_notes[/embedding_resolved] |
 | load_index | settings 非空 | 远程解析(remote) → 目录存在检查 → 索引(自愈) | `search_index` | index_name/indexed_files/files[/remote_sources] |
 | retrieve | search_index 非空 | query_index；query 缺省取 upstream.question 或 "PaperQA"；top_n 默认 5；**结果按命中顺序去重**；**含 CJK 的 query 零命中 → 提取 `[A-Za-z][A-Za-z0-9\-]{2,}` 英文关键词重试（多语检索 v1，零成本）**；仍零命中 → 回退取 `index_files.keys()[:top_n]`；输出 `query_used`/`query_strategy`（direct\|keyword_retry\|fallback_first_n）/`result`（ranked\|fallback_first_n）/`hit_note` 命中理由 | `candidate_paths` | query/query_used/query_strategy/candidate_count/candidate_paths/result/hit_note |
-| parse_chunk_embed | settings、search_index 非空 | 见 8.3 三分支；**无 candidate_paths 时默认取索引前 5 篇**；**单文件失败给定位信息**（"解析文件失败：<p>…若文件不存在：核对论文目录并重跑 Config → load_index"） | `docs` | docs_count/texts_count/per_file/sample_texts/loaded[/regen] |
+| parse_chunk_embed | settings、search_index 非空 | 见 8.3 三分支；**无 candidate_paths 时默认取索引前 5 篇**；**逐篇走文献级 checkpoint（F-AC10）**；**单文件失败给定位信息**（"解析文件失败：<p>…若文件不存在：核对论文目录并重跑 Config → load_index"） | `docs` | docs_count/texts_count/per_file/sample_texts/loaded[/regen]/**checkpoint{reused,embedded,deduped,failed,model_match,manifest,checkpoint_key,reuse_misses}**；per_file[] 含 `reused`/`deduped` |
 | evidence | docs、settings 非空 | `aget_evidence`；question 缺省 upstream 或 "什么是PaperQA？" | `evidence_session` | question/contexts_count/context_ids |
 | answer | docs、settings、evidence_session 非空 | `aquery`；**文本回退链 answer → formatted_answer → raw_answer** | `answer_session` | answer/references/used_contexts/answer_available_fields |
 
@@ -385,8 +392,31 @@ load 分支：
         -> 仅还原展示（source=cache；跨会话时 docs 缺，前端提示"重新生成"）
   | 无缓存 -> 按 run 执行（source=session 之外全量解析）
 
-run / regen 分支：总是重建 docs（逐文件 aadd），覆盖缓存；regen 额外标记 regen=true
+run / regen 分支：总是重建 docs（**逐篇经 checkpoint 决定复用或重跑**），覆盖展示缓存；regen 额外标记 regen=true
 路径拼接：abs_path = p 绝对 ? p : paper_dir / p（不 re-resolve，保留 \\?\ 前缀）
+```
+
+### 8.4 文献级 embedding checkpoint（F-AC10，Sprint-16）
+
+```text
+命名空间 := sha1(paper_dir | index_name | embedding_model)[:16]
+  目录   := ~/.pqa/embed_cache/checkpoints/
+  manifest := <命名空间>.json         // 原子写（tmp + os.replace）
+  payload  := <命名空间>/<dockey>.json.gz  // gzip JSON：doc + texts（含 embedding/media）
+
+逐篇决策（对每个候选 p）：
+  fingerprint := size:mtime_ns(abs_path)          // 弱口径（调研标注；误判再升级全量 sha256）
+  entry := manifest.docs[p]
+  命中条件（全部满足才复用）：
+      entry.status == "ready" ∧ entry.fingerprint == fingerprint
+      ∧ payload 可读 ∧ Text(doc=doc, **raw) 还原成功
+  复用 -> engine.restore_doc → paperqa `aadd_texts`（texts 已带向量 → **短路，不再调用嵌入模型**，零成本）
+  未命中/坏件/还原抛错 -> 该篇 add_doc 重跑，成功后**立即**原子写 payload + manifest 条目
+  内容去重（paperqa 以 content_hash 作 dockey）→ 记 deduped（非错误、无独立载荷）
+失败：写 entry.status="error" + error 文本后**抛出**（保持既有中止语义与错误文案）
+收尾：全部走完无异常才把 manifest.status 置 "ready"（fail-closed 就绪判定）
+收敛：_prune_checkpoints 按 mtime 保留最近 20 个命名空间（protect=本轮在用），防无界增长
+无关项：embedding_model 变化 → 命名空间不同 → 旧 checkpoint 天然不复用（不静默沿用）
 ```
 
 ---
@@ -493,6 +523,7 @@ classDiagram
         +get_directory_index(settings, build)
         +query_index(index, query, top_n)
         +new_docs() / add_doc(docs, path, settings)
+        +export_doc(docs, docname) / restore_doc(docs, payload, settings)   // F-AC10 checkpoint 载荷往返
         +get_evidence(docs, q, settings)
         +query_answer(docs, ev, settings)
         +run_agent(...) / version
@@ -526,6 +557,8 @@ classDiagram
     }
     class provider_config {
         +get_provider_config(p) / get_providers() / list_providers_safe()
+        +load_provider_files(dir) / provider_source(name) / normalize_entry(name, entry)
+        // F-AC8：providers/<name>.json 主来源；来源标记 file|legacy|env|builtin
     }
     class data_sources {
         +SourceKind / SourceSpec / RemoteSourceConfig
@@ -569,6 +602,79 @@ classDiagram
 - [ ] D7：草稿态聚焦保护、面板联动、Run All 拓扑（节点参数独立 → 会话级共享）；**更改配置后下游自动重跑 config**（stale 检查）；**Config 节点初始默认值 schema 派生 + 前端零硬编码（16 键）**
 - [ ] D6/D8：retrieve 去重与 `result` 标记；**多语检索 v1（CJK 零命中 → 英文关键词重试，query_used/query_strategy(direct|keyword_retry|fallback_first_n)/hit_note）**；parse 单文件定位报错；`prune_litellm_callbacks`（engine 层，7 列表，MAX_CALLBACKS 防护，上限 env 可配 `PAPERQA_LITELLM_CALLBACK_LIMIT`）；config 重跑失效下游状态；stream `is_disconnected` 静默退出
 - [ ] D8：SSE 线协议字段（新增字段 = 新增兼容负担，须评估）
+- [ ] D1+（F-AC8）：`providers/*.json` 主来源与合并顺序（兜底 < 文件 < 旧 providers.json < env）；逐文件校验只跳过坏文件；`provider_source` 标记；`/api/providers` 的 source/fetched_at/source_urls；`refresh-providers.py` 的 fail-closed（抓取失败不动文件）与"模型名需人工确认"
+- [ ] D6+（F-AC10）：checkpoint 命名空间三元组（paper_dir|index_name|embedding_model）、逐篇原子落盘、命中四条件、`deduped` 语义、fail-closed 就绪判定、`_prune_checkpoints` 收敛；`engine.export_doc/restore_doc` 载荷往返（`Text.doc` 必填）
+- [ ] D6+（TG-5）：分层 runner 的 tier 选择与 fail-closed、预算上限优先级（CLI > env `PAPERQA_NIGHTLY_BUDGET_CNY` > 默认 10）、三态成本判定（unknown 不放行）；`scheduled-tasks.py` due 判定与 `--record-cost` 回填；**状态文件 fail-closed（TG-7：损坏 → 退出 2 + `.corrupt` 副本；BOM 容忍）**
+- [ ] Retro③（§13）：用量回调抗 prune（裁剪后重挂）、计费键"请求名 → 响应名取有价者"、缺价不臆测（`cost_cny=None` + `unpriced_models`）、空账不可当 measured、suite 实测聚合与 `scheduled-tasks` 自动回填（新鲜度绑定）
+- [ ] F-AC16 v1（§14.1）：checkpoint 只读索引字段与 API 形状、`payload_path/payload_exists` 诚实回显、坏 manifest fail-soft、快照字段白名单；GUI 面板零成本检查
+- [ ] M18 v1（§14.2）：报告时效三态（stale/suspect/fresh）、只分析调研归档、引用只在 §7 表格行内判定、无时区信息按 **UTC+8** 解析、容差 3600s 可配
 - [ ] 本文相关 UML 图与真值表行序是否仍与代码短路顺序一致
 
-> 更新历史：2026-08-30 初版（覆盖 Sprint-2 分层、Sprint-3 数据源、Sprint-4 体验/嵌入推荐/provider 扩展）；同日后追加 Sprint-5 一致性自愈/Sprint-6 多语检索/Sprint-7 M1 三重探针 + M2 回调上限配置化。
+> 更新历史：2026-08-30 初版（覆盖 Sprint-2 分层、Sprint-3 数据源、Sprint-4 体验/嵌入推荐/provider 扩展）；同日后追加 Sprint-5 一致性自愈/Sprint-6 多语检索/Sprint-7 M1 三重探针 + M2 回调上限配置化；**2026-09-12 追加 Sprint-16：D1 provider 一文件（providers/*.json + 来源标记 + 刷新链路）、D6 parse_chunk_embed 文献级 checkpoint（§8.4）、TG-5 分层 runner/定时底座/三态预算闸门**；**2026-09-20 追加走查修复（归档门禁双向交叉引用、TG-7 状态读取 fail-closed）与 Retro③ 成本可观测（§13：token 实测 → 价表换算 → suite 聚合 → 闸门自动回填）**。
+
+---
+
+## 13. 成本可观测：token 实测 → 价表换算 → 三态闸门（Retro③，2026-09-20）
+
+> 背景：此前联网 verify/e2e 与夜间套件只有 `VERIFY_META.est_cost_cny` 的**估算上界**，TG-5 的预算闸门长期停在 `unknown`（需人工 `--record-cost` 回填），夜间套件因此会被拒放行。本节定义"实测成本"的口径与链路。
+
+### 13.1 采集（`paper-qa-script/app/usage.py`）
+- **钩子**：litellm `success_callback` + `_async_success_callback`（paperqa 走 `acompletion`，异步列表必须挂 async 回调）；`ensure_installed()` 幂等，且 `app/engine.py::prune_litellm_callbacks()` **每次裁剪后重新挂载**——否则长跑进程里回调会被裁掉，采集静默失效。
+- **提取**：兼容对象 / dict 形态响应；字段 `prompt_tokens|input_tokens`、`completion_tokens|output_tokens`、`total_tokens`；无 usage 时记一次调用、不抛异常。
+- **线程安全**：`threading.Lock` 保护累计器；对外 `snapshot()` / `delta(before)` / `reset()`。
+
+### 13.2 成本换算（口径 = 实测 token × 本地价表单价 × fx）
+- 价表 = `agents/runtime/prices.json`（M9 抓取）：`scraped.<provider>.models.<model>` → `auto.<model>` 兜底；汇率取 `meta.fx_usd_cny`（缺省 7.2）；按 mtime 缓存。
+- **计费键解析**：litellm 响应里的模型名常是**上游别名**（实测：请求 `openai/deepseek-v4-flash` → 响应 `deepseek-flash`），故按"**请求名 → 响应名**取第一个能定价者"作为计费键，原始回报名记入 `by_model[...].reported_as` 供追溯。
+- **缺价不臆测（fail-closed 口径）**：任一模型无价 → `cost_cny=None` + `unpriced_models` 点名 + `partial_cost_cny` 只给已计价部分；**空账（一条调用都没记到）同样 → `None` 且 `no_data=True`**（复核 round-4 major：空账若算成 `0.0`，"回调还没落地"会被下游当成"已测且花费 0"，把闸门从 unknown 误推到 measured 并低估金额）。**绝不用估算值冒充实测**。
+- **`est_cost_cny` 校准规则（复核建议）**：est 是**预检上界**（超限即 exit 3 拒绝启动），故取"近次实测最大值 × 1.3"留余量，避免略长的运行被闸门误拒；2026-09-20 校准 `verify_checkpoint` 0.05→**0.03**（实测 0.016965）、`verify_e2e_dashscope` 0.5→**1.4**（实测 1.013377）；其余 network 脚本仍待校准。
+
+### 13.3 暴露与聚合链路
+| 环节 | 形态 |
+|---|---|
+| step 输出 | `output["usage"]` = 本步增量 + `cumulative` + `cost`（`orchestration.run_step` 收尾统一注入；**结算前 `settle()` 有界等待**，见下） |
+| 进程累计 | `GET /api/usage`（第 11 条 API 路由）返回 `usage.snapshot()`（**无鉴权**：仅整数计数 + 模型名 + 别名，绝无密钥；白名单由 `verify_usage.py` 断言钉死） |
+| 脚本回报 | `verify/e2e_common.report_usage()` 先做**客户端有界稳定等待**（轮询 `/api/usage` 到计数不再增长，覆盖 litellm 回调**异步落地**，实测调用返回时计数仍为 0、约 1.5s 后才可见），再打印 `MEASURED_CALLS / MEASURED_TOKENS / MEASURED_COST_CNY [/ MEASURED_UNPRICED_MODELS]`，并在设置了 `PAPERQA_SUITE_METRICS` 时追加一行 JSONL |
+| 套件聚合 | `verify/run_suite.py` 读指标文件 → `metrics[]` / `cost_measured_cny` / `cost_unpriced_models` / `cost_no_data_scripts`；**只有全部被执行脚本都回报"calls>0 且可换算成本"** 才 `cost_status=measured`，否则保持 `unknown`（指标文件在**确定执行后**才创建，环境变量在 `finally` 清理） |
+| 闸门联动 | `scripts/scheduled-tasks.py` 跑完 budgeted 任务后读 `verify/suite_result.json`：要求 **退出码 0** 且结果 `finished_at ≥ 本轮 t0`（防"本轮崩溃 → 上一轮 measured 被当本轮"），`measured` → 自动回填 `last_cost_cny/status`；拿不到 → 保持 `unknown`（未测量不放行） |
+
+> **范围口径**：`delta()` 是**进程级时间窗**增量（`scope="process"`），不做请求/会话隔离——8787 长驻多会话时逐步 `output["usage"]` 会把并发调用算进来（偏高）；精确归属需 contextvars 记账（候选卡）。
+
+### 13.4 验证证据
+- `verify/verify_usage.py`（offline，**29 断言**）：响应解析 / 累计与增量 / 价表查找与前缀归一化 / **缺价与空账都不臆测（`None` + `no_data`）** / token×单价×fx 换算式 / 回调幂等与**抗 prune** / 计费键解析与 `reported_as` / **快照键白名单** / `settle()` 有界。
+- `verify/verify_runner.py` ⑪a/⑪b/⑪c/⑫：合成 fixture 回报成本 → 断言 `cost_status=measured` 且金额被聚合；缺价 fixture → 断言保持 `unknown` 且点名模型；**calls=0 的空账 → 仍 `unknown`**；`_suite_measured_cost` 的**新鲜度绑定**（fresh 采信 / stale·缺 `finished_at`·非 measured 一律不采信）。
+- **真实链路实测（2026-09-20）**：一次短翻译调用 → `/api/usage` 得 `calls=1, prompt_tokens=42, completion_tokens=7`，`cost_cny=0.0002`（计费键 `deepseek-v4-flash`，`reported_as=['deepseek-flash']`）；付费项 `N-1`/`N-2` 实测 **¥0.016965 / ¥1.013377**。
+- **复核收紧记录（code-review run-053 round-4）**：2 major（异步落地导致空账被当 measured；自动回填未与本轮绑定）+ 3 minor 全部闭环；同时确认**无双计**、`ensure_installed` 幂等、`prune` 无递归、缺价未被当 0、`/api/usage` 无密钥泄漏路径。
+
+---
+
+## 14. 走查追问的两项 v1（2026-09-21）：checkpoint 可见性（F-AC16）与报告时效（M18）
+
+> 来源：用户 2026-09-20 走查的 CK-1（"前端能看到载入的 checkpoint 文件吗"）与 M16-5（"模型信息更新后会影响更新前的报告吗"）；
+> 用户 2026-09-21 要求"第一版实现能够达到在 Sprint-17 做原型验证的可靠程度"。本节记录 v1 口径、实现与验证证据。
+
+### 14.1 F-AC16 v1：本地 checkpoint 可见性（只读）
+
+| 层 | 实现 |
+|---|---|
+| 数据层 | `paper-qa-script/app/checkpoint_index.py`：`checkpoint_root()`（`~/.pqa/embed_cache/checkpoints`，与编排层同口径）、`scan()`（命名空间按 `updated_at` 倒序；**坏 manifest → `readable=False` + 原因，fail-soft**）、`namespace_detail(key)`、`resolve_payload(key, dockey)`。逐篇字段：`name/docname/dockey/status/texts_count/reused/embedded_at/error/payload_path/payload_exists/payload_bytes` |
+| API | `GET /api/checkpoints`（第 **12** 条路由）→ `{root, checkpoints[]}`；`?key=<k>` → 单命名空间明细（未命中 404）。**只读、无密钥** |
+| 前端 | 工具按钮 `Checkpoints（本地复用/载荷路径）` → `CheckpointPanel.jsx`：命名空间行（key/状态/文献数/载荷字节/模型与切块口径）+ 展开逐篇明细（**载荷路径一键复制**）→ 支撑"按路径定位 / 用既有 checkpoint 单独复现 / 人工核查幻觉" |
+| 验证 | `verify_checkpoint_index.py`（offline，**31 断言**，含 `?key=` 路径穿越防护）+ `gui_check_fac16_checkpoint.mjs`（gui，**10 断言**，**零成本**不触发 LLM） |
+
+**v1 边界**：只读展示；"用某个 checkpoint 复现答案"目前=复制路径 + 既有收敛保护（`protect`），**未**提供一键重放动作（列为 Sprint-17 原型验证候选）。
+
+### 14.2 M18 v1：报告时效检测（只读）
+
+- **脚本**：`scripts/report-freshness.py`（`--check` 有 stale 退出 1；`--only`/`--runs-dir`/`--providers-dir`/`--json`/`--refresh-tolerance-s` 可配）。
+- **三条判定**：① provider `fetched_at` 晚于归档最新证据抓取时间 **+ 容差（默认 3600s）** → `stale`；② **§7 表格行**点名的 evidence 缺失 → `stale`；③ evidence mtime 晚于报告 mtime → `suspect`；其余 `fresh`。
+- **口径要点（均为实测踩坑）**：只分析**调研归档**（有 `evidence/` 或报告名以 `tech-research` 开头）——否则会把其它 role 报告引用的 `1-WORKFLOW.MD` 误判为缺失证据；引用只在 §7 **表格行**内判定——否则 §7 之后的自由段落也会被算进来；**无时区信息的时间一律按 UTC+8 解析**（本机 UTC+9；证据头 `... UTC+8` 是字面标签，按本机解析会整体差 1 小时→同轮产出的归档被自己判 stale）。
+- **真实结论（2026-09-21）**：3 fresh / 2 stale —— `run-2026-09-12-tech-research-047` 与 `run-2026-09-12-provider-refresh-001` 因 09-20 官网刷新而**依据已变**；`run-2026-09-20-provider-refresh-001` fresh。
+- **验证**：`verify_freshness.py`（offline，**25 断言**：三态规则 / 跳过非调研归档 / 正文提及不算引用 / 时区口径 / CLI 契约 / 容错）。
+- **v1 边界**：只读检测，不改写报告、不自动重跑、**不做逐结论溯源**（模型值漂移的自动归因留待下一增量；现值在 JSON 中列出供人工比对）。
+
+### 14.3 与 Sprint-17 的衔接（原型验证候选）
+
+1. F-AC16：一键"用该 checkpoint 重放"动作 + 按文献粒度的成本展示（复用 Retro③ 实测用量）。
+2. M18：逐结论溯源（报告结论 ↔ evidence ↔ provider 现值）+ 前端 stale 徽标。
+3. 是否把 `report-freshness.py --check` 接入夜间套件（stale 即提醒，周频）。

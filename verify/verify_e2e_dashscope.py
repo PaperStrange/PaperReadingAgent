@@ -1,7 +1,7 @@
 """dashscope 全流程端到端验证（用户验收项，2026-08-31；TG-4 起走共享基座 e2e_common）。
 
 Phase 1（dashscope）：config -> load_index -> retrieve -> parse_chunk_embed -> evidence -> answer
-  - LLM openai/qwen-omni-turbo、Embedding openai/text-embedding-v4（DashScope embedding API）、api_base compatible-mode
+  - LLM/视觉与 Embedding 取 `providers/dashscope.json` 现值（**Sprint-16 F-AC8 起一 provider 一文件**；2026-09 官网调研后 model/vision_model = `openai/qwen3.5-omni-plus`，Embedding = `openai/text-embedding-v4`）、api_base compatible-mode
 Phase 2（deepseek，同进程切换隔离回归，3-LEARNED 1.27 的 dashscope 方向）：
   同一后端进程内新会话再跑 deepseek 全流程（LLM deepseek-v4-flash + 本地 st- 向量）——
   若 make_settings 曾把解析出的 key 写回 OPENAI_API_KEY，Phase 2 会因 key 污染 401/路由错而失败。
@@ -10,7 +10,7 @@ Prereqs: .venv；paper-qa-script/.env 含 DASHSCOPE_API_KEY 与 DEEPSEEK_API_KEY
 Run: .venv\\Scripts\\python.exe verify\\verify_e2e_dashscope.py [--keep-server]
 """
 from __future__ import annotations
-VERIFY_META = {'features': 'dashscope 全链路 6 步 + 同进程 deepseek 切换隔离回归', 'tier': 'network', 'providers': ['dashscope', 'deepseek'], 'est_seconds': 150, 'est_cost_cny': 0.5, 'routes': ['/api/new_session', '/api/run_step', '/api/stream/{session_id}/{run_id}', '/api/session_records/{session_id}', '/api/reset_session'], 'requires': ['keys', 'network']}
+VERIFY_META = {'features': 'dashscope 全链路 6 步 + 同进程 deepseek 切换隔离回归（est = 近次实测 ¥1.013377 × 1.3 ≈ 1.4，2026-09-20 校准，留余量防预检误拒）', 'tier': 'network', 'providers': ['dashscope', 'deepseek'], 'est_seconds': 150, 'est_cost_cny': 1.4, 'routes': ['/api/new_session', '/api/run_step', '/api/stream/{session_id}/{run_id}', '/api/session_records/{session_id}', '/api/reset_session'], 'requires': ['keys', 'network']}
 
 import argparse
 import asyncio
@@ -32,6 +32,7 @@ from e2e_common import (  # noqa: E402
     dump_log_tail,
     full_pipeline,
     make_cfg,
+    report_usage,
     start_backend,
     stop_backend,
     wait_healthy,
@@ -87,6 +88,11 @@ async def main() -> int:
         print(f"\n[FAIL] {results['status']}")
         dump_log_tail(SERVER_LOG)
     finally:
+        # Retro ③（2026-09-20）：停后端之前读取本次真实用量（成功/失败路径都记；token 实测 + 价表换算）
+        try:
+            report_usage(base, results)
+        except Exception:
+            pass
         stop_backend(server, args.keep_server)
 
     write_results(OUT, results)

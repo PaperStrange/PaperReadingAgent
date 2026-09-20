@@ -11,14 +11,14 @@
 
 | 分类 | 条目 |
 |---|---|
-| 🖥️ 平台/环境（Windows·PowerShell·端口·编码） | 1.6、1.7、1.8、1.9、1.11、1.18、1.20、1.31、1.47 |
+| 🖥️ 平台/环境（Windows·PowerShell·端口·编码） | 1.6、1.7、1.8、1.9、1.11、1.18、1.20、1.31、1.47、1.55、1.60 |
 | 🧩 框架/服务商（paperqa·litellm·模型） | 1.1、1.2、1.3、1.4、1.14、1.25、1.27、1.46 |
 | 📦 依赖与版本管理 | 1.5、1.13 |
-| 🎨 前端与测试驱动（React·Playwright） | 1.10、1.12、1.19（光标部分）、1.37、1.41、1.42、1.43、1.52 |
+| 🎨 前端与测试驱动（React·Playwright） | 1.10、1.12、1.19（光标部分）、1.37、1.41、1.42、1.43、1.52、1.60 |
 | 🛡️ 安全与防护 | 1.16、1.17、1.33、1.50、§4 整改表 |
-| 🏗️ 工程方法（分层/一致性/自愈） | 1.15、1.17、1.19（长路径/注册表可扩展）、1.21、1.22、1.28、1.32、1.35、1.39、1.48、1.53 |
+| 🏗️ 工程方法（分层/一致性/自愈） | 1.15、1.17、1.19（长路径/注册表可扩展）、1.21、1.22、1.28、1.32、1.35、1.39、1.48、1.53、1.54、1.56、1.57、1.58、1.59、1.61、1.62 |
 | 🔎 检索与算法改进 | 1.21（来源标记）、1.23 |
-| 📋 项目管理与流程 | 1.17（评审闭环）、1.24、1.26、1.28（AgentOps 工程化）、1.29、1.30、1.34、1.36、1.38、1.40、1.44、1.45、1.49、1.51、`1-WORKFLOW.MD` §4.4 |
+| 📋 项目管理与流程 | 1.17（评审闭环）、1.24、1.26、1.28（AgentOps 工程化）、1.29、1.30、1.34、1.36、1.38、1.40、1.44、1.45、1.49、1.51、1.63、`1-WORKFLOW.MD` §4.4 |
 
 ### 1.1 DeepSeek 无 embedding API → 本地向量化
 - 现象：DeepSeek 平台只提供 `deepseek-v4-flash / -pro / -flash-vision-exp`，无 embedding 端点。
@@ -138,6 +138,7 @@
 - 现象：M1 离线验证脚本真实构建索引时报 `unhandled errors in a TaskGroup (1 sub-exception)`，编排层只透出这句话，**真因被 TaskGroup 掩埋**；去掉封装直接调 `get_directory_index` 复现，真因是 `Docs.aadd` 对首块文本做 **citation 推断 LLM 调用**（`citation_prompt`），占位 key → 401。
 - 解决：① 诊断方法——**报错被 TaskGroup 聚合时，剥掉编排层直接复现拿完整 traceback**（别猜）；② 离线化——`aadd` 的 citation 调用可用 **manifest（CSV：file_location,citation,title）** 提供 citation 跳过（结构化提取另受 `use_doc_details` 门控，默认 False 不触发）；PDF 图片还会触发视觉增强 LLM，改用**无图 txt 语料**即可零 LLM 构建（索引探针/指纹/files.zip 逻辑与文件类型无关）。`verify/verify_index_health.py` 因此完全离线。
 - 教训：**"构建索引"不是纯本地操作**——paperqa 的 `aadd` 默认会对每个文件做 LLM 引用推断（PDF 还有图片视觉增强），离线测试/无 key 场景必须显式提供 citation（manifest）或换无图语料；**框架把异常包进 TaskGroup 时，验证脚本要保留"直连复现"路径**。
+- **追加（Sprint-16，2026-09-12 —— 同型坑复发于 CI）**：CI 的 offline 套件改经分层 runner 跑全档后失败，本机复现（临时移开 `.env` 复刻 CI 无密钥条件）显示挂在 `verify_local_dir.py` 的 `load_index`，仍是 `TaskGroup` 掩埋 + `aadd` citation 401；修复=该脚本改用 CSV manifest 提供 citation + 占位 key（构建全程无 LLM），并把 `verify_checkpoint.py` 从 offline 改判 **network**（其 parse 链路确有真实 LLM 调用）。教训升级：**新增"离线"脚本时必须先证明链路真的零 LLM 调用（索引构建也算），并在 CI 无密钥条件下实测；tier 不是自我声明，是可复现的属性**——分层 runner 把新脚本自动纳入 CI 才让这个潜伏问题暴露（此前硬编码 6 条命令的 CI 根本不会跑到它）。
 
 ### 1.26 维护批清技术账：把"建议修"沉淀为可执行的维护卡 + 关闭前全量 review（Sprint-7 PM 实践）
 - 现象：历次 Sprint Retro/三查的"建议修/后续"散落各处，长期不做会累积成隐蔽技术账；用户要求"清完无遗漏"。
@@ -157,6 +158,7 @@
 - 现象：① 三查评审超时后我把范围"时间盒化"收窄到 Sprint 交付物，被用户指出这**不能固化为规则**——审查范围应基于"影响范围评估"；且影响范围需要**量化指标**（建议与核心功能相关）。② `registry.json`/runs 报告/截图/静态分析产物等中间态、实时结果、留证文件被我 commit 追踪，污染仓库与远程。
 - 解决：① 新增 **impact-assessment 职能**（`agents/functions/impact-assessment.md`）：11 项核心功能静态清单（**v1.2.1 起 12 项**：增 #12 AgentOps 看板，并重定位 reactflow 宿主路径；**v1.3.0 起 13 项**：增 #13 tech-research 深度调研）+ 模块→功能映射；指标方案对比（A 核心功能覆盖率 / B 核心 API 覆盖率 / C 风险加权文件覆盖率 / D 回归证据覆盖率）后选定 **A+B 复合（权重 8:2，阈值 X=50；v1.2 起 N_core/N_routes 运行前自检不写死）**，D 作辅助（后经复合指标细化，见 architecture §8.2 与 roadmap 实际实录 PR #25）；三查顺序 = 〇查范围 → 一查文档 → 二查代码 → 三查环境，recommended_scope 作为 scope 入参，偏离须在 Sprint §9 记理由。② 中间态/留证文件**全部出库**：gitignore + `git rm --cached`（本地保留），远程随 PR 同步清理；**prices.json 属配置（人工维护段）仍入库**——区分"配置输入"与"运行时产物"。
 - 教训：**"临时处置"很容易被下一次执行当成"惯例"**——超时收窄是应急手段，规则必须显式写"不得默认收窄"并前置影响评估；**量化指标要多方案对比后选定**，且指标要与用户关心的事物（核心功能）对齐而非技术便利；**仓库边界**：源码/配置入库，运行时状态/生成物/留证截图一律 gitignore（本地留证即可，账本真相源不等于 git 追踪）。
+- **（Sprint-16 补，卡 `TG-11`）**"修复验证复核"与"关闭三查"是**两种动作、两套 scope 来源**：前者 scope = fix blast radius（10~15 min / cap 5，须在报告明写"非二查"，**不阻断 Close 但不能替代关闭三查**）；**后者必须先有〇查 run，且 scope 只能取自其 `recommended_scope`**——派发任何评审/审计子代理之前，先确认"本轮存在〇查 run 且其 `recommended_scope` 非空"，否则不得派发（`empty = full repo`，自选窄范围一律拒派）；关闭三查还须 windows + main 双分支 + 一查 + lessons 齐备。
 
 ### 1.30 Sprint-9 看板开发五教训 + CI/CD 与 git 卫生分层（Sprint-9 Day1）
 - 现象：① Next 16 与训练数据不同——scaffold 自带 AGENTS.md 指引读 `node_modules/next/dist/docs/`（路由 params 是 Promise、`next dev -p` 而非 `--port` 等 breaking changes）；② dev 模式长时间热更新后 `/_next/static/chunks` 403（客户端 JS 加载失败、页面不水合、列表空）→ 重启或**改生产构建**（验收/演示用 `next build + next start`）；③ FTS5 虚拟表**不支持 UPDATE**（`no such column: T.report_body`）→ 内容变更用 delete+reinsert；连字符检索（`code-review`）需**短语查询**（双引号包裹）；④ PS 控制台 GBK 再次搅乱中文 API 往返测试（文件被写坏，git 恢复）→ **API 往返测试必须走 UTF-8 客户端（Node）**；⑤ agents/ 迁移时 Copy-Item 计数 9≠10 暴露 3 条账本 run 与报告文件遗漏 → 按会话留存内容重建——**目录迁移必须逐文件计数核对**。
@@ -282,13 +284,70 @@
 - 解决：把全部 hooks（useRef/useEffect/useCallback）移到早退分支之前；项目约定新增 hooks 前先扫描组件内是否有早退 return。
 - 教训：**任何组件里，早退 return 必须位于全部 hooks 声明之后；新增 hook 的第一动作是确认声明位置在早退之前**。
 
-## 2. 验证记录（Windows，实际执行）
+### 1.54 预算/成本闸门必须 fail-closed 三态：超限拒绝、未测量不放行（Sprint-16 TG-5）
+- 现象：夜间全量联网套件若按"估算花费"判定放行，把"没测到花费"当成"没超预算"，采集一失败就会无上限放行（真实成本失控）；只看估算又会与实际用量脱节。
+- 解决：`verify/run_suite.py` + `scripts/scheduled-tasks.py` 实现三态——① 启动前按 `VERIFY_META.est_cost_cny` 求上界，**超上限 → 拒绝启动**（退出 3，不降级、不部分执行）；② 跑完把花费记 `unknown`，须 `--record-cost <CNY>` 按账本回填才转 `measured`；③ **`unknown` 状态下预算制任务拒绝放行**（退出 4）。上限优先级 CLI > env `PAPERQA_NIGHTLY_BUDGET_CNY` > 配置默认 10（不写死）。回归：`verify_runner.py` 15 断言（超限拒跑/未到期跳过/unknown 拒放行/回填解除）。
+- 教训：**成本/预算类闸门只能 fail-closed："未超预算"绝不能从"未测量"推断**——三态（超限/已测/未测）中未测=不放行 + 告警；阈值必须可配置，不得写死代码常量。
 
-### 2.1 冒烟（`verify/verify_smoke.py`）—— 8/8 通过
+### 1.55 st- 本地模型的联网校验会阻塞事件循环（HF_HUB_OFFLINE）（Sprint-16 两次踩坑）
+- 现象：HuggingFace 不可达时，sentence-transformers 每次加载**本地已缓存**模型仍先发 HEAD 请求，失败后按 1/2/4/8/8 秒退避重试 5 次；**该阻塞在后端事件循环内**——表现为"进程活着、端口在听，但 `/api/health` 无响应"，连带 Playwright `networkidle` 超时（`gui_check_s4`/`gui_check_config_schema` 双双失败）与 e2e 自举卡死。
+- 解决：设 `HF_HUB_OFFLINE=1`（+ `TRANSFORMERS_OFFLINE=1`）让模型直接读本地缓存；处置流程=按 PID 停掉卡住的后端 → 带开关重启 → 复查 `/api/health`/`/api/providers` 再跑验收。已写入 `1-WORKFLOW` §5.4 与 sprint-16 记录。
+- 教训：**"进程活着 + 端口在听"不等于服务可用**——先打一次 `/api/health` 验活；离线/弱网环境启动后端与跑 GUI/e2e 前统一设 `HF_HUB_OFFLINE=1`。
+
+### 1.56 长批量任务必须逐项原子落盘，按命名空间校验后才复用（Sprint-16 F-AC10）
+- 现象：`parse_chunk_embed` 逐篇解析+向量化，中断/失败后重跑从头再来（已完成的向量白算）；若把"跑到哪"只记内存或按整批判断，还会出现"沿用不可信数据"（文件变了/模型换了却复用旧向量）。
+- 解决：文献级 checkpoint——命名空间 `sha1(paper_dir|index_name|embedding_model)`；**每篇 `add_doc` 成功后立即原子写**（tmp + os.replace）manifest 条目与载荷（`<dockey>.json.gz`，含 texts 与向量）；复用需同时满足 status=ready + 内容指纹（size+mtime_ns）一致 + 载荷可读 + 还原成功；还原走 paperqa `aadd_texts`（向量已在 → **短路不再调用嵌入模型**）；同内容文件按 content_hash 去重记 `deduped`（不算失败）；失败记 `status=error` 后仍抛出（保持中止语义）；全部走完才置 `ready`（fail-closed）；命名空间按 mtime 保留最近 20 个防无界增长。
+- 教训：**长批量任务 = 逐项落盘 + 命名空间化校验 + 只补缺口**；"复用"的前提是"可验证地等价"（模型与内容指纹同时一致），校验不过就重跑——宁可多算一次，不可沿用不可信产物。
+
+### 1.57 交叉引用校验必须双向；自检负例必须命中"被判据点名的那个失效模式"（Sprint-16 M16 走查预跑）
+- 现象：归档门禁 `verify/verify_archive.py` 的"证据索引表交叉引用"**只做了单向**——磁盘上的 evidence 文件必须被报告点名，却**没有反向校验**（报告点名的文件必须真实存在）。于是"删掉一个被报告 §7 引用的 evidence 文件"仍输出 `ALL PASS 25/0`；把报告里的引用改成不存在的文件名同样 PASS。而 spec（`agents/functions/tech-research.md`）的归档契约明写 "Every cited fact ... maps to an evidence file row; **a citation without an evidence file is a violation**"（Forbidden 节："Never write a citation without a matching `evidence/` file"）——即**门禁没实现契约，却一直绿灯**。更隐蔽的是：门禁自带 `--selftest` 的"缺件档案"负例其实只写了个**空报告**（红灯来自"report 非空"断言），所以自检长期通过，〇/一/二查也都没发现。
+- 排查方式：**用真实产物做变异测试**——复制首跑归档，逐个变体（删被引用证据 / 报告引用悬空文件名 / 清空证据文件 / 删 context.md / 删 reasoning.md）跑门禁，看哪些变体能被拦下。结果 3 类被拦、2 类漏检，缺陷边界立刻清晰。
+- 解决：交叉引用改双向——正向 `unreferenced`（每个 evidence 文件都被点名）+ 反向 `dangling`（点名的文件必须存在于 `evidence/`），且 `expert`/`scholar` 两档都查（修复前 scholar 档连正向校验都被 `depth == "expert"` 跳过）；`selftest` 扩到四例，新增"**被引用证据缺失 → FAIL 且仅此一项失败**"。实测：真实归档 27→**28** 断言全 PASS、selftest 2→**4** 例 PASS、原漏检变体转为 FAILED。
+- **复核加固（同日 code-review run-053：2 major / 5 minor / 3 nit）**：① 反向校验最初扫的是**整篇报告**——正文里顺带一句"对照 run-047 的 `evidence/01-*.md`"、一个相对路径或一个 `https://…/evidence/09-*.md` URL，都会被当成悬空引用，**合规归档被误判 FAIL**（我当时"run-047 无误报"的结论是正则缝隙的巧合，不成立）；② 正向子串匹配不敏感 / 反向 `is_file()` 敏感 → **Windows 假绿、大小写敏感 FS 假红**；③ 引用写成 `.markdown` 或一位数编号时静默漏检。改法：**校验范围限定在证据索引表区间**（`^##\s*7\.` 或标题含"证据索引表"的小节；区间缺失则两条断言都 fail-closed）+ 用 basename **小写集合**比较（跨平台判定一致）+ 引用识别放宽到 `.md|.markdown` 与 1~3 位编号；`selftest` 2→**6** 例（补"正文提及不误判"防误报例 + "索引表 `.markdown` 漏报"防漏报例），负例判据从"失败条数 == 1"改为"**唯一失败项名 == 目标断言**"。
+- **round-2 追加（同一 run 复核）**：① 新发现 major#3 —— 我把**解析侧**放宽到 `.md|.markdown`，却没有同步放宽**清单侧**（仍 `glob("*.md")`），于是**真实存在且被 §7 点名的 `.markdown` 证据被误判悬空（假红）**，而正向又因 stem 命中而假绿：两个扩展开关口径互相矛盾（"修 C5 漏报"的补丁自己制造了新假红）；② minor：`evidence/` 子目录既漏校验又假红（`glob` 只看顶层）、根因断言与区间定位口径不一致、§7 标题行无换行时匹配失败、非 ASCII 文件名看不见。改法：清单侧同步 `rglob("*.md") + rglob("*.markdown")`、根因断言复用区间定位、标题行 `(?:\n|$)`、字符类改 `[\w.\-]`；`selftest` 6→**8** 例（补"已存在 `.markdown` 不假红""嵌套子目录不假红"两例）。**复现闭环**：复核自己的样本 `R3b` 由 `FAIL dangling=['05-extra.markdown']` 转为 `ALL PASS 18/0`。
+- **round-3 追加（同一复核，新增 major#4）**：把 `glob` 放宽成 `rglob` 时引入了**挂死**——`rglob` 会**跟随目录 junction/软链且无环检测**，`evidence/` 内一旦有指回自身的 junction，`check_archive` 就**永不返回**（实测 25s 未返回被 kill；3 层 junction 拖到 5 分钟 / 632MB；单层 junction 虽能跑完但断言数被重复枚举从 16 膨胀到 156）。失败语义由 fail-closed 退化成"永不结束"——比判错更不可接受。改为受限遍历（`os.walk(followlinks=False)` + 剪掉 symlink/junction 目录）+ **文件数上限**（>500 直接 FAIL）。实测：自指 junction 下 **0.1s 返回**（28/0）。
+- 教训：**凡"引用↔实体"一致性（报告↔证据、索引↔文件、清单↔产物）必须双向校验**；**自检的负例要针对"该断言声称保护的失效模式"**——"能拒掉某个坏输入"不等于"目标断言有效"；**校验范围要限定在"承载契约的那个区间"**（过宽会把合规产物误判为 FAIL，比漏检更伤——它会训练人忽略红灯）；**跨平台口径（大小写、路径分隔符、换行）要显式选一个并两侧一致实现**；**同一口径的"解析侧/清单侧"必须同步放宽**（只放宽一侧 = 假红与假绿并存）；**放宽遍历范围必须同时设"链接/环"与"规模"上限**（门禁可以判 FAIL，但不允许永不结束）；自检负例要**成对**（防误报 + 防漏报 + 防假红）并核对失败项名字而不只是条数。
+
+### 1.58 状态/配置读取必须区分"缺文件"与"读不了"：解析失败一律 fail-closed（Sprint-16 TG-7，走查实证）
+- 现象：`scripts/scheduled-tasks.py` 的 `load_state()` 用 `try: ... except Exception: pass` 包住解析，失败即返回**默认空状态**。看似"健壮"，实际把"状态读不出来"降级成"从未运行过"：`last_run` 与成本三态被静默重置，**三态预算闸门被整体绕过**（fail-open）。触发条件极日常——文件截断、被手工改坏，或**只是带了 UTF-8 BOM**（Windows PowerShell 5.1 的 `Set-Content -Encoding utf8` 默认写 BOM）。实证：一次演示脚本因此让 `nightly-suite` 被判"从未运行"并**真实启动付费联网套件**约 3 分钟。
+- 解决：① 文件**不存在** → 全新状态（首次运行是合法场景）；② 文件存在但**解析失败或结构非法** → 抛 `StateUnreadable`，`main()` 以**退出码 2 拒绝执行**，并把损坏文件另存 `<name>.corrupt`，提示"修好或移走再重试"；③ 读取用 `utf-8-sig` **容忍 BOM**（常见编码伪影 ≠ 损坏，避免误报）；④ 回归断言（`verify_runner.py` ⑩a/⑩b/⑩c）覆盖"截断 JSON → 拒 2 + 留副本""顶层非对象 → 拒 2""带 BOM 的合法状态 → 照常读到并触发闸门 REFUSED"。实测：**24 断言全 PASS**，BOM 反证由 `RUN` 转为 `REFUSED(4)`。
+- 教训：**"缺文件"与"读不了"是两种语义**——前者可按默认值继续，后者必须停下来（否则默认值会静默抹掉成本/安全状态）；`except Exception: pass` 出现在**承载状态与闸门**的代码里，等于把闸门关掉；读外部文件（尤其 Windows 上由不同工具写入的 JSON）要显式声明编码容忍口径（BOM/UTF-16），并以"损坏 → 拒绝 + 留证"取代"损坏 → 重置"。
+
+### 1.59 可观测性必须自证：埋点防裁剪、标识符做归一、"算不出来"要显式（Sprint-16 Retro③ 成本计量）
+- 现象：夜间套件成本长期停在 `unknown`（靠人工 `--record-cost` 回填）。接入 litellm 回调做实测计量后，又连续踩两坑：① `app/engine.py::prune_litellm_callbacks()` 按注册序裁剪回调列表 → **采集回调被静默裁掉**，表现为"进程在跑、数字全 0"（最难发现的一类失效）；② litellm 响应里的模型名是**上游别名**（请求 `openai/deepseek-v4-flash`，响应 `deepseek-flash`），直接拿去查价表 → 算不出成本。
+- 解决：① `ensure_installed()` 幂等，并让 `prune_litellm_callbacks()` 每次裁剪后**重新挂载**；② 计费键按"**请求名 → 响应名**取第一个能定价者"，原始回报名记入 `by_model[...].reported_as`（可追溯、不丢信息）；③ **缺价不臆测**：`cost_cny=None` + `unpriced_models` 点名 + `partial_cost_cny` 只给已计价部分；④ 套件**只有全部脚本都回报可换算成本**才转 `measured`，否则保持 `unknown`（未测量不放行）；⑤ 计量链自带回归：`verify_usage.py` **29 断言**（首版 21 → Round-5 27 → 关闭三查修复 29） + `verify_runner.py` ⑪a/⑪b + 真实调用实测（42+7 tokens → **¥0.0002**）。
+- 教训：**可观测性要能自证**——埋点会被生命周期逻辑（裁剪/重建/热重载）悄悄摘掉，必须幂等重挂并纳入回归；**外部标识符一律做归一/别名解析**（模型名、路径、大小写）再用于查表；**"算不出来"必须显式表达**（None + 点名），绝不能给 0 或猜测值——成本类数字只允许"实测"与"未知"两态，否则预算闸门会建立在假数上。
+- **round-4 追加（同一复核，2 major）**：① litellm 成功回调是**异步派发**的（离线 `mock_response` 实测：调用刚返回时计数仍为 0，约 1.5s 后才可见）→ "刚跑完就读账"会漏尾部用量；更糟的是**空账被算成 `0.0` 而不是 `None`**，下游于是把"还没落地"当成"已测且花费 0"，三态闸门从 `unknown` 误推到 `measured` 并**低估**金额——正是 fail-closed 要防的口子。对策：`settle()` 有界稳定等待（客户端轮询 `/api/usage` 到计数不再增长：quiet 0.6s / max 5s）+ **空账 = `None` + `no_data`** + suite 只认"`calls>0` 且可换算"的记录。② 自动回填**只信结果文件内容、不与本轮绑定**：本轮 suite 崩在重写 JSON 之前时，会把**上一轮**的 measured 当本轮成本并顺带放行闸门 → 加"退出码 0 + `finished_at ≥ 本轮 t0`"双门槛。
+- 教训（追加）：**异步埋点的读账必须"等到稳定"再读**，且**"无数据"与"零成本"必须用不同的值表达**（`None` vs `0`）；**任何"读上一轮产物来决定本轮"的链路都要绑定新鲜度**（时间戳/run-id），否则崩溃路径会静默沿用陈旧结论。
+- 附注（Sprint-16 关闭前置，卡 `TG-10`）：**Sprint 关闭前用 `agent-ops.py list` 核对 `rounds=/dur=/int=` 与 Sprint §9 记述一致**——同一 run 被追加复核轮次时须逐轮 `round` 记账（终态 run 也可），中断/接管用 `interrupt` 留痕，否则账本只留首轮（run-053 曾显示"53 秒"，实际 5 轮约 241 分钟），看板会严重低估时长与产出、且看不出被中断过。
+
+### 1.60 Windows 前端三连坑 + 时间解析的时区口径（Sprint-16 F-AC16/M18 v1 实现实录）
+- **坑 1（经典 JSX 运行时）**：新增 `CheckpointPanel.jsx` 只写 `import { useEffect, useState }` → **构建通过**，但运行时 `ReferenceError: React is not defined`（本项目走经典 JSX 运行时，组件必须 `import React`）。**"构建成功"只证明能转译，不证明能渲染**。
+- **坑 2（Vite watcher EBUSY 崩服）**：编辑器/工具对 `src/` 下文件做**原子写**时短时产生 `<file>.<pid>.<uuid>.tmpdir/<file>.tmp`，Vite 的 FSWatcher 一旦 watch 到即抛 `EBUSY: resource busy or locked` 并**整个 dev server 退出**（本轮实测两次：改前端 → 服务挂 → Playwright `ERR_CONNECTION_REFUSED`）。解决：`frontend/vite.config.mjs` 用 `server.watch.ignored` 排除 `**/*.tmpdir`、`**/*.tmpdir/**`、`**/*.tmp`、`**/.*.tmp`（**不引入插件**，保持既有编译行为与构建体积口径）。
+- **坑 3（别用本机时区解析时间）**：证据头写作 `2026-09-20 23:23 UTC+8`——其中的 `UTC+8` 是**字面标签**而非可解析偏移；`datetime.fromisoformat` 得到无时区对象，`.timestamp()` 按**本机时区**（本机 UTC+9）解释 → 整体偏 1 小时 → 报告时效检测把"同一轮刷新刚产出的归档"误判为 stale。解决：无时区信息一律**按项目权威时区 UTC+8** 解释，并显式解析 `UTC±N` 标签。
+- 教训：**前端改动要"构建 + 真跑一次"双证**；**长跑 dev server 必须主动排除编辑器临时产物**（否则一次保存就能把服务打挂，且表现为"页面连接被拒"这种误导性症状）；**时间解析必须显式声明时区口径**，本机时区不是项目口径，"字面 UTC+8"要当标签处理。
+- 附：本轮还踩到"在 JSX 文件顶部误用 Python 三引号文档串"（构建立即报错，属好消息——坏味道被最快路径抓住）；以及 `Set-Content -Encoding utf8` 的 BOM 陷阱（见 1.58）。
+
+### 1.61 数值闸门必须把"非有限值"整类挡在门外：部分修复比未修复更危险（class: 🏗️ 工程方法（分层/一致性/自愈））
+- **phenomenon**：R5（`run-2026-09-21`）以"`nan` 穿透预算闸门"为 major 立修，`verify/run_suite.py:61`（`budget_from`）与 `:86`（`est_factor_from`）确实补上了 `math.isfinite`，负例也扩到 `nan/inf/0/-1/abc/''` 六种——**看起来这个洞已经封好**。但同一文件的**第三个数值入口没有守卫**：`verify/run_suite.py:144` `est_raw = round(sum(float(m.get("est_cost_cny") or 0) for _, m in picked), 4)` → `:146` `est_cost = est_raw * est_factor` → `:170` **裸比较** `if est_cost > budget:`；上游 `verify/verify_matrix.py:91-92` 只校验 `isinstance(meta["est_cost_cny"], (int, float))`、**不校验有限性**，而其 `:70` 的 `// VERIFY_META: {...}` 形态走 `json.loads`（Python 默认接受裸 `NaN`/`Infinity`）、`:54` 的字面量形态接受 `1e400`。二查 run-056 实测复现：`json.loads('{"a": NaN}')→nan`、`isinstance(nan,(int,float))→True`、`nan > 10.0 → False`（`-inf` 同型）→ 在任一 network 档脚本头部写 `est_cost_cny: NaN` 即 `est_cost=nan` → **付费 network 档闸门被静默放行、真花钱跑起来**，而 `:74-76` 的注释正自称"已修好"（`agents/runs/run-2026-09-21-code-review-056/code-review.report.md:10`，判定 `[new]`；`run-056:77` 对 R5-1 的总判定 = **PARTIAL**）。**同型"部分修复"本轮至少四处**，属同一失效模式：① `_doc_row` 只归一化了 `dockey`（`app/checkpoint_index.py:53-55`），**同一函数**的 `_summarize()` 仍用未校验的 `checkpoint_key`（`:81`）→ manifest 写 `"checkpoint_key": "C:/Windows"` 时绝对路径直接替换、`../../` 同型逃逸 → 经 `GET /api/checkpoints` 回显 `payload_dir/payload_exists/payload_bytes` = **任意文件存在性与大小探测**（`run-056:14`，major）；② R5 的"§7 非表格形态"修复只做了"有 §7 但非表格"的退化，**§7 定位失败仍静默通过**（`run-056:15`）；③ R4-②「`settle()` 有界等待」宣告已修，二查实测**未修**（`run-056:11`）；④ `provider_config.py:97` 的 `key_envs` 字段族仍能抛 `TypeError` 穿透整个加载循环（`run-056:16`）。**这四处的共同点不是"漏了某个值"，而是"修了当轮想到的那个入口，没把同类入口过一遍"**——修复动作本身制造了"此处已有防护"的假象，比未修复更能屏蔽后续审查。
+- **fix**：① `verify/run_suite.py:170` 改 `if not math.isfinite(est_cost) or est_cost > budget:`（非有限一律拒跑、退 `REFUSE_EXIT=3`），并让 `verify_matrix.validate_meta` 对 `est_cost_cny`/`est_seconds` 追加 `math.isfinite`；② `verify/verify_runner.py:305-311` 补 `.mjs` 元数据 `NaN` fixture 断言"拒绝启动"（现有 6 种负例只覆盖 CLI/env 两个入口，**元数据入口无 fixture**，`run-056:29` minor）；③ `app/checkpoint_index.py` 两入口共用同一个 key 校验函数（`_safe_key` 或至少 `Path(key).name`）；④ `provider_config.py` 的 `normalize_entry` 对 `key_envs` 做字段族归一（`None → ()`、`str → (str,)`、其余非可迭代 → `ValueError` 而非 `TypeError`），两处 `except ValueError` 改 `except (ValueError, TypeError)`；⑤ `scripts/report-freshness.py` 的 §7 定位见 1.62。
+- **lesson**：phenomenon→fix 的可复用规则 = **凡"数值闸门/准入门禁"，绝不允许逐入口各写一次校验；必须在最靠近判定点处集中实现一个有限性守卫（`math.isfinite`），并让"被拒绝"有具名断言**——判定语句写成 `if not <guard>(x) or x > limit:`，守卫函数只此一份，任何绕过它的直接比较都算缺陷；**并且必须配 `nan`/`inf`/`-inf` **三种**非有限值的负例回归**（`+inf` 恰好 fail-closed 会掩盖 `nan`/`-inf` 的 fail-open，只测一种等于没测），回归断言要核对**唯一失败项名**而非条数（沿用 1.57 的负例判据）。修一类校验缺陷时，**同一解析/判定路径上的同类字段与同类入口必须一次性全部过一遍**，并在同一个提交里给出每个入口的负例——否则"已修"的声明本身会成为下一次漏检的掩护。
+
+### 1.62 同一语义的定位/校验必须复用同一实现：形态匹配式定位漏检时不得静默通过（class: 🏗️ 工程方法（分层/一致性/自愈））
+- **phenomenon**：M18 v1 新增的 `scripts/report-freshness.py` 与既有归档门禁 `verify/verify_archive.py` **承担同一语义**——"定位报告的 §7 证据索引表，取出被点名的证据文件名"（`report-freshness.py:43-44` 自述"与归档门禁同口径"）。但两者各写了一套实现且口径分叉：门禁 `verify/verify_archive.py:72-82` 的 `evidence_index_section()` 是**两步定位**——先试 `^##\s*7\.`，再兜底 `:81` `^#{2,4}[^\n]*证据索引表`，且**定位失败时在 `:183-185` 显式判 FAIL**；而 freshness 的 `_SECTION7_RE` **只认 `^##\s*7\.` 一种形态**（`scripts/report-freshness.py:45`），`m7 is None → section7 = "" → cited = ∅ → missing = ∅` → **"报告点名的证据缺失"这条判定彻底消失且不报错**。二查 run-056 用文件内两条正则原样复算：`### 7. 证据索引表` / `## 7 证据索引表` / `## 7、证据索引表` / `## §7 …` / `## 证据索引表` 五种标题形态下 freshness **全部 `cited=∅`**（静默漏检），而门禁**能**定位这些小节（`run-2026-09-21-code-review-056/code-review.report.md:15`，major，判定 `[new]`）。这是**同一轮修复的第三次同类复发**：R5 只补了"有 §7 但非表格行"的退化（`:159-160`），没管"标题形态不同导致 §7 根本没被定位"；`run-056:78` 对 R5-2 的总判定 = **PARTIAL**。同源分叉还有两处：① `rows or section7`（`:159`）在 §7 内**有任何**表格行时丢弃正文引用（`run-056:24` minor）；② 引用识别与遍历口径比门禁窄——裸名正则要 `\d{2}-` 而门禁 `verify_archive.py:69` 是 `\d{1,3}-`，`ev_dir.glob("*.md")` 不递归也不含 `.markdown`，而门禁 `:108-129` 递归 + 两种扩展名（`run-056:25`）→ 真实 `evidence/03-extra.markdown` 被报缺失（**假 stale**）。反向证据说明"分叉"本身就是缺陷来源：1.57 的 round-2/round-3 已经因为"解析侧放宽而清单侧没放宽"造过一次假红、因为 junction 造过一次挂死，本轮门禁自己反而成了"正确的那一侧"。
+- **fix**：① `report-freshness.py` 不再自写定位——直接复用门禁的两步定位（import `verify_archive.evidence_index_section` 或抽到共享模块），引用正则与 evidence 遍历（`rglob("*.md") + rglob("*.markdown")`、`\d{1,3}-`）同样共用；② 把"未定位到 §7"从静默改为**显式原因**（`suspect` + reasons，或与门禁同语义的 FAIL），`--check` 下不得退 0；③ 取引用集合改为 `rows ∪ section7`（不再 `or` 二选一）；④ `verify/verify_freshness.py` 的 ⑨c 补**标题形态变体**用例（不只是"非表格行"一种），并沿用"唯一失败项名 == 目标断言"的判据。
+- **lesson**：phenomenon→fix 的可复用规则 = **凡"从同一份产物里按同一语义定位同一区间/字段"的工具，禁止各写一套匹配实现——必须调用同一个共享函数（或直接 import 既有实现），并有测试断言两侧对同一组真实形态输出一致**；**定位/匹配失败一律显式降级并告警（fail-closed），绝不允许"匹配不到 ⇒ 判定集合为空 ⇒ 静默通过"**——"没扫到东西"与"扫到且都合规"必须是两种不同的返回值，且要各自有断言；**形态匹配式定位（正则找标题/段落）在写下的当天就要枚举真实形态**（`## 7.` / `### 7.` / `## 7 ` / `## 7、` / `## §7` / `## 证据索引表`），并为"防漏检"与"防误报"各配一条回归，而不是等下游工具分叉后再回头对齐。
+
+### 1.63 "修数字漂移"本身会制造新漂移：数字类修正必须直取 SSOT，不得从另一份文档转抄（class: 📋 项目管理与流程）
+- **phenomenon**：2026-09-21 关闭前置的收尾中，为消除"验收指南数字陈旧"而做修正，但 `est_cost_cny` 一栏是**从 Sprint §7 抄来的旧值 `0.02 / 1.1`**——那是 **×1.3 安全系数之前**的口径（Sprint §7 记录的是"`est_cost_cny` 已据此校准 0.5→1.1"，即按实测原值校准的那一代）。而当时 SSOT（`verify/TEST-MATRIX.MD` 由 `verify/verify_matrix.py derive` 逐字节生成 + 脚本自身的 `VERIFY_META`）已经是 **`0.03` / `1.4`**（实测 ¥0.016965 / ¥1.013377 各 ×1.3）。错误因此**扩散到 3 处文档**，直到一查 doc-audit（`run-2026-09-21-doc-audit-055`）独立复现才被抓出——一查在 `doc-audit.report.md:80` 明确记录："任务背景所述「dashscope e2e 1.1」在仓库内**无对应事实**（现存值为 `1.4` 与实测 `1.013377`）"，并逐项核对通过 `verify/verify_checkpoint.py:16` `est_cost_cny: 0.03` ＝ `TEST-MATRIX.MD:34`「¥0.03」、`verify/verify_e2e_dashscope.py:13` `est_cost_cny: 1.4` ＝ `TEST-MATRIX.MD:38`「¥1.4」。一查同轮还抓出**同族的"新旧两值共存"**：`docs/3-LEARNED.MD:317` 的 1.59 仍写 `verify_usage.py` **21 断言**（终态 **27**），而 `docs/4-ALGORITHM.MD:644`、验收指南 `:386`、状态报告 `:34` 均已更新 → 修正链"改了三处、漏了第四处"（`doc-audit.report.md:60` 第 9 条 should-fix）。**根因不是抄错了哪一行，而是"以文档为真源改文档"这个动作本身**：修正者的注意力在"格式/措辞是否统一"，而数字的可信度取决于它离生成它的那一层有多远——离得越远越旧。
+- **fix**：① 数字类修正一律以 **SSOT 为唯一取值处**——`verify/TEST-MATRIX.MD`（由 `python verify/verify_matrix.py derive` 从 `VERIFY_META` 生成）、脚本头 `// VERIFY_META: {...}` / `'est_cost_cny': …` 字面值、或"跑一遍脚本读 `ALL PASS (N assertions)`"，**不得从另一份文档（含 Sprint 记录、验收指南、状态报告）转抄**；② 抄不到的就去实跑/derive，并把"来源命令 + 读数"写进证据行；③ 修正后复查**同一事实在全库的所有出现点**（本轮 `est_cost_cny` 出现在 TEST-MATRIX + 两个脚本 `VERIFY_META` + `4-ALGORITHM.MD:630`；断言数出现在 `4-ALGORITHM` §13/§14 + `3-LEARNED` + 验收指南 + 状态报告），沿用 1.38 的三覆盖 grep（双语 / 大小写不敏感 / 代码注释与裸数字）；④ 交付前用"SSOT 派生 vs 文档值"做一次机械比对（本轮一查的"关键断言数逐一本机复现"就是可复用做法，见 `doc-audit.report.md:76`）。
+- **lesson**：phenomenon→fix 的可复用规则 = **凡写入文档的数值/计数/断言数，必须直接引用 SSOT（脚本元数据、`verify_matrix.py derive` 的产物、实跑输出）并附来源命令；严禁从另一份文档转抄——"以文档改文档"会把上一代口径当成真值扩散**；**修完必须立即用同一条 SSOT 反向核对全库出现点**（数字类改动的验收判据是"每一处都等于 SSOT 派生值"，而不是"各处彼此一致"：多处一致地错，正是本轮 3 处文档同时写错的形态）。**每次修正数字的提交里要留下"SSOT 读数 → 被改文件清单"的对照**，否则下一轮一查只能靠独立复现来发现它。
+
+## 2. 验证记录（Windows，实际执行）### 2.1 冒烟（`verify/verify_smoke.py`）—— 8/8 通过
 | 检查 | 结果 |
 |---|---|
 | paperqa 导入 v2026.1.6.dev10+g36348d0ca | ✅ |
-| backend/main.py 加载（FastAPI 8 条 API 路由；**Sprint-11 起 10 条**） | ✅ |
+| backend/main.py 加载（FastAPI **12** 条 API 路由；Sprint-11 起 10 条，Sprint-16 新增 `/api/usage`、`/api/checkpoints`） | ✅ |
 | RuntimeTracer（19 个显式目标） | ✅ |
 | streamlit 1.62.0 | ✅ |
 | litellm | ✅ |

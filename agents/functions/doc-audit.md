@@ -53,6 +53,12 @@ You are a documentation auditor. Audit only: read all of docs/ plus code cross-r
 8. **Final-state-only**: README bodies may state only the current state — tech-stack migration stories ("was X, then Y", "dropped because of issue #nnn"), historical decision narratives do not belong; history goes to Sprint docs and 3-LEARNED. A single pointer line to an archive doc (e.g. `docs/antd-reference.md`) is allowed; narrative is not.
 9. **Time-record accuracy (timestamps)**: every dated record — sprint §5 work logs, §10 walkthrough/acceptance records, pre-research decision logs, backlog card provenance dates, and dated code comments — must match the date the event actually happened. Rules: ① **anchor = authoritative network time (UTC+8), never the possibly-skewed local machine clock**; if local and network disagree, network wins (project precedent: 2026-09-10 correction — walkthrough records stamped 09-07 while the session actually ran 09-09/09-10); ② conventions: sprint doc filename date = sprint **start** date; walkthrough/acceptance record date = actual walkthrough date; work-log entry date = actual completion date; ③ **cross-check against `git log` commit dates when available** — a work-log date that disagrees with the corresponding commit date is a must-fix; ④ a date with no verifiable evidence is flagged should-fix ("日期待核实").
 
+# Output discipline (added 2026-09-12, fan-out reliability)
+
+- **Write the report file FIRST**: create `<role>.report.md` with a skeleton and overwrite it in place after every finding. Never accumulate findings only in memory — the orchestrator takes over after the Timebox and only your files survive.
+- Scope discipline: the Finding cap (12) and Timebox (60 min) are hard limits — stop and return what is already written rather than widening the audit.
+- An illustrative placeholder (`./<run>.png`) is not a dead link, but say so explicitly in the finding so the next reader does not re-investigate it (project precedent: 2026-09-12, `1-WORKFLOW.MD` screenshot example).
+
 # Output Template (strict format; write the report body in Chinese — project docs are Chinese; keep file:line references and keywords verbatim)
 
 ```

@@ -1,14 +1,14 @@
 """Smoke verification for the Windows-ported codebase (8 checks, offline).
 
 Checks: paperqa package imports, backend main.py loads its FastAPI app
-(10 API routes incl. /api/providers, /api/config_schema, /api/config/validate), runtime_trace targets, streamlit/litellm imports,
+(12 API routes incl. /api/providers, /api/config_schema, /api/config/validate, /api/usage, /api/checkpoints), runtime_trace targets, streamlit/litellm imports,
 PyMuPDF page preview (used by runtime_trace), graphviz dot auto-discovery,
 and the local paper reader parses PaperQA2.pdf.
 Run: .venv\\Scripts\\python.exe verify_smoke.py
 """
 
 from __future__ import annotations
-VERIFY_META = {'features': '冒烟 8 项：paperqa 导入/后端 10 路由加载/runtime_trace 目标/PDF 解析等（离线）', 'tier': 'offline', 'providers': [], 'est_seconds': 10, 'est_cost_cny': 0, 'routes': ['/api/new_session', '/api/run_step', '/api/stream/{session_id}/{run_id}', '/api/session_records/{session_id}', '/api/reset_session', '/api/health', '/api/providers', '/api/config_schema', '/api/config/validate', '/api/translate_preview'], 'requires': ['none']}
+VERIFY_META = {'features': '冒烟 8 项：paperqa 导入/后端 12 路由加载/runtime_trace 目标/PDF 解析等（离线）', 'tier': 'offline', 'providers': [], 'est_seconds': 10, 'est_cost_cny': 0, 'routes': ['/api/new_session', '/api/run_step', '/api/stream/{session_id}/{run_id}', '/api/session_records/{session_id}', '/api/reset_session', '/api/health', '/api/providers', '/api/config_schema', '/api/config/validate', '/api/translate_preview', '/api/usage', '/api/checkpoints'], 'requires': ['none']}
 
 import importlib.util
 import sys
@@ -48,7 +48,16 @@ def t_backend() -> str:
     spec.loader.exec_module(mod)
     assert hasattr(mod, "app")
     routes = sorted({r.path for r in mod.app.routes if hasattr(r, "path")})
-    return f"FastAPI title={mod.app.title!r} routes={routes}"
+    # 2026-09-21 关闭三查·二查 major + 修复验证复核 run-060 minor：
+    # ① 断言必须是**双向集合相等**——单向断言在"删掉 2 条真路由 + 塞进 2 条幻影路由、总数仍为 12"时
+    #    会双双通过（复核用该变体实测），等于没钉住；
+    # ② 实际 /api 路由集合必须与 `VERIFY_META.routes` 声明**逐项相等**（含数量与内容）。
+    api_routes = sorted(p for p in routes if p.startswith("/api/"))
+    declared = sorted(VERIFY_META["routes"])
+    assert api_routes == declared, (
+        f"后端 /api 路由集合必须与 VERIFY_META.routes 逐项相等：实测 {api_routes} vs 声明 {declared}"
+    )
+    return f"FastAPI title={mod.app.title!r} api_routes={len(api_routes)} routes={routes}"
 
 
 def t_tracer() -> str:
