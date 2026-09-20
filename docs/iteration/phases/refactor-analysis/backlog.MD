@@ -43,7 +43,7 @@
 | M3 | staging 清理 UI/自动清理；DOI 源真实 `UNPAYWALL_EMAIL` 实测 | 3 | 候选（用户指示未处理） | — | **Sprint-7 保持未完成**：staging 清理 UI + 真实邮箱实测留待后续 |
 | M4 | 多节点并发计时显示；`runStartTimesRef` 清理 | 1 | ✅ 完成 | Sprint-7 | App.jsx subcanvas 计时聚合 + 结束清理；npm build 通过 |
 | M5 | `verify_provider_switch` 对 openrouter/自定义连通实测；gui 依赖显式化 | 2 | ✅ 完成 | Sprint-7 | 占位 key 端点级拒绝断言（路由实证）；**真实 openrouter key 实测=用户资源门控**；README 前提显式化 |
-| M6 | 文档/知识管理例行勘误（随三查进行） | 1 | 持续 | Sprint-7 | 本轮勘误：verify/README 表格列数错位、README/1-WORKFLOW 清单补全、4-ALGORITHM 行号锚点漂移等 |
+| M6 | 文档/知识管理例行勘误（随三查进行） | 1 | 持续 | Sprint-7 | 本轮勘误：verify/README 表格列数错位、README/1-WORKFLOW 清单补全、4-ALGORITHM 行号锚点漂移等。⚠️ **同类问题持续复发**：doc-audit 026（4-ALGORITHM §9.2 DSL 描述旧控件）、Sprint-15 日期整体漂移、Sprint-16 内**修了三轮**（`6ecee2a` / Round-5 `bdc669b` / `2e1d20f`+`4e17ddd`）→ 已按用户 2026-09-21 要求立卡 **`TG-12`（testing-governance）文档内容漂移复盘 + 派生事实机制**；**建议复盘时决定 M6 并入 TG-12 或保留为执行项**（"随三查勘误"是人工兜底，不是机制） |
 | M7 | 默认值漂移收敛：chunk/temperature 等默认值在 config_schema/App.jsx/provider_config/engine 重复 4 处（唯一真源原则） | 3 | 计划中（并入 F2 阶段 A = Sprint-11 US-11.2） | Sprint-7 全量 review | 与 F2（SSOT 驱动前端）同源，已并入 F2 |
 | M8 | remote_resolver SSRF DNS rebinding TOCTOU 强化（解析后 IP 复检） | 2 | 候选 | Sprint-7 全量 review | 理论性；现状已有逐跳重定向复检 + 内网段拒绝 |
 | M9 | 价表填充改自动化：按 provider 官网**固定 URL 抓取单价** + `prices.json` 更新 + 定时刷新机制——原 agents-infra A-M1 迁入 | 1 | ✅ 完成 | Sprint-14（2026-08-31，PR #48） | 阶段 1 预研 / 用户 2026-08-31 | 用户已验证官网详情页+文档可固定 URL 直接访问抓取；填后看板成本口径完整 |

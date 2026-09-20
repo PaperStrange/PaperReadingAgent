@@ -25,7 +25,7 @@
 | R-C（解冻候选） | C 可观测 + E3 v1 只读可视化 | ⏸ hold：用户 review 闸门（backlog 卡 R-C） |
 | **mental-models（思维模型库，独立阶段·工程项目）** | 经验文档（3-LEARNED）→ 抽象思维模型架构；成功判据 = 模型可直接生成可执行 agent workflow；种子=思维实验（爱因斯坦）；**MM-6（2026-09-20 用户插入）：把各阶段思考固化为思维实验并用于"生产环境"（含验收/讨论/决策），与本轮走查暴露的"规范未执行/过程不可见"挂钩** | 阶段目录已建（[`phases/mental-models/backlog.MD`](phases/mental-models/backlog.MD)，MM-1~MM-6 共 11 点）；排期意向=refactor-analysis Sprint-15/16 之后启动；预研基线 `pre-research/tech/2026-09-07-mental-models.MD` |
 | 走查修复批次（候选插队） | 2026-09-20 走查产出：F-AC13（运行按钮点击 1~2 次无响应）、F-AC14（复制按钮状态串台）、TG-7（预算闸门 fail-open）；按 `1-WORKFLOW.MD` §3 插队判定（≥3 同源问题或 >8 点）决定是否成批 | 用户确认修复取舍与排期 |
-| testing-governance（测试治理） | e2e 测试与功能演进同步治理：成文规则(TG-1) + 覆盖矩阵 SSOT(TG-2) + ATDD case-first(TG-3) + provider 去漂移(TG-4) + 定时回归(TG-5) | **底座批次 ✅ 完成（Sprint-14，PR #48）**：TG-1/2/4 + M15 领域治理壳 + M10 账本并发锁 + M14 上线评审 + M9 价表自动抓取；剩余候选 TG-3（case-first）与 TG-5（cron 回归，参数已预决）见 [`phases/testing-governance/backlog.MD`](phases/testing-governance/backlog.MD)；**新增 TG-6（验收方式改进：DoD 补人机交互验收面 + 过程可见证据 + 规范执行可核查，用户插入 2026-09-20）、TG-7（预算闸门 fail-open 修复，走查实证 2026-09-20）** |
+| testing-governance（测试治理） | e2e 测试与功能演进同步治理：成文规则(TG-1) + 覆盖矩阵 SSOT(TG-2) + ATDD case-first(TG-3) + provider 去漂移(TG-4) + 定时回归(TG-5) | **底座批次 ✅ 完成（Sprint-14，PR #48）**：TG-1/2/4 + M15 领域治理壳 + M10 账本并发锁 + M14 上线评审 + M9 价表自动抓取；剩余候选 TG-3（case-first）与 TG-5（cron 回归，参数已预决）见 [`phases/testing-governance/backlog.MD`](phases/testing-governance/backlog.MD)；**新增 TG-6（验收方式改进：DoD 补人机交互验收面 + 过程可见证据 + 规范执行可核查，用户插入 2026-09-20）、TG-7（预算闸门 fail-open 修复，走查实证 2026-09-20）、TG-8/TG-9（自举端口自检 / 产物目录约定，Sprint-17）、TG-10（账本多轮次记录失真，v1 ✅）、TG-11（规则绕过复盘 + 可执行闸门，用户插入 2026-09-21）、TG-12（文档内容漂移复盘 + 派生事实机制，用户插入 2026-09-21）** |
 
 ## Later（远期主题）
 
