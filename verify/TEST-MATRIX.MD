@@ -13,6 +13,7 @@
 | `gui_check_dashboard_costs.mjs` | 看板成本/上下文页截图（CNY 合计/pending 标注） | gui | — | 30s | ¥0 | — | playwright, dashboard |
 | `gui_check_dashboard_fanout.mjs` | 看板 fan-out 配置页截图（两条流水线+JSON 编辑器） | gui | — | 30s | ¥0 | — | playwright, dashboard |
 | `gui_check_dashboard_report.mjs` | 看板报告浏览页截图（run 详情+报告全文） | gui | — | 30s | ¥0 | — | playwright, dashboard |
+| `gui_check_fac16_checkpoint.mjs` | F-AC16 v1：Checkpoints 只读面板（开关/命名空间/逐篇载荷路径/复制按钮）+ /api/checkpoints 形状 | gui | — | 40s | ¥0 | /api/checkpoints | playwright, servers |
 | `gui_check_remote.mjs` | GUI 远程数据源：remote+arXiv → Run All → 截图 | gui | — | 180s | ¥0 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | playwright, servers, network |
 | `gui_check_s15_bidi_link.mjs` | Sprint-15 F-AC9：subcanvas 手动切换节点 → 主画布联动选中并定位对应节点 | gui | — | 40s | ¥0 | — | playwright, servers |
 | `gui_check_s15_collapse.mjs` | Sprint-15 F-AC4：节点运行完成后自动收起全部展开项，仅 output_snapshot 保持展开 | gui | — | 50s | ¥0 | /api/run_step | playwright, servers |
@@ -31,12 +32,14 @@
 | `verify_agentops.py` | AgentOps 账本 CLI 用例断言 UC-1~UC-13（离线；UC-11/12=M10，UC-13=M9） | offline | — | 10s | ¥0 | — | none |
 | `verify_archive.py` | M16 调研归档完整性校验：report/context/reasoning/evidence 契约 + 证据索引表双向交叉引用（限定 §7 索引表区间、大小写不敏感；fail-closed） | offline | — | 5s | ¥0 | — |  |
 | `verify_checkpoint.py` | F-AC10 文献级 checkpoint：逐篇落盘 + 零成本复用 + 文件变更/载荷损坏/模型不匹配/切块口径/同内容去重五重边界 fail-closed（est = 近次实测 ¥0.016965 × 1.3 ≈ 0.03，2026-09-20 校准） | network | deepseek | 240s | ¥0.03 | /api/new_session, /api/run_step | keys, network, self-boots-backend |
+| `verify_checkpoint_index.py` | F-AC16 v1 checkpoint 只读索引：扫描/排序/逐篇载荷路径与存在性/坏件 fail-soft/detail 与 resolve_payload/字段白名单（离线合成 fixture） | offline | — | 5s | ¥0 | /api/checkpoints | none |
 | `verify_config_schema.py` | 配置 SSOT 一致性 + M7 前端零硬编码 + Settings 升级基线护栏（114 断言，离线） | offline | — | 5s | ¥0 | /api/config_schema, /api/config/validate | none |
 | `verify_e2e.py` | deepseek 全链路 6 步（LLM+vision + 本地 st- 向量） | network | deepseek | 120s | ¥0.3 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
 | `verify_e2e_dashscope.py` | dashscope 全链路 6 步 + 同进程 deepseek 切换隔离回归（est = 近次实测 ¥1.013377 × 1.3 ≈ 1.4，2026-09-20 校准，留余量防预检误拒） | network | dashscope, deepseek | 150s | ¥1.4 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
 | `verify_e2e_openai.py` | OpenAI provider+embedding 全流程 + 同进程 deepseek→openai 切换隔离回归 | network | openai, deepseek | 150s | ¥1 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network, balance |
 | `verify_embed_load.py` | parse_chunk_embed 三种模式：run/load 同会话/load 新会话（embed 缓存） | network | deepseek | 90s | ¥0.3 | /api/run_step | keys, network |
 | `verify_f12_preview_res.py` | F-AC12 预览清晰度实证：1.0 缩放渲染，PNG 宽度 ≥500px（旧 0.45 为 ~268px） | offline | — | 10s | ¥0 | — | none |
+| `verify_freshness.py` | M18 v1 报告时效检测：fresh/stale/suspect 三态规则 + CLI 契约（--check/--only/重定向）+ 偏移时间解析 + 容错（离线合成 fixture） | offline | — | 8s | ¥0 | — | none |
 | `verify_index_health.py` | 索引一致性三重探针 + 损坏自愈（合成六形态，离线） | offline | — | 20s | ¥0 | — | none |
 | `verify_local_dir.py` | F-AC3 引擎接线实证：临时目录 paper_directory → load_index → retrieve 候选来自该目录（免密：注入占位 key，链路无 LLM 调用） | offline | — | 90s | ¥0 | /api/new_session, /api/run_step | self-boots-backend |
 | `verify_provider_switch.py` | provider 切换路由实证：内置 4 家 + 自定义（端点级拒绝断言） | network | deepseek, dashscope, openai, openrouter | 30s | ¥0.1 | /api/providers | keys, network |
@@ -44,7 +47,7 @@
 | `verify_prune_callbacks.py` | litellm 回调裁剪：上限 env 可配 + 非法值回落 + 钳制（离线） | offline | — | 2s | ¥0 | — | none |
 | `verify_remote_e2e.py` | remote 数据源全链路（arXiv 下载+索引+6 步） | network | deepseek | 180s | ¥0.4 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
 | `verify_runner.py` | TG-5 分层 runner + 定时底座：offline/gui/network 分层 + fail-closed + 三态预算闸门 + due 判定 + 成本回填 + 状态文件 fail-closed（TG-7） | offline | — | 60s | ¥0 | — |  |
-| `verify_smoke.py` | 冒烟 8 项：paperqa 导入/后端 11 路由加载/runtime_trace 目标/PDF 解析等（离线） | offline | — | 10s | ¥0 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session, /api/health, /api/providers, /api/config_schema, /api/config/validate, /api/translate_preview, /api/usage | none |
+| `verify_smoke.py` | 冒烟 8 项：paperqa 导入/后端 12 路由加载/runtime_trace 目标/PDF 解析等（离线） | offline | — | 10s | ¥0 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session, /api/health, /api/providers, /api/config_schema, /api/config/validate, /api/translate_preview, /api/usage, /api/checkpoints | none |
 | `verify_usage.py` | Retro③ token 用量采集与成本换算：解析/累计/增量/价表查找/缺价不臆测/换算式/回调防裁剪（离线） | offline | — | 5s | ¥0 | — | none |
 
-共 41 个脚本：offline 11 / network 10 / gui 20。
+共 44 个脚本：offline 13 / network 10 / gui 21。

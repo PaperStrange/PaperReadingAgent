@@ -44,6 +44,9 @@
 | `verify_runner.py` | Sprint-16/TG-5：分层 runner + 定时底座断言（offline 全绿 / 注入失败 fail-closed / 预算超限拒绝启动退出 3 / env 上限可配置 / due 未到期跳过 / cost unknown 拒绝放行退出 4 / record-cost 回填 / providers 未就绪 UNAVAILABLE / **TG-7：状态文件损坏或结构非法 → 拒绝执行退出 2 + `.corrupt` 副本留存；带 BOM 的合法状态仍被读取**） | 离线（合成 fixture，不跑真实套件） |
 | `run_suite.py` | Sprint-16/TG-5：**分层 runner 本体**（按 `VERIFY_META.tier` 执行 offline/gui/network；fail-closed；三态预算闸门；结果 JSON 原子落盘；**Retro③：聚合子脚本经 `PAPERQA_SUITE_METRICS` 回报的实测成本 → `cost_measured_cny`/`cost_status`**）。命名不带 `verify_` 前缀 → 不纳入矩阵校验，但同样带 `VERIFY_META` | 离线自身；视 tier 而定 |
 | `verify_usage.py` | Sprint-16/Retro③：**token 用量采集与成本换算回归**（对象/dict 响应解析、累计与增量、价表查找与 `openai/` 前缀归一化、**缺价不臆测**、token×单价×fx 换算式、回调幂等与**抗 prune 裁剪**、**计费键取"能定价的名字"**+`reported_as` 可追溯） | 离线；`python verify\verify_usage.py` |
+| `verify_checkpoint_index.py` | Sprint-16/F-AC16 v1：**checkpoint 只读索引回归**（扫描/排序/逐篇 `payload_path`+`payload_exists`+字节数、坏 manifest fail-soft、`namespace_detail` 与 `resolve_payload`、字段白名单、空目录） | 离线（合成 fixture，不碰真实 `~/.pqa`）；`python verify\verify_checkpoint_index.py` |
+| `verify_freshness.py` | Sprint-16/M18 v1：**报告时效检测回归**（stale/suspect/fresh 三态、只分析调研归档、正文提及不算引用、**无时区信息按 UTC+8**、容差可配、`--check` 退出码、容错） | 离线（合成 fixture）；`python verify\verify_freshness.py` |
+| `gui_check_fac16_checkpoint.mjs` | Sprint-16/F-AC16 v1：**Checkpoints 只读面板**（API 形状 + 面板开关 + 真实命名空间行数一致 + 逐篇载荷路径形如 `<key>/<dockey>.json.gz` + 复制按钮）；**零成本**，不触发 LLM | 后端 8787 + 前端 5173 + Playwright |
 | `gui_check_s15_*.mjs`（10 个） | Sprint-15 F2 验收修复族：`typography`（字体统一）/`hints_title`（聚合+限高）/`local_dir`（条件隐藏）/`collapse`（完成后收起）/`status_scope`（状态作用域）/`responsive`（三档分辨率）/`bidi_link`（双向联动）/`error_copy`（复制+报错定位 19 断言）/`output_view`（output/答案全文）/`cursor`（光标不跳+改动计数） | 后端 8787 + 前端 5173 已启动 + Playwright（`output_view` 为 network 档，需 key） |
 
 运行示例：

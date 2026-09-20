@@ -5,7 +5,7 @@
 - 六步流水线编排 → `app.orchestration.PipelineOrchestrator`；
 - paperqa 引擎调用 → `app.engine.EngineAdapter`；
 - 事件模型 → `app.events`；配置 SSOT → `app.config_schema`。
-- 11 条 API 路由（Sprint-4 新增 /api/providers；Sprint-11 新增 /api/config_schema、/api/config/validate；Sprint-16 新增 /api/usage）与线上协议（run_step 请求/响应、SSE 消息字段）与拆分前完全一致。
+- 12 条 API 路由（Sprint-4 新增 /api/providers；Sprint-11 新增 /api/config_schema、/api/config/validate；Sprint-16 新增 /api/usage、/api/checkpoints）与线上协议（run_step 请求/响应、SSE 消息字段）与拆分前完全一致。
 """
 import sys
 import uuid
@@ -32,6 +32,7 @@ from app.orchestration import StepRequest, StepResponse, make_orchestrator  # no
 from app.session_store import MemorySessionStore, SessionState  # noqa: E402
 from app.config_schema import get_config_schema, validate_config  # noqa: E402
 from app import usage as usage_meter  # noqa: E402
+from app import checkpoint_index  # noqa: E402
 from provider_config import list_providers_safe  # noqa: E402
 
 
@@ -114,6 +115,19 @@ async def health() -> dict[str, str]:
 async def usage() -> dict[str, Any]:
     # Retro ③：本进程累计 token 用量（实测）与成本换算（按本地价表；缺价模型列入 unpriced_models）
     return {"usage": usage_meter.snapshot()}
+
+
+@app.get("/api/checkpoints")
+async def checkpoints(key: str = "") -> dict[str, Any]:
+    # F-AC16 v1：checkpoint 只读索引——本地已有哪些命名空间、逐篇文献状态与**载荷路径**
+    # （供前端展示 + 人工按路径定位/复现；不修改任何 checkpoint，也不含密钥）
+    root = str(checkpoint_index.checkpoint_root())
+    if key:
+        detail = checkpoint_index.namespace_detail(key)
+        if detail is None:
+            raise HTTPException(status_code=404, detail=f"未找到 checkpoint 命名空间 {key!r}")
+        return {"root": root, "checkpoint": detail}
+    return {"root": root, "checkpoints": checkpoint_index.scan()}
 
 
 @app.get("/api/providers")

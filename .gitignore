@@ -31,6 +31,7 @@ tmp.log
 agents/runtime/schedule.json
 agents/runtime/provider_refresh_proposal.json
 agents/runtime/provider_refresh_status.json
+agents/runtime/report_freshness.json
 verify/suite_result.json
 
 # --- secrets (use .env.example as template) ---

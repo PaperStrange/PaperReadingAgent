@@ -11,6 +11,7 @@ import "reactflow/dist/style.css";
 
 import FlowNode from "./FlowNode";
 import FunctionTraceNode from "./FunctionTraceNode";
+import CheckpointPanel from "./CheckpointPanel";
 import { newSession, resetSession, runStep } from "./api";
 
 const nodeTypes = { stepNode: FlowNode, functionNode: FunctionTraceNode };
@@ -290,6 +291,7 @@ export default function App() {
   const [fnFlowRevision, setFnFlowRevision] = useState(0);
   const [splitPct, setSplitPct] = useState(55); // 主画布宽度占比（%）
   const [fnFullscreen, setFnFullscreen] = useState(false);
+  const [ckPanelOpen, setCkPanelOpen] = useState(false);  // F-AC16 v1：本地 checkpoint 只读面板
 
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
@@ -1251,7 +1253,17 @@ export default function App() {
           <button onClick={expandSelectedStepOnly}>Expand Selected Step Only</button>
           <button onClick={refreshActiveStepPanel}>Refresh Active Function Panel</button>
           <button onClick={clearFunctionPanel}>Clear Function Panel</button>
+          <button
+            className="ck-toggle-btn"
+            data-testid="checkpoint-toggle"
+            onClick={() => setCkPanelOpen((v) => !v)}
+          >
+            {ckPanelOpen ? "Hide Checkpoints" : "Checkpoints（本地复用/载荷路径）"}
+          </button>
         </div>
+        {ckPanelOpen ? (
+          <CheckpointPanel apiBase={apiBase} onClose={() => setCkPanelOpen(false)} />
+        ) : null}
       </div>
 
       <div

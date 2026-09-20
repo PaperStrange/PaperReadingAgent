@@ -245,11 +245,16 @@ Sprint-16 追加（provider 刷新 / 定时底座 / 分层验证）：
 .\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --task nightly-suite --check-due   # 到期才跑（fail-closed 预算闸门）
 .\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --task nightly-suite --record-cost 3.5  # 回填实测花费（联网档跑完后通常已由 suite 实测值**自动回填**，仅在未测量时人工补）
 powershell -ExecutionPolicy Bypass -File .\scripts\register-scheduled-tasks.ps1 -Action register   # 注册周频任务计划（可选）
+.\.venv\Scripts\python.exe .\scripts\report-freshness.py [--check]                 # M18 v1：调研报告时效（--check 有 stale 退出 1）
 
 # ③ 分层验证（fail-closed；上限可配置）
 .\.venv\Scripts\python.exe .\verify\run_suite.py --tier offline                    # 离线档（CI/日常）
 .\.venv\Scripts\python.exe .\verify\run_suite.py --tier gui                        # GUI 档（需前后端已启动）
 .\.venv\Scripts\python.exe .\verify\run_suite.py --tier network --budget-cny 10    # 联网档（预估超上限直接拒绝启动）
+
+# ④ 运行时可观测（后端已启动时）
+Invoke-RestMethod http://127.0.0.1:8787/api/usage                                   # Retro③：本进程实测 token 用量与成本（CNY）
+Invoke-RestMethod http://127.0.0.1:8787/api/checkpoints                             # F-AC16 v1：本地 checkpoint 只读索引（含逐篇载荷路径）
 ```
 
 > HF 网络不可达时（模型已在本地缓存）设 `$env:HF_HUB_OFFLINE = "1"`（+ `TRANSFORMERS_OFFLINE=1`）避免 sentence-transformers 的 HEAD 重试阻塞调用。
