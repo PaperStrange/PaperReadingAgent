@@ -25,6 +25,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -140,6 +141,11 @@ def main() -> int:
         return 0
 
     failed: list[str] = []
+    # Retro ③（2026-09-20）：子脚本把实测用量写成 JSONL 指标文件，suite 据此聚合出真实成本
+    fd, metrics_name = tempfile.mkstemp(prefix="suite_metrics_", suffix=".jsonl")
+    os.close(fd)  # 关键：立即关闭句柄，否则子进程继承 fd → unlink 报 WinError 32
+    metrics_path = Path(metrics_name)
+    os.environ["PAPERQA_SUITE_METRICS"] = str(metrics_path)
     for p, m in picked:
         timeout_s = int((m.get("est_seconds") or 60) * 4 + 60)
         print(f"--- {p.name} ---", flush=True)
@@ -149,19 +155,63 @@ def main() -> int:
         if code != 0:
             failed.append(p.name)
 
+    metrics = _read_metrics(metrics_path)
+    try:
+        metrics_path.unlink(missing_ok=True)
+    except OSError:
+        pass  # 被占用也不影响结论（临时文件，系统会清）
+    measured = [m for m in metrics if isinstance(m.get("cost_cny"), (int, float))]
+    unpriced = sorted({u for m in metrics for u in (m.get("unpriced_models") or [])})
+    executed = [s["name"] for s in summary["scripts"]]
+    summary["metrics"] = metrics
+    summary["cost_measured_cny"] = round(sum(float(m["cost_cny"]) for m in measured), 6) if measured else None
+    summary["cost_unpriced_models"] = unpriced
+    if args.tier == "network":
+        # 三态之"未测量"：只有**所有被执行脚本**都给出可换算成本才转 measured；否则保持 unknown（不臆测）
+        summary["cost_status"] = (
+            "measured" if executed and set(executed) <= {m.get("script") for m in measured} else "unknown"
+        )
+
     summary["finished_at"] = time.time()
     summary["status"] = "failed" if failed else "ok"
     summary["failed_scripts"] = failed
     _write_json(args.json, summary)
 
+    if args.tier == "network":
+        print(f"MEASURED: cost={summary['cost_measured_cny']} CNY status={summary['cost_status']} "
+              f"scripts_reporting={len(measured)}/{len(executed)} unpriced={unpriced}")
     if failed:
         print(f"\nSUITE FAILED ({len(failed)}/{len(picked)}): {', '.join(failed)}")
         return 1
     print(f"\nSUITE PASSED ({len(picked)} scripts)")
     if args.tier == "network":
-        print("NOTE: network 档实际花费需按账本核对后回填（cost_status=unknown）；"
-              "未回填时下一轮夜间套件将拒绝放行（三态闸门）。")
+        if summary["cost_status"] == "measured":
+            print(f"NOTE: network 档**实测**花费 {summary['cost_measured_cny']} CNY（token 实测 + 本地价表换算）；"
+                  "`scheduled-tasks.py` 会自动回填该值（无需人工 --record-cost）。")
+        else:
+            print("NOTE: network 档成本未测量完整（脚本缺用量回报或价表缺单价）→ cost_status=unknown；"
+                  "未回填时下一轮夜间套件仍拒绝放行（三态闸门）。"
+                  + (f" 缺价模型：{unpriced}" if unpriced else ""))
     return 0
+
+
+def _read_metrics(path: Path) -> list[dict]:
+    """读子脚本写的用量指标行（JSONL；Retro ③）。文件不存在/坏行 → 跳过，不抛。"""
+    out: list[dict] = []
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except Exception:
+                continue
+            if isinstance(rec, dict):
+                out.append(rec)
+    except OSError:
+        pass
+    return out
 
 
 def _write_json(path_str: str, data: dict) -> None:

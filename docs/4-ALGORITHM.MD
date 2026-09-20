@@ -18,6 +18,7 @@
 10. [D8 事件模型与 SSE 线协议](#10-d8-事件模型与-sse-线协议)
 11. [UML 类图总览](#11-uml-类图总览)
 12. [防漂移核对清单](#12-防漂移核对清单)
+13. [成本可观测：token 实测 → 价表换算 → 三态闸门（Retro③）](#13-成本可观测token-实测--价表换算--三态闸门retro3)
 
 ---
 
@@ -602,7 +603,38 @@ classDiagram
 - [ ] D8：SSE 线协议字段（新增字段 = 新增兼容负担，须评估）
 - [ ] D1+（F-AC8）：`providers/*.json` 主来源与合并顺序（兜底 < 文件 < 旧 providers.json < env）；逐文件校验只跳过坏文件；`provider_source` 标记；`/api/providers` 的 source/fetched_at/source_urls；`refresh-providers.py` 的 fail-closed（抓取失败不动文件）与"模型名需人工确认"
 - [ ] D6+（F-AC10）：checkpoint 命名空间三元组（paper_dir|index_name|embedding_model）、逐篇原子落盘、命中四条件、`deduped` 语义、fail-closed 就绪判定、`_prune_checkpoints` 收敛；`engine.export_doc/restore_doc` 载荷往返（`Text.doc` 必填）
-- [ ] D6+（TG-5）：分层 runner 的 tier 选择与 fail-closed、预算上限优先级（CLI > env `PAPERQA_NIGHTLY_BUDGET_CNY` > 默认 10）、三态成本判定（unknown 不放行）；`scheduled-tasks.py` due 判定与 `--record-cost` 回填
+- [ ] D6+（TG-5）：分层 runner 的 tier 选择与 fail-closed、预算上限优先级（CLI > env `PAPERQA_NIGHTLY_BUDGET_CNY` > 默认 10）、三态成本判定（unknown 不放行）；`scheduled-tasks.py` due 判定与 `--record-cost` 回填；**状态文件 fail-closed（TG-7：损坏 → 退出 2 + `.corrupt` 副本；BOM 容忍）**
+- [ ] Retro③（§13）：用量回调抗 prune（裁剪后重挂）、计费键"请求名 → 响应名取有价者"、缺价不臆测（`cost_cny=None` + `unpriced_models`）、suite 实测聚合与 `scheduled-tasks` 自动回填
 - [ ] 本文相关 UML 图与真值表行序是否仍与代码短路顺序一致
 
-> 更新历史：2026-08-30 初版（覆盖 Sprint-2 分层、Sprint-3 数据源、Sprint-4 体验/嵌入推荐/provider 扩展）；同日后追加 Sprint-5 一致性自愈/Sprint-6 多语检索/Sprint-7 M1 三重探针 + M2 回调上限配置化；**2026-09-12 追加 Sprint-16：D1 provider 一文件（providers/*.json + 来源标记 + 刷新链路）、D6 parse_chunk_embed 文献级 checkpoint（§8.4）、TG-5 分层 runner/定时底座/三态预算闸门**。
+> 更新历史：2026-08-30 初版（覆盖 Sprint-2 分层、Sprint-3 数据源、Sprint-4 体验/嵌入推荐/provider 扩展）；同日后追加 Sprint-5 一致性自愈/Sprint-6 多语检索/Sprint-7 M1 三重探针 + M2 回调上限配置化；**2026-09-12 追加 Sprint-16：D1 provider 一文件（providers/*.json + 来源标记 + 刷新链路）、D6 parse_chunk_embed 文献级 checkpoint（§8.4）、TG-5 分层 runner/定时底座/三态预算闸门**；**2026-09-20 追加走查修复（归档门禁双向交叉引用、TG-7 状态读取 fail-closed）与 Retro③ 成本可观测（§13：token 实测 → 价表换算 → suite 聚合 → 闸门自动回填）**。
+
+---
+
+## 13. 成本可观测：token 实测 → 价表换算 → 三态闸门（Retro③，2026-09-20）
+
+> 背景：此前联网 verify/e2e 与夜间套件只有 `VERIFY_META.est_cost_cny` 的**估算上界**，TG-5 的预算闸门长期停在 `unknown`（需人工 `--record-cost` 回填），夜间套件因此会被拒放行。本节定义"实测成本"的口径与链路。
+
+### 13.1 采集（`paper-qa-script/app/usage.py`）
+- **钩子**：litellm `success_callback` + `_async_success_callback`（paperqa 走 `acompletion`，异步列表必须挂 async 回调）；`ensure_installed()` 幂等，且 `app/engine.py::prune_litellm_callbacks()` **每次裁剪后重新挂载**——否则长跑进程里回调会被裁掉，采集静默失效。
+- **提取**：兼容对象 / dict 形态响应；字段 `prompt_tokens|input_tokens`、`completion_tokens|output_tokens`、`total_tokens`；无 usage 时记一次调用、不抛异常。
+- **线程安全**：`threading.Lock` 保护累计器；对外 `snapshot()` / `delta(before)` / `reset()`。
+
+### 13.2 成本换算（口径 = 实测 token × 本地价表单价 × fx）
+- 价表 = `agents/runtime/prices.json`（M9 抓取）：`scraped.<provider>.models.<model>` → `auto.<model>` 兜底；汇率取 `meta.fx_usd_cny`（缺省 7.2）；按 mtime 缓存。
+- **计费键解析**：litellm 响应里的模型名常是**上游别名**（实测：请求 `openai/deepseek-v4-flash` → 响应 `deepseek-flash`），故按"**请求名 → 响应名**取第一个能定价者"作为计费键，原始回报名记入 `by_model[...].reported_as` 供追溯。
+- **缺价不臆测（fail-closed 口径）**：任一模型无价 → `cost_cny=None` + `unpriced_models` 点名 + `partial_cost_cny` 只给已计价部分；**绝不用估算值冒充实测**。
+
+### 13.3 暴露与聚合链路
+| 环节 | 形态 |
+|---|---|
+| step 输出 | `output["usage"]` = 本步增量 + `cumulative` + `cost`（`orchestration.run_step` 收尾统一注入） |
+| 进程累计 | `GET /api/usage`（第 11 条 API 路由）返回 `usage.snapshot()` |
+| 脚本回报 | `verify/e2e_common.report_usage()` 打印 `MEASURED_CALLS / MEASURED_TOKENS / MEASURED_COST_CNY [/ MEASURED_UNPRICED_MODELS]`，并在设置了 `PAPERQA_SUITE_METRICS` 时追加一行 JSONL |
+| 套件聚合 | `verify/run_suite.py` 读指标文件 → `metrics[]` / `cost_measured_cny` / `cost_unpriced_models`；**仅当所有被执行脚本都回报可换算成本**才 `cost_status=measured`，否则保持 `unknown` |
+| 闸门联动 | `scripts/scheduled-tasks.py` 跑完 budgeted 任务后读 `verify/suite_result.json`：`measured` → 自动回填 `last_cost_cny/status`（`last_cost_note` 说明来源）；拿不到 → 保持 `unknown`（未测量不放行） |
+
+### 13.4 验证证据
+- `verify/verify_usage.py`（offline，**21 断言**）：响应解析 / 累计与增量 / 价表查找与前缀归一化 / 缺价不臆测 / token×单价×fx 换算式 / 回调幂等与**抗 prune** / 计费键解析与 `reported_as`。
+- `verify/verify_runner.py` ⑪a/⑪b：合成 fixture 回报成本 → 断言 `cost_status=measured` 且金额被聚合；缺价 fixture → 断言保持 `unknown` 且点名模型。
+- **真实链路实测（2026-09-20）**：一次短翻译调用 → `/api/usage` 得 `calls=1, prompt_tokens=42, completion_tokens=7`，`cost_cny=0.0002`（计费键 `deepseek-v4-flash`，`reported_as=['deepseek-flash']`）。

@@ -243,7 +243,7 @@ Sprint-16 追加（provider 刷新 / 定时底座 / 分层验证）：
 # ② 定时底座（TG-5）：单一入口，供手动 / 进程内调度 / Windows 任务计划调用
 .\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --list                     # 任务、间隔、上次运行、花费
 .\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --task nightly-suite --check-due   # 到期才跑（fail-closed 预算闸门）
-.\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --task nightly-suite --record-cost 3.5  # 回填实测花费，解除 unknown
+.\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --task nightly-suite --record-cost 3.5  # 回填实测花费（联网档跑完后通常已由 suite 实测值**自动回填**，仅在未测量时人工补）
 powershell -ExecutionPolicy Bypass -File .\scripts\register-scheduled-tasks.ps1 -Action register   # 注册周频任务计划（可选）
 
 # ③ 分层验证（fail-closed；上限可配置）

@@ -32,6 +32,7 @@ from e2e_common import (  # noqa: E402
     dump_log_tail,
     full_pipeline,
     make_cfg,
+    report_usage,
     start_backend,
     stop_backend,
     wait_healthy,
@@ -87,6 +88,11 @@ async def main() -> int:
         print(f"\n[FAIL] {results['status']}")
         dump_log_tail(SERVER_LOG)
     finally:
+        # Retro ③（2026-09-20）：停后端之前读取本次真实用量（成功/失败路径都记；token 实测 + 价表换算）
+        try:
+            report_usage(base, results)
+        except Exception:
+            pass
         stop_backend(server, args.keep_server)
 
     write_results(OUT, results)

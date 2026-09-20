@@ -12,6 +12,8 @@
   ⑨ providers 实现未就绪（F-AC8 未交付时）→ UNAVAILABLE（退出 5），不静默假成功
   ⑩ TG-7（走查实证）：状态文件损坏/结构非法 → **拒绝执行**（退出 2，不静默重置 last_run 与成本三态）；
     带 BOM 的合法状态仍被读取（`utf-8-sig`），不误判为损坏
+  ⑪ Retro ③：实测成本链路——脚本经 `PAPERQA_SUITE_METRICS` 回报用量 → suite 聚合出
+    `cost_measured_cny`；**只有全部脚本都给出可换算成本**才转 `measured`，否则保持 `unknown`
 
 Run: .venv\\Scripts\\python.exe verify\\verify_runner.py
 """
@@ -50,14 +52,39 @@ def run(cmd: list[str], env_extra: dict | None = None) -> subprocess.CompletedPr
     return subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, check=False)
 
 
-def write_fixture(d: Path, name: str, tier: str, cost: float, exit_code: int, marker: Path | None) -> None:
+def write_fixture(
+    d: Path,
+    name: str,
+    tier: str,
+    cost: float,
+    exit_code: int,
+    marker: Path | None,
+    metric_cny: float | None = None,
+    unpriced: str = "",
+) -> None:
     marker_line = f'    Path(r"{marker}").write_text("ran", encoding="utf-8")\n' if marker else ""
+    metric_line = ""
+    if metric_cny is not None or unpriced:
+        rec = {
+            "script": name,
+            "calls": 1,
+            "total_tokens": 10,
+            "cost_cny": metric_cny,
+            "unpriced_models": [unpriced] if unpriced else [],
+        }
+        metric_line = (
+            "    import json as _json, os as _os\n"
+            "    _mp = _os.environ.get('PAPERQA_SUITE_METRICS')\n"
+            "    if _mp:\n"
+            f"        open(_mp, 'a', encoding='utf-8').write(_json.dumps({rec!r}) + '\\n')\n"
+        )
     (d / name).write_text(
         "from pathlib import Path\n"
         f"VERIFY_META = {{'features': 'fixture {name}', 'tier': '{tier}', 'providers': [], "
         f"'est_seconds': 1, 'est_cost_cny': {cost}, 'routes': [], 'requires': []}}\n\n"
         "def main():\n"
         f"{marker_line}"
+        f"{metric_line}"
         f"    return {exit_code}\n\n"
         "if __name__ == '__main__':\n"
         "    import sys\n"
@@ -195,9 +222,27 @@ def main() -> int:
        res.returncode == 2 and "STATE-ERROR" in res.stdout,
        f"exit={res.returncode} out={(res.stdout or '').strip()[:120]}")
 
+    # ⑪ Retro ③（2026-09-20）：实测成本链路——脚本回报用量 → suite 聚合 → 三态判定
+    priced = tmp / "fixture_priced"
+    priced.mkdir()
+    write_fixture(priced, "verify_fake_priced.py", "network", 0.2, 0, None, metric_cny=0.5)
+    res = run([PY, str(RUN_SUITE), "--tier", "network", "--verify-dir", str(priced), "--json", str(tmp / "r11.json")])
+    s11 = json.loads((tmp / "r11.json").read_text(encoding="utf-8"))
+    ok("⑪a 全部脚本回报可换算成本 → cost_status=measured 且金额被聚合",
+       res.returncode == 0 and s11.get("cost_status") == "measured" and s11.get("cost_measured_cny") == 0.5,
+       f"exit={res.returncode} status={s11.get('cost_status')} cost={s11.get('cost_measured_cny')}")
+
+    unpriced = tmp / "fixture_unpriced"
+    unpriced.mkdir()
+    write_fixture(unpriced, "verify_fake_unpriced.py", "network", 0.2, 0, None, unpriced="mystery-model")
+    res = run([PY, str(RUN_SUITE), "--tier", "network", "--verify-dir", str(unpriced), "--json", str(tmp / "r11b.json")])
+    s11b = json.loads((tmp / "r11b.json").read_text(encoding="utf-8"))
+    ok("⑪b 缺价模型 → cost_status 保持 unknown（不臆测）且点名模型",
+       s11b.get("cost_status") == "unknown" and s11b.get("cost_unpriced_models") == ["mystery-model"],
+       f"status={s11b.get('cost_status')} unpriced={s11b.get('cost_unpriced_models')}")
+
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

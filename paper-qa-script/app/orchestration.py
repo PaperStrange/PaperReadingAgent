@@ -28,6 +28,7 @@ from app.config_schema import validate_config
 from app.data_sources import parse_remote_sources, validate_source_specs
 from app.embedding_recommender import RECOMMENDER
 from app.engine import ENGINE, EngineAdapter, prune_litellm_callbacks
+from app import usage as usage_meter  # Retro ③：token 用量采集（step 输出 output["usage"]）
 from app.events import FunctionTraceEvent, StepEvent
 from app.remote_resolver import resolve_remote_sources
 from app.session_store import SessionState, SessionStore
@@ -518,6 +519,7 @@ class PipelineOrchestrator:
         run_id = req.run_id or f"run-{uuid.uuid4().hex[:10]}"
         step = req.step
         t0 = time.perf_counter()
+        usage_start = usage_meter.snapshot()  # 本步用量 = 收尾时与本快照的差
         input_snapshot = _redact_secrets(
             {
                 "step": step,
@@ -854,6 +856,8 @@ class PipelineOrchestrator:
                 else:
                     raise ValueError(f"Unknown step: {step}")
 
+            # Retro ③（2026-09-20）：逐步用量与成本（实测 token + 本地价表换算；缺价则 cost_cny=None）
+            output = {**output, "usage": usage_meter.delta(usage_start)}
             ok_resp = StepResponse(
                 session_id=session.session_id,
                 run_id=run_id,

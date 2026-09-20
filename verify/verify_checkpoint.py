@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT))
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")  # 控制台中文不乱码（GBK 默认）
 
-from verify.e2e_common import PORT, start_backend, stop_backend, wait_healthy  # noqa: E402
+from verify.e2e_common import PORT, report_usage, start_backend, stop_backend, wait_healthy  # noqa: E402
 
 BACKEND = ROOT / "paper-qa-script" / "reactflow-paperqa-prototype" / "backend" / "main.py"
 SERVER_LOG = ROOT / "verify" / "verify_checkpoint_server.log"
@@ -286,6 +286,8 @@ async def main() -> int:
             ok("⑦b 切块口径变化 → 全部重跑（reused=0，不静默沿用旧分块）",
                c7.get("reused") == 0 and c7.get("embedded") == 2 and c7.get("chunk_chars") == 1200,
                json.dumps(c7, ensure_ascii=False))
+        # Retro ③（2026-09-20）：在停后端之前读取本次真实用量（token 实测 + 价表换算）
+        report_usage(base)
     finally:
         stop_backend(server, False)
         shutil.rmtree(tmp, ignore_errors=True)

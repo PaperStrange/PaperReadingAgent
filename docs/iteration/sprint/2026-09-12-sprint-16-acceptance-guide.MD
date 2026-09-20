@@ -374,7 +374,20 @@ Invoke-RestMethod http://127.0.0.1:8787/api/providers | ConvertTo-Json -Depth 4
 
 ### 13.3 付费项（§9）执行审批流程（用户口径）
 
-用户 2026-09-20 口径：**可以先执行，但必须先给出预计花费报告并获批准**，以便用真实数据支撑 billing plan 设计。成本报告见对话记录（估算来源=`VERIFY_META.est_cost_cny` 上界；**token 用量当前未采集**，故实测值缺失——Retro 行动项 ③）。批准后按"先计量、再跑"的顺序执行。
+用户 2026-09-20 口径：**可以先执行，但必须先给出预计花费报告并获批准**，以便用真实数据支撑 billing plan 设计。预算报告已给出（N-1 ≤¥0.05 / N-2 ≤¥0.5 / N-3、N-4 ¥0，小计 ≈¥0.55），用户选择"**先打通 token 计量再跑**"。
+
+**计量链路已落地并验证（2026-09-20，Retro③）**：`app/usage.py`（litellm 回调实测 token，抗 prune 裁剪；计费键取"能定价的名字"；缺价不臆测）→ `GET /api/usage` / step `output["usage"]` → `e2e_common.report_usage()`（`MEASURED_*` + 指标文件）→ `run_suite` 聚合 `cost_measured_cny` → `scheduled-tasks` **自动回填**三态闸门。回归：`verify_usage.py` **21 断言**、`verify_runner.py` ⑪a/⑪b；真实实测一次短调用 **¥0.0002**（42+7 tokens，计费键 `deepseek-v4-flash`）。
+
+> 因此本节的执行结果给出的是**实测成本**（token 实测 + 本地价表换算），不再是估算上界。价表缺价的模型（当前 dashscope `qwen3.5-omni-plus` / `text-embedding-v4` 无价目）会显式列入 `unpriced_models`，此时成本记 `unknown`——**不臆测**，并作为"补价目"的待办暴露出来。
+
+### 13.6 付费项执行记录（2026-09-20，实测）
+
+| 编号 | 命令 | 结果 | 实测用量 / 成本 |
+|---|---|---|---|
+| `N-1` | `verify_checkpoint.py` | 待填 | 待填 |
+| `N-2` | `verify_e2e_dashscope.py` | 待填 | 待填 |
+| `N-3` | `refresh-providers.py --fetch --apply` | 待填 | ¥0（不调模型） |
+| `N-4` | `scheduled-tasks.py --task providers --check-due` | 待填 | ¥0 |
 
 ### 13.4 `B-9` / `B-10` 零成本复现命令（可直接粘贴）
 

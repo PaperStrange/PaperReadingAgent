@@ -1,14 +1,14 @@
 """Smoke verification for the Windows-ported codebase (8 checks, offline).
 
 Checks: paperqa package imports, backend main.py loads its FastAPI app
-(10 API routes incl. /api/providers, /api/config_schema, /api/config/validate), runtime_trace targets, streamlit/litellm imports,
+(11 API routes incl. /api/providers, /api/config_schema, /api/config/validate, /api/usage), runtime_trace targets, streamlit/litellm imports,
 PyMuPDF page preview (used by runtime_trace), graphviz dot auto-discovery,
 and the local paper reader parses PaperQA2.pdf.
 Run: .venv\\Scripts\\python.exe verify_smoke.py
 """
 
 from __future__ import annotations
-VERIFY_META = {'features': '冒烟 8 项：paperqa 导入/后端 10 路由加载/runtime_trace 目标/PDF 解析等（离线）', 'tier': 'offline', 'providers': [], 'est_seconds': 10, 'est_cost_cny': 0, 'routes': ['/api/new_session', '/api/run_step', '/api/stream/{session_id}/{run_id}', '/api/session_records/{session_id}', '/api/reset_session', '/api/health', '/api/providers', '/api/config_schema', '/api/config/validate', '/api/translate_preview'], 'requires': ['none']}
+VERIFY_META = {'features': '冒烟 8 项：paperqa 导入/后端 11 路由加载/runtime_trace 目标/PDF 解析等（离线）', 'tier': 'offline', 'providers': [], 'est_seconds': 10, 'est_cost_cny': 0, 'routes': ['/api/new_session', '/api/run_step', '/api/stream/{session_id}/{run_id}', '/api/session_records/{session_id}', '/api/reset_session', '/api/health', '/api/providers', '/api/config_schema', '/api/config/validate', '/api/translate_preview', '/api/usage'], 'requires': ['none']}
 
 import importlib.util
 import sys

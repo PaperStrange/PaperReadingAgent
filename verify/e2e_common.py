@@ -98,6 +98,65 @@ def dump_log_tail(server_log: Path, n: int = 6000) -> None:
         print(server_log.read_text(encoding="utf-8", errors="replace")[-n:])
 
 
+def fetch_usage(base: str = "") -> dict:
+    """读后端进程累计用量（`/api/usage`，Retro ③）。失败返回 {}，绝不影响主流程。"""
+    try:
+        r = httpx.get(f"{base or f'http://127.0.0.1:{PORT}'}/api/usage", timeout=5)
+        if r.status_code == 200:
+            return r.json().get("usage") or {}
+    except Exception:
+        pass
+    return {}
+
+
+def report_usage(base: str = "", sink: dict | None = None) -> dict:
+    """打印实测用量与成本，并以 `MEASURED_*` 行暴露给 `run_suite` 汇总。
+
+    口径：token 是**实测**；`cost_cny=None`（价表缺该模型）时打印 `unknown`——
+    宁可不认成本，也不臆测单价（三态闸门据此保持"未测量"）。
+
+    若环境变量 `PAPERQA_SUITE_METRICS` 指向一个文件（run_suite 会设置），同时**追加一行 JSON**：
+    suite 据此聚合出 `cost_measured_cny`，供 `scripts/scheduled-tasks.py` 自动回填三态闸门。
+    """
+    u = fetch_usage(base)
+    cost = (u.get("cost") or {}) if u else {}
+    cny = cost.get("cost_cny")
+    print(f"MEASURED_CALLS={u.get('calls', 0)}")
+    print(f"MEASURED_TOKENS={u.get('total_tokens', 0)}")
+    print(f"MEASURED_COST_CNY={'unknown' if cny is None else cny}")
+    if cost.get("unpriced_models"):
+        print(f"MEASURED_UNPRICED_MODELS={','.join(cost['unpriced_models'])}")
+    if u:
+        print("MEASURED_USAGE_JSON=" + json.dumps(u, ensure_ascii=False))
+    if sink is not None:
+        sink["usage"] = u
+    _append_metric(u)
+    return u
+
+
+def _append_metric(u: dict) -> None:
+    """把本次用量写成 suite 指标文件的一行（未设置 env 时静默跳过）。"""
+    path = os.environ.get("PAPERQA_SUITE_METRICS", "")
+    if not path:
+        return
+    try:
+        cost = (u.get("cost") or {}) if u else {}
+        rec = {
+            "script": Path(sys.argv[0]).name,
+            "calls": u.get("calls", 0),
+            "total_tokens": u.get("total_tokens", 0),
+            "prompt_tokens": u.get("prompt_tokens", 0),
+            "completion_tokens": u.get("completion_tokens", 0),
+            "cost_cny": cost.get("cost_cny"),
+            "partial_cost_cny": cost.get("partial_cost_cny"),
+            "unpriced_models": cost.get("unpriced_models") or [],
+        }
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
 def write_results(out: Path, results: dict) -> None:
     out.write_bytes(json.dumps(results, ensure_ascii=False, indent=2).encode("utf-8"))
     print(f"\n[written] {out}")

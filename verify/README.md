@@ -5,7 +5,7 @@
 > **SSOT 与分层运行（TG-2 / TG-5）**：脚本全集、tier（offline/gui/network）、预估耗时与成本、前置依赖以 [`TEST-MATRIX.MD`](TEST-MATRIX.MD) 为唯一真源（由各脚本头部 `VERIFY_META` 派生，`verify_matrix.py check` 防漂移）。分层执行用：
 > - `python verify\run_suite.py --tier offline`（零网络零 key；CI/本地默认）
 > - `python verify\run_suite.py --tier gui`（需前后端 + Playwright）
-> - `python verify\run_suite.py --tier network --budget-cny 10`（真实 API，**fail-closed + 预算闸门**：预估超上限直接拒绝启动）
+> - `python verify\run_suite.py --tier network --budget-cny 10`（真实 API，**fail-closed + 预算闸门**：预估超上限直接拒绝启动；**跑完按实测成本聚合**，`scheduled-tasks` 据此自动回填三态闸门）
 >
 > 本文件说明脚本**用途与运行前提**；新增脚本请同步在下方表格登记（矩阵会自动纳入校验）。
 
@@ -42,7 +42,8 @@
 | `verify_archive.py` | Sprint-16/M16：**调研归档完整性门禁**（report/context/reasoning/evidence 五字段 + verbatim 引用块 + 证据索引表**双向**交叉引用：正向=每个 evidence 文件须被索引表点名，反向=索引表点名的文件须存在于磁盘；**判定限定在证据索引表区间内**（正文顺带提及别处证据名不算引用）、文件名**大小写不敏感**；**2026-09-20 走查修复 + 复核 run-053 收紧**；quick 档豁免）；`--selftest` 内置八例（合规 expert/scholar 通过 + 空报告被拒 + 被引用证据缺失被拒 + 正文提及不误判 + 索引表 `.markdown` 漏报被拦 + 已存在 `.markdown` 不假红 + 嵌套子目录不假红） | 离线；`python verify\verify_archive.py <run_dir> --depth expert` |
 | `verify_providers.py` | Sprint-16/F-AC8：**provider 一文件**加载/来源标记/覆盖优先级/非法文件跳过/无密钥泄漏/调研 meta 契约 + 离线刷新链（归档+proposal+meta 刷新）与**抓取失败保留旧文件**、到期判定可配置 | 离线（目录重定向到临时目录，不改动仓库文件） |
 | `verify_runner.py` | Sprint-16/TG-5：分层 runner + 定时底座断言（offline 全绿 / 注入失败 fail-closed / 预算超限拒绝启动退出 3 / env 上限可配置 / due 未到期跳过 / cost unknown 拒绝放行退出 4 / record-cost 回填 / providers 未就绪 UNAVAILABLE / **TG-7：状态文件损坏或结构非法 → 拒绝执行退出 2 + `.corrupt` 副本留存；带 BOM 的合法状态仍被读取**） | 离线（合成 fixture，不跑真实套件） |
-| `run_suite.py` | Sprint-16/TG-5：**分层 runner 本体**（按 `VERIFY_META.tier` 执行 offline/gui/network；fail-closed；三态预算闸门；结果 JSON 原子落盘）。命名不带 `verify_` 前缀 → 不纳入矩阵校验，但同样带 `VERIFY_META` | 离线自身；视 tier 而定 |
+| `run_suite.py` | Sprint-16/TG-5：**分层 runner 本体**（按 `VERIFY_META.tier` 执行 offline/gui/network；fail-closed；三态预算闸门；结果 JSON 原子落盘；**Retro③：聚合子脚本经 `PAPERQA_SUITE_METRICS` 回报的实测成本 → `cost_measured_cny`/`cost_status`**）。命名不带 `verify_` 前缀 → 不纳入矩阵校验，但同样带 `VERIFY_META` | 离线自身；视 tier 而定 |
+| `verify_usage.py` | Sprint-16/Retro③：**token 用量采集与成本换算回归**（对象/dict 响应解析、累计与增量、价表查找与 `openai/` 前缀归一化、**缺价不臆测**、token×单价×fx 换算式、回调幂等与**抗 prune 裁剪**、**计费键取"能定价的名字"**+`reported_as` 可追溯） | 离线；`python verify\verify_usage.py` |
 | `gui_check_s15_*.mjs`（10 个） | Sprint-15 F2 验收修复族：`typography`（字体统一）/`hints_title`（聚合+限高）/`local_dir`（条件隐藏）/`collapse`（完成后收起）/`status_scope`（状态作用域）/`responsive`（三档分辨率）/`bidi_link`（双向联动）/`error_copy`（复制+报错定位 19 断言）/`output_view`（output/答案全文）/`cursor`（光标不跳+改动计数） | 后端 8787 + 前端 5173 已启动 + Playwright（`output_view` 为 network 档，需 key） |
 
 运行示例：

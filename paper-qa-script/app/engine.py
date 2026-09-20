@@ -65,6 +65,13 @@ def prune_litellm_callbacks() -> None:
             setattr(litellm, attr, unique[-limit:])
         except Exception:
             pass
+    # Retro ③（2026-09-20）：用量采集回调不能被 prune 裁掉——每次裁剪后重新挂载（幂等）
+    try:
+        from app import usage as usage_meter
+
+        usage_meter.ensure_installed()
+    except Exception:
+        pass
 
 
 class EngineAdapter(ABC):

@@ -37,6 +37,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 DEFAULT_STATE = ROOT / "agents" / "runtime" / "schedule.json"
+SUITE_RESULT = ROOT / "verify" / "suite_result.json"  # Retro ③：suite 实测成本回填源
 REFUSE_EXIT = 4
 UNAVAILABLE_EXIT = 5
 
@@ -49,9 +50,9 @@ TASKS: dict[str, dict] = {
     },
     "nightly-suite": {
         "interval_days": 7,
-        "cmd": [PY, str(ROOT / "verify" / "run_suite.py"), "--tier", "network"],
+        "cmd": [PY, str(ROOT / "verify" / "run_suite.py"), "--tier", "network", "--json", str(SUITE_RESULT)],
         "budgeted": True,
-        "desc": "夜间全量联网套件（fail-closed，受预算上限约束）",
+        "desc": "夜间全量联网套件（fail-closed，受预算上限约束；成本按实测自动回填）",
     },
     "providers": {
         "interval_days": 14,
@@ -60,6 +61,24 @@ TASKS: dict[str, dict] = {
         "desc": "provider 官网调研刷新（F-AC8：抓取 + M16 归档 + proposal；模型名变更需人工确认）",
     },
 }
+
+
+def _suite_measured_cost(path: Path) -> float | None:
+    """读 suite 结果里的**实测**成本（Retro ③）。
+
+    只在 `cost_status=measured` 且金额是数值时才认（suite 内部已保证"所有脚本都回报了可换算成本"）；
+    否则返回 None → 保持三态闸门的 `unknown`（未测量不放行），绝不把部分值当总额。
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if data.get("cost_status") != "measured":
+        return None
+    try:
+        return float(data.get("cost_measured_cny"))
+    except (TypeError, ValueError):
+        return None
 
 
 def state_path(cli_path: str = "") -> Path:
@@ -266,11 +285,26 @@ def main() -> int:
     entry["last_duration_s"] = secs
     entry["last_status"] = "ok" if proc.returncode == 0 else f"failed:{proc.returncode}"
     if spec["budgeted"]:
-        # runner 自身不臆测花费：执行完标记 unknown，待按账本回填（三态之"未测量"）
-        entry["last_cost_status"] = "unknown"
-        entry["last_cost_cny"] = None
+        # Retro ③（2026-09-20）：优先用 suite 的**实测**成本自动回填；拿不到完整实测才保持 unknown
+        measured = _suite_measured_cost(SUITE_RESULT)
+        cap = budget_cny(state)
+        if measured is None:
+            entry["last_cost_status"] = "unknown"
+            entry["last_cost_cny"] = None
+            entry["last_cost_note"] = (
+                "suite 未给出完整实测成本（脚本未回报用量或价表缺单价）→ 需 `--record-cost` 人工回填"
+            )
+        else:
+            entry["last_cost_cny"] = measured
+            entry["last_cost_cap_cny"] = cap
+            entry["last_cost_status"] = "measured" if measured <= cap else "over_budget"
+            entry["cost_measured_at"] = time.time()
+            entry["last_cost_note"] = "由 verify/suite_result.json 的实测成本自动回填（Retro ③）"
     save_state(sp, state)
-    print(f"DONE: {args.task} exit={proc.returncode} ({secs}s)；state → {sp}")
+    cost_s = entry.get("last_cost_status", "-")
+    print(f"DONE: {args.task} exit={proc.returncode} ({secs}s)；cost_status={cost_s}"
+          + (f" 实测 {entry.get('last_cost_cny')} CNY" if entry.get("last_cost_cny") is not None else "")
+          + f"；state → {sp}")
     return proc.returncode
 
 
