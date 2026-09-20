@@ -43,7 +43,7 @@
 | `verify_providers.py` | F-AC8 provider 一文件：文件加载/来源标记/覆盖优先级/非法文件跳过/无密钥泄漏/调研元数据契约 | offline | — | 20s | ¥0 | — |  |
 | `verify_prune_callbacks.py` | litellm 回调裁剪：上限 env 可配 + 非法值回落 + 钳制（离线） | offline | — | 2s | ¥0 | — | none |
 | `verify_remote_e2e.py` | remote 数据源全链路（arXiv 下载+索引+6 步） | network | deepseek | 180s | ¥0.4 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
-| `verify_runner.py` | TG-5 分层 runner + 定时底座：offline/gui/network 分层 + fail-closed + 三态预算闸门 + due 判定 + 成本回填 | offline | — | 60s | ¥0 | — |  |
+| `verify_runner.py` | TG-5 分层 runner + 定时底座：offline/gui/network 分层 + fail-closed + 三态预算闸门 + due 判定 + 成本回填 + 状态文件 fail-closed（TG-7） | offline | — | 60s | ¥0 | — |  |
 | `verify_smoke.py` | 冒烟 8 项：paperqa 导入/后端 10 路由加载/runtime_trace 目标/PDF 解析等（离线） | offline | — | 10s | ¥0 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session, /api/health, /api/providers, /api/config_schema, /api/config/validate, /api/translate_preview | none |
 
 共 40 个脚本：offline 10 / network 10 / gui 20。

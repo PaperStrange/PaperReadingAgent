@@ -73,13 +73,46 @@ def state_path(cli_path: str = "") -> Path:
     return DEFAULT_STATE
 
 
+class StateUnreadable(RuntimeError):
+    """状态文件存在但无法解析。
+
+    TG-7（2026-09-20 走查实证）：修复前 `load_state` 吞掉异常返回默认空状态 → 损坏/带 BOM 的状态
+    文件会让 `last_run` 与成本三态被**静默重置**，三态预算闸门因此被绕过（fail-open）。
+    现在解析失败一律 fail-closed：抛本异常，由 main 以退出码 2 拒绝执行。
+    """
+
+
 def load_state(p: Path) -> dict:
+    """读状态文件（fail-closed）。
+
+    - 文件**不存在** → 全新状态（首次运行是合法场景）；
+    - 文件存在但**解析失败** → 抛 `StateUnreadable`，并把损坏文件另存为 `<name>.corrupt`；
+    - 编码用 `utf-8-sig`：容忍 BOM（Windows PowerShell 5.1 的 `Set-Content -Encoding utf8`
+      会写 BOM），不把这种常见编码伪影误判为损坏。
+    """
+    if not p.exists():
+        return {"schema": 1, "config": {"budget_cny": 10.0, "interval_days": {}}, "tasks": {}}
+
+    def _keep_corrupt() -> None:
+        try:
+            p.with_name(p.name + ".corrupt").write_text(
+                p.read_text(encoding="utf-8", errors="replace"), encoding="utf-8"
+            )
+        except Exception:
+            pass
+
     try:
-        if p.exists():
-            return json.loads(p.read_text(encoding="utf-8"))
-    except Exception:
-        pass
-    return {"schema": 1, "config": {"budget_cny": 10.0, "interval_days": {}}, "tasks": {}}
+        data = json.loads(p.read_text(encoding="utf-8-sig"))
+    except Exception as exc:
+        _keep_corrupt()
+        raise StateUnreadable(f"{p}（{type(exc).__name__}: {exc}）") from exc
+    if not isinstance(data, dict):
+        _keep_corrupt()
+        raise StateUnreadable(f"{p}（顶层不是 JSON 对象，而是 {type(data).__name__}）")
+    tasks = data.get("tasks")
+    if tasks is not None and not isinstance(tasks, dict):
+        raise StateUnreadable(f"{p}（tasks 字段不是 JSON 对象）")
+    return data
 
 
 def save_state(p: Path, data: dict) -> None:
@@ -138,7 +171,13 @@ def main() -> int:
     args = ap.parse_args()
 
     sp = state_path(args.state)
-    state = load_state(sp)
+    try:
+        state = load_state(sp)
+    except StateUnreadable as exc:
+        print(f"STATE-ERROR: 状态文件无法解析 → 拒绝执行（fail-closed；避免静默重置 last_run 与成本三态）：{exc}")
+        print(f"处理建议：检查/修复该文件（损坏副本已另存为 {sp.name}.corrupt）；"
+              f"确认要丢弃历史状态时，先把原文件移走或删除，再重跑本命令。")
+        return 2
 
     if args.list:
         print(f"state: {sp}")

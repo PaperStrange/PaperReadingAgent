@@ -10,11 +10,13 @@
   ⑦ 三态闸门：预算制任务上一轮 cost_status=unknown → **拒绝放行**（退出 4）
   ⑧ --record-cost 回填实际花费 → 闸门解除（再次 due → RUN）
   ⑨ providers 实现未就绪（F-AC8 未交付时）→ UNAVAILABLE（退出 5），不静默假成功
+  ⑩ TG-7（走查实证）：状态文件损坏/结构非法 → **拒绝执行**（退出 2，不静默重置 last_run 与成本三态）；
+    带 BOM 的合法状态仍被读取（`utf-8-sig`），不误判为损坏
 
 Run: .venv\\Scripts\\python.exe verify\\verify_runner.py
 """
 from __future__ import annotations
-VERIFY_META = {'features': 'TG-5 分层 runner + 定时底座：offline/gui/network 分层 + fail-closed + 三态预算闸门 + due 判定 + 成本回填', 'tier': 'offline', 'providers': [], 'est_seconds': 60, 'est_cost_cny': 0, 'routes': [], 'requires': []}
+VERIFY_META = {'features': 'TG-5 分层 runner + 定时底座：offline/gui/network 分层 + fail-closed + 三态预算闸门 + due 判定 + 成本回填 + 状态文件 fail-closed（TG-7）', 'tier': 'offline', 'providers': [], 'est_seconds': 60, 'est_cost_cny': 0, 'routes': [], 'requires': []}
 
 import json
 import os
@@ -167,6 +169,31 @@ def main() -> int:
     res = run([PY, str(SCHED), "--task", "nightly-suite", "--check-due", "--dry-run", "--state", str(state)])
     ok("⑨c unknown + 上轮失败 → 放行重试（不自愈则永久停摆）", res.returncode == 0 and "RUN" in res.stdout,
        f"exit={res.returncode} out={(res.stdout or '').strip()[:140]}")
+
+    # ⑩ TG-7（2026-09-20 走查实证）：状态文件不可解析必须 **fail-closed**，不得静默回落默认状态
+    #    （修复前 load_state 吞异常返回空状态 → last_run 与成本三态被静默重置 → 预算闸门被绕过）
+    state.write_text('{"schema": 1, "tasks": {"nightly-suite": {"last_run": 1', encoding="utf-8")  # 截断 JSON
+    res = run([PY, str(SCHED), "--task", "nightly-suite", "--check-due", "--dry-run", "--state", str(state)])
+    corrupt = state.with_name(state.name + ".corrupt")
+    ok("⑩a 状态文件损坏 → 拒绝执行（退出 2，无 due 判定、无 RUN）",
+       res.returncode == 2 and "STATE-ERROR" in res.stdout and "RUN" not in res.stdout,
+       f"exit={res.returncode} out={(res.stdout or '').strip()[:120]}")
+    ok("⑩a 损坏文件另存 .corrupt 副本（供人工检查）",
+       corrupt.exists() and corrupt.read_text(encoding="utf-8").startswith('{"schema"'),
+       f"corrupt={corrupt.exists()}")
+    # ⑩b BOM 容忍：PowerShell 5.1 `Set-Content -Encoding utf8` 会写 BOM，属常见编码伪影而非损坏
+    state.write_text(json.dumps({"schema": 1, "tasks": {"nightly-suite": {
+        "last_run": time.time() - 8 * 86400, "last_cost_status": "unknown"}}}, ensure_ascii=False), encoding="utf-8-sig")
+    res = run([PY, str(SCHED), "--task", "nightly-suite", "--check-due", "--dry-run", "--state", str(state)])
+    ok("⑩b 带 BOM 的合法状态仍被读取（退出 4 REFUSED，且不判损坏）",
+       res.returncode == 4 and "REFUSED" in res.stdout and "STATE-ERROR" not in res.stdout,
+       f"exit={res.returncode} out={(res.stdout or '').strip()[:120]}")
+    # ⑩c 结构非法（顶层非对象）同样 fail-closed
+    state.write_text("[]", encoding="utf-8")
+    res = run([PY, str(SCHED), "--task", "nightly-suite", "--check-due", "--dry-run", "--state", str(state)])
+    ok("⑩c 顶层非 JSON 对象 → 拒绝执行（退出 2）",
+       res.returncode == 2 and "STATE-ERROR" in res.stdout,
+       f"exit={res.returncode} out={(res.stdout or '').strip()[:120]}")
 
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0

@@ -405,7 +405,11 @@ $f3 = Join-Path $tmp 'fresh.json'
 
 ### 13.5 走查期间发生的事故（如实记录）
 
-准备 B-9 演示时，我用 PowerShell 5.1 的 `Set-Content -Encoding utf8` 写临时状态文件 → **带 BOM** → `load_state()` 解析失败但**静默返回默认空状态** → `nightly-suite` 被判"从未运行"并**真实启动联网套件**，约 3 分钟后随命令超时终止（已完成 `eval_retrieve` / `gui_check_s15_output_view` / `verify_agent` 三个脚本，`verify_checkpoint` 中断；**按 `VERIFY_META` 估算 ≈ ¥1.0**，实测花费仍缺测量）。已定位为**产品级 fail-open 缺陷**并立卡 `TG-7`（含"PS 5.1 utf8 带 BOM"这一操作陷阱）。事故未影响验收结论，dev 服务与前端未受影响。
+准备 B-9 演示时，我用 PowerShell 5.1 的 `Set-Content -Encoding utf8` 写临时状态文件 → **带 BOM** → `load_state()` 解析失败但**静默返回默认空状态** → `nightly-suite` 被判"从未运行"并**真实启动联网套件**，约 3 分钟后随命令超时终止（已完成 `eval_retrieve` / `gui_check_s15_output_view` / `verify_agent` 三个脚本，`verify_checkpoint` 中断；**按 `VERIFY_META` 估算 ≈ ¥1.0**，实测花费仍缺测量）。已定位为**产品级 fail-open 缺陷**并立卡 `TG-7`。
+
+**TG-7 已闭环（2026-09-20 当日，用户选择"现在修"）**：`load_state()` 改为 **fail-closed**——文件不存在=全新状态；**存在但解析失败或结构非法 → 退出码 2 拒绝执行** + 损坏文件另存 `.corrupt` + 修复指引；读取用 `utf-8-sig` **容忍 BOM**（编码伪影不误判为损坏）。回归证据：`verify_runner.py` **24 断言全 PASS**（⑩a 截断 JSON→拒 2 且无 RUN + 留副本 / ⑩b 带 BOM 的合法状态仍被读到 → 闸门 REFUSED(4) / ⑩c 顶层非对象→拒 2）；**BOM 反证由 `RUN` 转为 `REFUSED(4)`**（§13.4 命令即可复现）。
+
+> 因此 §13.4 里"不可用 PS 5.1 的 utf8（会带 BOM）"这条现在**不再是风险**（BOM 被容忍），但**写损坏文件仍会被拒绝**——这正是我们要的行为。事故未影响验收结论，dev 服务与前端未受影响。
 
 ---
 
