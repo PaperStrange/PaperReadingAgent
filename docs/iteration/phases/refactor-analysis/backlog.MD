@@ -48,7 +48,7 @@
 | M13 | 调研结论→用例生成 agent 固化——原 agents-infra A-PM3 迁入（备选） | 2 | 候选（备选） | 用户 2026-08-30 | |
 | M14 | 新 agent 上线评审 agent——原 agents-infra A-PM4 迁入（备选） | 2 | ✅ 完成 | Sprint-14（2026-08-31，PR #48） | 用户 2026-08-30（+2026-08-31 底座批次） | 与 `_template-agent.md` 模板联动 |
 | M15 | 领域治理壳落地：product/marketing 笔记目录 + 追溯索引登记 + fanout 路由预留（完整 spec 等对应领域讨论启动时再填） | 1 | ✅ 完成 | Sprint-14（2026-08-31，PR #48） | 用户 2026-08-31（底座批次） | 依据 `pre-research/2026-08-31-domain-governance.MD` §3/§6 |
-| M16 | **调研工作流深化（知识沉淀）**：① 三级深度响应（工程级/领域专家级/研究学者级，场景自适应+用户可覆盖；工程级=主代理直接执行）；② 决策证据落档（context.md + evidence/ 快照，唯一真相）；③ 段落级溯源 + 思考过程附件（reasoning.md + 证据索引表，支持引经据典讨论） | 6 | ✅ 完成（Sprint-16：tech-research v2.0 + fanout v5 depth 路由 + `verify_archive.py` 门禁 + 首跑演示 provider 官网调研 27/27 PASS） | Sprint-16 | 用户 2026-09-07 | 设计草案 `pre-research/tech/2026-09-07-research-workflow.MD`；阈值可配置（spec 可配置参数节/fanout 可调） |
+| M16 | **调研工作流深化（知识沉淀）**：① 三级深度响应（工程级/领域专家级/研究学者级，场景自适应+用户可覆盖；工程级=主代理直接执行）；② 决策证据落档（context.md + evidence/ 快照，唯一真相）；③ 段落级溯源 + 思考过程附件（reasoning.md + 证据索引表，支持引经据典讨论） | 6 | ✅ 完成（Sprint-16：tech-research v2.0 + fanout v5 depth 路由 + `verify_archive.py` 门禁 + 首跑演示 provider 官网调研 28/28 PASS；2026-09-20 走查修复交叉引用双向校验） | Sprint-16 | 用户 2026-09-07 | 设计草案 `pre-research/tech/2026-09-07-research-workflow.MD`；阈值可配置（spec 可配置参数节/fanout 可调） |
 | M17 | ~~思维模型管理~~ → **迁出（2026-09-07 用户拍板）**：成立独立阶段 `phases/mental-models/`（MM-1~MM-5，9 点），M17 内容并入 | — | 迁出 | 用户 2026-09-07 | 预研基线 `pre-research/tech/2026-09-07-mental-models.MD` |
 
 ### 2.1 与 hold 状态的关系

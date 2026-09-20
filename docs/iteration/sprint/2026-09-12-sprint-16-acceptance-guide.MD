@@ -95,8 +95,8 @@ $env:PYTHONIOENCODING='utf-8'      # 中文输出不乱码
 |---|---|---|---|
 | 1 | `.\.venv\Scripts\python.exe .\verify\verify_providers.py` | `ALL PASS (33 assertions)`，退出 0 | ✅ 33/33 |
 | 2 | `.\.venv\Scripts\python.exe .\verify\verify_runner.py` | `ALL PASS (20 assertions)`，退出 0 | ✅ 20/20 |
-| 3 | `.\.venv\Scripts\python.exe .\verify\verify_archive.py agents\runs\run-2026-09-12-provider-refresh-001 --depth expert` | `=== ALL PASS: 27 passed / 0 failed ===` | ✅ 27/27 |
-| 4 | `.\.venv\Scripts\python.exe .\verify\verify_archive.py --selftest` | `=== selftest PASS: 2 passed / 0 failed ===`（合规档案过 + 缺件档案被拒） | ✅ 2/2 |
+| 3 | `.\.venv\Scripts\python.exe .\verify\verify_archive.py agents\runs\run-2026-09-12-provider-refresh-001 --depth expert` | `=== ALL PASS: 28 passed / 0 failed ===`（含**双向**交叉引用断言） | ✅ 28/28 |
+| 4 | `.\.venv\Scripts\python.exe .\verify\verify_archive.py --selftest` | `=== selftest PASS: 4 passed / 0 failed ===`（合规 expert/scholar 通过 + 空报告被拒 + **被引用证据缺失被拒且仅此一项**） | ✅ 4/4 |
 | 5 | `.\.venv\Scripts\python.exe .\verify\verify_matrix.py check` | `CHECK OK: 40 脚本与 TEST-MATRIX.MD 一致` | ✅ 40 脚本 |
 | 6 | `foreach ($f in Get-ChildItem agents\functions\*.md) { .\.venv\Scripts\python.exe .\scripts\agent-ops.py validate-spec $f.FullName }` | 8 个 spec 全 PASS | ✅ 8/8 |
 | 7 | `.\.venv\Scripts\python.exe .\verify\run_suite.py --tier offline` | `SUITE PASSED (10 scripts)`，退出 0（fail-closed） | ✅ 10/10（见 §5.1） |
@@ -131,6 +131,8 @@ SUITE PASSED (10 scripts)
 ```
 
 > 套件全程 `est_cost=0`（无付费调用；`verify_local_dir.py` 走 st- 本地向量 + CSV manifest 提供 citation，故无需密钥）；**fail-closed**：任一脚本失败即整体非零（见 §7 `B-7`）。
+>
+> **修复后复跑（同日）**：`verify_archive.py` 补反向交叉引用后，真实归档 `ALL PASS: 28 passed / 0 failed`、`--selftest` `4 passed / 0 failed`、原漏检变体 `FAILED 25/1`、`run_suite.py --tier offline` 仍 `SUITE PASSED (10 scripts)`（完整输出见预跑日志 `verify/acceptance-sprint16-2026-09-20.log`）。
 
 > 说明：`verify_checkpoint.py`（33 断言）**不在 offline 档**——其 parse 链路含真实 LLM 调用，分级为 network 档（估算 ¥0.05），见 §9 `N-1`。
 
@@ -146,7 +148,7 @@ SUITE PASSED (10 scripts)
 |---|---|---|---|---|
 | `M16-1` | 看 `agents/functions/tech-research.md`：版本号 + 三级深度表 + Archive Requirements + 可配置参数节 | 版本 **v2.0.0**；`quick` 3~5 源/1 维/**主代理直执**、`expert` 6~10 源/≥3 维/子代理（默认）、`scholar` ≥12 源+反向证据；阈值全部落在**可配置参数节**（非硬编码） | spec 文件本身 | ☐ |
 | `M16-2` | 看 `agents/fanout.json` | 版本 **v5**；`planning_pipeline` 含 `depth` 路由 + `archive` 门禁字段；`executor` 按深度分流（subagent / main-agent） | fanout.json | ☐ |
-| `M16-3` | §5 第 3、4 条 | 真实归档 27/27 PASS；selftest 双例（合规通过 + 缺件被拒） | `verify_archive.py` | ☐ |
+| `M16-3` | §5 第 3、4 条 | 真实归档 **28/28** PASS；`--selftest` **四例**（合规 expert/scholar 通过 + 空报告被拒 + 被引用证据缺失被拒且仅此一项）；交叉引用为**双向**（点名 + 落地） | `verify_archive.py` | ☐ |
 | `M16-4` | 打开 `agents/runs/run-2026-09-12-provider-refresh-001/` | 四件齐备：`tech-research.report.md`、`context.md`、`reasoning.md`、`evidence/01..08-*.md`；报告含 **§7 证据索引表**；每个 evidence 文件含五字段（`url`/`tier`/`fetched_at`/`fetch_status`/`supports`）+ **verbatim 原文引用块** | 该归档目录 | ☐ |
 | `M16-5` | 看报告 §7 → 任选一行 → 打开对应 evidence 文件 | 能"引经据典"逐字回溯：例如 report 里 `qwen3.5-omni-plus` 的结论可定位到 `evidence/02-help-aliyun-com-zh-model-studio-models.md` 的 verbatim 段（阿里云『图像与视频理解』列表） | 报告 + evidence | ☐ |
 
@@ -228,7 +230,7 @@ providers: 4（间隔 14 天）
 | `B-11` | 官网不可达 | 看 `provider_refresh_status.json` 的 `openai`（403） | **旧文件逐字节保留** + 状态记 `error`；不写坏文件 | providers ⑩ | ☐ |
 | `B-12` | 非法 provider 文件 | `verify_providers.py`（§5 第 1 条，**0 成本**）自动注入：坏 JSON / 缺 model / name 不符 | 只跳过该文件并**给出原因**，其余 provider 照常可用 | providers ④ | ☐ |
 | `B-13` | 未知 provider | `verify_providers.py` 自动 | `ValueError` 并列出可选值（含自定义来源提示） | providers ⑦ | ☐ |
-| `B-14` | 归档缺件/空证据 | 复制一份归档到临时目录 → 删 `evidence/` 一个文件（或清空内容）→ 跑 §5 第 3 条命令 | **判 FAIL 并指明缺件**（`verify_archive.py --selftest` 已固化该反证） | archive selftest | ☐ |
+| `B-14` | 归档缺件 / **悬空引用** | **已预置负例样本**（走查前预跑生成）：`agents\runs\_acceptance-scratch-2026-09-20\archive-missing-evidence`（= 首跑归档副本，删掉了被报告 §7 引用的 `evidence/06-*.md`）→ 直接跑 `.\.venv\Scripts\python.exe .\verify\verify_archive.py .\agents\runs\_acceptance-scratch-2026-09-20\archive-missing-evidence --depth expert` | **判 FAIL 并指明缺件**：`FAIL: 索引表点名的 evidence 文件全部存在 dangling=['06-platform-openai-com-docs-guides-embeddings.md']`，退出 1。另有同类负例 `e-dangling-reference`（报告引用不存在的文件名）。⚠ **该格 09-20 预跑曾误判 PASS（缺陷），已修**，见 §10.A | 走查修复 + `--selftest` 第 4 例 | ☐ |
 | `B-15` | 深度阈值可配 | 换 `--depth quick`（quick 档豁免 evidence 门禁）/ `expert` | 判据随深度变化，**阈值不写死** | archive `--depth` | ☐ |
 
 ---
@@ -250,7 +252,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-frontend.ps1    # 端�
 
 | 编号 | 操作 | 通过判据 | 判定 |
 |---|---|---|---|
-| `G-1` | `node .\verify\gui_check_s4.mjs` | **光标三断言**（中部插入 / 绝对位置 / 连续编辑）+ **provider 联动四断言**（下拉含 openrouter / 切 dashscope 带出 / 切 deepseek 删除 `embedding_model` / 自动提示含"多语言"）逐行均 PASS | ☐ |
+| `G-1` | `node .\verify\gui_check_s4.mjs` | **光标三断言**（中部插入 / 插入后光标位置 232 / 连续编辑）+ **provider 联动四断言**（下拉四项含 `openrouter` / 切 `openrouter` 带出 `api_base`+`model` 且**不写** `embedding_model` / 切 `deepseek` 同上 / 自动提示含"多语言"）逐行均 PASS | ☐ |
 | `G-2` | `node .\verify\gui_check_config_schema.mjs` | `US-13.1 defaults-derived-from-schema: PASS`（表单默认值全部由 schema 派生，无手写字面量） | ☐ |
 | `G-3` | 页面手动：Config 节点 → provider 下拉切 `dashscope` / `deepseek` | 切 dashscope 带出 `openai/qwen3.5-omni-plus`（**你本轮拍板的新模型**）与 `openai/text-embedding-v4`；切回 deepseek 时 `embedding_model` 被删除 | ☐ |
 | `G-4` | 手动：Config 表单温度填 `5` | 字段红框 + 错误文案（防抖约 1 秒）；清空后消失 | ☐ |
@@ -294,7 +296,17 @@ Invoke-RestMethod http://127.0.0.1:8787/api/providers | ConvertTo-Json -Depth 4
 
 ---
 
-## 十一、判定汇总（回传用）
+### 10.A 走查预跑发现并已闭环的项（2026-09-20）
+
+> 你在走查前，我用**变异测试**（拿真实归档做负例）过了一遍门禁，发现 1 个真缺陷并已修复闭环。这格现在应该是 PASS，且**反证是可复现的**。
+
+| 发现 | 证据（修复前 → 修复后） | 处置 |
+|---|---|---|
+| M16 归档门禁的交叉引用**只有单向**：报告点名的证据文件缺失/悬空时不判 FAIL（违反 spec 归档契约 "a citation without an evidence file is a violation"）；自带"缺件"负例实为**空报告**，故自检长期假绿灯 | 删掉被引用的 `evidence/06-*.md`：`ALL PASS 25/0` → `FAILED 25/1`（`dangling=['06-...']`）；报告引用不存在文件：`ALL PASS 25/0` → `FAILED 25/1`；清空证据文件两版均 FAILED（未削弱） | 已修：交叉引用改**双向**（正向点名 + 反向落地）且 `expert`/`scholar` 两档都查；`--selftest` 2→**4 例**（新增"被引用证据缺失 FAIL **且仅此一项失败**"）。复验：真实归档 **28/28**、selftest **4/4**、矩阵 40 脚本一致、离线套件 **SUITE PASSED**；另派 `run-2026-09-20-code-review-053` 独立复核该 diff |
+
+> 教训已入 `docs/3-LEARNED.MD` **1.57**：交叉引用必须双向；自检负例必须命中"被判据点名的那个失效模式"（"仅此一项失败"才是最小充分证据）。
+
+---
 
 | 区块 | 判定格数 | PASS | FAIL | 备注 |
 |---|---|---|---|---|
@@ -335,6 +347,6 @@ Invoke-RestMethod http://127.0.0.1:8787/api/providers | ConvertTo-Json -Depth 4
 | 本轮新增脚本 | `verify/run_suite.py`、`verify/verify_runner.py`、`verify/verify_providers.py`、`verify/verify_checkpoint.py`、`verify/verify_archive.py` |
 | 本轮新增/改造实现 | `paper-qa-script/provider_config.py`、`paper-qa-script/providers/*.json`、`paper-qa-script/app/orchestration.py`、`paper-qa-script/app/engine.py`、`scripts/{refresh-providers,scheduled-tasks,register-scheduled-tasks}.{py,ps1}` |
 | M16 规范与路由 | `agents/functions/tech-research.md`（v2.0.0）、`agents/fanout.json`（v5） |
-| 首跑归档（本地、gitignore） | `agents/runs/run-2026-09-12-provider-refresh-001/`（27/27 PASS） |
+| 首跑归档（本地、gitignore） | `agents/runs/run-2026-09-12-provider-refresh-001/`（28/28 PASS） |
 | 三查运行档案（本地） | `agents/runs/run-2026-09-12-{impact-assessment-048,doc-audit-049,code-review-050,code-review-051,lessons-learned-052}` |
 | 跨平台同步 | `windows` 分支（本轮交付）；`main` 待验收后经 PR 同步（排除 `docs/iteration/`；4 个 `scripts/*.sh` 删除**不**外传） |
