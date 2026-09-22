@@ -62,6 +62,25 @@ jobs:
           # 矩阵防漂移必须独立执行（verify_matrix.py 自身不参与 tier 选择）
           python verify/verify_matrix.py check
 
+      - name: Close-readiness gate for sprints that claim closure (TG-11)
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          # TG-11 ③b/M4：**谁声称已关闭，谁就必须自证**——只校验**真的写了锚点 sha** 的 Sprint 文档
+          # （D4：不对历史 Sprint 文档追溯；占位文字如"三查锚点: 待填"不算声明，故用正则而非关键词匹配）。
+          $pat = '三查锚点\s*[:：]\s*`?[0-9a-fA-F]{7,40}'
+          $checked = 0
+          foreach ($f in Get-ChildItem docs/iteration/sprint/*sprint-*.md) {
+            if (Select-String -Path $f.FullName -Pattern $pat -Quiet) {
+              Write-Host "close-readiness -> $($f.Name)"
+              python verify/verify_close_readiness.py --sprint $f.FullName
+              $checked++
+            }
+          }
+          Write-Host "close-readiness: checked $checked sprint doc(s) declaring a real anchor"
+
       - name: Build reactflow frontend
         working-directory: paper-qa-script/reactflow-paperqa-prototype/frontend
         run: |

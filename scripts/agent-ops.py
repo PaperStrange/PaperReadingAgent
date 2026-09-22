@@ -467,8 +467,18 @@ def cmd_list(args: argparse.Namespace) -> None:
         mins = _duration_minutes(r.get("started_at") or "", r.get("ended_at") or "")
         dur = f" dur={mins:.1f}m" if mins is not None else ""
         intr = f" int={r['interruptions_count']}" if r.get("interruptions_count") else ""
+        # TG-11：scope 来源必须一眼可见——自选范围（self-chosen）在 list 里高亮标记，便于审计
+        src = (r.get("scope_source") or "").strip()
+        if src == "self-chosen":
+            scope = " scope=self-chosen(!)"
+        elif src:
+            scope = f" scope={src}"
+        elif r.get("role") in _REVIEW_ROLES:
+            scope = " scope=(missing!)"
+        else:
+            scope = ""
         print(f"{r['run_id']:30s} {r['role']:20s} {r['status']:10s} "
-              f"cost={r.get('cost_est', {}).get('total')} spec={r['spec_source']} rounds={rounds}{dur}{intr}")
+              f"cost={r.get('cost_est', {}).get('total')} spec={r['spec_source']} rounds={rounds}{dur}{intr}{scope}")
     print(f"--- {len(rows)} runs ---")
 
 

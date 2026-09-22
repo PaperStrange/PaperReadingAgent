@@ -1,7 +1,7 @@
 # lint 闸门候选依赖 —— §2.4 引入前置核查（安全与数据隐患）
 
 > **状态：条件通过（不允许直接引入，须按 §5 先补两项 + 按 §6 由用户裁定取舍）**
-> **本文件 = §2.4 的一手证据台账**（原始数值由**进程级**读取 PyPI / registry.npmjs.org / api.osv.dev 得到，见 §7；收集于 2026-09-21 UTC+8）。Sprint-17 §9 引用本文件，不复制其数值。
+> **本文件 = §2.4 的一手证据台账**（原始数值由**进程级**读取 PyPI / registry.npmjs.org / api.osv.dev 得到，见 §7；收集于 **2026-09-23（UTC+8）**——文件名的 `2026-09-21` 是会话起始日期，已按 `1-WORKFLOW.MD` §3 新规加此更正、不重命名）。Sprint-17 §9 引用本文件，不复制其数值。
 > **方法学更正（重要）**：本环境 **harness 的 `web_fetch` 工具对所有域名一律返回"resolves to a non-public IP address"**（pypi.org / registry.npmjs.org / api.osv.dev / github.com / raw.githubusercontent.com 均如此），但**普通进程的网络是通的**——同机 `urllib` 直连 PyPI/npm/OSV 均返回 HTTP 200。因此本文件**不使用**任何"搜索结果标题"作为数值来源；早前"仅检索标题"的草案已改名为 `2026-09-21-lint-deps-security-check.search-only-draft.MD` 并保留为审计痕迹（差异见 §8）。
 
 ---

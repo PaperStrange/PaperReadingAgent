@@ -118,7 +118,8 @@ Sprint-16 暴露的四个管理问题（数据：日历 9 天但**只有 3 天�
 | 记录 | Sprint §9 三查记录 | Sprint §5 执行记录 + §9 明写"**此为修复验证、非二查**" |
 
 **纪律**：① 每轮必须写明 scope 与**覆盖缺口**（哪些维度没看）；② 不得把修复验证计入三查覆盖；③ 关闭前仍须按 impact-assessment 范围跑齐 一查/二查（含 main）+ lessons 步骤——**修复验证不减少任何关闭项**。
-**账本支持（TG-10）**：多轮用 `agent-ops.py round <run_id> --note ... [--output-chars N] [--interrupted --impact ...]` 追加（终态 run 也可），中断/接管用 `agent-ops.py interrupt <run_id> --reason ... --impact ...` 留痕；`list` 显示 `rounds=/dur=/int=`。
+**TG-11 补注（2026-09-23，复盘定稿）："那它凭什么 scope"必须有可执行答案**——修复验证复核的 scope **也必须声明来源**：`agent-ops.py register --scope-source self-chosen --deviation "<fix blast radius 与理由>"`（无理由 CLI 直接拒绝）；且它与关闭三查**分节记录**（Sprint §9 / §9.1），**不得混入同一节**（事故根因 R4：混节造成"覆盖存在"的错觉）。关闭前置闸门：`verify/verify_close_readiness.py`（CI 只对**声明了 `三查锚点`** 的 Sprint 文档执行）。
+**账本支持（TG-10）**：多轮用 `agent-ops.py round <run_id> --note ... [--output-chars N] [--interrupted --impact ...]` 追加（终态 run 也可），中断/接管用 `agent-ops.py interrupt <run_id> --reason ... --impact ...` 留痕；`list` 显示 `rounds=/dur=/int=` 与 `scope=`（`self-chosen(!)` 高亮、评审类缺来源标 `(missing!)`）。
 
 **fan-out 执行纪律（2026-09-12 制度化，Sprint-15/16 两次子代理无产出超时后固化）**：
 
@@ -199,6 +200,8 @@ Sprint-16 暴露的四个管理问题（数据：日历 9 天但**只有 3 天�
 | `[三查]` / `[评审]` | 内部评审（impact-assessment / doc-audit / code-review / lessons-learned）发现 | `[评审] load_state fail-open` |
 
 时间写法统一 `YYYY-MM-DD（UTC+8）`（**取网络时间校准，不得用本机时区**——本机为 UTC+9，直接取本地时间会与仓库口径差一天）；历史卡按原样保留、不回填。
+
+**日期必须每轮核验（2026-09-23 事故后补规，用户当场指出）**：新写/更新的文档日期一律取**当次**网络时间核验值（HTTP `Date` 响应头 → UTC+8），**不得沿用会话起始日期**（本次事故：跨日后仍按会话起点写 `2026-09-21`，实际已是 `2026-09-23`）。**可核判据**：文档内日期与该文件最近一次 `git log -1 --format=%cI` 的 committer 日期相差 **>1 天** → 记 `R2`（卡片内容漂移）告警并**当日更正**；更正方式为加"日期口径更正"注记，**不重命名文件**（避免链接churn）。
 
 **卡片与文档的对应关系·术语与引用纪律（2026-09-21 用户提出结构性问题后立规）**：
 
