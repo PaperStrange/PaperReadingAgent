@@ -97,6 +97,8 @@ OSV 对 `eslint-config-prettier` / `eslint-plugin-prettier` / `synckit` / `@pkgr
 3. Python 侧 `ruff`：确认无额外传递依赖，并对**最终锁定版本**再跑一次 OSV 查询。
 **判定**：命中 high/critical 且无修复版本 → 拒绝或换替代（§2.4 原文）。
 
+**Python 侧已闭合（2026-09-21，一手）**：`.venv\Scripts\python.exe -m pip download ruff==0.14.4 --no-deps -d <tmp>` → 只解析出**单个** `ruff-0.14.4-py3-none-win_amd64.whl`（13 635 380 B），**无传递依赖**；同一版本 OSV `query` = **0 条**（`POST https://api.osv.dev/v1/query`，返回 `vulns=[]`）。→ G1 的 `ruff` 满足"先查后装"，可直接进 `requirements` 类文件并 pin `0.14.4`。
+
 ### 5.2 断网实跑（第 3 项）+ 安装期脚本的复核
 - 断网实跑：在无网络环境执行一次 `verify_lint.py`（G1 交付物）并留证；若工具在断网时请求网络（更新检查等）→ **记为不通过**。
 - 安装期脚本：本轮已从 **registry 的 `versions[latest].scripts`** 判定 npm 侧 `preinstall/install/postinstall/prepare` **均不存在**（一手）；**CI 另有 `npm ci --ignore-scripts`**（`.github/workflows/ci.yml:77`，一手，注释引用 Sprint-10 调研 + `3-LEARNED` 1.31）→ 双保险。`Install-Module`（PowerShell 模块）会执行发布者代码，属"需用户批准"类；若最终引入 PSScriptAnalyzer 须走批准。
