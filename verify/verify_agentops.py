@@ -4,13 +4,13 @@
 UC-4 成本估算（价表 + chars/4 兜底 + pending_price）/ UC-5 报告输出模板解析 /
 UC-7 防双写完整性校验 / UC-9 自报上下文与成本覆盖 / UC-10 价表派生 /
 UC-11 fetch-spec sha256 命中/失配（M10）/ UC-12 账本并发锁无丢失更新（M10）/
-UC-13 fetch-prices 解析与合并优先级（M9）。
+UC-13 fetch-prices 解析与合并优先级（M9）/ UC-14 评审类 run 的 scope 来源闸门（TG-11）。
 
 运行：.venv\\Scripts\\python.exe verify\\verify_agentops.py（纯离线，隔离到临时 AGENT_OPS_DIR）
 """
 
 from __future__ import annotations
-VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1~UC-13（离线；UC-11/12=M10，UC-13=M9）', 'tier': 'offline', 'providers': [], 'est_seconds': 10, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
+VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1~UC-14（离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门）', 'tier': 'offline', 'providers': [], 'est_seconds': 10, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
 
 import json
 import os
@@ -29,7 +29,16 @@ if hasattr(sys.stdout, "reconfigure"):
 PASSED = 0
 
 
-def run(args: list[str], env: dict, check: bool = False) -> subprocess.CompletedProcess:
+def run(args: list[str], env: dict, check: bool = False, raw: bool = False) -> subprocess.CompletedProcess:
+    """跑一次 CLI。
+
+    TG-11 闸门生效后，评审类 `register` 必须声明 scope 来源；合成 fixture 不涉及真实评审范围，
+    因此默认自动补 `--scope-source self-chosen --deviation <fixture 说明>`。
+    **反向对照/负向用例必须用 `raw=True`**（否则闸门被 helper 掩盖，断言恒真）。
+    """
+    if (not raw and args and args[0] == "register" and "--scope-source" not in args
+            and "--deviation" not in args and args[args.index("--role") + 1] in {"code-review", "doc-audit"}):
+        args = [*args, "--scope-source", "self-chosen", "--deviation", "verify_agentops 合成 fixture（无真实评审范围）"]
     r = subprocess.run(
         [sys.executable, str(CLI), *args],
         capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
@@ -315,6 +324,44 @@ def main() -> int:
         ok("UC-13 manual null → scraped 兜底",
            ao2._prices_for("m") is not None and ao2._prices_for("m")["input_cost_per_token"] == 1e-9,
            "scraped fallback")
+
+        # UC-14（TG-11，Sprint-17）：评审类 run 的 scope 来源闸门（fail-closed，机器可验）
+        # 反向对照：本块断言在**未修复**实现上必须不成立（旧 CLI 无 --scope-source/--deviation 参数）
+        r = run(["register", "--role", "code-review", "--task", "nc", "--spec", "code-review@1.0.0"],
+                base_env, raw=True)
+        ok("UC-14 评审 run 无 scope 来源 → 拒绝（fail-closed）",
+           r.returncode != 0 and "scope" in (r.stdout + r.stderr), (r.stdout + r.stderr).strip()[:80])
+        r = run(["register", "--role", "code-review", "--task", "nc", "--spec", "code-review@1.0.0",
+                 "--scope-source", "impact-assessment:run-does-not-exist"], base_env, raw=True)
+        ok("UC-14 引用不存在的〇查 run → 拒绝",
+           r.returncode != 0 and "不存在" in (r.stdout + r.stderr), (r.stdout + r.stderr).strip()[:80])
+        r = run(["register", "--role", "code-review", "--task", "nc", "--spec", "code-review@1.0.0",
+                 "--scope-source", "self-chosen", "--deviation", "太短"], base_env, raw=True)
+        ok("UC-14 偏离理由过短 → 拒绝",
+           r.returncode != 0 and "过短" in (r.stdout + r.stderr), (r.stdout + r.stderr).strip()[:80])
+        run(["register", "--role", "impact-assessment", "--task", "kickoff", "--spec", "impact-assessment@1.4.2",
+             "--run-id", "run-uc14-kickoff"], base_env, check=True)
+        r = run(["register", "--role", "code-review", "--task", "ok", "--spec", "code-review@1.0.0",
+                 "--run-id", "run-uc14-review",
+                 "--scope-source", "impact-assessment:run-uc14-kickoff"], base_env, raw=True)
+        ok("UC-14 引用真实〇查 run → 放行", r.returncode == 0 and "registered" in r.stdout,
+           (r.stdout + r.stderr).strip()[:60])
+        e14 = next(x for x in json.loads(registry.read_text(encoding="utf-8"))["runs"]
+                   if x["run_id"] == "run-uc14-review")
+        ok("UC-14 scope 来源落库（可机验）", e14.get("scope_source") == "impact-assessment:run-uc14-kickoff",
+           f"scope_source={e14.get('scope_source')}")
+        r = run(["register", "--role", "code-review", "--task", "self", "--spec", "code-review@1.0.0",
+                 "--run-id", "run-uc14-self",
+                 "--deviation", "复现用户报告的按钮缺陷，只需看单个组件"], base_env, raw=True)
+        ok("UC-14 自选范围 + 偏离理由 → 放行", r.returncode == 0, (r.stdout + r.stderr).strip()[:80])
+        e14b = next(x for x in json.loads(registry.read_text(encoding="utf-8"))["runs"]
+                    if x["run_id"] == "run-uc14-self")
+        ok("UC-14 自选范围留痕（self-chosen + 中文理由不被转码）",
+           e14b.get("scope_source") == "self-chosen" and "按钮缺陷" in (e14b.get("scope_deviation") or ""),
+           f"source={e14b.get('scope_source')} dev={e14b.get('scope_deviation')}")
+        r = run(["register", "--role", "tech-research", "--task", "tr", "--spec", "tech-research@1.0.0",
+                 "--run-id", "run-uc14-research"], base_env, raw=True)
+        ok("UC-14 非评审 role 不强制 scope 来源（防假红）", r.returncode == 0, (r.stdout + r.stderr).strip()[:80])
 
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))

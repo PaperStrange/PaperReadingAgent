@@ -51,7 +51,9 @@ def main() -> int:
         run_id = "run-2026-09-21-multi-round-demo"
         spec = str(ROOT / "agents" / "functions" / "code-review.md")
 
-        res = run(["register", "--run-id", run_id, "--role", "code-review", "--spec", spec, "--start"], env)
+        # TG-11 闸门（Sprint-17）：评审类 run 必须声明 scope 来源；本脚本是合成 fixture，走显式偏离声明
+        res = run(["register", "--run-id", run_id, "--role", "code-review", "--spec", spec, "--start",
+                   "--deviation", "verify_ledger_rounds 合成 fixture（无真实评审范围）"], env)
         ok("① register 成功", res.returncode == 0 and reg.exists(), (res.stdout or res.stderr).strip()[:80])
         res = run(["finish", run_id, "--status", "succeeded", "--output-chars", "12800"], env)
         ok("① finish(succeeded) 成功", res.returncode == 0, (res.stdout or "").strip()[:80])

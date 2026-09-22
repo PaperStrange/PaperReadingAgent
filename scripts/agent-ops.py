@@ -61,6 +61,13 @@ _TRANSITIONS = {
 }
 _CHARS_PER_TOKEN = 4.0  # UC-4 兜底：无 token 上报时 tokens ≈ chars/4
 
+# TG-11（Sprint-17）：评审类 run 的 scope 来源必须可追溯。同一条规则写在 spec / workflow 里
+# 曾被整条绕过（证据：phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD），
+# 所以改成 CLI 层 fail-closed：要么引用〇查（impact-assessment）的 run，要么显式声明偏离理由。
+_REVIEW_ROLES = {"code-review", "doc-audit"}
+_SCOPE_REF_PREFIX = "impact-assessment:"
+_MIN_DEVIATION_CHARS = 10
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -230,6 +237,41 @@ def _estimate_cost(entry: dict) -> dict:
             "estimated": estimated, "pending_price": False, "model": model}
 
 
+def _validate_scope(args: argparse.Namespace, data: dict) -> tuple[str, str | None]:
+    """TG-11 闸门：评审类 run 的 scope 来源必须**机器可验**（fail-closed）。
+
+    - `--scope-source impact-assessment:<run_id>`：该 run 必须在账本中存在、role 正确，
+      且状态不为 failed/cancelled（否则其 scope 不可采信）；
+    - 自选范围（未给 scope-source，或给了 `self-chosen`）：必须给 `--deviation "<理由>"`
+      （≥ `_MIN_DEVIATION_CHARS` 字符），理由落库留痕；
+    - 非评审类 role：不强制、不制造假红。
+    """
+    source = (getattr(args, "scope_source", "") or "").strip()
+    deviation = (getattr(args, "deviation", "") or "").strip()
+    if args.role not in _REVIEW_ROLES:
+        return source, (deviation or None)
+    if source.startswith(_SCOPE_REF_PREFIX):
+        ref = source[len(_SCOPE_REF_PREFIX):].strip()
+        target = next((r for r in data["runs"] if r["run_id"] == ref), None)
+        if target is None:
+            raise SystemExit(f"scope 来源指向不存在的〇查 run：{ref!r}（fail-closed）")
+        if target.get("role") != "impact-assessment":
+            raise SystemExit(
+                f"scope 来源 {ref} 的 role={target.get('role')!r} 不是 impact-assessment（fail-closed）")
+        if target.get("status") in {"failed", "cancelled"}:
+            raise SystemExit(
+                f"scope 来源 {ref} 状态为 {target.get('status')}，其 scope 不可采信（fail-closed）")
+        return source, (deviation or None)
+    if not deviation:
+        raise SystemExit(
+            "评审类 run 必须声明 scope 来源：--scope-source impact-assessment:<run_id>；"
+            "确需自选范围时必须给 --deviation \"<理由>\"（TG-11 闸门，fail-closed）")
+    if len(deviation) < _MIN_DEVIATION_CHARS:
+        raise SystemExit(
+            f"--deviation 理由过短（{len(deviation)} < {_MIN_DEVIATION_CHARS} 字符）：请说明为何偏离〇查范围")
+    return (source or "self-chosen"), deviation
+
+
 @_with_registry_lock
 def cmd_register(args: argparse.Namespace) -> None:
     data = _load_registry()
@@ -240,11 +282,14 @@ def cmd_register(args: argparse.Namespace) -> None:
     # review 修正（Sprint-9 三查 P2）：run-id 将成为 runs/ 下的目录名，限字符集防路径穿越
     if not re.fullmatch(r"[A-Za-z0-9._-]+", run_id):
         raise SystemExit(f"run_id 含非法字符（仅允许字母数字 . _ -）：{run_id!r}")
+    scope_source, scope_deviation = _validate_scope(args, data)
     entry = {
         "run_id": run_id,
         "task_id": args.task or "",
         "role": args.role,
         "spec_source": args.spec,
+        "scope_source": scope_source,
+        "scope_deviation": scope_deviation,
         "model": args.model or "",
         "status": "running" if args.start else "queued",
         "started_at": _now() if args.start else None,
@@ -574,6 +619,10 @@ def main() -> int:
     p.add_argument("--context-input-tokens", type=int)
     p.add_argument("--context-max-tokens", type=int)
     p.add_argument("--run-id", default="")
+    p.add_argument("--scope-source", default="",
+                   help="TG-11：评审类 run 的 scope 来源，形如 impact-assessment:<run_id>")
+    p.add_argument("--deviation", default="",
+                   help="TG-11：自选/偏离〇查范围的理由（评审类 run 缺 scope-source 时必填）")
 
     p = sub.add_parser("update")
     p.add_argument("run_id")
