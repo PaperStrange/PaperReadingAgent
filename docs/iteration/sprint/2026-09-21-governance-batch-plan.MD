@@ -151,3 +151,5 @@
 | 6 | **最小化** | 能用既有工具（`verify_*.py` 自研断言、`json`/schema 校验）解决的**不引入新依赖** | — |
 
 > **注**：`PSScriptAnalyzer` 为 PowerShell 官方模块（微软）、`ruff`/`eslint`/`prettier`/`yamllint` 均为高流行度开源工具，但**上述六项仍逐条执行并留证**（用户要求"查清楚"，不接受"看起来没问题"）。
+
+> **§2.4 首轮执行结果（2026-09-21，一手证据）**：见 [`pre-research/tech/2026-09-21-lint-deps-security-check.MD`](../pre-research/tech/2026-09-21-lint-deps-security-check.MD) —— 判定 **条件通过**（无一包"六项全绿"）：**直接拒绝** `eslint-config-prettier`/`eslint-plugin-prettier`（`CVE-2025-54313` = `GHSA-f29h-pxvx-f335` HIGH，OSV 确证内嵌恶意代码）；**建议不引入** `yamllint`（GPL-3.0 + 自有 YAML 仅 1 个文件）、`eslint-plugin-react`（17 个月未发版）；**条件引入** `ruff`/`eslint`/`prettier`/`@typescript-eslint`（待补"按锁定版本复核依赖树 + 断网实跑"）；`PSScriptAnalyzer` 延后。**原始数值不在本文件复制**（TG-12 派生事实纪律）。
