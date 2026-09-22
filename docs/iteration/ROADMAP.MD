@@ -15,6 +15,7 @@
 
 - 阶段内 roadmap（原规划冻结 + 实际实录）：[`phases/refactor-analysis/roadmap.MD`](phases/refactor-analysis/roadmap.MD)
 - 阶段内 backlog 卡：F1✅(v1)/**F2 ✅（阶段 A=Sprint-11、B=Sprint-12、C=Sprint-13 全完成，转用户验收）**/F3/F4✅(起步)、R-C/R-E/R-D/R-E3（hold）、M1~M8（M1/M2/M4/M5✅、M3 用户指示未处理、M6 持续、**M7 已并入 F2**、M8 候选）+ **M9~M14（agents-infra 收口迁入）** + **F-AC13~F-AC16（2026-09-20 走查新增：点击失响应 / 复制状态串台 / 运行参数显式配置面 / checkpoint 可见性与可复现）、M18（报告时效治理）**
+- **📋 治理批规划草案（G1/G2/G3，2026-09-21，用户四项口径后成稿，待审定）**：[`sprint/2026-09-21-governance-batch-plan.MD`](sprint/2026-09-21-governance-batch-plan.MD) —— **先立规则**（TG-11 闸门 / TG-6 验收面+反向对照 / TG-13 账本测量化 / TG-14 一卡一文档 / TG-8 / TG-9）→ **载体与验证可信度**（A-M11 ① 分层提示词 / ② 四列映射表 / ⑧ 验证可信度 / ⑨ 接管判据 / ⑩ 报告↔run 绑定 + TG-12 派生事实机制）→ **观察与度量 + MM 启动**（三指标 + 红线即死 + 双盲抽查 + 插入卡成本记录）；**用户已定：拆多 Sprint 实现；达标压缩为三指标 + 红线即死（文件丢失/卡片漂移/测试假绿）；`code major` 须含"人类读得懂"标准（参考 Google Python Style Guide）；抽查由主代理按双盲执行、判断类升级用户二次检查**。
 
 ## Next（已确定方向的候选，主题级）
 
