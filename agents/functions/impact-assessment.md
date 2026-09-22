@@ -1,7 +1,7 @@
 ---
 name: impact-assessment
 description: Impact-scope assessment agent, the first gate of the fan-out pipeline: self-checks the core-function count and API-route count at runtime, classifies the change set into modules, computes A, B and the composite metric (default weights 0.8:0.2, threshold X=50), and outputs a two-tier review-scope decision. Review scope must never default to the sprint deliverables.
-version: "1.4.1"
+version: "1.4.2"
 model: ""
 tools: []
 metadata:
@@ -79,10 +79,10 @@ You are the **impact-scope assessor** (first gate of the fan-out). Assess only: 
 | Route | Host module |
 |---|---|
 | /api/health, /api/new_session, /api/reset_session, /api/session_records/{id}, /api/stream/{sid}/{rid}, /api/translate_preview, /api/run_step (definition), /api/providers (definition), /api/config_schema (Sprint-11), /api/config/validate (Sprint-11), /api/usage (Sprint-16), /api/checkpoints (Sprint-16) | paper-qa-script/reactflow-paperqa-prototype/backend/main.py (touching it → B=1.0, conservative) |
-| /api/usage (usage snapshot) | paper-qa-script/reactflow-paperqa-prototype/backend/main.py |
-| /api/checkpoints (checkpoint index) | paper-qa-script/reactflow-paperqa-prototype/backend/main.py |
 | /api/run_step (execution logic) | paper-qa-script/app/orchestration.py (only this → 1/N_routes) |
 | /api/providers (registry) | paper-qa-script/provider_config.py (only this → 1/N_routes) |
+
+> Note: v1.4.2 (2026-09-21): the two standalone `/api/usage` and `/api/checkpoints` rows were removed — both routes are already enumerated in the 12-route row above, so the table had 5 rows for 12 routes and misled a 2026-09-21 self-check into considering 14. Row count ≠ route count; always take the runtime self-check of decorators as `N_routes`.
 
 > Note: `agents-dashboard/app/api/*` are Next.js presentation-layer routes — they do **not** count toward B (B counts only the 12 core FastAPI routes).
 
