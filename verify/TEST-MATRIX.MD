@@ -43,6 +43,7 @@
 | `verify_freshness.py` | M18 v1 报告时效检测：fresh/stale/suspect 三态规则 + CLI 契约（--check/--only/重定向）+ 偏移时间解析 + 容错（离线合成 fixture） | offline | — | 8s | ¥0 | — | none |
 | `verify_index_health.py` | 索引一致性三重探针 + 损坏自愈（合成六形态，离线） | offline | — | 20s | ¥0 | — | none |
 | `verify_ledger_rounds.py` | TG-10 账本多轮次记录：round 追加（终态可用）/首轮快照保留/产出累加/累计时长/中断事件（round --interrupted 与 interrupt）/list 展示/非法 run 拒绝（离线） | offline | — | 8s | ¥0 | — | none |
+| `verify_lint.py` | G1 Python ruff 闸门：A 级 E9/F63/F7/F82 与 B 级 F401/F811/F841/E702/E711/E712/E722/W292 全仓 0；C 级 D101-103/E501 只报基线；含好坏文件反向对照自检 | offline | — | 15s | ¥0 | — | ruff |
 | `verify_local_dir.py` | F-AC3 引擎接线实证：临时目录 paper_directory → load_index → retrieve 候选来自该目录（免密：注入占位 key，链路无 LLM 调用） | offline | — | 90s | ¥0 | /api/new_session, /api/run_step | self-boots-backend |
 | `verify_provider_switch.py` | provider 切换路由实证：内置 4 家 + 自定义（端点级拒绝断言） | network | deepseek, dashscope, openai, openrouter | 30s | ¥0.1 | /api/providers | keys, network |
 | `verify_providers.py` | F-AC8 provider 一文件：文件加载/来源标记/覆盖优先级/非法文件跳过/无密钥泄漏/调研元数据契约 | offline | — | 20s | ¥0 | — |  |
@@ -52,4 +53,4 @@
 | `verify_smoke.py` | 冒烟 8 项：paperqa 导入/后端 12 路由加载/runtime_trace 目标/PDF 解析等（离线） | offline | — | 10s | ¥0 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session, /api/health, /api/providers, /api/config_schema, /api/config/validate, /api/translate_preview, /api/usage, /api/checkpoints | none |
 | `verify_usage.py` | Retro③ token 用量采集与成本换算：解析/累计/增量/价表查找/缺价不臆测/换算式/回调防裁剪（离线） | offline | — | 5s | ¥0 | — | none |
 
-共 46 个脚本：offline 15 / network 10 / gui 21。
+共 47 个脚本：offline 16 / network 10 / gui 21。

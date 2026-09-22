@@ -72,7 +72,7 @@ embedding_config={
 }
 
 from pathlib import Path  
-from paperqa.settings import AgentSettings, ParsingSettings, IndexSettings  
+from paperqa.settings import IndexSettings  
   
 # 使用绝对路径并确保路径存在  
 # [macOS original] paper_dir = Path("/Volumes/Extreme SSD/vscode_projects/PaperReading/data/pdf")

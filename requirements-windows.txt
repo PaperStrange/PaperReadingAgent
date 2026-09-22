@@ -27,3 +27,9 @@ graphviz>=0.20
 pytest>=8
 pytest-asyncio
 python-dotenv
+
+# --- 开发期 lint 闸门（G1 / 1-WORKFLOW §2.3「人类读得懂」；Sprint-17 §2.4 核查通过）---
+# 引入记录：pin 0.14.4（与 paper-qa/.pre-commit-config.yaml 的 vendored pin 一致）；
+# 一手证据：win_amd64 wheel 单文件、无传递依赖、OSV 该包任何版本 0 条
+# （见 docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD §5.1/§7）
+ruff==0.14.4
