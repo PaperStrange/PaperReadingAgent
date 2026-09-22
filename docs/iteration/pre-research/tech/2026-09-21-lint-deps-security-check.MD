@@ -101,6 +101,7 @@ OSV 对 `eslint-config-prettier` / `eslint-plugin-prettier` / `synckit` / `@pkgr
 
 ### 5.2 断网实跑（第 3 项）+ 安装期脚本的复核
 - 断网实跑：在无网络环境执行一次 `verify_lint.py`（G1 交付物）并留证；若工具在断网时请求网络（更新检查等）→ **记为不通过**。
+  **2026-09-23 实测（`ruff` 闸门）**：`HTTP_PROXY/HTTPS_PROXY/ALL_PROXY=http://127.0.0.1:9` 下 `verify/verify_lint.py` → **ALL PASS（6 断言，rc=0）**；同环境**对照探针** `urllib.request.urlopen('https://pypi.org/simple/')` 抛 `URLError`（证明代理确实生效、出网被挡）→ 闸门自身不依赖出网。**局限如实记**：这是**代理级**而非内核级断网（忽略代理的原始套接字未被验证）；G2 若要更强证据，可加 CI 网络隔离作业，或对工具链做流量断言。
 - 安装期脚本：本轮已从 **registry 的 `versions[latest].scripts`** 判定 npm 侧 `preinstall/install/postinstall/prepare` **均不存在**（一手）；**CI 另有 `npm ci --ignore-scripts`**（`.github/workflows/ci.yml:77`，一手，注释引用 Sprint-10 调研 + `3-LEARNED` 1.31）→ 双保险。`Install-Module`（PowerShell 模块）会执行发布者代码，属"需用户批准"类；若最终引入 PSScriptAnalyzer 须走批准。
 
 ---
