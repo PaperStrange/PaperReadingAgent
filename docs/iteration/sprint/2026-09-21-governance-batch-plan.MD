@@ -77,6 +77,8 @@
 
 **闸门要求**：新增 `verify/verify_lint.py`（**offline 档，纳入套件**）——① 逐语言调用上表工具（工具缺失时 **fail-closed** 或显式 `skipped` 并记原因，**不得静默跳过**）；② **反向对照**：注入一处违规（如未使用变量/缺 docstring/超长函数）→ 必须 FAIL；③ **spec 侧**：`agents/functions/code-review.md` 的 `focus` 增 `readability`，判据引用上表规范，`strictness=strict` 时每条可读性问题必须给"为什么读不懂 + 怎么改"；④ 工具能自动抓的交给工具，抓不到的（命名语义、注释质量、隐式假设）由评审按 spec 判。
 
+**§2.3 工具口径（用户 2026-09-21 裁定，详见 [`pre-research/tech/2026-09-21-lint-deps-security-check.MD`](../pre-research/tech/2026-09-21-lint-deps-security-check.MD) §6.2）**：**G1 仅 `ruff`**；`prettier` **只对新增/改动文件** `--check`（不重排历史）；`tsc --noEmit` **与** `@typescript-eslint` 都上；`yamllint` 引入（GPL-3.0 由用户接受，**仅开发期/CI 工具**，若改为分发给第三方须重新评估）；**不引入** `eslint-plugin-react`；`PSScriptAnalyzer` 延后 G2。所有新依赖按"**先查后装**"（先按锁定版本查漏洞，再安装）并留原始输出。
+
 **§2.3 首批实测实例（2026-09-21，主代理按 `(?<!\\)\|` 分列实测，同日已修）**：4 份 `phases/*/backlog.MD` 实测到**表头列数 ≠ 行内列数**的结构缺陷——① `testing-governance` 主表：表头 **6** 列、`TG-7`~`TG-14` 行为 **7** 列，末尾"卡内待产出"整列**无表头**；② `refactor-analysis` 主表：表头 6 / `F-AC13`~`F-AC16` 行 7（同形）；③ `agents-infra` A-PM/A-M 表：表头 **5** 列而行内为 **4~7** 列，并含两类**真错位**——(a) `A-PM5`/`A-M2`/`A-M5`/`A-M6` 四行**少一个"规模"格** → 其 **状态** 渲染在"规模(点)"列下、**来源** 渲染在"状态"列下；(b) `A-M9` 行的 **Sprint** 落在"来源"列下，`A-FANOUT`/`A-M1`/`A-M3`/`A-M4`/`A-M8`/`A-M11` 行的 **来源 / 卡内待产出** 落在表头之外（无对应列）。**处置**：三处表头统一为 **7 列**（`卡号｜主题｜规模(点)｜状态｜所属 Sprint｜来源/备注｜证据/卡内待产出`），4 行补"规模"`—`、3 行（`A-M7`/`A-RS`/`A-M10`）补"所属 Sprint"`—`。**判定依据**：行多于表头属**结构非法**（`markdownlint` **MD056** / ESLint markdown `table-column-count` 专治此形态），多余单元格**无表头对应、渲染行为不可保证**；缺格只有**末尾补空**兜底，**中间缺格不会被任何渲染器察觉** → 必须靠 lint。本段只以"结构非法"为处置依据，不宣称具体渲染器的取舍行为。→ 该形态是 `TG-14` 索引 lint 的**首个真实用例**：列数一致性断言必须能抓出 ①②③ 中任意一处（反向对照）。
 
 ## 3. G1 / G2 / G3 拆分（多 Sprint 实现）

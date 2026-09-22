@@ -105,14 +105,45 @@ OSV 对 `eslint-config-prettier` / `eslint-plugin-prettier` / `synckit` / `@pkgr
 
 ## 6. 需要用户裁定（6 项）
 
-| # | 问题 | 主代理建议（未答复即按此默认执行） |
-|---|---|---|
-| 1 | 是否接受"**条件通过**"中间态（先补 §5.1/§5.2 再引入），还是"未完成第 1 项一律不得引入"？ | **接受条件通过**：第 1 项可按锁定版本补做，且 ruff/prettier 已 0 告警 |
-| 2 | 闸门要"**统一格式化**"还是只"**可读性规则**"？若只要后者，`prettier` 可整体砍掉（少一个工具、少一次格式化大 diff） | 先只对**新增/改动文件**跑 `prettier --check`；若嫌吵则砍掉 |
-| 3 | `eslint-plugin-react` 是否引入？ | **不引入**（§3.4） |
-| 4 | `@typescript-eslint` 是否必要？替代方案 = 既有 `tsc --noEmit` + `tsconfig` strict（**零新增依赖**）；只有 `no-floating-promises` 这类类型感知规则不可替代 | 先把 `tsc --noEmit` 进闸门，`@typescript-eslint` 延后观察 |
-| 5 | `PSScriptAnalyzer`：7 个 `.ps1` 是否值得引入整个模块（且漏洞核查无 OSV 通道）？ | **延后到 G2**；如引入，§9 记为"第 1 项未完成" |
-| 6 | `yamllint`：接受自研 `verify_yaml.py`（~50 行），还是坚持引入 GPL-3.0 的 `yamllint`？ | **自研**（§3.5） |
+> **裁定结果（用户 2026-09-21，UTC+8）**：`L1=a` `L2=b` `L3=a` `L4=c` `L5=a` `L6=b`（答复原文：`L1=a L2=b L3=a L4=c L5=a L6=b`）。逐项后果见 §6.2。
+
+| # | 问题 | 主代理建议（未答复即按此默认执行） | **用户裁定** |
+|---|---|---|---|
+| 1 | 是否接受"**条件通过**"中间态（先补 §5.1/§5.2 再引入），还是"未完成第 1 项一律不得引入"？ | **接受条件通过**：第 1 项可按锁定版本补做，且 ruff/prettier 已 0 告警 | **a = 条件通过**（按 §6.1 的"先查后装"顺序执行） |
+| 2 | 闸门要"**统一格式化**"还是只"**可读性规则**"？若只要后者，`prettier` 可整体砍掉（少一个工具、少一次格式化大 diff） | 先只对**新增/改动文件**跑 `prettier --check`；若嫌吵则砍掉 | **b = 只查新增与改动文件** |
+| 3 | `eslint-plugin-react` 是否引入？ | **不引入**（§3.4） | **a = 不引入** |
+| 4 | `@typescript-eslint` 是否必要？替代方案 = 既有 `tsc --noEmit` + `tsconfig` strict（**零新增依赖**）；只有 `no-floating-promises` 这类类型感知规则不可替代 | 先把 `tsc --noEmit` 进闸门，`@typescript-eslint` 延后观察 | **c = 两者都上**（`tsc --noEmit` + `@typescript-eslint`） |
+| 5 | `PSScriptAnalyzer`：7 个 `.ps1` 是否值得引入整个模块（且漏洞核查无 OSV 通道）？ | **延后到 G2**；如引入，§9 记为"第 1 项未完成" | **a = 延后到 G2** |
+| 6 | `yamllint`：接受自研 `verify_yaml.py`（~50 行），还是坚持引入 GPL-3.0 的 `yamllint`？ | **自研**（§3.5） | **b = 引入 `yamllint`**（GPL-3.0 由用户接受，见 §6.2） |
+
+### 6.1 逐项详解（决策简报）
+
+**共同前提（先对齐三条，否则逐项都难判断）**
+1. 闸门要解决的是"**人类读得懂**"这条 `code major` 判据**可执行**，不是"风格统一"。判断每个工具只问一句：**它抓的是可读性，还是格式偏好？**
+2. 引入成本 ≠ 安装：每个工具 = 一条 CI 步骤 + 一份配置 + 一个 pin + **一次全仓基线（常伴随大 diff，恰是 R1/R2 盲区）** + §2.4 两项待补 + 明确的"工具缺失时 **fail-closed** 还是显式 `skipped`"策略。
+3. **只有 L1 真正卡 G1**（Python 112 文件是最大面）；**L2~L6 属 G2 面**，本轮先定方向、G2 再落，选错的成本是方向成本而非返工。
+
+| # | 选项 | 立即后果 | 建议 + 理由 |
+|---|---|---|---|
+| **L1** | (a) 条件通过 / (b) 两项补完才允许装 / (c) 不引新依赖、全自研 | (b)(c) 使 G1 只剩自研结构断言 | **(a)**，但把顺序做对：**先用"不执行安装脚本"的方式生成锁定版本清单并做 OSV 批查，通过后才真正安装**（npm：`npm install --package-lock-only --ignore-scripts` → `npm audit --json` **在无 `node_modules` 状态下**；Python：`pip download <pin> --no-deps` 取 wheel 校验依赖）。这样"第 1 项"是**先查后装**，不是绕过 |
+| **L2** | (a) 不引 / (b) 只查新增与改动文件 / (c) 全仓一次性重排 | (c) 产生全仓格式化 diff（须独立提交 + `.git-blame-ignore-revs`，否则真实改动被淹没） | **(b) 且只检查不自动写**：要的是"新代码读得懂"，不是"长得一样"；先避开大 diff 风险 |
+| **L3** | (a) 不引（只用 `eslint:recommended`）/ (b) 引 `eslint-plugin-react` / (c) 只引 `eslint-plugin-react-hooks`（**不在 §2.4 候选清单 → 需单独核查**） | (c) 多一次 §2.4 | **(a)**；若在意 hooks 依赖数组类真 bug，把 (c) 单列成 G2 小项后补核查 |
+| **L4** | (a) 只上 `tsc --noEmit`（**零新增依赖**）/ (b) 上 `@typescript-eslint` / (c) 两者 | 只有 (b) 拿得到 `no-floating-promises` 等**类型感知**规则 | **(a) 先上**；(b) 待 G2 用"是否真漏过 bug"决定——新增依赖越多，§2.4 维护面越大 |
+| **L5** | (a) 延后到 G2 / (b) 引入但只启用极小规则集（§9 显式记"第 1 项未完成"）/ (c) 自研轻量断言 | 仅服务 7 个 `.ps1`；**OSV 无 PowerShell 生态** | **(a)**；(c) 更对症——本仓 PS 事故都是**环境语义**（BOM/AMSI/退出码）而非风格，留 G2 决定 |
+| **L6** | (a) 自研 `verify_yaml.py` / (b) `yamllint`（**GPL-3.0-or-later**）/ (c) 都不做 | (b) 需你先给**许可证口径**（本仓是否分发/私有部署给第三方） | **(a)**：最小化 + 免许可证判断 + 把我们真正关心的几条钉死 |
+
+**答复方式**：`L1=a L2=b L3=a L4=a L5=a L6=a`（未答复则按上表建议执行，并在 Sprint-17 §9 记为"默认执行、可回溯"）。
+
+### 6.2 裁定后的执行清单（用户 2026-09-21 裁定：`L1=a L2=b L3=a L4=c L5=a L6=b`）
+
+| # | 裁定 | 必须做的动作 | 落批次 |
+|---|---|---|---|
+| **L1=a** | 条件通过 | ① 按"**先查后装**"顺序：`npm install --package-lock-only --ignore-scripts`（**无 `node_modules`**）→ `npm audit --json`；Python 侧 `pip download <pin> --no-deps` 确认零传递依赖；② 通过后才 `npm ci --ignore-scripts` / `pip install`；③ **原始输出入 Sprint §9**；④ 不通过则回滚并退回 (b) | **G1**（第一项任务；先做 Python/ruff 侧） |
+| **L2=b** | prettier 只查新增与改动文件 | ① `prettier --check` 的输入 = `git diff --name-only <base>...HEAD`（只含新增/改动，**不重排历史文件**）；② 只检查不自动写；③ 禁止 `eslint-config-prettier`/`eslint-plugin-prettier`（§3.1 硬约束）；④ 版本口径记明（我们用 3.9.8 vs 上游 vendored v3.6.2） | **G2** |
+| **L3=a** | 不引入 `eslint-plugin-react` | JSX 侧只用 `eslint:recommended`（如需 hooks 类规则，另开小项并补 §2.4） | **G2** |
+| **L4=c** | `tsc --noEmit` + `@typescript-eslint` **都上** | ① `tsc --noEmit`（零新依赖）先进闸门；② `@typescript-eslint` parser+plugin 同 pin `8.70.1`，走 L1 的"先查后装"；③ **补一项未核实**：`@typescript-eslint@8.70.1` 与本机 `typescript ^5` 的**支持区间**须实测（版本不匹配要显式降/升 pin） | **G2** |
+| **L5=a** | `PSScriptAnalyzer` 延后 | 本轮不引入；G2 再评估时**先解决"第 1 项无 OSV 通道"**（人工查 GitHub Advisory 并留证，或改用自研环境语义断言） | **G2**（评估） |
+| **L6=b** | 引入 `yamllint`（GPL-3.0-or-later） | ① **许可证口径由用户接受**：`yamllint` 仅作**开发期/CI 工具**、不随产品分发；② pin `1.38.0`（pure-python wheel）；③ **改判条件（必须写进 G2 记录）**：若将来项目改为**分发**（打包 `node_modules`/Python 环境给第三方、或把 lint 工具链随产品发布），GPL 问题**须重新评估**；④ 闸门仍要做"YAML 结构断言"（自有仅 `ci.yml` 1 个文件） | **G2** |
 
 ---
 
