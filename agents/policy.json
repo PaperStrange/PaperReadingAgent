@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "_comment": "TG-15：闸门政策数据（不可从 fanout.json / spec frontmatter 推导的阈值与开关）。脚本与 verify 闸门一律从这里读，禁止在代码里写政策常量。判据见 docs/iteration/phases/testing-governance/backlog.MD 的 TG-15 卡；规则条文见 docs/1-WORKFLOW.MD §3。",
+  "spec_glob": "*.md",
+  "spec_dir": "agents/functions",
+  "scope_min_deviation_chars": 10,
+  "scope_ref_sources": [
+    "impact-assessment:"
+  ],
+  "lint_paths": [
+    "paper-qa-script",
+    "verify",
+    "scripts",
+    "src"
+  ],
+  "lint_rules": {
+    "_comment": "ruff 规则分级（TG-15：原写死在 verify_lint.py）；分级理由见该脚本 docstring 与 pre-research/tech/2026-09-21-lint-deps-security-check.MD §3.2",
+    "hard_a": "E9,F63,F7,F82",
+    "hard_b": "F401,F811,F841,E702,E711,E712,E722,W292",
+    "report_only": "D101,D102,D103,E501"
+  },
+  "archive_role_prefix": "tech-research",
+  "close_gate": {
+    "scope_ref_step": "scope",
+    "coverage": {
+      "exceptions_file": "agents/policy/coverage-exceptions.json",
+      "doc_only_globs": [
+        "docs/**",
+        "*.md",
+        "agents/**/*.md"
+      ],
+      "_comment": "C3-T：覆盖默认由 run 数据计算（每个 run 的 (coverage_anchor, covers_through]），本表只登记**例外**。例外必须 sha 钉死（full 40 位）；表落后于例外集合之外 → 默认 FAIL 并逐条点名未归属 sha（失效方向反转：不静默变绿）。"
+    }
+  }
+}

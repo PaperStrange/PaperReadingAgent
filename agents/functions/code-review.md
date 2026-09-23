@@ -1,7 +1,9 @@
 ---
 name: code-review
 description: Code-review agent: reviews a branch/PR/working tree across correctness, security (including lockfile privacy-leak scan), SSOT consistency, compatibility, architecture layering and tech debt, and outputs a severity-graded findings list.
-version: "1.2.0"
+version: "1.2.2"
+scope_required: true
+coverage_window: self
 model: ""
 tools: []
 metadata:

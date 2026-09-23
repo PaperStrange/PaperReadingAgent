@@ -1,7 +1,9 @@
 ---
 name: _template-agent
 description: Template for authoring a new agent function spec. Copy to <function-name>.md, replace the placeholders, fill the five sections, bump version, run `agent-ops validate-spec`, then onboard. This file is the template itself — never register it as a runnable function.
-version: "1.0.0"
+version: "1.0.2"
+scope_required: false
+coverage_window: none
 model: ""
 tools: []
 metadata:

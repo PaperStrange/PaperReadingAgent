@@ -1,6 +1,6 @@
 {
-  "version": 5,
-  "comment": "Agent fan-out pipelines as adjustable config (dashboard-editable). Two pipelines: planning_pipeline (research before planning, auto-triggered) and sprint_close_pipeline (three-check + lessons). Conditions/order/executors are adjustable; the user watches agent impact on dev progress via the dashboard. workspace-check stays with the main agent (D2). v3: research step injects pre-research notes (docs/iteration/pre-research/, windows-only) as tech-research context. v4 (M15 domain shell): research step reserves per-domain routing — domain defaults to tech; product/marketing specs are created only when their first discussion starts (domain-governance §3). v5 (M16 research workflow): research step routes by depth tier (quick=main agent, expert/scholar=subagent), requires the evidence archive (context.md/evidence/reasoning.md) for expert+ tiers, and gates injection on verify/verify_archive.py; thresholds live in the tech-research spec Configurable Parameters, never in this file.",
+  "version": 6,
+  "comment": "Agent fan-out pipelines as adjustable config (dashboard-editable). Two pipelines: planning_pipeline (research before planning, auto-triggered) and sprint_close_pipeline (three-check + lessons). Conditions/order/executors are adjustable; the user watches agent impact on dev progress via the dashboard. workspace-check stays with the main agent (D2). v6 (TG-15): each sprint_close_pipeline step carries close_ledger/close_targets — these are the ONLY source of 'which close steps and targets are mandatory', read by verify/agent_policy.py and enforced by verify/verify_close_readiness.py (adding a step/role/branch is now a data edit, never a code edit). close_ledger=false marks a step the main agent executes without a ledger run. v3: research step injects pre-research notes (docs/iteration/pre-research/, windows-only) as tech-research context. v4 (M15 domain shell): research step reserves per-domain routing — domain defaults to tech; product/marketing specs are created only when their first discussion starts (domain-governance §3). v5 (M16 research workflow): research step routes by depth tier (quick=main agent, expert/scholar=subagent), requires the evidence archive (context.md/evidence/reasoning.md) for expert+ tiers, and gates injection on verify/verify_archive.py; thresholds live in the tech-research spec Configurable Parameters, never in this file.",
   "planning_pipeline": [
     {
       "order": 1,
@@ -27,7 +27,9 @@
       "spec": "impact-assessment",
       "task": { "change_set": "auto" },
       "condition": "always",
-      "executor": "subagent"
+      "executor": "subagent",
+      "close_ledger": true,
+      "close_targets": []
     },
     {
       "order": 2,
@@ -36,7 +38,9 @@
       "spec": "doc-audit",
       "task": { "target": "working-tree", "scope": "recommended_scope" },
       "condition": "always",
-      "executor": "subagent"
+      "executor": "subagent",
+      "close_ledger": true,
+      "close_targets": ["working-tree"]
     },
     {
       "order": 3,
@@ -48,7 +52,9 @@
         { "target": "branch:main", "scope": "recommended_scope" }
       ],
       "condition": "code_changed",
-      "executor": "subagent"
+      "executor": "subagent",
+      "close_ledger": true,
+      "close_targets": ["branch:windows", "branch:main"]
     },
     {
       "order": 4,
@@ -57,7 +63,9 @@
       "spec": "lessons-learned",
       "task": { "sprint_doc": "auto" },
       "condition": "sprint_close",
-      "executor": "subagent"
+      "executor": "subagent",
+      "close_ledger": true,
+      "close_targets": []
     },
     {
       "order": 5,
@@ -65,7 +73,9 @@
       "role": "workspace-check",
       "spec": "workspace-check",
       "condition": "always",
-      "executor": "main-agent"
+      "executor": "main-agent",
+      "close_ledger": false,
+      "close_targets": []
     }
   ]
 }

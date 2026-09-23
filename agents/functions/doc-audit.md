@@ -1,7 +1,9 @@
 ---
 name: doc-audit
 description: Documentation/knowledge-consistency audit agent: dead links, stale facts, cross-doc contradictions, docs/4-ALGORITHM.MD §12 anti-drift comparison, table integrity, README completeness (checked against the root README), "final-state-only" narration checks and time-record accuracy (timestamps); outputs must-fix / should-fix lists.
-version: "1.3.0"
+version: "1.3.2"
+scope_required: true
+coverage_window: self
 model: ""
 tools: []
 metadata:

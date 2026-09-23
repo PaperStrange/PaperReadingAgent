@@ -1,7 +1,9 @@
 ---
 name: impact-assessment
 description: Impact-scope assessment agent, the first gate of the fan-out pipeline: self-checks the core-function count and API-route count at runtime, classifies the change set into modules, computes A, B and the composite metric (default weights 0.8:0.2, threshold X=50), and outputs a two-tier review-scope decision. Review scope must never default to the sprint deliverables.
-version: "1.4.2"
+version: "1.4.4"
+scope_required: false
+coverage_window: self
 model: ""
 tools: []
 metadata:

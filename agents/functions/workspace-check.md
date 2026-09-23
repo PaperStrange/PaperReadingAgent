@@ -1,7 +1,9 @@
 ---
 name: workspace-check
 description: Workspace & functional-integrity verification handbook (executed by the main agent, never delegated): zero git residue, branch/port hygiene, pre-development cleanup, .gitignore coverage, regression suite all green.
-version: "1.2.0"
+version: "1.2.2"
+scope_required: false
+coverage_window: none
 model: ""
 tools: []
 metadata:
