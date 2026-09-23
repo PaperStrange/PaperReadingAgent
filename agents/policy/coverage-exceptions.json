@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "_comment": "C3-T：覆盖归属的**例外台账**（TG-15④，用户 2026-09-23 选型 C3-T）。覆盖**默认由 run 数据计算**（每个 run 的 coverage_anchor/covers_through），本表只登记例外。",
+  "rules": [],
+  "_rules_of_engagement": [
+    "① 例外必须 **sha 钉死**（完整 40 位十六进制）；禁止 glob/短 sha/路径模式——模式会覆盖未来提交，等于把闸门变成摆设（verify_close_readiness.py 的 exception_problems() 强制）。",
+    "② 每条例外必须写 class（变更类别）与 reason（为什么这次改动不需要被三查窗口覆盖）。",
+    "③ **表落后 = 默认 FAIL**：锚点→HEAD 出现本表与 run 窗口都未覆盖的提交时，闸门逐条点名 sha（失效方向反转：不静默变绿），并把候选行交给 `agent-ops.py close-sync` 自动生成。",
+    "④ 例外的目标是**让归属可解释**，不是让闸门变绿：同一 Sprint 内例外超过 5 条时，应在 Sprint §10 记录原因（多半说明覆盖窗口没跟上，而不是真的都该豁免）。"
+  ]
+}
