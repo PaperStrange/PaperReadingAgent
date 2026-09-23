@@ -54,6 +54,10 @@ if hasattr(sys.stdout, "reconfigure"):
 
 PASSED = 0
 
+# 说明（2026-09-23 doc-audit finding 1）：本脚本的断言语义数**不要抄进文档**——它会随新增判据变化
+# （9 → 21 → 23 → …）。文档一律写"以脚本输出的 ALL PASS (N assertions) 为准"，或在证据行里
+# 附**当时实测**的 N 与日期。手抄导致的漂移本轮已实测三次。
+
 
 def ok(name: str, cond: bool, detail: str = "") -> None:
     global PASSED
@@ -181,7 +185,9 @@ def scan_file(path: Path, exemptions: dict) -> list[dict]:
     try:
         tree = ast.parse(text)
     except SyntaxError as exc:
-        return [{"rule": "SYNTAX", "line": exc.lineno or 0, "detail": f"解析失败：{exc.msg}"}]
+        rel = path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else path.name
+        return [{"rule": "SYNTAX", "line": exc.lineno or 0, "file": rel,
+                 "detail": f"解析失败：{exc.msg}"}]
 
     detector = Detector()
     detector.visit(tree)
@@ -197,12 +203,16 @@ def scan_file(path: Path, exemptions: dict) -> list[dict]:
 
     kept: list[dict] = []
     for finding in detector.findings:
+        # **先盖 file 键再判豁免**：`file` 是 findings 的契约字段，任何消费方（`--dir` 分支、
+        # 未来的 JSON 输出、CI 解析）都按它定位。2026-09-23 doc-audit finding 5 实测：
+        # `--dir` 分支在 `f['file']` 上 KeyError 崩溃（不是它猜的"恒 return 0"）——
+        # 根因正是这里先判豁免、只对"存活项"盖键。
+        finding["file"] = rel
         if finding["line"] in {ln for start, end in fn_ranges for ln in range(start, end + 1)}:
             continue
         if any(f"'{name}'" in finding["detail"] or f"={name} " in finding["detail"]
                for name in allowed_names):
             continue
-        finding["file"] = rel
         kept.append(finding)
     return kept
 
@@ -300,6 +310,33 @@ def selfcheck() -> int:
     ok("仓库现状：scripts/** 与 verify/** 无政策硬编码", real == [],
        "clean" if not real else f"{len(real)} 条：" + "; ".join(
            f"{f['file']}:{f['line']} {f['rule']} {f['detail'][:60]}" for f in real[:5]))
+
+    # ---- 退出码断言：**用真实入口跑**，不是"读代码判断它会不会 fail-closed" ----
+    # 2026-09-23 doc-audit finding 5：`--dir` 分支被指"恒 return 0"。实测真相是它在
+    # `f['file']` 上 KeyError 崩溃（已修：scan_file 先盖 file 键）。无论哪种，**判据都必须是
+    # 子进程的真实退出码**——本轮之前只看了 return 语句，所以这个洞活着。
+    import subprocess
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        bad_dir = tmp / "with_findings"
+        clean_dir = tmp / "clean"
+        bad_dir.mkdir()
+        clean_dir.mkdir()
+        (bad_dir / "bad.py").write_text('_ROLES = {"code-review"}\n', encoding="utf-8")
+        (clean_dir / "good.py").write_text(
+            "from verify.agent_policy import load_policy\nPOLICY = load_policy()\n", encoding="utf-8")
+        probe_bad = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--dir", str(bad_dir)],
+                                   capture_output=True, text=True, encoding="utf-8", errors="replace")
+        probe_clean = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--dir", str(clean_dir)],
+                                     capture_output=True, text=True, encoding="utf-8", errors="replace")
+    ok("`--dir` 分支：有发现 → 退出码非 0（判据取子进程真实 rc，不是读代码）",
+       probe_bad.returncode != 0 and "1 findings" in probe_bad.stdout,
+       f"rc={probe_bad.returncode} out={(probe_bad.stdout + probe_bad.stderr).strip()[:80]}")
+    ok("`--dir` 分支：无发现 → 退出码 0（防假红）",
+       probe_clean.returncode == 0, f"rc={probe_clean.returncode}")
+    ok("`--dir` 分支发现项打印含 file 定位（契约字段，缺它即崩溃/无法定位）",
+       "bad.py:" in probe_bad.stdout, f"out={probe_bad.stdout.strip()[:80]}")
     return 0
 
 

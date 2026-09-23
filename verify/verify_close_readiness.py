@@ -48,6 +48,7 @@ from verify.agent_policy import (  # noqa: E402
     Attribution,
     PolicyError,
     attribution,
+    coverage_windows_from_runs,
     head_sha,
     load_coverage_exceptions,
     load_policy,
@@ -380,15 +381,15 @@ def _fixture_runs() -> list[dict]:
 
 
 def _fixture_attribution(runs: list[dict], *, exceptions: list[dict] | None = None,
-                         unowned_extra: bool = False) -> Attribution:
+                         unowned_extra: bool = False, policy: AgentPolicy | None = None) -> Attribution:
     """合成历史：锚点 = SHA_A（最旧），HEAD = SHA_D（最新），中间 SHA_B/SHA_C（新→旧 D,C,B,A）。
 
-    覆盖窗口 (SHA_A, SHA_D] 覆盖 B、C、D 三个提交。`unowned_extra=True` 时改写 ran 的窗口
+    覆盖窗口 (SHA_A, SHA_D] 覆盖 B、C、D 三个提交。`unowned_extra=True` 时改写 run 的窗口
     使它们只覆盖到 SHA_C —— 于是 SHA_D（HEAD 本身）无归属，模拟"覆盖表/窗口落后于 HEAD"。
     """
     shas = [SHA_B, SHA_C, SHA_D]
     order = {SHA_D: 0, SHA_C: 1, SHA_B: 2, SHA_A: 3}
-    windows = _windows(runs)
+    windows = coverage_windows_from_runs(runs, policy)
     if unowned_extra:
         # HEAD 之后的收尾提交（本例即 SHA_D）没有任何 run 覆盖到：锚点→HEAD 覆盖未闭环
         windows = [type(w)(run_id=w.run_id, role=w.role, anchor=SHA_A, through=SHA_C,
@@ -431,7 +432,7 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
             except PolicyError as exc:
                 print(f"CLOSE-READINESS-ERROR: {exc}")
                 return 2
-        att = attribution(ROOT, anchor, head, runs, exceptions)
+        att = attribution(ROOT, anchor, head, runs, exceptions, policy=policy)
 
     problems = evaluate(policy, sprint, runs, att=att, check_coverage=check_coverage)
     if problems:

@@ -94,6 +94,9 @@ def _as_bool(raw: str | bool | None) -> bool | None:
     return str(raw).strip().lower() in {"true", "yes", "1", "on"}
 
 
+COVERAGE_WINDOW_VALUES = ("self", "none")
+
+
 @dataclass
 class SpecRole:
     """一个角色 spec 的**声明**（数据源 2）。"""
@@ -101,11 +104,32 @@ class SpecRole:
     role: str
     path: Path
     scope_required: bool | None = None  # None = 未声明（封闭世界判为缺口）
+    coverage_window: str | None = None  # "self" | "none"；None = 未声明（同上）
     source_block: dict = field(default_factory=dict)
 
     @property
     def declared(self) -> bool:
-        return self.scope_required is not None
+        """两个声明字段都在 → 该 spec 满足封闭世界要求。
+
+        2026-09-23 doc-audit finding 2 修正：此前只把 `scope_required` 做成不变量，而 §3.1 的
+        条文明写"两个字段都必须显式声明"，且 `coverage_window` 决定该 run **是否参与 C3 覆盖计算**
+        ——也就是说缺它就没有任何东西能判定"这个 run 该不该覆盖"，这正是"文档承诺 > 实现"的形态。
+        现把两个字段一起纳入不变量。
+        """
+        return self.scope_required is not None and self.coverage_window is not None
+
+    @property
+    def undeclared_fields(self) -> list[str]:
+        missing = []
+        if self.scope_required is None:
+            missing.append("scope_required")
+        if self.coverage_window is None:
+            missing.append("coverage_window")
+        return missing
+
+    @property
+    def participates_in_coverage(self) -> bool:
+        return self.coverage_window == "self"
 
 
 @dataclass
@@ -146,7 +170,7 @@ class Policy:
 
     @property
     def undeclared_specs(self) -> list[str]:
-        """被 spec_glob 枚举到但**没写** `scope_required` 的 role（封闭世界的缺口）。"""
+        """被 spec_glob 枚举到但**没写全** `scope_required`/`coverage_window` 的 role（封闭世界缺口）。"""
         return sorted(r.role for r in self.specs.values() if not r.declared)
 
     @property
@@ -239,9 +263,15 @@ class Policy:
                     f"（{self.spec_dir}/<role>.md）")
         for role in self.undeclared_specs:
             spec = self.specs[role]
-            msg = (f"{spec.path.name} 未声明 scope_required/coverage_window"
-                   f"（封闭世界：每个角色都必须显式声明，缺声明不会让闸门放行，只会让闸门报错）")
+            msg = (f"{spec.path.name} 未声明 {'/'.join(spec.undeclared_fields)}"
+                   f"（封闭世界：每个角色都必须显式声明 scope_required 与 coverage_window，"
+                   f"缺声明不会让闸门放行，只会让闸门报错）")
             problems.append("[迁移期提示] " + msg if self.allow_undeclared else msg)
+        for role, spec in sorted(self.specs.items()):
+            if spec.coverage_window is not None and spec.coverage_window not in COVERAGE_WINDOW_VALUES:
+                problems.append(
+                    f"{spec.path.name} 的 coverage_window={spec.coverage_window!r} 非法"
+                    f"（合法值 {list(COVERAGE_WINDOW_VALUES)}）——取值错误会让该 run 静默退出 C3 覆盖计算")
         # 3. 悬空键：闸门读不到的键 = 死数据
         consumed = {
             "version", "_comment", "spec_glob", "spec_dir", "scope_min_deviation_chars",
@@ -318,6 +348,7 @@ def load_policy(root: Path | None = None, *, spec_dir: Path | None = None,
             role=role,
             path=path,
             scope_required=_as_bool(fm.get("scope_required")),
+            coverage_window=(fm.get("coverage_window") or "").strip().lower() or None,
             source_block={k: v for k, v in fm.items() if k.startswith("source")} if "source" in fm else {},
         )
     if not specs:
@@ -406,33 +437,46 @@ def order_index(shas_newest_first: list[str]) -> dict[str, int]:
     return {sha: i for i, sha in enumerate(shas_newest_first)}
 
 
-def coverage_windows_from_runs(runs) -> list[CoverageWindow]:
-    """从账本行构造覆盖窗口。**只认自动记录字段**（`coverage_anchor`/`covers_through`）。"""
+def coverage_windows_from_runs(runs, policy: "Policy | None" = None) -> list[CoverageWindow]:
+    """从账本行构造覆盖窗口。**只认自动记录字段**（`coverage_anchor`/`covers_through`）。
+
+    传入 `policy` 时按 spec 的 `coverage_window` 声明过滤：声明为 `none` 的角色
+    （如 tech-research / workspace-check）**不参与 C3 覆盖计算**——这条此前只写在文档里，
+    现由 `SpecRole.participates_in_coverage` 提供判据（doc-audit finding 2 的修法之一）。
+    """
     out: list[CoverageWindow] = []
     for r in runs:
+        role = str(r.get("role") or "")
+        if policy is not None:
+            spec = policy.specs.get(role)
+            if spec is not None and not spec.participates_in_coverage:
+                continue
         anchor = (r.get("coverage_anchor") or "").strip()
         through = (r.get("covers_through") or "").strip()
         if not anchor or not through:
             continue
         out.append(CoverageWindow(
-            run_id=str(r.get("run_id") or "?"), role=str(r.get("role") or "?"),
+            run_id=str(r.get("run_id") or "?"), role=role,
             anchor=anchor, through=through, from_run=True,
         ))
     return out
 
 
 def attribution(root: Path | None, anchor: str, head: str, runs,
-                exceptions: list[dict] | None = None) -> "Attribution":
+                exceptions: list[dict] | None = None,
+                policy: "Policy | None" = None) -> "Attribution":
     """C3 覆盖闭环：`git rev-list <anchor>..<head>` 的**每个提交**必须有归属。
 
     归属来源（三选一）：
       1. run 窗口（`coverage_anchor`/`covers_through` 自动记录）——默认路径；
       2. C3-T 例外表（sha 钉死，见 `attribution.exceptions` 校验）；
       3. `doc-only` 自动归类（改动文件**全部**命中 `doc_only_globs`）——不覆盖未来提交。
+
+    传 `policy` 时，声明 `coverage_window: none` 的角色不贡献窗口（判据同 `coverage_windows_from_runs`）。
     """
     shas = rev_list(root, anchor, head)
     order = order_index([head, *shas])
-    windows = coverage_windows_from_runs(runs)
+    windows = coverage_windows_from_runs(runs, policy)
     return Attribution(
         anchor=anchor, head=head, shas=shas, order=order, windows=windows,
         exceptions=list(exceptions or []),
