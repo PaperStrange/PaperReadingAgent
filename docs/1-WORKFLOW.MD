@@ -189,6 +189,44 @@ Sprint-16 暴露的四个管理问题（数据：日历 9 天但**只有 3 天�
 
 **边界澄清（本项目经验）**：单文件"改了目录没生效"这类**流程缺陷**，若修复需要前后端协同+新增决策规则（如 Sprint-5 的自动重跑+状态失效），属于插队 sprint；若只是文案/样式单点问题，属 Bug/维护。判断先例见 `docs/iteration/sprint/2026-08-30-sprint-4.md`（插队，**仅 windows 分支维护**）与 Sprint-5（插队，后补三查整改）。
 
+## 3.1 政策数据化：**政策写进数据文件，不写进代码**（TG-15，2026-09-23 立规）
+
+**规则**：`scripts/**` 与 `verify/**` 里的脚本**不得把政策写成常量**——角色集合、必填步骤/分支、
+覆盖路径清单、阈值、状态白名单、归档识别前缀，一律来自下列**三处数据源**。唯一守门闸门 =
+`verify/verify_no_policy_hardcode.py`（offline，纳入套件；豁免须在
+`verify/policy-hardcode-exemptions.json` 写明 `category` + `reason`，**不提供整文件豁免**）。
+
+| 数据源 | 放什么 | 例子 |
+|---|---|---|
+| `agents/fanout.json` | **流程需求**：关闭流水线有哪些步骤、每步 role、必填 target、是否产出账本 run（`close_ledger`/`close_targets`） | 加一条"安全检查"步骤 = 加一条 JSON 记录 |
+| `agents/functions/<role>.md` frontmatter | **角色属性**：`scope_required`（是否必须声明 scope 来源）、`coverage_window`（是否参与 C3 覆盖） | 新增角色 = 新建 spec + 显式声明两字段 |
+| `agents/policy.json` | **阈值与开关**：偏离理由最小长度、scope 引用前缀、覆盖路径清单、ruff 规则分级、归档识别前缀、C3-T 例外表路径与 doc-only 规则 | 调阈值 = 改一个数字 |
+| `agents/policy/coverage-exceptions.json` | **C3-T 覆盖例外**：sha 钉死 + class + reason（表落后 → 闸门默认 FAIL 并点名） | 见该文件 `_rules_of_engagement` |
+
+**三条不变式**（`verify/verify_close_readiness.py` 的判据，取代原先"按角色逐条写死"）：
+
+- **C1 声明完备**——凡产出评审结论的 run 必须有 scope 声明（外部引用或自选理由）；
+- **C2 指涉可核**——任何外部引用必须解析到"存在且处于可用终态"的对象；账本出现**无 spec 的 role** 即 FAIL（**不认角色名**）；
+- **C3 覆盖闭环**——`git rev-list <锚点>..HEAD` 的**每个提交**必须有归属（run 窗口 / 例外表 / doc-only）。
+
+**为什么"删声明"绕不过去（封闭世界）**：闸门枚举 spec 目录（不由政策自证），
+**每个 spec 必须显式声明** `scope_required`/`coverage_window`——缺声明是**报错**而非放行；
+`fanout.json` 的每个步骤 role 必须有 spec；`policy.json` 出现无人读取的键也算漂移（死数据）。
+该自检由 `verify/agent_policy.py::closure_problems()` 提供，并在两个闸门的"自检 ⓪"里断言为空。
+
+**锚点自动化（不再手抄）**：`agent-ops.py register` 记 `coverage_anchor`（默认当前 HEAD）、
+`finish` 记 `covers_through`，于是每个 run 自带 `(anchor, through]` 覆盖窗口；
+Sprint 文档里的 `三查锚点` 只用于**关闭判定**，不再是覆盖真源。
+
+**加东西时的正确动作（自查表）**：
+
+| 要加/改 | 该改哪里 | 不该改哪里 |
+|---|---|---|
+| 新关闭步骤或新 target | `agents/fanout.json` | 任何 `.py` |
+| 新角色 | 新建 `agents/functions/<role>.md` + 两个声明字段 | 任何角色名单常量 |
+| 调阈值/路径/规则分级 | `agents/policy.json` | 脚本里的 `MIN_*`/`PATHS` |
+| 覆盖归属例外 | `agents/policy/coverage-exceptions.json`（sha 钉死） | 闸门代码里的白名单 |
+
 **卡片来源与时间口径（2026-09-20 用户要求，全部 backlog 适用）**：卡除 卡号/主题/点/状态/Sprint 外，**来源必须带类型前缀**区分"原规划"与"后新增"，时间字段一律用**网络时间（UTC+8）**：
 
 | 前缀 | 含义 | 例 |
