@@ -10,13 +10,17 @@
 用法：
   python scripts/agent-ops.py register --role R --task T --spec "S@v" [--model M] [--start]
       [--input-chars N] [--context-input-tokens N] [--context-max-tokens N]
+      [--scope-source <prefix><run_id> | --scope-source self-chosen --deviation "<理由>"]
+      [--coverage-anchor <sha>]            # TG-15：默认自动记登记时的 HEAD
   python scripts/agent-ops.py update <run_id> --status running
       [--usage-in N --usage-out N --usage-cache-read N --usage-cache-write N]
   python scripts/agent-ops.py finish <run_id> --status succeeded|failed|cancelled
+      [--covers-through <sha>]             # TG-15：默认自动记收尾时的 HEAD
   python scripts/agent-ops.py round <run_id> --note "Round 5：..." --output-chars 12000   # TG-10① 追加轮次（终态也可）
   python scripts/agent-ops.py interrupt <run_id> --reason "端口争用，让出 8787" --impact "round-3 顺延至 round-4"  # TG-10②
       [--output-chars N] [--result-file PATH] [--cost-override X] [--estimate-mode chars]
   python scripts/agent-ops.py list [--status S] [--role R] [--limit N]
+  python scripts/agent-ops.py close-sync --sprint <sprint.md> [--write] [--fail-on-unowned]   # TG-15⑤ 覆盖候选生成
   python scripts/agent-ops.py validate-spec <file.md>
   python scripts/agent-ops.py fetch-spec <file.md> [--offline]
   python scripts/agent-ops.py parse-report <file.md>
@@ -25,6 +29,9 @@
 状态机（UC-3）：queued -> running -> succeeded|failed|cancelled；非法流转拒绝。
 成本估算（UC-4）：cost = usage x prices.json 单价（含 cache 分列）；无 usage 时按
   input_chars/4、output_chars/4 兜底并标 estimated=true；价表缺该模型 → pending_price。
+政策（TG-15）：**角色集合 / 阈值 / 覆盖路径 / 关闭步骤 一律来自数据文件**
+  （agents/fanout.json + agents/functions/*.md frontmatter + agents/policy.json），
+  本文件不得再出现政策常量；加载器 verify/agent_policy.py，规则见 docs/1-WORKFLOW.MD §3。
 """
 from __future__ import annotations
 
@@ -64,9 +71,49 @@ _CHARS_PER_TOKEN = 4.0  # UC-4 兜底：无 token 上报时 tokens ≈ chars/4
 # TG-11（Sprint-17）：评审类 run 的 scope 来源必须可追溯。同一条规则写在 spec / workflow 里
 # 曾被整条绕过（证据：phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD），
 # 所以改成 CLI 层 fail-closed：要么引用〇查（impact-assessment）的 run，要么显式声明偏离理由。
-_REVIEW_ROLES = {"code-review", "doc-audit"}
-_SCOPE_REF_PREFIX = "impact-assessment:"
-_MIN_DEVIATION_CHARS = 10
+#
+# TG-15（Sprint-17 D2）：**角色集合与阈值不再写在这里**——原先的 `_REVIEW_ROLES`/`_MIN_DEVIATION_CHARS`
+# 与本文件外的 3 份副本一起构成"加角色要改代码"的硬编码面。现在全部来自数据：
+#   agents/fanout.json（关闭流水线步骤/targets）+ 各 spec frontmatter 的 scope_required/coverage_window
+#   + agents/policy.json（阈值与开关）。加载器见 verify/agent_policy.py；规则见 1-WORKFLOW.MD §3。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from verify.agent_policy import load_policy, parse_frontmatter  # noqa: E402
+
+_POLICY = None
+
+
+def policy():
+    """懒加载政策（首次调用时读盘；缺文件 → PolicyError，退出码 2，不静默回落常量）。"""
+    global _POLICY
+    if _POLICY is None:
+        _POLICY = load_policy()
+    return _POLICY
+
+
+def _review_roles() -> set[str]:
+    """凡产出评审结论的角色（= spec 声明 scope_required: true）→ 其 run 必须有 scope 声明（C1）。"""
+    return policy().review_roles
+
+
+def _scope_ref_prefixes() -> tuple[str, ...]:
+    return policy().scope_ref_sources
+
+
+def _allowed_exit_states() -> set[str]:
+    """允许的 exit 值 = 状态机的终态集合聚合（政策数据，替代原先写死的状态白名单）。"""
+    out: set[str] = set()
+    for nxt in _TRANSITIONS.values():
+        out |= {s for s in nxt if s in _TERMINAL}
+    return out or set(_TERMINAL)
+
+
+def _git_head() -> str:
+    """当前 HEAD（锚点自动化用）。非 git 环境返回空串（不阻断记账）。"""
+    from verify.agent_policy import head_sha
+
+    return head_sha(REPO_ROOT)
+
 
 
 def _now() -> str:
@@ -237,39 +284,58 @@ def _estimate_cost(entry: dict) -> dict:
             "estimated": estimated, "pending_price": False, "model": model}
 
 
-def _validate_scope(args: argparse.Namespace, data: dict) -> tuple[str, str | None]:
-    """TG-11 闸门：评审类 run 的 scope 来源必须**机器可验**（fail-closed）。
+def parse_scope_ref(source: str, prefixes: tuple[str, ...]) -> str | None:
+    """从 `--scope-source` 里解析出被引用的 run_id（**纯函数**，供断言直接驱动）。
 
-    - `--scope-source impact-assessment:<run_id>`：该 run 必须在账本中存在、role 正确，
+    识别规则取自政策数据 `scope_ref_sources`（如 `"impact-assessment:"`）。刻意**不硬编码**
+    "引用〇查"：C2 不变式要求"任何外部引用必须解析到存在且终态可用的对象，**不认角色名**"——
+    因此这里只认前缀契约，被引用对象是什么角色由 `_validate_scope` 查账本后判定。
+    """
+    for prefix in prefixes:
+        if source.startswith(prefix):
+            return source[len(prefix):].strip()
+    return None
+
+
+def _validate_scope(args: argparse.Namespace, data: dict) -> tuple[str, str | None]:
+    """TG-11 闸门（TG-15 起数据驱动）：评审类 run 的 scope 来源必须**机器可验**（fail-closed）。
+
+    - `--scope-source <prefix><run_id>`：该 run 必须在账本中存在、其 spec 必须声明可作 scope 来源，
       且状态不为 failed/cancelled（否则其 scope 不可采信）；
     - 自选范围（未给 scope-source，或给了 `self-chosen`）：必须给 `--deviation "<理由>"`
-      （≥ `_MIN_DEVIATION_CHARS` 字符），理由落库留痕；
+      （长度下限取自 `agents/policy.json::scope_min_deviation_chars`），理由落库留痕；
     - 非评审类 role：不强制、不制造假红。
     """
     source = (getattr(args, "scope_source", "") or "").strip()
     deviation = (getattr(args, "deviation", "") or "").strip()
-    if args.role not in _REVIEW_ROLES:
+    pol = policy()
+    if args.role not in pol.review_roles:
         return source, (deviation or None)
-    if source.startswith(_SCOPE_REF_PREFIX):
-        ref = source[len(_SCOPE_REF_PREFIX):].strip()
+    ref = parse_scope_ref(source, pol.scope_ref_sources)
+    if ref is not None:
         target = next((r for r in data["runs"] if r["run_id"] == ref), None)
         if target is None:
-            raise SystemExit(f"scope 来源指向不存在的〇查 run：{ref!r}（fail-closed）")
-        if target.get("role") != "impact-assessment":
+            raise SystemExit(f"scope 来源指向不存在的 run：{ref!r}（fail-closed，C2 指涉可核）")
+        # C2：被引用对象必须"存在且处于可用终态"——不认角色名，只认账本事实 + spec 声明
+        if target.get("role") not in pol.specs:
             raise SystemExit(
-                f"scope 来源 {ref} 的 role={target.get('role')!r} 不是 impact-assessment（fail-closed）")
+                f"scope 来源 {ref} 的 role={target.get('role')!r} 没有对应 spec（fail-closed，C2）")
         if target.get("status") in {"failed", "cancelled"}:
             raise SystemExit(
                 f"scope 来源 {ref} 状态为 {target.get('status')}，其 scope 不可采信（fail-closed）")
         return source, (deviation or None)
     if not deviation:
         raise SystemExit(
-            "评审类 run 必须声明 scope 来源：--scope-source impact-assessment:<run_id>；"
-            "确需自选范围时必须给 --deviation \"<理由>\"（TG-11 闸门，fail-closed）")
-    if len(deviation) < _MIN_DEVIATION_CHARS:
+            "评审类 run 必须声明 scope 来源：--scope-source "
+            + " 或 ".join(pol.scope_ref_sources)
+            + "<run_id>；确需自选范围时必须给 --deviation \"<理由>\"（TG-11 闸门，fail-closed；"
+              "角色清单与阈值来自 agents/policy.json + spec frontmatter，见 TG-15）")
+    if len(deviation) < pol.scope_min_deviation_chars:
         raise SystemExit(
-            f"--deviation 理由过短（{len(deviation)} < {_MIN_DEVIATION_CHARS} 字符）：请说明为何偏离〇查范围")
+            f"--deviation 理由过短（{len(deviation)} < {pol.scope_min_deviation_chars} 字符）："
+            "请说明为何偏离〇查范围")
     return (source or "self-chosen"), deviation
+
 
 
 @_with_registry_lock
@@ -283,6 +349,15 @@ def cmd_register(args: argparse.Namespace) -> None:
     if not re.fullmatch(r"[A-Za-z0-9._-]+", run_id):
         raise SystemExit(f"run_id 含非法字符（仅允许字母数字 . _ -）：{run_id!r}")
     scope_source, scope_deviation = _validate_scope(args, data)
+    # TG-15 ③ 锚点自动化：run 登记时自动记覆盖锚点（= 登记时的 HEAD），无需人往 Sprint 文档手抄。
+    # `--coverage-anchor` 可显式覆盖（补录历史 run / fixture）；非 git 环境回落空串（不阻断记账）。
+    pol = policy()
+    spec = pol.specs.get(args.role)
+    coverage_window = None
+    if spec is not None:
+        fm = parse_frontmatter(spec.path)
+        coverage_window = (fm.get("coverage_window") or "").strip() or None
+    coverage_anchor = (getattr(args, "coverage_anchor", "") or "").strip() or _git_head()
     entry = {
         "run_id": run_id,
         "task_id": args.task or "",
@@ -290,6 +365,10 @@ def cmd_register(args: argparse.Namespace) -> None:
         "spec_source": args.spec,
         "scope_source": scope_source,
         "scope_deviation": scope_deviation,
+        # TG-15：覆盖窗口为**自动记录**字段；covered(run) = (coverage_anchor, covers_through]
+        "coverage_anchor": coverage_anchor,
+        "coverage_window": coverage_window,
+        "covers_through": None,
         "model": args.model or "",
         "status": "running" if args.start else "queued",
         "started_at": _now() if args.start else None,
@@ -353,6 +432,10 @@ def cmd_finish(args: argparse.Namespace) -> None:
         raise SystemExit(f"非法流转 {r['status']} -> {args.status}（finish 仅允许 running -> terminal）")
     r["status"] = args.status
     r["ended_at"] = _now()
+    # TG-15 ③：收尾时记录覆盖上界（= 收尾时的 HEAD）——此前"三查锚点"要人往 Sprint 文档手抄，
+    # 抄漏/抄错没有任何装置能发现；改为 run 自动记录后，闸门直接读账本，文档不再是覆盖真源。
+    r["covers_through"] = (getattr(args, "covers_through", "") or "").strip() or _git_head() or r.get("covers_through")
+
     if args.output_chars is not None:
         r["output_chars"] = args.output_chars
     if args.error:
@@ -473,13 +556,89 @@ def cmd_list(args: argparse.Namespace) -> None:
             scope = " scope=self-chosen(!)"
         elif src:
             scope = f" scope={src}"
-        elif r.get("role") in _REVIEW_ROLES:
+        elif r.get("role") in _review_roles():
             scope = " scope=(missing!)"
         else:
             scope = ""
+        # TG-15：覆盖窗口（锚点自动化）——短 sha 便于审计，缺字段标 none 而不是留空
+        cov = ""
+        if r.get("coverage_window"):
+            anchor = (r.get("coverage_anchor") or "")[:8] or "none"
+            through = (r.get("covers_through") or "")[:8] or "open"
+            cov = f" cov={anchor}..{through}"
         print(f"{r['run_id']:30s} {r['role']:20s} {r['status']:10s} "
-              f"cost={r.get('cost_est', {}).get('total')} spec={r['spec_source']} rounds={rounds}{dur}{intr}{scope}")
+              f"cost={r.get('cost_est', {}).get('total')} spec={r['spec_source']} rounds={rounds}{dur}{intr}{scope}{cov}")
     print(f"--- {len(rows)} runs ---")
+
+
+_ANCHOR_RE = re.compile(r"\**三查锚点\**\s*[:：]\s*`?([0-9a-fA-F]{7,40})`?")
+
+
+def cmd_close_sync(args: argparse.Namespace) -> None:
+    """TG-15 ⑤：生成 C3 覆盖候选行——把"人肉判断哪个提交没被覆盖"变成机器给清单、人只挑类别。
+
+    输出（不写盘，除非 `--write`）：
+      ① 每个 run 的覆盖窗口（账本自动记录）；
+      ② 锚点→HEAD 每个提交的归属（run 窗口 / 例外 / doc-only 自动归类 / **UNOWNED**）；
+      ③ 未归属提交的候选例外 JSON 片段（`doc-only` 已自动归类，其余待人选类别 + 写理由）。
+
+    `--fail-on-unowned` 时存在未归属提交即退出 1（供 CI/关闭前置使用）。
+    """
+    doc = Path(args.sprint)
+    if not doc.is_file():
+        raise SystemExit(f"CLOSE-SYNC-ERROR: Sprint 文档不存在：{doc}（fail-closed）")
+    text = doc.read_text(encoding="utf-8", errors="replace")
+    m = _ANCHOR_RE.search(text)
+    if not m:
+        raise SystemExit(
+            "CLOSE-SYNC-ERROR: Sprint 文档未声明 `三查锚点: <sha>`（fail-closed）。"
+            "TG-15 ③ 起锚点由 run 自动记录，但**关闭判定**仍需一个显式锚点：先在 §9.1 写入二查覆盖到的 HEAD。")
+    anchor = m.group(1)
+    head = _git_head()
+    pol = policy()
+    data = _load_registry()
+    exc_path = REPO_ROOT / pol.close_gate["coverage"]["exceptions_file"]
+    from verify.agent_policy import attribution, load_coverage_exceptions
+
+    exceptions = load_coverage_exceptions(exc_path)
+    att = attribution(REPO_ROOT, anchor, head, data.get("runs", []), exceptions)
+    globs = tuple(pol.close_gate["coverage"].get("doc_only_globs") or ())
+
+    print(f"close-sync: anchor={anchor[:10]} head={head[:10]} commits={len(att.shas)} "
+          f"windows={len(att.windows)} exceptions={len(att.exceptions)}")
+    for line in att.report_lines(globs):
+        print("  " + line)
+
+    unowned = att.unowned(globs)
+    doconly = [s for s in att.shas if att.owner(s, globs) == "doc-only"]
+    if doconly:
+        print(f"\n自动归类 doc-only（改动文件全部命中 doc_only_globs，{len(doconly)} 个）：")
+        from verify.agent_policy import commit_subject as _subject
+
+        for sha in doconly[:10]:
+            print(f"  {sha[:10]}  {_subject(REPO_ROOT, sha)[:70]}")
+    if unowned:
+        from verify.agent_policy import commit_subject
+
+        candidates = [
+            {"sha": sha, "class": "CHANGE-CLASS?", "reason": "",
+             "subject": commit_subject(REPO_ROOT, sha), "files": att.files_of(sha)[:5]}
+            for sha in unowned
+        ]
+        print(f"\n未归属提交 {len(unowned)} 个 → 候选例外（人只挑 class + 写 reason）：")
+        print(json.dumps({"rules": candidates}, ensure_ascii=False, indent=2))
+        if args.write:
+            out = REPO_ROOT / "agents" / "runtime" / "coverage-candidates.json"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json.dumps({"anchor": anchor, "head": head, "rules": candidates},
+                                      ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"\n已写出候选：{out}")
+    else:
+        print("\n覆盖闭环：锚点→HEAD 的每个提交都有归属 ✔")
+
+    if args.fail_on_unowned and unowned:
+        raise SystemExit(1)
+
 
 
 def cmd_validate_spec(args: argparse.Namespace) -> None:
@@ -633,6 +792,8 @@ def main() -> int:
                    help="TG-11：评审类 run 的 scope 来源，形如 impact-assessment:<run_id>")
     p.add_argument("--deviation", default="",
                    help="TG-11：自选/偏离〇查范围的理由（评审类 run 缺 scope-source 时必填）")
+    p.add_argument("--coverage-anchor", default="",
+                   help="TG-15：覆盖窗口下界 sha（默认 = 登记时的 HEAD，自动记录）")
 
     p = sub.add_parser("update")
     p.add_argument("run_id")
@@ -653,6 +814,8 @@ def main() -> int:
     p.add_argument("--usage-out", type=int)
     p.add_argument("--usage-cache-read", type=int)
     p.add_argument("--usage-cache-write", type=int)
+    p.add_argument("--covers-through", default="",
+                   help="TG-15：覆盖窗口上界 sha（默认 = 收尾时的 HEAD，自动记录）")
 
     p = sub.add_parser("list")
     p.add_argument("--status")
@@ -675,6 +838,12 @@ def main() -> int:
     p.add_argument("--impact", default="")
     p.add_argument("--by", default="main-agent")
 
+    p = sub.add_parser("close-sync",
+                       help="TG-15⑤：生成 C3 覆盖候选（未归属提交 + 改动文件 + doc-only 自动归类）")
+    p.add_argument("--sprint", required=True, help="当前 Sprint 文档路径（读其中的 `三查锚点: <sha>`）")
+    p.add_argument("--write", action="store_true", help="把候选例外写到 agents/runtime/coverage-candidates.json")
+    p.add_argument("--fail-on-unowned", action="store_true", help="存在未归属提交即退出 1（CI/关闭前置）")
+
     p = sub.add_parser("validate-spec")
     p.add_argument("spec_file")
     p = sub.add_parser("fetch-spec")
@@ -689,7 +858,7 @@ def main() -> int:
         "register": cmd_register, "update": cmd_update, "finish": cmd_finish,
         "list": cmd_list, "validate-spec": cmd_validate_spec, "fetch-spec": cmd_fetch_spec,
         "parse-report": cmd_parse_report, "prices-derive": _derive_prices,
-        "round": cmd_round, "interrupt": cmd_interrupt,
+        "round": cmd_round, "interrupt": cmd_interrupt, "close-sync": cmd_close_sync,
     }[args.cmd](args)
     return 0
 

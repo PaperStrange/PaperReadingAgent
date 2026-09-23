@@ -35,6 +35,22 @@ DEFAULT_RUNS = ROOT / "agents" / "runs"
 DEFAULT_PROVIDERS = ROOT / "paper-qa-script" / "providers"
 DEFAULT_STATE = ROOT / "agents" / "runtime" / "report_freshness.json"
 
+# TG-15：「哪些归档算调研报告」是**政策**（原先写死 `startswith("tech-research")`），
+# 改从 agents/policy.json 读 `archive_role_prefix`——换/加调研类 role 只改数据。
+sys.path.insert(0, str(ROOT))
+
+from verify.agent_policy import load_policy  # noqa: E402
+
+_ARCHIVE_PREFIX: str | None = None
+
+
+def archive_prefix() -> str:
+    """调研归档的报告名前缀（政策数据；缺失 → PolicyError，不静默回落硬编码字符串）。"""
+    global _ARCHIVE_PREFIX
+    if _ARCHIVE_PREFIX is None:
+        _ARCHIVE_PREFIX = load_policy().archive_role_prefix
+    return _ARCHIVE_PREFIX
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
@@ -185,8 +201,9 @@ def _analyze_archive(run_dir: Path, providers: dict[str, dict], refresh_toleranc
 
     跳过理由：其它 role 的报告引用的是项目文档（`1-WORKFLOW.MD` 之类），与"provider 官网依据"
     的时效无关；把它们纳入会产出大量假阳性（2026-09-21 实测 16 条 stale 里多数如此）。
-    判定"是调研归档" = **至少 1 篇 `evidence/*.md`**，或报告文件名以 `tech-research` 开头
-    （复核 Round 5 minor#2：只要求"有 evidence/ 目录"过宽，空目录也会被当成调研归档）。
+    判定"是调研归档" = **至少 1 篇 `evidence/*.md`**，或报告文件名以政策里的
+    `archive_role_prefix` 开头（TG-15：该前缀来自 `agents/policy.json`，不再写死在代码里；
+    复核 Round 5 minor#2：只要求"有 evidence/ 目录"过宽，空目录也会被当成调研归档）。
     """
     report = _find_report(run_dir)
     if report is None:
@@ -194,7 +211,7 @@ def _analyze_archive(run_dir: Path, providers: dict[str, dict], refresh_toleranc
     ev_dir = run_dir / "evidence"
     text = report.read_text(encoding="utf-8", errors="replace")
     ev_files = sorted(p for p in ev_dir.glob("*.md") if p.is_file()) if ev_dir.is_dir() else []
-    if not (ev_files or report.name.startswith("tech-research")):
+    if not (ev_files or report.name.startswith(archive_prefix())):
         return None
 
     newest_ev_ts: float | None = None
