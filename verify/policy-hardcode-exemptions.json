@@ -10,9 +10,10 @@
     },
     {
       "file": "verify/verify_close_readiness.py",
-      "reason": "FIXTURE_SPECS = 合成政策（验证闸门自身用），角色名属于 fixture 数据而非执行政策。",
-      "category": "test-fixture-fn",
-      "functions": ["_write_fixture_policy"]
+      "reason": "FIXTURE_* 常量与 _selfcheck()/_write_fixture_policy() 内的角色名是**合成政策与反向对照样本**（验证闸门自身用），不是执行政策；真政策已全部走 load_policy()/agents/policy.json。",
+      "category": "test-fixture",
+      "names": ["FIXTURE_FANOUT", "FIXTURE_SPECS", "FIXTURE_POLICY"],
+      "functions": ["_write_fixture_policy", "_selfcheck"]
     }
   ],
   "paths": [
@@ -23,5 +24,13 @@
       "names": ["VENV_PARTS"]
     }
   ],
-  "numbers": []
+  "numbers": [],
+  "status": [
+    {
+      "file": "verify/verify_no_policy_hardcode.py",
+      "reason": "探测器自身的**词表**：用来识别'有人在代码里抄账本状态白名单'。它是检查工具的词表，不是闸门政策（账本状态机的真源已是 agents/policy.json::ledger_status，由 scripts/agent-ops.py 消费）。按 category 豁免，因此只放行本类别，不放行该文件里的其它类别发现。",
+      "category": "tool-self",
+      "categories": ["status"]
+    }
+  ]
 }

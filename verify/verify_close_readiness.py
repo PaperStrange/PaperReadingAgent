@@ -185,7 +185,7 @@ def check_c2(policy: AgentPolicy, runs: list[dict]) -> list[str]:
             if target is None:
                 problems.append(f"[C2] {r.get('run_id')} 的 scope 来源指向不存在的对象：{ref!r}")
                 break
-            if target.get("status") in {"failed", "cancelled"}:
+            if target.get("status") in set(policy._data("ledger_status")["non_credible"]):
                 problems.append(f"[C2] {r.get('run_id')} 引用的 {ref} 状态为 {target.get('status')}，"
                                 f"其 scope 不可采信")
             if target.get("role") not in policy.specs:
@@ -229,6 +229,14 @@ def check_c3(policy: AgentPolicy, sprint: dict, runs: list[dict], att: Attributi
         problems.append("[C3] 未声明三查锚点（`三查锚点: <sha>`）→ 无法判定三查是否失效")
         return problems
 
+    # **空区间 ≠ 通过**（2026-09-23 二查 critical 实测）：锚点 == HEAD 时 `rev_list` 为空集，
+    # 于是 unowned 必为空、闸门打出"覆盖闭环 ✔"——而事实是一个提交都没受检。
+    if att.empty_interval():
+        problems.append(
+            "（C3）锚点→HEAD 之间**没有任何提交受检**（锚点 == HEAD？）→ 覆盖闭环未被验证，"
+            "不得视为通过。关闭锚点应指向**二查实际覆盖到的最后一个提交**，"
+            "若确无新提交则该 Sprint 无需覆盖检查，请显式写明理由而不是留空区间")
+    problems += [f"[C3-窗口] {p}" for p in att.window_problems()]
     problems += [f"[C3-T] {p}" for p in att.exception_problems()]
 
     globs = tuple((policy.close_gate.get("coverage") or {}).get("doc_only_globs") or ())
@@ -280,6 +288,14 @@ FIXTURE_POLICY = {
     "scope_ref_sources": ["impact-assessment:"],
     "lint_paths": ["verify"],
     "archive_role_prefix": "tech-research",
+    # 状态机政策（真源 agents/policy.json::ledger_status）；fixture 也必须齐全，
+    # 否则 load_policy 的"死键/缺键"自检会把 fixture 自己判死。
+    "ledger_status": {
+        "all": ["queued", "running", "succeeded", "failed", "cancelled"],
+        "terminal": ["succeeded", "failed", "cancelled"],
+        "transitions": {"queued": ["running"], "running": ["succeeded", "failed", "cancelled"]},
+        "non_credible": ["failed", "cancelled"],
+    },
     "close_gate": {
         "scope_ref_step": "scope",
         "coverage": {"exceptions_file": "coverage-exceptions.json",

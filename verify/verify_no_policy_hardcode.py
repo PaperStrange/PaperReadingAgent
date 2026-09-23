@@ -67,10 +67,36 @@ def ok(name: str, cond: bool, detail: str = "") -> None:
 
 
 # 角色名形态：小写词 + 连字符分段（code-review / doc-audit / impact-assessment / lessons-learned）
-def role_like(word: str) -> bool:
+def role_like(word: str, *, allow_single_segment_pair: bool = False) -> bool:
+    """像"agent 角色名"。
+
+    2026-09-23 二查后收紧（实测误报 18 条）：单连字符词里混着大量**非角色**的合法字面量——
+    `self-chosen`（scope 来源值）、`doc-only`（覆盖归类）、`idx-demo`/`st-demo`（fixture 命名）。
+    因此默认要求 **≥2 个连字符**（`impact-assessment`/`lessons-learned`/`tech-research`/`agent-onboarding-review`），
+    这样单连字符的 `code-review`/`doc-audit` 只在**上下文明确指向角色**时才判
+    （`allow_single_segment_pair=True`，由调用方按变量名/比较对象名给出）。
+
+    这是一个**有意的取舍**，且写在注释里：闸门宁可"窄一点但要真"，也不要"宽到天天误报"——
+    误报会让闸门被当成噪音绕过（这正是 TG-11 事故的形态之一）。
+    """
     if "-" not in word:
         return False
-    return all(part.isidentifier() and part.islower() and part.isalpha() for part in word.split("-"))
+    parts = word.split("-")
+    if len(parts) < (2 if allow_single_segment_pair else 3):
+        return False
+    return all(part.isidentifier() and part.islower() and part.isalpha() for part in parts)
+
+
+def names_role_context(node: ast.AST | None) -> bool:
+    """该表达式是否**明确与角色相关**（名字里含 role/agent 或下标/属性名含之）。"""
+    if node is None:
+        return False
+    for sub in ast.walk(node):
+        for attr in ("id", "attr"):
+            name = getattr(sub, attr, None)
+            if isinstance(name, str) and ("role" in name.lower() or "agent" in name.lower()):
+                return True
+    return False
 
 
 def path_like(word: str) -> bool:
@@ -96,6 +122,11 @@ PATH_NAME_HINTS = ("PATH", "DIR", "ROOT", "TARGET", "GLOB")
 # 本探测器自身的内置兜底（跨平台 venv 目录名）——见 policy-hardcode-exemptions.json 的说明
 VENV_PARTS = {"Scripts", "bin"}
 
+# 探测器的**词表**（不是政策本身）：用来识别"有人在代码里抄账本状态白名单"。
+# 这是"检查工具的词表"，与"闸门政策"是两回事——所以它是本文件的常量，并在
+# policy-hardcode-exemptions.json 里以 category=tool-self 显式登记。
+LEDGER_STATUS_VALUES = {"queued", "running", "succeeded", "failed", "cancelled"}
+
 
 def _str_const(node: ast.AST) -> str | None:
     return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
@@ -107,6 +138,14 @@ def _iter_str(node: ast.AST):
     elif isinstance(node, (ast.List, ast.Tuple, ast.Set)):
         for elt in node.elts:
             yield from _iter_str(elt)
+    elif isinstance(node, ast.Dict):
+        # 2026-09-23 二查 finding：`{"code-review": 1}` 这类**字典字面量**此前完全漏检
+        # （旧实现只遍历 List/Tuple/Set）——而"角色名当 key 建表"正是最自然的写死形态。
+        for key in node.keys:
+            if key is not None:
+                yield from _iter_str(key)
+        for val in node.values:
+            yield from _iter_str(val)
 
 
 def _num_const(node: ast.AST) -> float | None:
@@ -116,11 +155,22 @@ def _num_const(node: ast.AST) -> float | None:
 
 
 class Detector(ast.NodeVisitor):
-    def __init__(self) -> None:
+    def __init__(self, known_roles: set[str] | None = None) -> None:
         self.findings: list[dict] = []
+        # **角色名词表 = 仓库里实际存在的 spec 文件名**（`agents/functions/*.md`）。
+        # 二查后收紧（实测误报：`definitely-not-a-real-model`、`run-empty-ev`、`idx-demo` 都被当角色名）：
+        # 光看"像小写连字符词"太宽；而"像角色"的真判据是**它在仓库里有对应对象**。
+        # 注意这不会造成"删 spec 即消音"：删掉 spec 会让封闭世界检查与 C2 立刻报错（见 agent_policy）。
+        self.known_roles = known_roles or set()
 
-    def _add(self, rule: str, node: ast.AST, detail: str) -> None:
-        self.findings.append({"rule": rule, "line": getattr(node, "lineno", 0), "detail": detail})
+    def _is_role(self, word: str, ctx_role: bool = False) -> bool:
+        if word in self.known_roles:
+            return True
+        return ctx_role and role_like(word, allow_single_segment_pair=True)
+
+    def _add(self, rule: str, node: ast.AST, detail: str, category: str = "policy") -> None:
+        self.findings.append({"rule": rule, "line": getattr(node, "lineno", 0),
+                              "detail": detail, "category": category})
 
     # R1 / R3：政策常量赋值
     def visit_Assign(self, node: ast.Assign) -> None:
@@ -130,8 +180,11 @@ class Detector(ast.NodeVisitor):
         names = [t.id for t in node.targets if isinstance(t, ast.Name)]
         for name in names:
             upper = name.upper()
+            # 变量名本身指向角色（`_ROLES`/`REVIEW_ROLES`/…）时，允许把单连字符词也算角色名——
+            # 否则 `_ROLES = {"code-review"}`（最经典的写死形态）会被"≥2 连字符"规则漏掉。
+            role_ctx = "ROLE" in upper or "AGENT" in upper
             strings = [s for s in _iter_str(node.value)]
-            roles = sorted({s for s in strings if role_like(s)})
+            roles = sorted({s for s in strings if self._is_role(s, role_ctx)})
             if roles and any(h in upper for h in POLICY_NAME_HINTS):
                 self._add("R1", node, f"{name} = 角色集合{roles}（政策须来自 spec frontmatter/fanout.json）")
             elif len(roles) >= 2:
@@ -139,20 +192,34 @@ class Detector(ast.NodeVisitor):
             paths = [s for s in strings if len(s) > 1 and path_like(s)]
             if len(paths) >= 2 and any(h in upper for h in PATH_NAME_HINTS):
                 self._add("R3", node, f"{name} = 路径清单{paths}（覆盖路径须来自 agents/policy.json::lint_paths）")
+            # 状态白名单（二查 finding：`_ALLOWED_STATES=[...]` 是 TG-15 明列须数据化的形态之一）
+            states = sorted({s for s in strings if s in LEDGER_STATUS_VALUES})
+            if len(states) >= 2:
+                self._add("S1", node,
+                          f"{name} = 状态白名单{states}（账本状态机须来自 agents/policy.json::ledger_status）",
+                          category="status")
             num = _num_const(node.value)
             if num is not None and any(h in upper for h in POLICY_NAME_HINTS) and "VERSION" not in upper:
                 self._add("R1", node, f"{name} = {num:g}（阈值须来自 agents/policy.json）")
         self.generic_visit(node)
 
-    # R2：成员判定字面量 —— `x in {"code-review"}` / `x not in ("doc-audit",)`
+    # R2：成员判定 / 等值判定 使用角色名字面量
     def visit_Compare(self, node: ast.Compare) -> None:
+        # 上下文提示：`role == "code-review"` / `r["role"] in {...}` 这类明确与角色相关的比较，
+        # 允许把单连字符词（code-review / doc-audit）也当角色名处理。
+        ctx_role = names_role_context(node.left)
         for op, comparator in zip(node.ops, node.comparators, strict=False):
-            if not isinstance(op, (ast.In, ast.NotIn)):
+            members = sorted({s for s in _iter_str(comparator) if self._is_role(s, ctx_role)})
+            if not members:
                 continue
-            members = sorted({s for s in _iter_str(comparator) if role_like(s)})
-            if members:
+            if isinstance(op, (ast.In, ast.NotIn)):
                 self._add("R2", node,
                           f"成员判定使用角色名字面量{members}（角色集合须来自 spec frontmatter 的 scope_required）")
+            elif isinstance(op, (ast.Eq, ast.NotEq)):
+                # 二查 finding：`if role == "code-review"` 是 TG-15 删掉的**旧版形态**，
+                # 旧实现只认 in/not-in，于是同一形态可以原样写回而不被拦。
+                self._add("R2", node,
+                          f"等值判定使用角色名字面量{members}（角色集合须来自 spec frontmatter 的 scope_required）")
         self.generic_visit(node)
 
 
@@ -161,9 +228,9 @@ class Detector(ast.NodeVisitor):
 def load_exemptions(path: Path | None = None) -> dict:
     path = path or EXEMPTIONS_PATH
     if not path.is_file():
-        return {"roles": [], "paths": [], "numbers": []}
+        return {"roles": [], "paths": [], "numbers": [], "status": []}
     data = json.loads(path.read_text(encoding="utf-8"))
-    for key in ("roles", "paths", "numbers"):
+    for key in ("roles", "paths", "numbers", "status"):
         for item in data.get(key) or []:
             if not str(item.get("category") or "").strip() or not str(item.get("reason") or "").strip():
                 raise SystemExit(
@@ -180,7 +247,18 @@ def _fn_ranges(tree: ast.AST, names: set[str]) -> list[tuple[int, int]]:
     return out
 
 
-def scan_file(path: Path, exemptions: dict) -> list[dict]:
+def known_roles() -> set[str]:
+    """仓库实际存在的角色名 = `agents/functions/*.md` 的文件名（政策数据源的目录清单）。"""
+    try:
+        spec_dir = load_policy().spec_dir
+    except Exception:  # 政策缺失时仍要能扫（否则闸门自己先崩）
+        spec_dir = ROOT / "agents" / "functions"
+    if not spec_dir.is_dir():
+        return set()
+    return {p.stem for p in spec_dir.glob("*.md")}
+
+
+def scan_file(path: Path, exemptions: dict, roles: set[str]) -> list[dict]:
     text = path.read_text(encoding="utf-8", errors="replace")
     try:
         tree = ast.parse(text)
@@ -189,17 +267,20 @@ def scan_file(path: Path, exemptions: dict) -> list[dict]:
         return [{"rule": "SYNTAX", "line": exc.lineno or 0, "file": rel,
                  "detail": f"解析失败：{exc.msg}"}]
 
-    detector = Detector()
+    detector = Detector(roles)
     detector.visit(tree)
     rel = path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else path.name
 
     allowed_names: set[str] = set()
     fn_ranges: list[tuple[int, int]] = []
-    for item in exemptions.get("roles", []) + exemptions.get("paths", []) + exemptions.get("numbers", []):
+    allowed_categories: set[str] = set()
+    for item in (exemptions.get("roles", []) + exemptions.get("paths", [])
+                 + exemptions.get("numbers", []) + exemptions.get("status", [])):
         if item.get("file") != rel:
             continue
         allowed_names |= {str(n) for n in (item.get("names") or [])}
         fn_ranges += _fn_ranges(tree, {str(f) for f in (item.get("functions") or [])})
+        allowed_categories |= {str(c) for c in (item.get("categories") or [])}
 
     kept: list[dict] = []
     for finding in detector.findings:
@@ -208,10 +289,15 @@ def scan_file(path: Path, exemptions: dict) -> list[dict]:
         # `--dir` 分支在 `f['file']` 上 KeyError 崩溃（不是它猜的"恒 return 0"）——
         # 根因正是这里先判豁免、只对"存活项"盖键。
         finding["file"] = rel
+        if finding.get("category") in allowed_categories:
+            continue
         if finding["line"] in {ln for start, end in fn_ranges for ln in range(start, end + 1)}:
             continue
-        if any(f"'{name}'" in finding["detail"] or f"={name} " in finding["detail"]
-               for name in allowed_names):
+        # 名字豁免：以 detail 的**首个词元**（`<NAME> ...`）精确匹配台账里列出的常量名。
+        # 旧实现用 `f"'{name}'" in detail or f"={name} " in detail` 反查，对
+        # `FIXTURE_FANOUT 内含多个角色名…`（无引号、无 `=`）这种文案直接漏掉 → 已改为正向取值。
+        head_token = finding["detail"].split(" ", 1)[0]
+        if head_token in allowed_names:
             continue
         kept.append(finding)
     return kept
@@ -231,8 +317,9 @@ def _is_exempted_local(node: ast.AST) -> bool:
 
 
 
-def scan(dirs: list[Path]) -> list[dict]:
+def scan(dirs: list[Path], roles: set[str] | None = None) -> list[dict]:
     exemptions = load_exemptions()
+    roles = known_roles() if roles is None else roles
     findings: list[dict] = []
     for base in dirs:
         if not base.is_dir():
@@ -242,7 +329,7 @@ def scan(dirs: list[Path]) -> list[dict]:
                 continue
             if any(part in {".venv", "node_modules"} for part in path.parts):
                 continue
-            findings += scan_file(path, exemptions)
+            findings += scan_file(path, exemptions, roles)
     return findings
 
 
@@ -252,6 +339,10 @@ INJECTIONS = {
     "roles_set.py": '_ROLES = {"code-review"}\n',
     "member_literal.py": 'def f(role):\n    return role in ("doc-audit",)\n',
     "paths_list.py": '_SCAN_PATHS = ["verify", "scripts"]\n',
+    # 二查 finding 实测的假阴性形态（旧实现全部漏检）：
+    "dict_roles.py": '_ROLE_MAP = {"code-review": 1, "doc-audit": 2}\n',
+    "eq_literal.py": 'def f(role):\n    if role == "code-review":\n        return True\n    return False\n',
+    "status_whitelist.py": '_ALLOWED_STATES = ["succeeded", "failed", "cancelled"]\n',
 }
 
 
@@ -275,6 +366,12 @@ def selfcheck() -> int:
        "R2" in by_file.get("member_literal.py", []), f"findings={by_file}")
     ok("反向对照③ 注入路径清单字面量（名字含 PATHS）→ 判违规（R3）",
        "R3" in by_file.get("paths_list.py", []), f"findings={by_file}")
+    ok("反向对照⑥ 注入**字典字面量**角色表 → 判违规（R1，二查实测旧实现漏检）",
+       "R1" in by_file.get("dict_roles.py", []), f"findings={by_file}")
+    ok("反向对照⑦ 注入**等值判定** `role == \"code-review\"` → 判违规（R2，TG-15 删掉的旧形态）",
+       "R2" in by_file.get("eq_literal.py", []), f"findings={by_file}")
+    ok("反向对照⑧ 注入**状态白名单** `_ALLOWED_STATES=[...]` → 判违规（S1）",
+       "S1" in by_file.get("status_whitelist.py", []), f"findings={by_file}")
 
     # 好样本：从政策读取的写法必须放行（防"为了过闸门把代码写坏"）
     with tempfile.TemporaryDirectory() as td:

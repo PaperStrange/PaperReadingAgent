@@ -1,6 +1,6 @@
 {
   "version": 6,
-  "comment": "Agent fan-out pipelines as adjustable config (dashboard-editable). Two pipelines: planning_pipeline (research before planning, auto-triggered) and sprint_close_pipeline (three-check + lessons). Conditions/order/executors are adjustable; the user watches agent impact on dev progress via the dashboard. workspace-check stays with the main agent (D2). v6 (TG-15): each sprint_close_pipeline step carries close_ledger/close_targets — these are the ONLY source of 'which close steps and targets are mandatory', read by verify/agent_policy.py and enforced by verify/verify_close_readiness.py (adding a step/role/branch is now a data edit, never a code edit). close_ledger=false marks a step the main agent executes without a ledger run. v3: research step injects pre-research notes (docs/iteration/pre-research/, windows-only) as tech-research context. v4 (M15 domain shell): research step reserves per-domain routing — domain defaults to tech; product/marketing specs are created only when their first discussion starts (domain-governance §3). v5 (M16 research workflow): research step routes by depth tier (quick=main agent, expert/scholar=subagent), requires the evidence archive (context.md/evidence/reasoning.md) for expert+ tiers, and gates injection on verify/verify_archive.py; thresholds live in the tech-research spec Configurable Parameters, never in this file.",
+  "comment": "Agent fan-out pipelines as adjustable config (dashboard-editable). Two pipelines: planning_pipeline (research before planning, auto-triggered) and sprint_close_pipeline (three-check + lessons). Conditions/order/executors are adjustable; the user watches agent impact on dev progress via the dashboard. workspace-check stays with the main agent (D2). v6 (TG-15): each sprint_close_pipeline step carries close_ledger — the ONLY source of 'which close steps are mandatory', read by verify/agent_policy.py and enforced by verify/verify_close_readiness.py (adding a step/role is now a data edit, never a code edit). close_ledger=false marks a step the main agent executes without a ledger run. Required close **targets** are derived from the step's own task.target / tasks[].target (single source — the earlier duplicate close_targets field was removed after review found it had zero readers while three docs called it the single source). v3: research step injects pre-research notes (docs/iteration/pre-research/, windows-only) as tech-research context. v4 (M15 domain shell): research step reserves per-domain routing — domain defaults to tech; product/marketing specs are created only when their first discussion starts (domain-governance §3). v5 (M16 research workflow): research step routes by depth tier (quick=main agent, expert/scholar=subagent), requires the evidence archive (context.md/evidence/reasoning.md) for expert+ tiers, and gates injection on verify/verify_archive.py; thresholds live in the tech-research spec Configurable Parameters, never in this file.",
   "planning_pipeline": [
     {
       "order": 1,
@@ -28,8 +28,7 @@
       "task": { "change_set": "auto" },
       "condition": "always",
       "executor": "subagent",
-      "close_ledger": true,
-      "close_targets": []
+      "close_ledger": true
     },
     {
       "order": 2,
@@ -39,8 +38,7 @@
       "task": { "target": "working-tree", "scope": "recommended_scope" },
       "condition": "always",
       "executor": "subagent",
-      "close_ledger": true,
-      "close_targets": ["working-tree"]
+      "close_ledger": true
     },
     {
       "order": 3,
@@ -53,8 +51,7 @@
       ],
       "condition": "code_changed",
       "executor": "subagent",
-      "close_ledger": true,
-      "close_targets": ["branch:windows", "branch:main"]
+      "close_ledger": true
     },
     {
       "order": 4,
@@ -64,8 +61,7 @@
       "task": { "sprint_doc": "auto" },
       "condition": "sprint_close",
       "executor": "subagent",
-      "close_ledger": true,
-      "close_targets": []
+      "close_ledger": true
     },
     {
       "order": 5,
@@ -74,8 +70,7 @@
       "spec": "workspace-check",
       "condition": "always",
       "executor": "main-agent",
-      "close_ledger": false,
-      "close_targets": []
+      "close_ledger": false
     }
   ]
 }

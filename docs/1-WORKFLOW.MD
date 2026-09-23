@@ -192,15 +192,21 @@ Sprint-16 暴露的四个管理问题（数据：日历 9 天但**只有 3 天�
 ## 3.1 政策数据化：**政策写进数据文件，不写进代码**（TG-15，2026-09-23 立规）
 
 **规则**：`scripts/**` 与 `verify/**` 里的脚本**不得把政策写成常量**——角色集合、必填步骤/分支、
-覆盖路径清单、阈值、状态白名单、归档识别前缀，一律来自下列**三处数据源**。唯一守门闸门 =
+覆盖路径清单、阈值、状态白名单、归档识别前缀，一律来自下列**四处数据源**。唯一守门闸门 =
 `verify/verify_no_policy_hardcode.py`（offline，纳入套件；豁免须在
 `verify/policy-hardcode-exemptions.json` 写明 `category` + `reason`，**不提供整文件豁免**）。
+
+> **闸门能力边界（诚实标注，2026-09-23 二查实测后补）**：该探测器是 AST 判据，能抓
+> 角色集合/字典字面量、成员与等值判定、路径清单、状态白名单；**抓不到**字符串拼接
+> （`"code-"+"review"`、`join(...)`）与一切非字面量取值。**角色名判据 = 仓库实际存在的
+> spec 文件名**（而非"像小写连字符词"——后者实测误报 18 条）。因此它**不是**完备的守门人：
+> 真正的防线是"政策只有一处真源 + 封闭世界自检"，探测器只是**回归拦截**。
 
 | 数据源 | 放什么 | 例子 |
 |---|---|---|
 | `agents/fanout.json` | **流程需求**：关闭流水线有哪些步骤、每步 role、必填 target、是否产出账本 run（`close_ledger`/`close_targets`） | 加一条"安全检查"步骤 = 加一条 JSON 记录 |
 | `agents/functions/<role>.md` frontmatter | **角色属性**：`scope_required`（是否必须声明 scope 来源）、`coverage_window`（是否参与 C3 覆盖） | 新增角色 = 新建 spec + 显式声明两字段 |
-| `agents/policy.json` | **阈值与开关**：偏离理由最小长度、scope 引用前缀、覆盖路径清单、ruff 规则分级、归档识别前缀、C3-T 例外表路径与 doc-only 规则 | 调阈值 = 改一个数字 |
+| `agents/policy.json` | **阈值与开关**：偏离理由最小长度、scope 引用前缀、覆盖路径清单、ruff 规则分级、归档识别前缀、**账本状态机**（`ledger_status`：状态集合/终态/流转/不可采信态）、C3-T 例外表路径与 doc-only 规则 | 调阈值 = 改一个数字 |
 | `agents/policy/coverage-exceptions.json` | **C3-T 覆盖例外**：sha 钉死 + class + reason（表落后 → 闸门默认 FAIL 并点名） | 见该文件 `_rules_of_engagement` |
 
 **三条不变式**（`verify/verify_close_readiness.py` 的判据，取代原先"按角色逐条写死"）：

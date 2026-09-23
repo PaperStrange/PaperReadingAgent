@@ -86,12 +86,24 @@ def parse_frontmatter(path: Path) -> dict:
     return fm
 
 
-def _as_bool(raw: str | bool | None) -> bool | None:
+def _as_bool(raw: str | bool | None, *, field: str = "?", where: str = "?") -> bool | None:
+    """解析布尔声明。**不给"拼错即 False"留活口**（2026-09-23 二查 major）：
+    `_as_bool("ture")` 旧实现静默返回 False ⇒ 该角色**静默退出 C1 声明完备性检查**——
+    一个拼写错误就能关掉一条闸门，这正是"数据驱动闸门"最该防的失效形态。现在非法取值直接报错。
+    """
     if raw is None:
         return None
     if isinstance(raw, bool):
         return raw
-    return str(raw).strip().lower() in {"true", "yes", "1", "on"}
+    val = str(raw).strip().lower()
+    if val == "":
+        return None
+    if val in {"true", "yes", "1", "on"}:
+        return True
+    if val in {"false", "no", "0", "off"}:
+        return False
+    raise PolicyError(f"{where} 的 {field}={raw!r} 不是合法布尔值（合法：true/false/yes/no/1/0/on/off）"
+                      f"——拼错不会静默降级，请修正数据文件")
 
 
 COVERAGE_WINDOW_VALUES = ("self", "none")
@@ -276,6 +288,7 @@ class Policy:
         consumed = {
             "version", "_comment", "spec_glob", "spec_dir", "scope_min_deviation_chars",
             "scope_ref_sources", "lint_paths", "lint_rules", "archive_role_prefix", "close_gate",
+            "ledger_status",
         }
         for key in self.policy_file:
             if key not in consumed:
@@ -310,7 +323,8 @@ def _load_fanout(path: Path) -> tuple[dict, tuple[CloseStep, ...]]:
             role=role,
             spec=str(item.get("spec") or role),
             targets=tuple(targets),
-            ledger=bool(item.get("close_ledger", False)),
+            ledger=_as_bool(item.get("close_ledger"), field="close_ledger",
+                            where=f"{path.name} 步骤 {item.get('step') or role}") or False,
         ))
     steps.sort(key=lambda s: s.order)
     return data, tuple(steps)
@@ -347,7 +361,7 @@ def load_policy(root: Path | None = None, *, spec_dir: Path | None = None,
         specs[role] = SpecRole(
             role=role,
             path=path,
-            scope_required=_as_bool(fm.get("scope_required")),
+            scope_required=_as_bool(fm.get("scope_required"), field="scope_required", where=path.name),
             coverage_window=(fm.get("coverage_window") or "").strip().lower() or None,
             source_block={k: v for k, v in fm.items() if k.startswith("source")} if "source" in fm else {},
         )
@@ -432,7 +446,6 @@ class CoverageWindow:
         return lower <= order[sha] < upper
 
 
-
 def order_index(shas_newest_first: list[str]) -> dict[str, int]:
     return {sha: i for i, sha in enumerate(shas_newest_first)}
 
@@ -499,6 +512,37 @@ class Attribution:
         self._files: dict[str, list[str]] = {}
 
     # -- 例外表校验（用户 P2 关切的"表过期"三件套之 (b)：sha 钉死，禁止通配） -------
+    def window_problems(self) -> list[str]:
+        """窗口自身的结构性缺陷（2026-09-23 二查 major #3）。
+
+        实测：账本里 `covers_through="e6ccd257"`（**8 位短 sha**），而 `order` 里只有完整 sha
+        → `covers()` 静默返回 False，该窗口**形同不存在**，却不报任何错。
+        同理：(X, X] 是空区间（register 与 finish 都在同一 HEAD）——这两种都会让"自动覆盖"
+        悄悄变成零，从而把 C3 的压力全推给例外表。**静默**正是要消灭的东西：这里逐条点名。
+        """
+        problems: list[str] = []
+        full = 40
+        for w in self.windows:
+            for label, sha in (("coverage_anchor", w.anchor), ("covers_through", w.through)):
+                if len(sha) != full or any(c not in "0123456789abcdef" for c in sha.lower()):
+                    problems.append(
+                        f"{w.run_id} 的 {label}={sha!r} 不是完整 40 位 sha → 该窗口在覆盖计算中"
+                        f"被静默丢弃（CLI 已改为自动记完整 sha；历史记录需回填）")
+            if len(w.anchor) == full and w.anchor == w.through:
+                problems.append(
+                    f"{w.run_id} 的窗口 ({w.anchor[:8]}, {w.through[:8]}] 是**空区间**"
+                    f"（登记与收尾在同一提交）→ 该 run 实际贡献 0 覆盖，C3 压力全落到例外表")
+        return problems
+
+    def empty_interval(self) -> bool:
+        """锚点→HEAD 之间**没有任何提交**受检（2026-09-23 二查 critical）。
+
+        此时 `unowned` 必然为空，闸门与 `close-sync` 都会打出"覆盖闭环 ✔"——
+        而事实是**一个提交都没查**。锚点 == HEAD 就是这种情形，而 Sprint §9.1 的占位文案
+        恰恰引导人填"二查覆盖到的 HEAD"。故：空区间**不算通过**，必须显式判定。
+        """
+        return not self.shas
+
     def exception_problems(self) -> list[str]:
         problems: list[str] = []
         sha_re_len = 40

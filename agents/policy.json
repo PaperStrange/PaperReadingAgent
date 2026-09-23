@@ -1,12 +1,22 @@
 {
   "version": 1,
-  "_comment": "TG-15：闸门政策数据（不可从 fanout.json / spec frontmatter 推导的阈值与开关）。脚本与 verify 闸门一律从这里读，禁止在代码里写政策常量。判据见 docs/iteration/phases/testing-governance/backlog.MD 的 TG-15 卡；规则条文见 docs/1-WORKFLOW.MD §3。",
+  "_comment": "TG-15：闸门政策数据（不可从 fanout.json / spec frontmatter 推导的阈值与开关）。脚本与 verify 闸门一律从这里读，禁止在代码里写政策常量。判据见 docs/iteration/phases/testing-governance/backlog.MD 的 TG-15 卡；规则条文见 docs/1-WORKFLOW.MD §3.1。本文件出现无人读取的键会被 closure_problems() 判为漂移（死数据）。",
   "spec_glob": "*.md",
   "spec_dir": "agents/functions",
   "scope_min_deviation_chars": 10,
   "scope_ref_sources": [
     "impact-assessment:"
   ],
+  "ledger_status": {
+    "_comment": "TG-15：账本状态机（原先写死在 scripts/agent-ops.py 的 _STATUSES/_TERMINAL/_TRANSITIONS）。二查 finding：#2 状态白名单仍是代码常量、_allowed_exit_states() 是死代码 → 现搬进数据并由 CLI 消费。",
+    "all": ["queued", "running", "succeeded", "failed", "cancelled"],
+    "terminal": ["succeeded", "failed", "cancelled"],
+    "transitions": {
+      "queued": ["running"],
+      "running": ["succeeded", "failed", "cancelled"]
+    },
+    "non_credible": ["failed", "cancelled"]
+  },
   "lint_paths": [
     "paper-qa-script",
     "verify",

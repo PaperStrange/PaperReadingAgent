@@ -60,12 +60,6 @@ REGISTRY_PATH = RUNTIME_DIR / "registry.json"
 PRICES_PATH = RUNTIME_DIR / "prices.json"
 RUNS_DIR = _AGENTS_BASE / "runs"
 
-_STATUSES = {"queued", "running", "succeeded", "failed", "cancelled"}
-_TERMINAL = {"succeeded", "failed", "cancelled"}
-_TRANSITIONS = {
-    "queued": {"running"},
-    "running": _TERMINAL,
-}
 _CHARS_PER_TOKEN = 4.0  # UC-4 兜底：无 token 上报时 tokens ≈ chars/4
 
 # TG-11（Sprint-17）：评审类 run 的 scope 来源必须可追溯。同一条规则写在 spec / workflow 里
@@ -100,12 +94,31 @@ def _scope_ref_prefixes() -> tuple[str, ...]:
     return policy().scope_ref_sources
 
 
-def _allowed_exit_states() -> set[str]:
-    """允许的 exit 值 = 状态机的终态集合聚合（政策数据，替代原先写死的状态白名单）。"""
-    out: set[str] = set()
-    for nxt in _TRANSITIONS.values():
-        out |= {s for s in nxt if s in _TERMINAL}
-    return out or set(_TERMINAL)
+def _ledger_policy() -> dict:
+    """账本状态机（政策数据：`agents/policy.json::ledger_status`）。
+
+    2026-09-23 二查 finding：状态白名单原先是本文件的 `_STATUSES/_TERMINAL/_TRANSITIONS` 常量，
+    而 `1-WORKFLOW.MD` §3.1 明列"状态白名单须来自数据文件"——属"文档承诺 > 实现"。现由政策提供。
+    """
+    return policy()._data("ledger_status")
+
+
+def _statuses() -> set[str]:
+    return set(_ledger_policy()["all"])
+
+
+def _terminal() -> set[str]:
+    return set(_ledger_policy()["terminal"])
+
+
+def _transitions() -> dict[str, set[str]]:
+    return {k: set(v) for k, v in _ledger_policy()["transitions"].items()}
+
+
+def _non_credible_statuses() -> set[str]:
+    """不可采信的状态（scope 引用指向这类 run 时 fail-closed）——同一事实原先在本文件与
+    `verify/verify_close_readiness.py` 各写一份字面量集合，现统一由政策提供。"""
+    return set(_ledger_policy()["non_credible"])
 
 
 def _git_head() -> str:
@@ -320,7 +333,7 @@ def _validate_scope(args: argparse.Namespace, data: dict) -> tuple[str, str | No
         if target.get("role") not in pol.specs:
             raise SystemExit(
                 f"scope 来源 {ref} 的 role={target.get('role')!r} 没有对应 spec（fail-closed，C2）")
-        if target.get("status") in {"failed", "cancelled"}:
+        if target.get("status") in _non_credible_statuses():
             raise SystemExit(
                 f"scope 来源 {ref} 状态为 {target.get('status')}，其 scope 不可采信（fail-closed）")
         return source, (deviation or None)
@@ -410,7 +423,7 @@ def cmd_update(args: argparse.Namespace) -> None:
         # （否则 update --status succeeded 会产出 ended_at/cost_est 缺失的畸形行）
         if args.status != "running":
             raise SystemExit("update 只允许 --status running；终态请用 finish 子命令")
-        allowed = _TRANSITIONS.get(r["status"], set())
+        allowed = _transitions().get(r["status"], set())
         if args.status not in allowed:
             raise SystemExit(f"非法流转 {r['status']} -> {args.status}（允许：{sorted(allowed) or '无'}）")
         r["status"] = args.status
@@ -425,8 +438,8 @@ def cmd_update(args: argparse.Namespace) -> None:
 def cmd_finish(args: argparse.Namespace) -> None:
     data = _load_registry()
     r = _find_run(data, args.run_id)
-    if args.status not in _TERMINAL:
-        raise SystemExit(f"finish 需要终态：{sorted(_TERMINAL)}")
+    if args.status not in _terminal():
+        raise SystemExit("finish 需要终态：{}".format(sorted(_terminal())))
     # review 修正（Sprint-8 三查）：finish 仅允许 running -> terminal（queued 先 update running）
     if r["status"] != "running":
         raise SystemExit(f"非法流转 {r['status']} -> {args.status}（finish 仅允许 running -> terminal）")
@@ -601,13 +614,25 @@ def cmd_close_sync(args: argparse.Namespace) -> None:
     from verify.agent_policy import attribution, load_coverage_exceptions
 
     exceptions = load_coverage_exceptions(exc_path)
-    att = attribution(REPO_ROOT, anchor, head, data.get("runs", []), exceptions)
+    att = attribution(REPO_ROOT, anchor, head, data.get("runs", []), exceptions, policy=pol)
     globs = tuple(pol.close_gate["coverage"].get("doc_only_globs") or ())
 
     print(f"close-sync: anchor={anchor[:10]} head={head[:10]} commits={len(att.shas)} "
           f"windows={len(att.windows)} exceptions={len(att.exceptions)}")
     for line in att.report_lines(globs):
         print("  " + line)
+
+    # 2026-09-23 二查 critical：**零提交受检不得报"闭环 ✔"**。锚点 == HEAD 时区间为空集，
+    # unowned 必为空——旧实现照样打勾、rc=0，而 §9.1 的占位文案正引导人这么填。
+    structural = att.window_problems()
+    if structural:
+        print("\n窗口结构问题（这些都会让自动覆盖静默失效）：")
+        for line in structural[:10]:
+            print("  ! " + line)
+    if att.empty_interval():
+        print(f"\n覆盖闭环：**未验证**——锚点 {anchor[:10]} 与 HEAD {head[:10]} 之间没有任何提交。"
+              "这不算通过：请把锚点填成二查实际覆盖到的提交，或写明本 Sprint 无需覆盖检查的理由。")
+        raise SystemExit(2)
 
     unowned = att.unowned(globs)
     doconly = [s for s in att.shas if att.owner(s, globs) == "doc-only"]
@@ -805,7 +830,7 @@ def main() -> int:
 
     p = sub.add_parser("finish")
     p.add_argument("run_id")
-    p.add_argument("--status", required=True, choices=sorted(_TERMINAL))
+    p.add_argument("--status", required=True, choices=sorted(_terminal()))
     p.add_argument("--output-chars", type=int)
     p.add_argument("--result-file")
     p.add_argument("--cost-override", type=float)
