@@ -23,6 +23,15 @@ ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "scripts" / "agent-ops.py"
 FUNCTIONS = ROOT / "agents" / "functions"
 
+sys.path.insert(0, str(ROOT))
+
+from verify.agent_policy import load_policy  # noqa: E402
+
+# TG-15：角色集合**不再在本文件复制一份**（原先这里写死 {"code-review","doc-audit"}，与
+# agent-ops.py 的 `_REVIEW_ROLES`、verify_close_readiness.py 的 `CLOSE_ROLES` 三处并存 →
+# 加角色要改三处）。现在统一从政策数据读：spec frontmatter 的 `scope_required`。
+_POLICY = load_policy()
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -35,9 +44,10 @@ def run(args: list[str], env: dict, check: bool = False, raw: bool = False) -> s
     TG-11 闸门生效后，评审类 `register` 必须声明 scope 来源；合成 fixture 不涉及真实评审范围，
     因此默认自动补 `--scope-source self-chosen --deviation <fixture 说明>`。
     **反向对照/负向用例必须用 `raw=True`**（否则闸门被 helper 掩盖，断言恒真）。
+    评审类集合来自 `agents/functions/*.md` 的 `scope_required`（TG-15：不再在本文件写死角色名）。
     """
     if (not raw and args and args[0] == "register" and "--scope-source" not in args
-            and "--deviation" not in args and args[args.index("--role") + 1] in {"code-review", "doc-audit"}):
+            and "--deviation" not in args and args[args.index("--role") + 1] in _POLICY.review_roles):
         args = [*args, "--scope-source", "self-chosen", "--deviation", "verify_agentops 合成 fixture（无真实评审范围）"]
     r = subprocess.run(
         [sys.executable, str(CLI), *args],
@@ -362,6 +372,57 @@ def main() -> int:
         r = run(["register", "--role", "tech-research", "--task", "tr", "--spec", "tech-research@1.0.0",
                  "--run-id", "run-uc14-research"], base_env, raw=True)
         ok("UC-14 非评审 role 不强制 scope 来源（防假红）", r.returncode == 0, (r.stdout + r.stderr).strip()[:80])
+
+        # UC-15（TG-15，Sprint-17 D2）：闸门政策**数据驱动**——角色集合/阈值来自数据文件，
+        # 不是代码常量。反向对照：在仓库 spec 目录里临时新增一个声明 `scope_required: true` 的角色，
+        # **不改任何代码**，CLI 必须立刻要求它声明 scope；把声明改成 false 后必须立刻放行。
+        # 这同时证明"删声明绕不过去"（缺声明是报错，不是放行，见数据源完备性自检）。
+        extra_spec = FUNCTIONS / "tg15-probe-role.md"
+        try:
+            extra_spec.write_text(
+                '---\nname: tg15-probe-role\ndescription: TG-15 数据驱动探针角色\n'
+                'version: "1.0.0"\nscope_required: true\ncoverage_window: self\n---\n\n# probe\n',
+                encoding="utf-8")
+            r = run(["register", "--role", "tg15-probe-role", "--task", "probe",
+                     "--spec", "tg15-probe-role@1.0.0"], base_env, raw=True)
+            ok("UC-15 新增角色只改数据（spec 声明 scope_required: true）→ 立刻被要求声明 scope",
+               r.returncode != 0 and "scope" in (r.stdout + r.stderr), (r.stdout + r.stderr).strip()[:80])
+
+            extra_spec.write_text(
+                '---\nname: tg15-probe-role\ndescription: TG-15 数据驱动探针角色\n'
+                'version: "1.0.0"\nscope_required: false\ncoverage_window: none\n---\n\n# probe\n',
+                encoding="utf-8")
+            r = run(["register", "--role", "tg15-probe-role", "--task", "probe", "--run-id", "run-uc15-probe",
+                     "--spec", "tg15-probe-role@1.0.0"], base_env, raw=True)
+            ok("UC-15 同一角色改声明为 scope_required: false → 立刻放行（政策生效路径 = 数据）",
+               r.returncode == 0, (r.stdout + r.stderr).strip()[:80])
+
+            e15 = next(x for x in json.loads(registry.read_text(encoding="utf-8"))["runs"]
+                       if x["run_id"] == "run-uc15-probe")
+            ok("UC-15 覆盖窗口随角色声明落库（coverage_window=none）",
+               e15.get("coverage_window") == "none", f"coverage_window={e15.get('coverage_window')}")
+            ok("UC-15 锚点自动化：register/finish 由 CLI 记 coverage_anchor，无需人抄",
+               bool(e15.get("coverage_anchor")), f"coverage_anchor={(e15.get('coverage_anchor') or '')[:8]}")
+        finally:
+            extra_spec.unlink(missing_ok=True)
+
+        # UC-16（TG-15）：数据源**缺声明**不是"不需要"，而是 fail-closed 报错（删声明绕不过闸门）
+        probe_spec = FUNCTIONS / "tg15-undeclared-role.md"
+        try:
+            probe_spec.write_text(
+                '---\nname: tg15-undeclared-role\ndescription: 缺 scope_required 声明\n'
+                'version: "1.0.0"\n---\n\n# probe\n', encoding="utf-8")
+            r = run(["list"], base_env, raw=True)
+            ok("UC-16 spec 缺 scope_required → CLI fail-closed（POLICY-ERROR，不静默放行）",
+               r.returncode != 0 and "POLICY-ERROR" in (r.stdout + r.stderr),
+               (r.stdout + r.stderr).strip()[:100])
+        finally:
+            probe_spec.unlink(missing_ok=True)
+
+        r = run(["list"], base_env, raw=True)
+        ok("UC-16 移除缺声明 spec 后恢复正常（证明上一条失败来自数据缺口本身）",
+           r.returncode == 0, (r.stdout + r.stderr).strip()[:80])
+
 
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))

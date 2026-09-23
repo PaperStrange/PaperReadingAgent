@@ -14,8 +14,9 @@
 | `verify_smoke.py` | 8 项冒烟检查：paperqa 导入、后端 FastAPI 12 条路由、RuntimeTracer、streamlit、litellm、PyMuPDF 页渲染、graphviz(py)、PDF 解析器自动发现 | 无 API 调用，纯离线；无需启动服务 |
 | `verify_prune_callbacks.py` | Sprint-5/M2：litellm 回调去重裁剪单元证据（超上限 32 项 → 去重保留最近 N；`PAPERQA_LITELLM_CALLBACK_LIMIT` 可覆盖默认 20） | 无 API 调用，纯离线 |
 | `verify_agentops.py` | Sprint-8/A-UC：AgentOps 账本 CLI 用例断言（UC-1~UC-14：状态机/成本/防双写/价表/并发锁/抓取解析 + 三查修正回归 + **UC-14=TG-11 评审 scope 来源闸门**；UC-11/12=M10、UC-13=M9；隔离到临时 `AGENT_OPS_DIR`） | 无 API 调用，纯离线 |
-| `verify_close_readiness.py` | **TG-11/Sprint-17**：关闭前置闸门——〇查早于二查 / 二查 windows+main 双分支 / 一查+lessons 各一 / `self-chosen` 必须有 `deviation` / §9 结构化 run 表↔账本**双向**一致 / **三查锚点之后不得有未评审提交**。默认跑 9 条自检（六个反向对照场景）；`--sprint <文件>` 为真数据校验（**CI 只对声明了 `三查锚点` 的 Sprint 文档执行**） | 离线；真数据模式调用本地 `git rev-list`，无网络 |
-| `verify_lint.py` | **G1/Sprint-17（§2.3 Python 行）**：ruff 闸门——**A 级** `E9,F63,F7,F82` 与 **B 级** `F401,F811,F841,E702,E711,E712,E722,W292` 全仓必须 0；**C 级** `D101-103,E501` 只报基线（棘轮见 `TG-6`）。含"坏文件必 FAIL / 好文件必 PASS"反向对照；工具缺失 **fail-closed（退 2）**，`--allow-missing` 显式 SKIP | 无网络、无 API 调用（ruff 本地二进制；pin 见 `requirements-windows.txt`） |
+| `verify_close_readiness.py` | **TG-15/Sprint-17**：关闭前置闸门（**三条不变式 + 全数据驱动**——TG-11 版按角色写死的 6 条判据已删除）——**C1 声明完备**（凡 spec 声明 `scope_required: true` 的 run 必须有 scope 声明）/ **C2 指涉可核**（外部引用必须解析到"存在且可用"的对象；账本出现无 spec 的 role 即 FAIL，不认角色名）/ **C3 覆盖闭环**（`git rev-list <锚点>..HEAD` **每个提交**必须有归属：run 窗口（`coverage_anchor`/`covers_through` 自动记录）/ C3-T 例外表（sha 钉死）/ doc-only 自动归类）+ §9 run 表↔账本**双向**一致。**必填步骤与 target 来自 `agents/fanout.json`**，角色属性来自各 spec frontmatter，阈值来自 `agents/policy.json`；**变异用例从 fanout 自动生成**（每步/每 target 各抽掉一次 → 必须 FAIL）。默认 21 条自检；`--sprint <文件>` 为真数据校验（**CI 只对声明了 `三查锚点` 的 Sprint 文档执行**），`--no-coverage` 关闭覆盖检查 | 离线；真数据模式调用本地 `git rev-list`，无网络 |
+| `verify_no_policy_hardcode.py` | **TG-15⑦/Sprint-17**：**硬编码政策闸门**（"政策必须在数据文件，不许写进代码"）——AST 判定 R1 政策常量赋值（角色集合/阈值）、R2 成员判定字面量（`x in {"code-review"}`）、R3 覆盖路径清单；豁免台账 `policy-hardcode-exemptions.json` 每条**须写 category+reason**（不提供整文件豁免），另有就地豁免形态 `X = _exempted_local(...)`（理由写在赋值处）。含 5 条反向对照：三类注入必须 FAIL + `load_policy()` 写法必须放行 + 就地豁免只放行该处、同文件真硬编码仍被抓 | 离线；`python verify\verify_no_policy_hardcode.py`（`--dir <d>` 只扫指定目录） |
+| `verify_lint.py` | **G1/Sprint-17（§2.3 Python 行）**：ruff 闸门——**A 级** `E9,F63,F7,F82` 与 **B 级** `F401,F811,F841,E702,E711,E712,E722,W292` 全仓必须 0；**C 级** `D101-103,E501` 只报基线（棘轮见 `TG-6`）。含"坏文件必 FAIL / 好文件必 PASS"反向对照；工具缺失 **fail-closed（退 2）**，`--allow-missing` 显式 SKIP。**TG-15：覆盖路径与规则分级改由 `agents/policy.json`（`lint_paths`/`lint_rules`）提供**，不再写死在本文件 | 无网络、无 API 调用（ruff 本地二进制；pin 见 `requirements-windows.txt`） |
 | `verify_index_health.py` | Sprint-7/M1：索引一致性三重探测（files.zip / index/meta.json / tantivy 段）合成形态 + 真实构建后篡改 meta.json → 整目录重建自愈 | 无 API key、无远程 LLM 调用（manifest 提供 citation；本地 ST 权重从 HF 缓存加载，首次需联网下载）；索引隔离到临时 `PQA_HOME` |
 | `verify_config_schema.py` | Sprint-11/13/F2：配置 SSOT 一致性断言——schema 结构/默认值/pydantic_path、validate_config 行为、**M7 前端零硬编码**（App.jsx n1 不得含 16 个配置键字面量）、**Settings 升级基线护栏**（77 字段路径 vs `settings_baseline.json`，`--regen-baseline` 重建） | 无 API 调用，纯离线 |
 | `verify_provider_switch.py` | 验证服务商切换（内置 4 家 + 自定义）：配置解析、密钥优先级、build_settings、**路由实证断言**（deepseek 真实 key 应 SUCCESS；dashscope/openai/openrouter/自定义 用占位 key 应拿到端点级拒绝=路由正确） | 联网；deepseek 真实 key（`.env` 或 `OPENAI_API_KEY`）；**真实 openrouter key 实测为用户资源门控**（占位 key 只证路由不证配额） |
@@ -60,6 +61,7 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 .\.venv\Scripts\python.exe .\verify\verify_smoke.py
 .\.venv\Scripts\python.exe .\verify\verify_prune_callbacks.py
 .\.venv\Scripts\python.exe .\verify\verify_agentops.py           # AgentOps 账本 CLI 用例断言（离线）
+.\.venv\Scripts\python.exe .\verify\verify_no_policy_hardcode.py # TG-15⑦：政策硬编码闸门（离线）
 .\.venv\Scripts\python.exe .\verify\verify_config_schema.py     # 配置 SSOT 一致性 + M7 零硬编码 + Settings 升级基线（离线）
 .\.venv\Scripts\python.exe .\verify\verify_index_health.py
 .\.venv\Scripts\python.exe .\verify\verify_matrix.py check         # 覆盖矩阵防漂移（离线；改动脚本元数据后先 derive）
