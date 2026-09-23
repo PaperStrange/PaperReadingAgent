@@ -59,6 +59,23 @@ def split_frontmatter(text: str) -> tuple[str, str] | None:
     return text[3:end], text[end:]
 
 
+def read_text_lf(path: Path) -> str:
+    """按 UTF-8 读入并**归一化为 LF**。
+
+    为什么必须显式做（2026-09-23 二查 p2 实证，教训 1.47 同源）：Windows 上
+    `Path.write_text()` 走文本模式 → 把 `\\n` 翻成 `\\r\\n`，于是"只改 3 行 frontmatter"
+    会把**整个文件**的行尾翻一遍，raw diffstat 虚高约 5 倍（8 个 spec：2653/882 → 1961/190）。
+    读侧也归一化，保证新旧文件比较时不因行尾差异误判成"有改动"。
+    """
+    return path.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
+
+
+def write_lf(path: Path, text: str) -> None:
+    """以**字节写盘且固定 LF**（`newline=""` 关闭行尾翻译）——仓库约定见教训 1.47。"""
+    with open(path, "w", encoding="utf-8", newline="") as fh:
+        fh.write(text)
+
+
 def bump_patch(version: str) -> str:
     m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version.strip())
     if not m:
@@ -102,8 +119,10 @@ def patch(role: str, scope_required: bool, coverage_window: str) -> tuple[str, s
     new_text = "---" + "\n".join(out) + rest
     if new_text == text:
         return role, "noop（已声明）"
-    path.write_text(new_text, encoding="utf-8")
-    return role, f"patched（scope_required={scope_required}, coverage_window={coverage_window}）"
+    write_lf(path, new_text)
+    kept_lf = "\r\n" not in new_text
+    return role, (f"patched（scope_required={scope_required}, coverage_window={coverage_window}）"
+                  + ("，LF 保持" if kept_lf else "，⚠ 曾出现 CRLF"))
 
 
 def verify() -> list[str]:
