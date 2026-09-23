@@ -32,10 +32,17 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_PATHS = ["paper-qa-script", "verify", "scripts", "src"]
-HARD_A = "E9,F63,F7,F82"
-HARD_B = "F401,F811,F841,E702,E711,E712,E722,W292"
-REPORT_ONLY = "D101,D102,D103,E501"
+sys.path.insert(0, str(ROOT))
+
+from verify.agent_policy import load_policy  # noqa: E402
+
+# TG-15：**覆盖路径清单与规则分级都是政策数据**（原先写死在本文件）——换目录/调分级只改
+# `agents/policy.json`，不改代码。加载器 fail-closed：数据缺失即 POLICY-ERROR（退出 2）。
+_POLICY = load_policy()
+DEFAULT_PATHS = list(_POLICY.lint_paths)
+HARD_A = str(_POLICY.lint_rules["hard_a"])
+HARD_B = str(_POLICY.lint_rules["hard_b"])
+REPORT_ONLY = str(_POLICY.lint_rules["report_only"])
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
