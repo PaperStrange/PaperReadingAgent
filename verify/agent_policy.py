@@ -241,6 +241,18 @@ class Policy:
         return str(self._data("archive_role_prefix"))
 
     @property
+    def md_table_targets(self) -> tuple[str, ...]:
+        """Markdown 结构自检的默认文件集（`verify/verify_md_tables.py` 消费）。
+
+        2026-09-23 实战：该清单最初写在新闸门文件里，随即被 `verify_no_policy_hardcode.py`
+        判为 R3（路径清单硬编码）——**闸门先抓住了写闸门的人**，这条正是它该有的行为。
+        """
+        val = self._data("md_table_targets")
+        if not isinstance(val, list) or not val:
+            raise PolicyError(f"md_table_targets 必须是非空列表，实际 {val!r}")
+        return tuple(str(v) for v in val)
+
+    @property
     def close_gate(self) -> dict:
         return self._data("close_gate")
 
@@ -288,7 +300,7 @@ class Policy:
         consumed = {
             "version", "_comment", "spec_glob", "spec_dir", "scope_min_deviation_chars",
             "scope_ref_sources", "lint_paths", "lint_rules", "archive_role_prefix", "close_gate",
-            "ledger_status",
+            "ledger_status", "md_table_targets",
         }
         for key in self.policy_file:
             if key not in consumed:
@@ -370,8 +382,7 @@ def load_policy(root: Path | None = None, *, spec_dir: Path | None = None,
 
     allow_undeclared = os.environ.get("PAPERQA_POLICY_ALLOW_UNDECLARED", "").strip().lower() in {"1", "true", "yes"}
     policy = Policy(fanout=fanout, policy_file=policy_file, spec_dir=resolved_spec_dir,
-                    steps=steps, specs=specs, allow_undeclared=allow_undeclared)
-    # **封闭世界是运行时不变量**（不只是自检项）：spec 缺声明 = 数据缺口 = fail-closed。
+                    steps=steps, specs=specs, allow_undeclared=allow_undeclared)    # **封闭世界是运行时不变量**（不只是自检项）：spec 缺声明 = 数据缺口 = fail-closed。
     # 若只在"某些闸门的自检"里检查，普通命令（register/list）就会带着缺口照常运行，
     # 而缺口恰恰是"删声明关掉 C1"的入口（见 closure_problems 文档）。
     problems = [p for p in policy.closure_problems() if not p.startswith("[迁移期提示]")]

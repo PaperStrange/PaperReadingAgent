@@ -409,7 +409,7 @@
 | 密钥硬编码 | 删除所有源码/文档中的真实 API Key；CLI 脚本改为从环境变量 / `.env` 读取；新增 `.env.example` 模板，`.env` 加入 `.gitignore` |
 | git 历史密钥 | 用 `git filter-repo --replace-text` 清洗**全部历史提交**中的 4 组密钥并强推（旧历史不可逆重写） |
 | CORS | 后端 `allow_origins` 由 `*` 收紧为仅 `http://localhost:5173` / `http://127.0.0.1:5173` |
-| 前端注入 | React 默认转义后端文本；Streamlit `_dot_escape` 增加 DOT 特殊字符转义（`< > { } | \ " \n`） |
+| 前端注入 | React 默认转义后端文本；Streamlit `_dot_escape` 增加 DOT 特殊字符转义（`< > { } \| \ " \n`） |
 | 监听范围 | 后端仅监听 `127.0.0.1`（不对外网暴露） |
 | 输出编码 | CLI 脚本 `sys.stdout.reconfigure(utf-8)` 修复 GBK 控制台打印 emoji/中文崩溃 |
 | SSRF 防护（Sprint-3） | 远程数据源下载前校验 URL：仅 http/https、拒绝本机/内网/链路本地/保留地址，重定向逐跳复检（≤5 跳）；沙箱透明代理段 198.18.0.0/15 豁免并注释 |

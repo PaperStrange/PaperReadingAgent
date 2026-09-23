@@ -30,6 +30,17 @@
     "report_only": "D101,D102,D103,E501"
   },
   "archive_role_prefix": "tech-research",
+  "md_table_targets": [
+    "docs/1-WORKFLOW.MD",
+    "docs/2-ARCHITECTURE.MD",
+    "docs/3-LEARNED.MD",
+    "docs/4-ALGORITHM.MD",
+    "docs/5-VERSIONS.MD",
+    "verify/README.md",
+    "verify/TEST-MATRIX.MD",
+    "agents/README.md",
+    "docs/iteration/phases/testing-governance/backlog.MD"
+  ],
   "close_gate": {
     "scope_ref_step": "scope",
     "coverage": {
