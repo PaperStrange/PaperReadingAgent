@@ -54,6 +54,80 @@
       }
     }
   },
+  "artifact_paths": {
+    "_comment": "TG-9：新脚本产物目录约定（运行态 JSON → agents/runtime/、日志/截图 → 已忽略的 verify/*.log|png、临时结果 → %TEMP%）。闸门 verify/verify_artifact_paths.py 消费；规则条文见 docs/1-WORKFLOW.MD §6（新脚本产物目录约定）与 verify/README.md。**双向差集**：每条 ignored_roots 必须①被 .gitignore 真正忽略（对合成探针 check-ignore 命中，拼错即死配置）②在 .gitignore 里确有对应行③确有代码在用它；反过来，代码里每个已被忽略的落点也必须能归到某条声明根上。",
+    "ignore_file": ".gitignore",
+    "scan_globs": [
+      "scripts/**/*.py",
+      "verify/**/*.py",
+      "verify/**/*.mjs",
+      "src/**/*.py",
+      "paper-qa-script/**/*.py"
+    ],
+    "ignored_roots": [
+      "agents/runtime/*",
+      "agents/runs/",
+      "verify/*.log",
+      "verify/*.png",
+      "verify/suite_result.json"
+    ],
+    "tracked_targets": {
+      "_comment": "脚本有意改写的**已入库数据文件**（不是运行态产物）：每条必须①git 已跟踪②扫描集里确有脚本写它③写明 reason；三条任一不成立即 FAIL（死配置/假声明）。",
+      "agents/runtime/prices.json": "fetch-prices.py / agent-ops.py：litellm 价表落盘（数据文件，需入库；.gitignore 用 ! 白名单放行）",
+      "verify/settings_baseline.json": "verify_config_schema.py --regen-baseline：Settings 升级基线（数据文件，需入库；显式重建才写）"
+    },
+    "temp": {
+      "_comment": "临时结果落点：这些写法**等价于 %TEMP%**（判定为合法落点）。",
+      "module": "tempfile",
+      "calls": ["TemporaryDirectory", "TemporaryFile", "NamedTemporaryFile", "mkdtemp", "mkstemp", "gettempdir"],
+      "env_names": ["TEMP", "TMP", "TMPDIR"],
+      "literals": ["%TEMP%"]
+    },
+    "dynamic_ratchet": {
+      "_comment": "**动态目标棘轮**：写盘目标由函数参数/argv/运行时决定、无法静态判定者按**文件**计数设上限（2026-09-25 实测值，只许下调）。**未列入上限表的文件出现动态目标 = FAIL**（新脚本必须让产物落点可静态判定：用模块级常量拼路径，别把落点交给参数/argv）。`> 上限` = FAIL；`< 上限` 只提示收紧（不惩罚把动态目标改少的重构）。到期未重评 → FAIL。",
+      "cutoff_local_date": "2026-09-25",
+      "review_by": "2026-10-31",
+      "measured_at": "2026-09-25",
+      "measured_total": 107,
+      "_measured_how": "verify/verify_artifact_paths.py --report（真实仓库扫描集 89 个脚本 / 290 个写盘目标；其余 56 已忽略 + 119 %TEMP% + 3 已入库数据 + 1 无默认落点 + 4 仓库外绝对路径。闸门**不自我豁免**，故含它自己的 2 处）",
+      "files": {
+        "paper-qa-script/app/config_schema.py": 1,
+        "paper-qa-script/app/embedding_recommender.py": 2,
+        "paper-qa-script/app/orchestration.py": 11,
+        "paper-qa-script/app/remote_resolver.py": 3,
+        "paper-qa-script/manual_index_paper.py": 1,
+        "paper-qa-script/python_qa.py": 1,
+        "scripts/agent-ops.py": 7,
+        "scripts/card-inventory.py": 2,
+        "scripts/migrate-scope-declarations.py": 1,
+        "scripts/normalize-spec-eol.py": 1,
+        "scripts/refresh-providers.py": 12,
+        "scripts/report-freshness.py": 2,
+        "scripts/scheduled-tasks.py": 4,
+        "scripts/structure-guard.py": 5,
+        "src/collect_acl.py": 2,
+        "src/collect_iclr_openreview.py": 2,
+        "src/collect_neurips_proceedings.py": 2,
+        "verify/e2e_common.py": 2,
+        "verify/run_suite.py": 3,
+        "verify/verify_agentops.py": 5,
+        "verify/verify_archive.py": 1,
+        "verify/verify_card_index.py": 2,
+        "verify/verify_checkpoint.py": 6,
+        "verify/verify_checkpoint_index.py": 1,
+        "verify/verify_close_readiness.py": 1,
+        "verify/verify_freshness.py": 7,
+        "verify/verify_index_health.py": 5,
+        "verify/verify_ledger_measurement.py": 4,
+        "verify/verify_matrix.py": 1,
+        "verify/verify_md_tables.py": 1,
+        "verify/verify_no_policy_hardcode.py": 4,
+        "verify/verify_providers.py": 1,
+        "verify/verify_runner.py": 2,
+        "verify/verify_artifact_paths.py": 2
+      }
+    }
+  },
   "lint_paths": [
     "paper-qa-script",
     "verify",

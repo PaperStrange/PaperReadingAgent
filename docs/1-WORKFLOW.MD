@@ -341,6 +341,9 @@ Sprint 文档里的 `三查锚点` 只用于**关闭判定**，不再是覆盖�
 | 新角色 | 新建 `agents/functions/<role>.md` + 两个声明字段 | 任何角色名单常量 |
 | 调阈值/路径/规则分级 | `agents/policy.json` | 脚本里的 `MIN_*`/`PATHS` |
 | 覆盖归属例外 | `agents/policy/coverage-exceptions.json`（sha 钉死） | 闸门代码里的白名单 |
+| 新增脚本的产物落点 | `agents/policy.json::artifact_paths` + `.gitignore`（**先确认已忽略**） | 仓库根 / 未忽略目录 / 逐条补 `.gitignore` |
+
+**新脚本产物目录约定（TG-9，2026-09-25 交付｜Retro 行动项 ④）**：凡**新增或改动脚本**（`scripts/**`、`verify/**`、`src/**`、`paper-qa-script/**`）产出文件，产物一律写**已忽略路径**——运行态 JSON → `agents/runtime/`，日志/截图 → 已 gitignore 的 `verify/*.log`、`verify/*.png`，临时结果 → `%TEMP%`。**新增脚本前先确认产物路径已被 `.gitignore` 覆盖**，可核判据 = `git check-ignore --no-index <产物路径>` 退 0（写仓库根 = 直接在 `git status` 里多出未跟踪产物：本轮两次误入库 `verify_checkpoint_run.log`、`ci_fail_log.txt` 就是这个形态）。唯一真源 = `agents/policy.json::artifact_paths`（忽略根清单 / 已入库数据文件例外 / 临时落点写法 / 动态目标棘轮上限）；守门闸门 = `verify/verify_artifact_paths.py`（offline，纳入套件）：**源码里的写盘目标必须落在已忽略目录或 `%TEMP%`**，否则 FAIL 并逐条点名；**忽略根双向差集**——政策声明的每条根必须真被忽略（合成探针 `check-ignore` 命中，拼错即死配置）、`.gitignore` 里确有其行、且确有代码在用，反过来每个已被忽略的落点也必须能归到某条声明根上。**新脚本必须让产物落点可静态判定**（用模块级常量拼路径，别把落点交给函数参数/argv）：分解不出的"动态目标"按**文件**设上限，**未列入上限表的文件出现一处即 FAIL**，上限只许下调、到期（`review_by`）未重评也 FAIL。`.gitignore` 侧用**目录级 `dir/*` + `!` 白名单**（`agents/runtime/*` + `!agents/runtime/prices.json` + `!agents/runtime/tg14-baseline.json`）：**父目录被整体排除时 `!` 白名单不生效**（实测 `agents/runtime/` 写法下 `!prices.json` 仍判"已忽略"），故必须用 `dir/*` 形态才能同时表达"新产物默认忽略"与"数据文件入库"。反向对照（TG-6 ⑤"倒过来试"）：注入写仓库根的新脚本 → rc=1 点名；注入写默认落点的新脚本 → rc=0；并实测产物落入 `agents/runtime/` 后 `git status --porcelain` 为空。
 
 **卡片来源与时间口径（2026-09-20 用户要求，全部 backlog 适用）**：卡除 卡号/主题/点/状态/Sprint 外，**来源必须带类型前缀**区分"原规划"与"后新增"，时间字段一律用**网络时间（UTC+8）**：
 

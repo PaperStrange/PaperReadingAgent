@@ -469,6 +469,9 @@ class Policy:
             # TG-13：账本测量口径（dur/rounds/unknown）+ 退化判定 + 历史棘轮基线，
             # 由 verify/verify_ledger_measurement.py 与 scripts/agent-ops.py 消费
             "ledger_measurement",
+            # TG-9：新脚本产物落点约定（忽略根清单 / 扫描集 / 已入库数据文件例外 / 临时落点写法 /
+            # 动态目标棘轮），由 verify/verify_artifact_paths.py 消费
+            "artifact_paths",
         }
         for key in self.policy_file:
             if key not in consumed:

@@ -31,6 +31,7 @@
 | `verify_agent.py` | Agent 流程（fake agent）+ 翻译接口 | network | deepseek | 60s | ¥0.3 | /api/translate_preview, /api/run_step | keys, network, index |
 | `verify_agentops.py` | AgentOps 账本 CLI 用例断言 UC-1~UC-18（离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库） | offline | — | 10s | ¥0 | — | none |
 | `verify_archive.py` | M16 调研归档完整性校验：report/context/reasoning/evidence 契约 + 证据索引表双向交叉引用（限定 §7 索引表区间、大小写不敏感；fail-closed） | offline | — | 5s | ¥0 | — |  |
+| `verify_artifact_paths.py` | TG-9 产物目录约定闸门：脚本源码的写盘目标必须落在已忽略目录或 %TEMP%（政策 artifact_paths 驱动）+ 忽略根双向差集（须真被 .gitignore 忽略、确有其行、确有代码在用）+ 动态目标棘轮（新文件必须可静态判定）+ 反向对照（注入写仓库根 → rc=1 点名；默认落点实测 git status 干净） | offline | — | 10s | ¥0 | — | git |
 | `verify_card_index.py` | TG-14④ 卡索引 lint：索引↔卡文件一一对应 / 卡号↔文件名一致 / 必备节 / Sprint 不得复制卡正文 / 表格结构；含 5 条反向对照自检 | offline | — | 5s | ¥0 | — | none |
 | `verify_checkpoint.py` | F-AC10 文献级 checkpoint：逐篇落盘 + 零成本复用 + 文件变更/载荷损坏/模型不匹配/切块口径/同内容去重五重边界 fail-closed（est = 近次实测 ¥0.016965 × 1.3 ≈ 0.03，2026-09-20 校准） | network | deepseek | 240s | ¥0.03 | /api/new_session, /api/run_step | keys, network, self-boots-backend |
 | `verify_checkpoint_index.py` | F-AC16 v1 checkpoint 只读索引：扫描/排序/逐篇载荷路径与存在性/坏件 fail-soft/detail 与 resolve_payload/字段白名单（离线合成 fixture） | offline | — | 5s | ¥0 | /api/checkpoints | none |
@@ -57,4 +58,4 @@
 | `verify_smoke.py` | 冒烟 8 项：paperqa 导入/后端 12 路由加载/runtime_trace 目标/PDF 解析等（离线） | offline | — | 10s | ¥0 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session, /api/health, /api/providers, /api/config_schema, /api/config/validate, /api/translate_preview, /api/usage, /api/checkpoints | none |
 | `verify_usage.py` | Retro③ token 用量采集与成本换算：解析/累计/增量/价表查找/缺价不臆测/换算式/回调防裁剪（离线） | offline | — | 5s | ¥0 | — | none |
 
-共 51 个脚本：offline 20 / network 10 / gui 21。
+共 52 个脚本：offline 21 / network 10 / gui 21。

@@ -28,10 +28,16 @@ tmp.log
 # 本地 agent 框架参考目录（skills/notes，工具侧运行时内容，不入库）
 .agents/
 # TG-5 运行时状态与套件结果（本地运行时产物）
-agents/runtime/schedule.json
-agents/runtime/provider_refresh_proposal.json
-agents/runtime/provider_refresh_status.json
-agents/runtime/report_freshness.json
+# TG-9（2026-09-25）：`agents/runtime/` 由**逐条列名**改为**目录级忽略 + `!` 白名单**。
+# 理由：逐条列名（schedule.json / report_freshness.json / registry.json …）等于"约定靠人记"——
+# 新脚本往该目录写**新文件名**时默认不被忽略，`git status` 直接多出未跟踪产物（正是 TG-9 的动因，
+# 实测 `git check-ignore agents/runtime/probe.json` rc=1）。改目录级后新产物自动被覆盖。
+# 形式取 `agents/runtime/*`（而非 `agents/runtime/`）：**父目录被整体排除时 git 无法用 `!` 重新包含
+# 其中的文件**（实测：目录级写法下 `!agents/runtime/prices.json` 仍 rc=0=被忽略），而 `dir/*` 写法下
+# 白名单生效（实测 prices.json rc=1=未忽略、新文件 rc=0=被忽略），故必须用 `dir/*` 才能表达白名单。
+agents/runtime/*
+!agents/runtime/prices.json
+!agents/runtime/tg14-baseline.json
 verify/suite_result.json
 
 # --- secrets (use .env.example as template) ---
@@ -52,11 +58,7 @@ verify/verify_e2e_dashscope_result.json
 
 # --- 用户问题②（2026-08-30）：中间态/实时结果/存档留证不入库（本地保留）---
 # AgentOps runtime 账本与报告存档（实时态与留证；账本真相源=本地文件，非 git 追踪）
-agents/runtime/registry.json
-# A-M12 结构守卫（scripts/structure-guard.py）的运行态快照：本地结构基线，可由 `snapshot` 再生成
-agents/runtime/doc-structure.json
-agents/runtime/.registry.lock
-agents/runtime/.prices.lock
+# TG-9：registry.json / doc-structure.json / *.lock 已由上面的 `agents/runtime/*` 目录级规则覆盖
 agents/runs/
 # 静态分析中间产物（可由 analyze_paperqa_system.py 再生成）
 paper-qa-script/paperqa_callgraph.json

@@ -8,6 +8,8 @@
 > - `python verify\run_suite.py --tier network --budget-cny 10`（真实 API，**fail-closed + 预算闸门**：预估超上限直接拒绝启动；**跑完按实测成本聚合**，`scheduled-tasks` 据此自动回填三态闸门）
 >
 > 本文件说明脚本**用途与运行前提**；新增脚本请同步在下方表格登记（矩阵会自动纳入校验）。
+>
+> **新脚本产物目录约定（TG-9）**：**新增脚本前先确认产物路径已被 `.gitignore` 覆盖**——产物一律写**已忽略目录**（运行态 JSON → `agents/runtime/`；日志/截图 → `verify/*.log`、`verify/*.png`；临时结果 → `%TEMP%`），写仓库根 = 直接在 `git status` 里多出未跟踪产物（本轮已因此误入库 `verify_checkpoint_run.log` / `ci_fail_log.txt`）。可核判据：`git check-ignore --no-index <产物路径>` 退 0；唯一的忽略根清单/已入库数据例外/动态目标棘轮 = `agents/policy.json::artifact_paths`，守门闸门 = `verify_artifact_paths.py`（offline）；规则条文见 `docs/1-WORKFLOW.MD` §6「新脚本产物目录约定」。
 
 | 脚本 | 内容 | 运行前提（显式化，Sprint-7 M5） |
 |---|---|---|
@@ -51,6 +53,7 @@
 | `verify_freshness.py` | Sprint-16/M18 v1：**报告时效检测回归**（stale/suspect/fresh 三态、只分析调研归档、正文提及不算引用、**无时区信息按 UTC+8**、容差可配、`--check` 退出码、容错） | 离线（合成 fixture）；`python verify\verify_freshness.py` |
 | `verify_ledger_rounds.py` | Sprint-16/TG-10：**账本多轮次记录回归**（终态 run 仍可 `round` 追加、`rounds[0]` 保留首轮快照、`rounds_count`/`output_chars` 累加、`list` 的 `dur` 反映累计时长、`round --interrupted` 与独立 `interrupt` 写原因/影响/来源、非法 run 非零退出；`AGENT_OPS_DIR` 重定向到临时目录） | 离线（`AGENT_OPS_DIR` 重定向到临时目录，不碰真实账本）；`python verify\verify_ledger_rounds.py` |
 | `verify_ledger_measurement.py` | Sprint-17/TG-13：**账本『测量化』闸门**——口径可核（`dur`=墙钟累计/`rounds` 真源=报告轮次/缺值必须显式 `unknown`，真源 `agents/policy.json::ledger_measurement`）+ 账本↔`agents/runs/**` **双向**一致（白名单 `agents/policy/run-dir-exceptions.json`，每条须写 reason 且只减不增）+ 时间戳退化（相同/`0.00`/整十分钟/负值/缺失）+ `rounds` vs 报告轮次 + **终态已写回** + `measurement_source`/`dur_minutes` 契约 + **历史棘轮**（计数上限 + `review_by`，截止日之后一律严格）；默认模式 = 真实账本 + 30 条自检（含四类反向对照样本） | **offline 档**；`python verify\verify_ledger_measurement.py`（真实账本 + 自检）；反向对照样本：`--emit-fixture <kind> --agents-root %TEMP%\tg13-rc\<kind>` 后用 `--agents-root` 判定（样本不写进仓库） |
+| `verify_artifact_paths.py` | **TG-9/Sprint-17**：**产物目录约定闸门**——"脚本源码里的写盘路径必须落在已忽略目录或 `%TEMP%`"。AST 严格分解写盘目标（`open(...,"w")`／`write_text`／`mkdir`／`os.replace`／`shutil.*`／`.mjs` 截图名；名字按赋值链还原、`os.environ.get` 取默认落点）→ 逐条 `git check-ignore --no-index` 判定；**忽略根双向差集**（政策 `ignored_roots` 每条必须真被忽略、`.gitignore` 里确有其行、且确有代码在用；政策 ↔ 忽略文件 ↔ 代码三方互为解释）；**动态目标棘轮**（按文件设上限，未列入上限表的新文件出现动态目标即 FAIL）；**反向对照**：注入"写到仓库根"的新脚本 → rc=1 点名，注入"写默认落点 `agents/runtime/`"→ rc=0，并实测产物落入默认落点后 `git status --porcelain` 为空 | **offline 档**；需 `git`（判据用 `git check-ignore` / `git status`）；`python verify\verify_artifact_paths.py`（默认＝真实仓库 + 10 条自检）；`--report` 打印动态目标分布；`--scan-root <dir>` / `--emit-fixture <kind>` 用于注入样本（样本一律写 `%TEMP%`） |
 | `gui_check_fac16_checkpoint.mjs` | Sprint-16/F-AC16 v1：**Checkpoints 只读面板**（API 形状 + 面板开关 + 真实命名空间行数一致 + 逐篇载荷路径形如 `<key>/<dockey>.json.gz` + 复制按钮）；**零成本**，不触发 LLM | 后端 8787 + 前端 5173 + Playwright |
 | `gui_check_s15_*.mjs`（10 个） | Sprint-15 F2 验收修复族：`typography`（字体统一）/`hints_title`（聚合+限高）/`local_dir`（条件隐藏）/`collapse`（完成后收起）/`status_scope`（状态作用域）/`responsive`（三档分辨率）/`bidi_link`（双向联动）/`error_copy`（复制+报错定位 19 断言）/`output_view`（output/答案全文）/`cursor`（光标不跳+改动计数） | 后端 8787 + 前端 5173 已启动 + Playwright（`output_view` 为 network 档，需 key） |
 
@@ -97,6 +100,7 @@ Sprint-16 新增（分层 runner 与门禁）：
 .\.venv\Scripts\python.exe .\verify\verify_providers.py       # F-AC8 provider 一文件 + 刷新链
 .\.venv\Scripts\python.exe .\verify\verify_runner.py          # TG-5 runner/定时/预算闸门
 .\.venv\Scripts\python.exe .\verify\verify_ledger_measurement.py  # TG-13 账本测量化闸门（真实账本 + 反向对照自检）
+.\.venv\Scripts\python.exe .\verify\verify_artifact_paths.py      # TG-9 产物目录约定闸门（写盘落点必须已忽略/在 %TEMP%）
 .\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --list # 定时任务与到期状态（prices/nightly-suite/providers）
 ```
 
