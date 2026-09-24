@@ -186,3 +186,39 @@
 | 我的待办 | TG-13（账本测量化 2）、TG-6（验收方式 3）、TG-8（2）、TG-9（1）、F-AC13（2）、F-AC14（2）= **12 点**；TG-16（流程/策略全景 HTML，3 点，待排期） |
 | 待用户确认（历史遗留） | D3=是、D4=是、日期=保留文件名（已执行）；L1~L6 已落文；**新增待确认**：§3.5 治理产出标准、§4.4 worktree 隔离、是否推送 15 个提交、"执行会话"字段 |
 | 需用户转达 | 通知那个会话停止对 `windows` 的写入（本会话无法跨会话通信） |
+
+---
+
+## 9. 主代理独立发现（量化，2026-09-25；供审核文档合成，**不含**一查 066 / 二查 067 的结论）
+
+统计口径：`agents/runtime/registry.json` 全量 **67** 条 + `agents/runs/**` 目录实枚举（脚本：`registry_audit.py`，非仓库文件）。
+
+| # | 发现 | 量化证据 | 归属 |
+|---|---|---|---|
+| M1 | **账本测量缺陷**（TG-13 卡内证据的刷新版） | `status=succeeded` 但 `output_chars=0` → **12** 条；评审类 run **无 `result_files`** → **13** 条；`started_at == ended_at`（退化时长）→ **3** 条 | TG-13 |
+| M2 | **run_id 日期口径错位（新发现）** | `register` 自动 run-id 用 **UTC** 日期，目录/文档用 **UTC+8** → `run-2026-09-24-doc-audit-066`（账本）对应目录 `run-2026-09-25-doc-audit-066` → **账本 id ↔ 产物目录不一致**（`verify_close_readiness` 的 ⑤ linkage 判据会 FAIL）；另有 1 条 `cancelled` 孤儿记录 `run-2026-09-24-code-review-065`（我方二查首注册被取消后换 id，无目录） | TG-13 + TG-17 |
+| M3 | **`verify_card_index.py` 的 strict 判据在 CI 中从未执行** | 脚本默认**宽松档**（只跑 ①②⑤），`--strict` 才跑 ③④（必备节 / Sprint 不得复制卡正文）；offline 套件以**无参**调用 → CI 只跑宽松档。**实测 `--check --strict` 在真实数据上 PASS**（能过，但没人跑；默认档位的"迁移期"理由在迁移宣称完成后已过期） | 闸门覆盖（R1/R5 类） |
+| M4 | **CI 只显式接了一个闸门** | `ci.yml` 仅显式调用 `verify_close_readiness.py`（TG-11 加的步骤）；`md_tables` / `no_policy_hardcode` / `card_index` / `lint` 仅经 offline 套件**默认参数**间接运行 → "闸门在 CI 跑过"对这四个只对默认档成立 | 闸门覆盖 |
+| M5 | **账本↔目录双向漂移的具体清单** | `dirs_without_record=4`：`_acceptance-scratch-2026-09-20`（非 run 目录）+ 2 个 `provider-refresh` + 上述 066 目录；`records_without_dir=3`：历史时钟偏移 `…tech-research-013` + 上述两条 | TG-13 |
+| M6 | PowerShell `ConvertFrom-Json` 解析该账本**报 ArgumentException**，而 Python `json` 正常（**无重复键**，已用 `object_pairs_hook` 验证） | 工具差异，非账本缺陷；记此以免后人误判 | 环境备注 |
+
+---
+
+## 10. 二查中期发现（`run-2026-09-25-code-review-067`，2026-09-25；终报未出）
+
+### F1（**major，且由主代理造成**）短 sha 锚点被**静默丢弃** → 覆盖窗口归零
+- 事实：`agent_policy.CoverageWindow.covers()` 要求 `anchor in order`（`order` 只含 **40 位完整 sha**）→ **8 位短 sha 使 `covers()` 恒 False，该 run 贡献 0 覆盖**；真账本上 `window_problems()` 已点名"`run-2026-09-24-code-review-065` 的 `coverage_anchor='092a2f78'` 不是完整 40 位 sha → 该窗口在覆盖计算中被静默丢弃"。
+- 影响：本次两个审计 run（`doc-audit-066` / `code-review-067`）均为 `cov=092a2f78..open` → **一条都盖不住**；收尾后 C3 仍需为 `092a2f78..HEAD` 的 **33** 个提交找归属（实测现 `unowned` **15** 条，含迁移提交 `8d759512`）→ **C3 必 FAIL**。
+- **归因**：主代理在派发 prompt 里写了**短 sha** `092a2f78`（不是闸门自动生成的值）。
+- 现状约束：`update`/`finish` **都没有 `--coverage-anchor`**（已实测 `--help`），账本有完整性哈希**禁手改** → **登记后无法自修**。
+- 完整 sha：`092a2f784c9749126dc0f7483fe78ba721f424d0`。
+- 待办（**审核终报后统一实施，避免审计期间改动被审对象**）：① CLI 侧 `git rev-parse --verify <anchor>^{commit}` 规范化 + 解析失败 **fail-closed**；② 为 `finish`（或新子命令）开**受控回填口**；③ 收尾前决定：补齐 066/067 窗口 **或** 按 C3-T 为这批提交逐条建 sha 钉死例外（现例外表 **0** 条）。
+
+### F2（major）棘轮基线**对新增缺陷失明**——不只"缺到期日"
+- 事实（已实测复现）：`verify_md_tables.py:130` 只做**路径比较** → 向基线文件 `docs/iteration/sprint/2026-09-12-sprint-16.md` **注入 200 处新缺陷**，闸门仍 `MD-TABLE PASS` **rc=0**；对照：向非基线文件 `docs/1-WORKFLOW.MD` 注入 → rc=1 ✓。
+- 与政策自述矛盾：`agents/policy.json` 写明"**新文件/新改动一律判失败**"。
+- 最小修法（二查建议，约 13 行）：`md_table_legacy_files.files` 由**路径列表**改为 **`{路径: 缺陷数上限}`**，`len(found) > cap` 即 FAIL（棘轮**只许变紧**）；再加 `review_by` 过期即 FAIL。
+- 对 §7/R3 结论的修正：**只补到期日不够**——到期前的 200 处新缺陷照样 PASS。
+
+### 已确认的正面结论（二查）
+`verify/run_suite.py --tier offline` = **SUITE PASSED (19 scripts)**；`closure_problems()` 为空；C3 空区间检测在真数据上会红；**064 的 critical 确实已修好**。审计期间 HEAD 漂移 5 次（现 `ac42f7b0`）→ 二查结论均**绑定取得证据时的 sha**。
