@@ -104,10 +104,13 @@ jobs:
           python verify/verify_lint.py
           # A-M12（2026-09-25 提前交付，Sprint 归属仍为 Sprint-18/G2）：结构守卫的**自检**档。
           # CI 里没有"编辑前的快照"可比（快照是本地工作流的运行态产物），所以这里只跑 `--replay`：
-          # 它在 %TEMP% 的副本上用 5 次 R1 的真实输入复跑，断言每类都被拦下 + 干净副本 rc=0 +
-          # 真文件零改动——证明机制本身有效，而不是"声明它有效"。文档集取自
+          # 它在 %TEMP% 的副本上复跑 R1 的真实输入 + F2/H1/T1 反向对照，断言每类都被**按期望**处置
+          # （该拦下的 rc=1、该放行的 rc=0 且带 [新增]/[修改] 标注）+ 干净副本 rc=0 + 真文件零改动
+          # ——证明机制本身有效，而不是"声明它有效"。类别数与断言数**不写死在标签/注释里**：
+          # F2/H1/T1 是逐批追加的，写死的数字必然过期（旧文本还停在"5 类 R1"，实际已远超）；
+          # 以脚本自报的末行 `ALL PASS (N assertions)` 为准。文档集取自
           # agents/policy.json::md_table_docs/md_table_globs（与 verify_md_tables.py 同源）。
-          Write-Host "gate: structure-guard.py --replay  (档位=5 类 R1 真实输入复跑自检；不含本地快照比对)"
+          Write-Host "gate: structure-guard.py --replay  (档位=全类别复跑自检：R1 真实输入 + F2/H1/T1 反向对照；类别数见脚本自报首行、断言数见末行 ALL PASS (N assertions)，标签不写死数字；不含本地快照比对)"
           python scripts/structure-guard.py --replay
 
       - name: Build reactflow frontend
