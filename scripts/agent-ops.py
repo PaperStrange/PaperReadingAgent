@@ -31,7 +31,7 @@
   input_chars/4、output_chars/4 兜底并标 estimated=true；价表缺该模型 → pending_price。
 政策（TG-15）：**角色集合 / 阈值 / 覆盖路径 / 关闭步骤 一律来自数据文件**
   （agents/fanout.json + agents/functions/*.md frontmatter + agents/policy.json），
-  本文件不得再出现政策常量；加载器 verify/agent_policy.py，规则见 docs/1-WORKFLOW.MD §3。
+  本文件不得再出现政策常量；加载器 verify/agent_policy.py，规则见 docs/1-WORKFLOW.MD §6（政策数据化）。
 """
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ _CHARS_PER_TOKEN = 4.0  # UC-4 兜底：无 token 上报时 tokens ≈ chars/4
 # TG-15（Sprint-17 D2）：**角色集合与阈值不再写在这里**——原先的 `_REVIEW_ROLES`/`_MIN_DEVIATION_CHARS`
 # 与本文件外的 3 份副本一起构成"加角色要改代码"的硬编码面。现在全部来自数据：
 #   agents/fanout.json（关闭流水线步骤/targets）+ 各 spec frontmatter 的 scope_required/coverage_window
-#   + agents/policy.json（阈值与开关）。加载器见 verify/agent_policy.py；规则见 1-WORKFLOW.MD §3。
+#   + agents/policy.json（阈值与开关）。加载器见 verify/agent_policy.py；规则见 1-WORKFLOW.MD §6（政策数据化）。
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from verify.agent_policy import load_policy, parse_frontmatter  # noqa: E402
@@ -98,7 +98,7 @@ def _ledger_policy() -> dict:
     """账本状态机（政策数据：`agents/policy.json::ledger_status`）。
 
     2026-09-23 二查 finding：状态白名单原先是本文件的 `_STATUSES/_TERMINAL/_TRANSITIONS` 常量，
-    而 `1-WORKFLOW.MD` §3.1 明列"状态白名单须来自数据文件"——属"文档承诺 > 实现"。现由政策提供。
+    而 `1-WORKFLOW.MD` §6（政策数据化）明列"状态白名单须来自数据文件"——属"文档承诺 > 实现"。现由政策提供。
     """
     return policy()._data("ledger_status")
 

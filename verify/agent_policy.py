@@ -123,7 +123,7 @@ class SpecRole:
     def declared(self) -> bool:
         """两个声明字段都在 → 该 spec 满足封闭世界要求。
 
-        2026-09-23 doc-audit finding 2 修正：此前只把 `scope_required` 做成不变量，而 §3.1 的
+        2026-09-23 doc-audit finding 2 修正：此前只把 `scope_required` 做成不变量，而 §6（政策数据化）的
         条文明写"两个字段都必须显式声明"，且 `coverage_window` 决定该 run **是否参与 C3 覆盖计算**
         ——也就是说缺它就没有任何东西能判定"这个 run 该不该覆盖"，这正是"文档承诺 > 实现"的形态。
         现把两个字段一起纳入不变量。

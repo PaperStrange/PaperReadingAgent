@@ -2,7 +2,7 @@
 
 > **状态：正式计划（2026-09-21，用户审定 D1~D8）**。依据：Sprint-16 PM 复盘（`sprint/2026-09-12-sprint-16.md` §8.1/§8.2）、A-M11 两路穷举（`phases/agents-infra/2026-09-21-a-m11-from-{learned,runs}.MD`）、用户 2026-09-21 的口径。
 > **批次 → Sprint 映射**：**G1 = Sprint-17**（规则落地，文档：[`2026-09-21-sprint-17.md`](2026-09-21-sprint-17.md)）｜**G2 = Sprint-18**（载体与验证可信度 + MM 并行）｜**G3 = Sprint-19**（观察与度量 + 用起 MM）。
-> 生成时间：**2026-09-23（UTC+8；文件名的 `2026-09-21` 为会话起始日期，按 `1-WORKFLOW.MD` §3 新规保留原名并加此更正）**｜术语：`台账` 仅指独立文件（`1-WORKFLOW.MD` §3）。
+> 生成时间：**2026-09-23（UTC+8；文件名的 `2026-09-21` 为会话起始日期，按 `1-WORKFLOW.MD` §6（流程纪律）新规保留原名并加此更正）**｜术语：`台账` 仅指独立文件（`1-WORKFLOW.MD` §3）。
 
 ## 1. 为什么先治理（数据，不是感觉）
 
@@ -72,7 +72,7 @@
 | **JSON / YAML** | 26 / 53（`providers/*.json`、CI workflow、`fanout.json` 等） | JSON：**既有 schema/结构校验**（`validateFanout`、`VERIFY_META` 校验）统一登记；YAML：`yamllint` + workflow 结构校验 | 项目自身 schema + GitHub Actions 语法 | **G2** |
 | **PowerShell** | 7 | **`PSScriptAnalyzer`**（`Invoke-ScriptAnalyzer -Severity Warning,Error`）+ 项目约定（纯 ASCII/带 BOM、`$PSNativeCommandUseErrorActionPreference`，见 1.18 与 CI pip 静默失败） | PSScriptAnalyzer 默认规则集 | **G2** |
 | **Batch** | 4 | 无成熟 linter → **人工评审 + 轻量断言**（编码、换行、`chcp`/`setlocal` 约定） | 项目约定 | **G2** |
-| **Markdown（文档/规范）** | **82** | 结构校验（`TG-14` 的 `verify_card_index.py`：标题层级、表格连续性、**表头↔各行单元格数一致**、卡号无跳号）＋ `markdownlint`（**MD056** `table-column-count`） | `1-WORKFLOW.MD` §3 文档规范 | **G1**（结构）/ **G2**（style） |
+| **Markdown（文档/规范）** | **82** | 结构校验（`TG-14` 的 `verify_card_index.py`：标题层级、表格连续性、**表头↔各行单元格数一致**、卡号无跳号）＋ `markdownlint`（**MD056** `table-column-count`） | `1-WORKFLOW.MD` §6 文档规范 | **G1**（结构）/ **G2**（style） |
 | CSS / TOML | 2 / 5 | 可选（`stylelint` / `taplo`） | — | 后续 |
 
 **闸门要求**：新增 `verify/verify_lint.py`（**offline 档，纳入套件**）——① 逐语言调用上表工具（工具缺失时 **fail-closed** 或显式 `skipped` 并记原因，**不得静默跳过**）；② **反向对照**：注入一处违规（如未使用变量/缺 docstring/超长函数）→ 必须 FAIL；③ **spec 侧**：`agents/functions/code-review.md` 的 `focus` 增 `readability`，判据引用上表规范，`strictness=strict` 时每条可读性问题必须给"为什么读不懂 + 怎么改"；④ 工具能自动抓的交给工具，抓不到的（命名语义、注释质量、隐式假设）由评审按 spec 判。

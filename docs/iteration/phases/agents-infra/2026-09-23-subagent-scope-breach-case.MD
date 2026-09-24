@@ -49,6 +49,6 @@
 ## 5. 引用关系（不复制正文，只按番号/路径引用）
 
 - 卡：`phases/agents-infra/cards/A-M11.md`（多智能体 / agent 治理）
-- 规则：`docs/1-WORKFLOW.MD` §3.1（政策数据化）、§4.2（三查与修复验证复核）
+- 规则：`docs/1-WORKFLOW.MD` §6（政策数据化）、§4.2（三查与修复验证复核）
 - 闸门：`verify/verify_card_index.py`（计划表行豁免 + 反向对照 D2）
 - 事故记录：`docs/iteration/sprint/2026-09-21-sprint-17.md` §10（本反例为其第 ① 条的证据指针）
