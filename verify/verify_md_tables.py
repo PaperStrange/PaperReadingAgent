@@ -120,6 +120,7 @@ def main() -> int:
 
     all_problems: list[str] = []
     baselined: list[str] = []
+    legacy_in_scope = 0
     print("Markdown 表格结构自检（未转义管道切分 + 转义平衡）：")
     for path in targets:
         if not path.is_file():
@@ -129,6 +130,7 @@ def main() -> int:
         if str(path.resolve()) in legacy:
             # 棘轮：历史文件的既存缺陷**只报不判失败**（见 policy::md_table_legacy_files 说明）
             baselined += found
+            legacy_in_scope += 1
             if found and not quiet:
                 print(f"    [baseline] {len(found)} 处既存缺陷（历史文件，只报不判失败）")
         else:
@@ -145,7 +147,8 @@ def main() -> int:
         print("\n修法：① 内容里的 `|` 加反斜杠转义（`\\|`）；② 补齐/删除多余的单元格分隔符；"
               "③ 若行数属**表头与数据行列数不同**（如标题行少一列），改分隔行 `|---|...|` 与表头对齐。")
         return 1
-    print(f"\nMD-TABLE PASS（{len(targets)} 个文件；其中 {len(legacy)} 个历史文件走棘轮基线）")
+    # 注：基线文件数按**本次实际扫描到的**计（首版打印的是政策里的总数，跑子集时会误导）
+    print(f"\nMD-TABLE PASS（{len(targets)} 个文件；其中 {legacy_in_scope} 个历史文件走棘轮基线）")
     return 0
 
 
