@@ -92,3 +92,47 @@
 ## 5. 未核实（如实登记）
 
 ① CI #206 的**步骤日志**（无 GitHub 访问；一查以"接线缺失 + 锚点门跳过"两条即可否证 §4 的说法，但未读日志本身）；② 迁移**逐字段**守恒的 102/117/36/231 分项（一查只重算了卡数/字节/backlog 体积；主代理做的是归一化子串守恒，非逐字段）；③ `verify_local_dir.py` 的 flaky 复现（审计期间刻意未跑套件以外的写状态操作）；④ 被审范围外的 6 条 docs(pm) 提交未审。
+
+---
+
+## 6. 二查终报（`run-2026-09-25-code-review-067`，✅ succeeded，`rounds=2`，`covers_through=4f2fcc15`）
+
+> 该 run 首个 `register` 被 CLI 自动编号成 `run-2026-09-24-code-review-065`（**UTC 日期 + 撞号**，与 M-g 同源）→ 已用显式 `--run-id` 重登记，并把误建行置 `cancelled`。
+
+### 6.1 major（7 条；**前 4 条今天就放行真实缺陷，或可被一次数据编辑静音**）
+
+| # | 发现 | 证据 | 必修 |
+|---|---|---|---|
+| **N1** | **表格闸门扫描集漏 29/160 个相关文档**：阶段级 `.MD` 从不自动纳入（含本轮新增的 2 份"编辑越界"事故反例） | 漏项里**今天就藏着 7 处真实缺陷**（`agents-infra/2026-09-21-a-m11-from-runs.MD:102,:178`、`architecture.MD:251`、`tg11-retro.MD:42,:43`、`lint-deps-security-check.search-only-draft.MD:62,:79`），闸门却打印 `MD-TABLE PASS` | **是**（政策侧扩 glob + 修那 7 处） |
+| **N2** | 棘轮**按文件**豁免（同 M-a） | 注入 **200 处**新缺陷仍 rc=0；非基线对照 rc=1 | **是**（`{path: 上限}` + `review_by`，~13 行） |
+| **N3** | `verify_close_readiness.py:131-132` target 判据是**子串匹配** → `branch:windows-backup`、`OLD-working-tree-JUNK`、`branch:mainline` **全 PASS** | 真 policy + 合成 run 实测 | **是（1 行）** |
+| **N4** | `verify_no_policy_hardcode.py:292` 台账加**一条无校验豁免**（`categories:["policy"]`）即 rc 0 `ALL PASS(13)`，同一屏还打印"无政策硬编码 clean" | 与台账自述"绝不整文件豁免"冲突 | **是**（豁免须校验：类别白名单 + 理由 + 文件级最小化） |
+| **N5** | `agent-ops.py:373` `--coverage-anchor` **无 sha 规范化** → **066/067 两个审计 run 的覆盖窗口已被静默作废**（= M-b，主代理造成） | 短 sha → `covers()` 恒 False；登记后无 CLI 可修 | **是**（3 行 + 回填口） |
+| **N6** | `verify_close_readiness.py:211-215` §9↔账本 `window_start` **取自 §9 自己** → **删掉最早几条 run 即 PASS**；`:257-261` 只比对 `scope_source`，**role/target 写错也 PASS** | 一查/二查一致 | **是** |
+| **N7** | `verify_card_index.py:321-323` 默认（套件）模式真数据只 **WARN** → **"SUITE PASSED" 不能证明卡索引一致**；④ 判据可用 **≥61 字符填充**规避 | 同一坏数据 `--check` rc=1 / 无参数 rc=0+WARN | **是** |
+
+### 6.2 minor（3 条）
+
+`N8` "空集/缺失 = PASS"一族（`verify_md_tables.py:126-128,151`：空扫描集 rc=0，且"N 个文件"数的是**请求数**不是解析数；`--no-coverage` 顺带删掉锚点检查 `:273-277,616`；`card_index:220-221` 无 backlog 阶段静默跳过）；`N9` `close_readiness` 真数据 **FAIL(98 项 = 63 linkage + 34 C1 + 1 C3)** 无"§9 未填"诊断、`parse_sprint` 不容忍缩进、C1 不执行政策 `scope_min_deviation_chars=10`（其中 34 C1 属 `TG-17` 已开卡的顺延项）；`N10` **`agent-ops.py:464` `finish --result-file` 把报告 LF 静默改写成 CRLF**（实测 35721→35913 B / CRLF 192 行；未过 `finish` 的 `context.md` 仍 0 CRLF）——同族修复在 `2206f376` 做过而漏此处。
+
+### 6.3 R1~R5 与闸门可信度（二查的判定）
+
+| 项 | 结论 |
+|---|---|
+| **R1 覆盖枚举** | `policy.json` glob 展开 vs 文件系统**双向差集 + 逐文件实跑**：**131 = 128 docs + 3**；相关集 **160**，**漏 29**，其中 **7 处真缺陷**；96/96 卡覆盖；`card_index` 阶段动态枚举覆盖 **4/4**；`no_policy_hardcode` 只扫 **39/182** 个 `.py` |
+| **R2 迁移守恒** | 二查自建 git 解析器（blob sha1 复核）：**守恒成立** —— **476/476** 非空非卡号单元格**字节级精确命中**、**0 丢失**、**反向 0 自造**、无删/改名、0 BOM/0 CRLF/0 乱码。但 **主代理的 `453` 不可复现**（现测得 454），逐阶段计数口径互不一致；P3 字节 `6962` 实为 **`7155`**（一查亦报此） |
+| **R3 棘轮** | 判 **major**：注入 200 处仍 rc=0 → **补到期日也不解决**；最小修法 = `{path: 缺陷上限}` + `review_by` |
+| **R4 账本↔产物** | 062/063/064 目录与 `<role>.report.md` 命名一致，但 `result_files=[]`（**无机器可验链接**）；`cov=` 窗口**全不覆盖自称区间**（0/6、0/9、0/9；065 为 0/30 空区间）。正面：064 那条 critical（空区间静默通过）**已修好且真数据会红** |
+| **R5 断言可信度** | `md_tables` = **部分可信**（判据①真且锐利——自造 ragged 表 rc=1 带行号；判据②`unescaped=raw-escaped` 后自比是**恒真式、分支不可达**，故"两条判据"实际只有一条）；`card_index` = **`--check` 可信、套件默认模式恒真**；`no_policy_hardcode` = **主判据真**，但**豁免台账必须视为可信输入**；`close_readiness` = **C1/C2/C3 核心真**，外围（§9 互联、target 子串、deviation 阈值）不严 |
+| **说服二查的三个变异** | ① 棘轮 **200 处注入仍 PASS**；② **同一坏数据 `--check` rc=1 vs 无参数 rc=0**（card_index）；③ **一条豁免把 rc=1 变 rc=0 且打印 clean**（hardcode） |
+
+### 6.4 对**本 §4 行动链**的增补（据终报重排）
+
+- **A1 扩**：除短 sha 规范化，追加 **N5 回填口**；并明确 066/067 的窗口处置（补窗口 **或** 按 C3-T 逐条 sha 钉死例外）。
+- **A2 扩**：棘轮改上限制 + `review_by`（N2/R3），并复核"N 个文件"计数口径（N8）。
+- **A3 扩**：`card_index` 套件模式**必须判失败**（N7），不只翻 strict；CI 打印各闸门**实际档位与参数**。
+- **新 A10**：**闸门扫描集双向差集检查**（N1）——把"相关文档集合"变成政策驱动的枚举 + 与文件系统做双向差集，并对缺失项 fail-closed；顺带修那 **7 处真缺陷**。
+- **新 A11**：**target 判据改精确匹配**（N3）+ **§9 互联自洽**（N6：`window_start` 不得取自被校验文档自身；`role/target` 一并比对）+ **豁免台账校验**（N4）。
+- **新 A12**：**`finish --result-file` 的 LF→CRLF 静默改写**（N10）——与 D1 的 EOL 事故同族，必须修 + 加断言。
+- **`no_policy_hardcode` 覆盖 39/182 `.py`**（R1）→ 并入 A10 的"扫描集双向差集"一并收口。
+
