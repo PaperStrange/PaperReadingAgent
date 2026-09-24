@@ -50,6 +50,7 @@
 | `verify_checkpoint_index.py` | Sprint-16/F-AC16 v1：**checkpoint 只读索引回归**（扫描/排序/逐篇 `payload_path`+`payload_exists`+字节数、坏 manifest fail-soft、`namespace_detail` 与 `resolve_payload`、字段白名单、空目录） | 离线（合成 fixture，不碰真实 `~/.pqa`）；`python verify\verify_checkpoint_index.py` |
 | `verify_freshness.py` | Sprint-16/M18 v1：**报告时效检测回归**（stale/suspect/fresh 三态、只分析调研归档、正文提及不算引用、**无时区信息按 UTC+8**、容差可配、`--check` 退出码、容错） | 离线（合成 fixture）；`python verify\verify_freshness.py` |
 | `verify_ledger_rounds.py` | Sprint-16/TG-10：**账本多轮次记录回归**（终态 run 仍可 `round` 追加、`rounds[0]` 保留首轮快照、`rounds_count`/`output_chars` 累加、`list` 的 `dur` 反映累计时长、`round --interrupted` 与独立 `interrupt` 写原因/影响/来源、非法 run 非零退出；`AGENT_OPS_DIR` 重定向到临时目录） | 离线（`AGENT_OPS_DIR` 重定向到临时目录，不碰真实账本）；`python verify\verify_ledger_rounds.py` |
+| `verify_ledger_measurement.py` | Sprint-17/TG-13：**账本『测量化』闸门**——口径可核（`dur`=墙钟累计/`rounds` 真源=报告轮次/缺值必须显式 `unknown`，真源 `agents/policy.json::ledger_measurement`）+ 账本↔`agents/runs/**` **双向**一致（白名单 `agents/policy/run-dir-exceptions.json`，每条须写 reason 且只减不增）+ 时间戳退化（相同/`0.00`/整十分钟/负值/缺失）+ `rounds` vs 报告轮次 + **终态已写回** + `measurement_source`/`dur_minutes` 契约 + **历史棘轮**（计数上限 + `review_by`，截止日之后一律严格）；默认模式 = 真实账本 + 30 条自检（含四类反向对照样本） | **offline 档**；`python verify\verify_ledger_measurement.py`（真实账本 + 自检）；反向对照样本：`--emit-fixture <kind> --agents-root %TEMP%\tg13-rc\<kind>` 后用 `--agents-root` 判定（样本不写进仓库） |
 | `gui_check_fac16_checkpoint.mjs` | Sprint-16/F-AC16 v1：**Checkpoints 只读面板**（API 形状 + 面板开关 + 真实命名空间行数一致 + 逐篇载荷路径形如 `<key>/<dockey>.json.gz` + 复制按钮）；**零成本**，不触发 LLM | 后端 8787 + 前端 5173 + Playwright |
 | `gui_check_s15_*.mjs`（10 个） | Sprint-15 F2 验收修复族：`typography`（字体统一）/`hints_title`（聚合+限高）/`local_dir`（条件隐藏）/`collapse`（完成后收起）/`status_scope`（状态作用域）/`responsive`（三档分辨率）/`bidi_link`（双向联动）/`error_copy`（复制+报错定位 19 断言）/`output_view`（output/答案全文）/`cursor`（光标不跳+改动计数） | 后端 8787 + 前端 5173 已启动 + Playwright（`output_view` 为 network 档，需 key） |
 
@@ -95,6 +96,7 @@ Sprint-16 新增（分层 runner 与门禁）：
 .\.venv\Scripts\python.exe .\verify\verify_checkpoint.py      # F-AC10 断点续跑（建议加 HF_HUB_OFFLINE=1）
 .\.venv\Scripts\python.exe .\verify\verify_providers.py       # F-AC8 provider 一文件 + 刷新链
 .\.venv\Scripts\python.exe .\verify\verify_runner.py          # TG-5 runner/定时/预算闸门
+.\.venv\Scripts\python.exe .\verify\verify_ledger_measurement.py  # TG-13 账本测量化闸门（真实账本 + 反向对照自检）
 .\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --list # 定时任务与到期状态（prices/nightly-suite/providers）
 ```
 

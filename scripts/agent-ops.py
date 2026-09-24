@@ -26,6 +26,17 @@
   python scripts/agent-ops.py parse-report <file.md>
   python scripts/agent-ops.py prices-derive
 
+测量口径（TG-13，真源 `agents/policy.json::ledger_measurement`）：
+  dur      = `ended_at - started_at`（累计**墙钟**；`round` 追加会前移到末轮）。
+             **不是**"首末轮时间差"、**不是**报告自报时长（报告时长不得回填账本）。
+  rounds   真源 = **报告轮次**（能数出 `Round N`/`第 N 轮` 时以报告为准并与账本核对）；
+             报告不可数时账本声明值只是 `declared` 声明，不得当实测值上报看板。
+  unknown  **缺值必须显式 unknown**：无墙钟读数 → `dur_minutes=null` + `measurement_source=unknown`
+             （`list` 打印 `dur=unknown`）；**禁止**用 `0.00`／整十分钟等退化值冒充实测值。
+  `finish`/`round` 写入时**检测时间戳退化并标注**（`measurement_flags` + 来源降级为 `declared`），
+  不拒绝写入（真实 <1 秒的 run 不该被误杀；缺行比带标记的行更难审计），
+  闸门 `verify/verify_ledger_measurement.py` 对截止日之后的新 run 一律 FAIL。
+
 状态机（UC-3）：queued -> running -> succeeded|failed|cancelled；非法流转拒绝。
 成本估算（UC-4）：cost = usage x prices.json 单价（含 cache 分列）；无 usage 时按
   input_chars/4、output_chars/4 兜底并标 estimated=true；价表缺该模型 → pending_price。
@@ -168,6 +179,78 @@ def _duration_minutes(start: str, end: str) -> float | None:
         return (datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds() / 60.0
     except (TypeError, ValueError):
         return None
+
+
+# ------------------------------------------------ TG-13：账本『测量化』（来源/退化/unknown）
+
+def _measurement_policy() -> dict:
+    """测量口径（政策数据：`agents/policy.json::ledger_measurement`，TG-13）。
+
+    口径此前只存在于讨论与注释里：`list` 打印 `dur=`、看板画时长、评审引用时长各按各的默认，
+    于是"写入时刻的巧合"（两端时间戳逐字节相同 → `0.00`；恰好整十分钟）被一路当成测量值。
+    现在 `dur`/`rounds`/`unknown` 三条口径 + 退化判定参数 + 合法来源取值全部来自数据文件。
+    """
+    return policy().ledger_measurement
+
+
+def _round_multiple() -> int:
+    return int(_measurement_policy()["degenerate"]["round_minutes_multiple"])
+
+
+def measurement_of(started_at: str | None, ended_at: str | None) -> tuple[str, list[str], float | None]:
+    """把一对时间戳翻译成 `(测量来源, 退化标记, dur_minutes)`——**纯函数**，供断言直接驱动。
+
+    口径（`agents/policy.json::ledger_measurement`）：
+      * 任一端缺失/不可解析 → `("unknown", ["missing_timestamp"], None)`——缺值必须**显式 unknown**，
+        **不得**回落 `0.00`（`0.00` 的含义是"未测得"，不是"零耗时"）；
+      * 两端逐字节相同/差值恰 `0.00`（`zero_duration`）、差值恰为整十分钟（`round_duration`）、
+        末态早于起点（`negative_duration`）→ `("declared", [标记], None)`——这些是**写入时刻的巧合**，
+        不是测量值；因此 **不写进 `dur_minutes`**（写进去就是把退化值冒充测量值；
+        原始读数仍在 `started_at`/`ended_at` 里，标记说明它退化在哪）；
+      * 其余 → `("wall-clock", [], round(dur, 3))`，即可信的墙钟实测值。
+
+    为什么是"标注 + 字段降级"而不是"直接拒绝写入"（卡内要求二选一，这里择优并说明）：
+    `finish` 的 `ended_at` 由 CLI 现取，一个真实耗时 <1 秒的 run 或恰好落在整十秒边界的 run
+    会被 `reject` 误杀（把正确的记账挡在门外），而**账本缺行**比**带标记的行**更难审计；
+    退化标记 + `measurement_source=declared` 让"这不是测量值"成为**可查询的事实**，
+    闸门（`verify/verify_ledger_measurement.py`）再对截止日之后的新 run 一律 FAIL——
+    于是既不在写入侧制造假红，也不让退化值冒充测量值。
+    """
+    try:
+        start = datetime.fromisoformat(str(started_at))
+        end = datetime.fromisoformat(str(ended_at))
+    except (TypeError, ValueError):
+        return "unknown", ["missing_timestamp"], None
+    if start.tzinfo is None or end.tzinfo is None:
+        return "unknown", ["missing_timestamp"], None
+    mins = (end - start).total_seconds() / 60.0
+    if mins == 0.0:
+        return "declared", ["zero_duration"], None
+    if mins < 0:
+        return "declared", ["negative_duration"], None
+    multiple = _round_multiple()
+    ratio = mins / multiple
+    if abs(ratio - round(ratio)) < 1e-9:
+        return "declared", ["round_duration"], None
+    return "wall-clock", [], round(mins, 3)
+
+
+def _apply_measurement(run: dict) -> None:
+    """把 `measurement_source`/`measurement_flags`/`dur_minutes` 刷成当前时间戳的结果。
+
+    非终态 run（queued/running）尚无末态时间戳 → 记 `unknown` + 无标记（"还没测"不是缺陷）；
+    终态 run → 走 `measurement_of()`：可测则 `wall-clock` + 实测值，退化则 `declared` + 标记 + `null`。
+    """
+    terminal = set(_ledger_policy()["terminal"])
+    if run.get("status") not in terminal:
+        run["measurement_source"] = "unknown"
+        run["measurement_flags"] = []
+        run["dur_minutes"] = None
+        return
+    source, flags, mins = measurement_of(run.get("started_at"), run.get("ended_at"))
+    run["measurement_source"] = source
+    run["measurement_flags"] = flags
+    run["dur_minutes"] = mins
 
 
 @contextlib.contextmanager
@@ -439,6 +522,8 @@ def cmd_register(args: argparse.Namespace) -> None:
         "tags": {},
         "error": None,
     }
+    # TG-13：测量来源（此刻只有 started_at、没有 ended_at → unknown，禁止写 0.00 冒充测量值）
+    _apply_measurement(entry)
     data["runs"].append(entry)
     _save_registry(data)
     print(f"registered {run_id} (status={entry['status']})")
@@ -469,6 +554,7 @@ def cmd_update(args: argparse.Namespace) -> None:
         if not r["started_at"]:
             r["started_at"] = _now()
     _apply_usage(r, args)
+    _apply_measurement(r)  # TG-13：时间戳变了就刷新测量来源/时长（仍是 running → unknown）
     _save_registry(data)
     print(f"updated {args.run_id} (status={r['status']})")
 
@@ -546,8 +632,14 @@ def cmd_finish(args: argparse.Namespace) -> None:
         r["cost_est"] = {"total": args.cost_override, "currency": "CNY", "estimated": False, "override": True}
     else:
         r["cost_est"] = _estimate_cost(r)
+    # TG-13：终态 → 算测量值（可测 = wall-clock + dur_minutes；退化 = declared + 标记 + null）
+    _apply_measurement(r)
     _save_registry(data)
-    print(f"finished {args.run_id} -> {r['status']} (cost_est={r['cost_est']})")
+    flags = ",".join(r.get("measurement_flags") or [])
+    print(f"finished {args.run_id} -> {r['status']} (cost_est={r['cost_est']})"
+          f" dur={r.get('dur_minutes')} min msrc={r.get('measurement_source')}"
+          + (f" ⚠退化={'+'.join(r['measurement_flags'])}"
+             "（该时长不是测量值，闸门会对新 run 判 FAIL，请检查时钟/时间戳来源）" if flags else ""))
 
 
 @_with_registry_lock
@@ -592,6 +684,9 @@ def cmd_round(args: argparse.Namespace) -> None:
         r["output_chars"] = int(r.get("output_chars") or 0) + int(args.output_chars)
     r["ended_at"] = now
     r["rounds_count"] = n
+    # TG-13：追加轮次把 ended_at 前移 → `dur` 必须随之刷新（累计墙钟口径），
+    # 否则账本就是"记了轮次但没测量时长"（TG-10 的 53 秒 vs 4h53m 正是这个形态）。
+    _apply_measurement(r)
     if args.interrupted:
         evs = r.setdefault("interruptions", [])
         evs.append({
@@ -603,7 +698,7 @@ def cmd_round(args: argparse.Namespace) -> None:
         r["interruptions_count"] = len(evs)
     _save_registry(data)
     print(f"appended round {n} to {args.run_id} (rounds_count={n}, output_chars={r['output_chars']}, "
-          f"ended_at={r['ended_at']})")
+          f"ended_at={r['ended_at']}, dur={r.get('dur_minutes')} min msrc={r.get('measurement_source')})")
 
 
 @_with_registry_lock
@@ -638,8 +733,18 @@ def cmd_list(args: argparse.Namespace) -> None:
         rows = rows[-args.limit:]
     for r in rows:
         rounds = r.get("rounds_count") or len(r.get("rounds") or []) or 1
-        mins = _duration_minutes(r.get("started_at") or "", r.get("ended_at") or "")
-        dur = f" dur={mins:.1f}m" if mins is not None else ""
+        # TG-13 展示口径：**缺值必须显式 unknown**——无墙钟读数就打印 `dur=unknown`，
+        # 不得留空、更不得回落 `dur=0.0`（0.0 会被读成"零耗时"）。退化读数同样标 unknown
+        # 并把退化原因写在 flags 里（原始时间戳仍在行内，可复核）。
+        source = str(r.get("measurement_source") or "")
+        flags = r.get("measurement_flags") or []
+        if source == "wall-clock":
+            mins = _duration_minutes(r.get("started_at") or "", r.get("ended_at") or "")
+            dur = f" dur={mins:.1f}m" if mins is not None else " dur=unknown"
+        else:
+            dur = " dur=unknown" + (f"(!{'+'.join(flags)})" if flags else "")
+        if source:
+            dur += f" msrc={source}"
         intr = f" int={r['interruptions_count']}" if r.get("interruptions_count") else ""
         # TG-11：scope 来源必须一眼可见——自选范围（self-chosen）在 list 里高亮标记，便于审计
         src = (r.get("scope_source") or "").strip()

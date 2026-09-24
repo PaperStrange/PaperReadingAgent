@@ -32,6 +32,7 @@ from __future__ import annotations
 import fnmatch
 import json
 import os
+import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -104,6 +105,20 @@ def _as_bool(raw: str | bool | None, *, field: str = "?", where: str = "?") -> b
         return False
     raise PolicyError(f"{where} 的 {field}={raw!r} 不是合法布尔值（合法：true/false/yes/no/1/0/on/off）"
                       f"——拼错不会静默降级，请修正数据文件")
+
+
+def _require_iso_date(raw: object, where: str) -> str:
+    """严格 `YYYY-MM-DD`（缺/格式错 → fail-closed，不猜）。
+
+    闸门要按**字典序**比较日期，格式一乱比较就无意义；而"比较无意义"的后果是棘轮
+    永不失效（永久豁免）。`md_table_legacy_files.review_by` 与 TG-13 的
+    `legacy_ratchet.cutoff_local_date`/`review_by` 共用本判据。
+    """
+    text = str(raw or "").strip()
+    parts = text.split("-")
+    if len(parts) != 3 or [len(p) for p in parts] != [4, 2, 2] or not all(p.isdigit() for p in parts):
+        raise PolicyError(f"{where} 必须是 'YYYY-MM-DD'，实际 {raw!r}——格式非法会让日期比较失去意义")
+    return text
 
 
 COVERAGE_WINDOW_VALUES = ("self", "none")
@@ -239,14 +254,8 @@ class Policy:
         """
         val = self._data("md_table_legacy_files")
         raw = val.get("review_by") if isinstance(val, dict) else None
-        text = str(raw or "").strip()
         # 严格 `YYYY-MM-DD`：闸门要按字典序比较日期，格式一乱比较就无意义（fail-closed，不猜）
-        parts = text.split("-")
-        if len(parts) != 3 or [len(p) for p in parts] != [4, 2, 2] or not all(p.isdigit() for p in parts):
-            raise PolicyError(
-                f"md_table_legacy_files.review_by 必须是 'YYYY-MM-DD'，实际 {raw!r}"
-                f"——格式非法会让到期判定失去意义")
-        return text
+        return _require_iso_date(raw, "md_table_legacy_files.review_by")
 
     @property
     def card_index(self) -> dict:
@@ -332,6 +341,80 @@ class Policy:
     def close_gate(self) -> dict:
         return self._data("close_gate")
 
+    # ---- 数据源 3：账本测量口径与历史棘轮（TG-13） --------------------------------
+    @property
+    def ledger_measurement(self) -> dict:
+        """账本『测量化』口径 + 棘轮基线（`agents/policy.json::ledger_measurement`，TG-13）。
+
+        为什么口径也要数据化：`dur` / `rounds` 的语义此前**只存在于讨论与注释里**——
+        `list` 打印 `dur=`、看板画时长、评审引用时长，各自默认自己的口径，于是
+        「0.00 分钟」「恰好 10.00 分钟」这类**写入时刻的巧合**一路被当成测量值上报
+        （见 TG-13 卡内证据①）。本属性提供唯一真源：三条可核文本（dur/rounds/unknown）、
+        退化判定参数、报告轮次正则、以及历史 run 的棘轮上限与到期日。
+
+        校验一律 fail-closed（缺键/类型错/数值非法 → `PolicyError`）：口径写错或上限写成
+        非数字，都会让闸门**静默放行**，而静默放行正是本卡要消灭的形态。
+        """
+        val = self._data("ledger_measurement")
+        if not isinstance(val, dict):
+            raise PolicyError(f"ledger_measurement 必须是对象，实际 {val!r}")
+        for key in ("dur", "rounds", "unknown"):
+            if not str(val.get(key) or "").strip():
+                raise PolicyError(f"ledger_measurement.{key} 缺失或为空（三条口径是可核文本，不得留空）")
+        values = val.get("measurement_source_values")
+        if not isinstance(values, list) or not values or not all(isinstance(v, str) and v for v in values):
+            raise PolicyError(f"ledger_measurement.measurement_source_values 必须是非空字符串列表，实际 {values!r}")
+        deg = val.get("degenerate")
+        if not isinstance(deg, dict) or isinstance(deg.get("round_minutes_multiple"), bool) \
+                or not isinstance(deg.get("round_minutes_multiple"), int) or deg["round_minutes_multiple"] <= 0:
+            raise PolicyError("ledger_measurement.degenerate.round_minutes_multiple 必须是正整数"
+                              f"（退化判定阈值，写错即静默失效），实际 {deg!r}")
+        pattern = str(val.get("report_round_pattern") or "")
+        if not pattern:
+            raise PolicyError("ledger_measurement.report_round_pattern 缺失（报告轮次是 rounds 的真源）")
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            raise PolicyError(f"ledger_measurement.report_round_pattern 不是合法正则：{exc}") from exc
+        globs = val.get("terminal_report_globs")
+        if not isinstance(globs, list) or not globs:
+            raise PolicyError(f"ledger_measurement.terminal_report_globs 必须是非空列表，实际 {globs!r}")
+        exc_file = str(val.get("run_dir_exceptions_file") or "").strip()
+        if not exc_file:
+            raise PolicyError("ledger_measurement.run_dir_exceptions_file 缺失"
+                              "（目录↔账本的历史例外白名单路径；白名单机制必须可核，不能无路径）")
+        tol = val.get("dur_minutes_tolerance")
+        if isinstance(tol, bool) or not isinstance(tol, (int, float)) or float(tol) <= 0:
+            raise PolicyError(f"ledger_measurement.dur_minutes_tolerance 必须是正数，实际 {tol!r}")
+        ratchet = val.get("legacy_ratchet")
+        if not isinstance(ratchet, dict):
+            raise PolicyError(f"ledger_measurement.legacy_ratchet 必须是对象，实际 {ratchet!r}")
+        # 两处日期都必须严格 `YYYY-MM-DD`（比较失去意义 = 棘轮永不失效）——只校验，取值走专用属性
+        _require_iso_date(ratchet.get("cutoff_local_date"), "legacy_ratchet.cutoff_local_date")
+        _require_iso_date(ratchet.get("review_by"), "legacy_ratchet.review_by")
+        caps = ratchet.get("caps")
+        if not isinstance(caps, dict) or not caps:
+            raise PolicyError(f"ledger_measurement.legacy_ratchet.caps 必须是非空映射，实际 {caps!r}")
+        for name, cap in caps.items():
+            if isinstance(cap, bool) or not isinstance(cap, int) or cap < 0:
+                raise PolicyError(
+                    f"ledger_measurement.legacy_ratchet.caps[{name!r}] 必须是 ≥0 的整数，实际 {cap!r}"
+                    f"——上限写错会让棘轮静默失效")
+        return val
+
+    def ledger_cutoff_local_date(self) -> str:
+        """截止日（`YYYY-MM-DD`，本地 UTC+8）：**≤** 该日期的 run 属历史（棘轮基线管），> 的严格判定。"""
+        return _require_iso_date(self.ledger_measurement["legacy_ratchet"]["cutoff_local_date"],
+                                 "legacy_ratchet.cutoff_local_date")
+
+    def ledger_review_by(self) -> str:
+        """棘轮基线到期日（过期未重评即 FAIL，同 `md_table_legacy_files.review_by` 的理由）。"""
+        return _require_iso_date(self.ledger_measurement["legacy_ratchet"]["review_by"],
+                                 "legacy_ratchet.review_by")
+
+    def ledger_caps(self) -> dict[str, int]:
+        return {str(k): int(v) for k, v in self.ledger_measurement["legacy_ratchet"]["caps"].items()}
+
     # ---- C2：指涉可核 ------------------------------------------------------------
     def unresolved_roles(self, roles) -> list[str]:
         """出现在运行数据（账本）里、但**解析不到 spec 对象**的 role → C2 FAIL。
@@ -383,6 +466,9 @@ class Policy:
             "hardcode_exemptions",
             # A6（R1）：硬编码闸门扫描集的**范围声明**（roots/globs/exclude_dirs），由 verify_no_policy_hardcode.py 消费
             "hardcode_scan_coverage",
+            # TG-13：账本测量口径（dur/rounds/unknown）+ 退化判定 + 历史棘轮基线，
+            # 由 verify/verify_ledger_measurement.py 与 scripts/agent-ops.py 消费
+            "ledger_measurement",
         }
         for key in self.policy_file:
             if key not in consumed:

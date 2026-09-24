@@ -18,5 +18,15 @@
       "dir": "run-2026-09-25-doc-audit-066",
       "reason": "**时钟偏移**（finding M-g 的实测样本）：目录/文档按 UTC+8 命名（2026-09-25），而账本 id 由 `register` 自动生成、用了 UTC 日期 → 账本里叫 `run-2026-09-24-doc-audit-066`（started_at=2026-09-24T16:47:43+00:00 = 本地 09-25 00:47）。A5 已把自动 run-id 改为 UTC+8 口径；这条历史记录按白名单保留（账本禁手改）。**不得再新增同类条目。**"
     }
+  ],
+  "record_exceptions": [
+    {
+      "run_id": "run-2026-08-31-tech-research-013",
+      "reason": "**时钟偏移后的重复登记**（2026-08-31 实测 machine clock skew +09:00）：该行 `status=failed`、`error` 字段自带说明（'machine clock skew … run re-registered with network-time run-id'），产物落在同一次运行的 `run-2026-08-30-tech-research-013`（succeeded，有报告）名下。即：**同一逻辑 run 的失败登记行**，没有也不该有自己的产物目录。TG-13 闸门判『终态 run 无目录』时按此白名单放行（有理由的历史例外，只减不增）。"
+    },
+    {
+      "run_id": "run-2026-09-24-code-review-065",
+      "reason": "**cancelled 孤儿**（finding M-g 实测）：二查首个 `register` 被 CLI 自动编号成 `run-2026-09-24-code-review-065`（UTC 日期 + 撞号，与 066 同源），随即用显式 `--run-id` 重登记为 067，并把这一行置 `cancelled`。取消的登记行从未产出报告，故无目录。**不得再新增同类条目**（run-id 口径已由 A5 修好）。"
+    }
   ]
 }

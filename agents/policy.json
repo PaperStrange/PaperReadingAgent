@@ -17,6 +17,43 @@
     },
     "non_credible": ["failed", "cancelled"]
   },
+  "ledger_measurement": {
+    "_comment": "TG-13：账本『测量化』口径（dur / rounds / unknown 三条可核文本）+ 历史棘轮基线。闸门 verify/verify_ledger_measurement.py 与 CLI scripts/agent-ops.py 都从这里读，禁止在代码里另写一份口径（政策数据化，见 1-WORKFLOW.MD §6）。卡：docs/iteration/phases/testing-governance/cards/TG-13.md。",
+    "dur": "**墙钟口径**：`dur = ended_at - started_at`（同一 run 的**累计**墙钟时长；`round` 追加会把 ended_at 前移到末轮，故 dur 覆盖全部轮次）。**不是**『首末轮时间差』——账本逐轮只有 ended_at（没有逐轮 started_at），且首轮起点就是 started_at，两者在现有数据结构下不可区分；**不是**报告自报时长（报告时长不得回填账本）。任一端缺失/不可解析 → 该 run 的 dur 为 `unknown`。",
+    "rounds": "**真源 = 报告轮次**：产物报告里能数出轮次标记（`report_round_pattern`）时以报告为准，并与账本 `rounds_count`/`rounds[]` **核对**（不一致 = 测量缺陷，FAIL）。报告不可数时账本声明值只是 **declared 声明**（`measurement_source=declared`），不得当作实测值上报看板（TG-10③：看板展示前必须先保证数字可信，否则是把失真数据可视化）。",
+    "unknown": "**缺值必须显式 unknown**：无法测量时 `dur_minutes=null` 且 `measurement_source=unknown`，展示层写 `dur=unknown`/`rounds=unknown`；**禁止**用 `0.00`、整十分钟等退化值冒充实测值——`0.00` 的含义是『未测得』，不是『零耗时』。",
+    "measurement_source_values": ["wall-clock", "declared", "unknown"],
+    "measurement_sources": {
+      "_comment": "run 的『测量来源』字段 `measurement_source` 的取值语义（CLI 写入 / 闸门核对）。",
+      "wall-clock": "dur 由 CLI 在真实事件时刻写入的 started_at/ended_at 算出，且未命中退化判定 → 可信墙钟实测值。",
+      "declared": "数字来自声明而非实测（时间戳命中退化判定，或 rounds 只有 CLI 声明而无报告可核）→ 不得当作实测值使用或上报。",
+      "unknown": "无测量（时间戳缺失/不可解析，或既无声明也无报告）→ 必须显式写 unknown，禁止回落 0.00。"
+    },
+    "degenerate": {
+      "_comment": "退化值判定（时间戳口径），三类都是『不是测量值』：zero = started_at 与 ended_at 逐字节相同（dur 恰 0.00，把『未测得』写成『零耗时』）；round = dur 恰为 round_minutes_multiple 的整数倍（写入时刻凑整，2026-09-25 实测 3 例恰 10.00 分钟）；missing = 终态 run 缺任一端时间戳。",
+      "round_minutes_multiple": 10
+    },
+    "report_round_pattern": "(?:Round\\s*(\\d+)|第\\s*(\\d+)\\s*轮)",
+    "terminal_report_globs": ["*.report.md", "*report*.md", "*final*.md"],
+    "run_dir_exceptions_file": "agents/policy/run-dir-exceptions.json",
+    "dur_minutes_tolerance": 0.01,
+    "legacy_ratchet": {
+      "_comment": "棘轮基线：**截止日（含）之前**的历史 run 允许存在的缺陷**计数上限**——实测值，2026-09-25（UTC+8）对全量 67 条账本行 + 69 个 agents/runs 目录一次测得。上限只许在重评基线时**下调**，不许为了变绿上调；闸门对超过上限的每一例逐条点名。『截止日之后』的新 run 一律严格判定（无上限、无豁免）。到期日 `review_by` 过后闸门直接 FAIL（没有到期日的豁免就是永久豁免）。**目录类历史债不走计数上限**，走 `agents/policy/run-dir-exceptions.json` 白名单（每条必须写 reason，且只减不增）。注意：截止日 = 本闸门落地日 → 当日新登记的 run 也算历史（但任何新增缺陷都会把该类计数顶过上限，故棘轮仍然咬得住）。",
+      "cutoff_local_date": "2026-09-25",
+      "measured_at": "2026-09-25",
+      "review_by": "2026-10-31",
+      "caps": {
+        "output_chars_zero": 12,
+        "missing_result_files_review": 9,
+        "zero_duration": 3,
+        "round_duration": 3,
+        "negative_duration": 0,
+        "missing_timestamp": 0,
+        "rounds_mismatch": 1,
+        "terminal_not_written_back": 0
+      }
+    }
+  },
   "lint_paths": [
     "paper-qa-script",
     "verify",
