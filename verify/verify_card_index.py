@@ -5,22 +5,26 @@
 TG-14 的解法是"**一卡一文件 + backlog 退化为瘦索引**"，而这类拓扑约束**必须有机检**，
 否则下一次编辑又会把正文塞回索引里（本 Sprint 已实测 3 次结构性事故，全靠自检才拦住）。
 
-判据（`--strict` 时 ①~⑤ 全开；默认宽松档只跑 ① ② ⑤）：
+判据（`--strict` 时 ①~⑤ 全开；**默认档自 2026-09-25（A3/N7）起 = strict**）：
   ① **一一对应**：每个阶段的 `backlog.MD` 索引行 ↔ `cards/<卡号>.md` 双向一致
      （索引有而文件缺 = 孤儿行；文件有而索引缺 = 孤儿文件；卡号重复 = FAIL）；
   ② **卡号 ↔ 文件名一致**：`cards/TG-1.md` 里的 `card:` 字段必须等于 `TG-1`；
   ③ **卡文件必备节**：`状态` / `规模` / `来源` / `Sprint` 四节存在（正文与证据可选）；
-  ④ **Sprint 文档不得复制卡正文**：Sprint 文档中任何**非引用的长段落**（> `--body-threshold` 字符）
-     若与某卡正文高度重合（前 60 字命中）即 FAIL —— 这是"只按卡号引用、不复制正文"的可执行形态；
+  ④ **Sprint 文档不得复制卡正文**：**全文行级指纹比对**——Sprint 文档中任何**非表格行**若
+     **整行落在**某张卡的正文段落里（行长 ≥ `min_line_chars`、段落长 ≥ `min_fingerprint_chars`，
+     两阈值在 `agents/policy.json::card_index`）即 FAIL。这是"只按卡号引用、不复制正文"的可执行形态；
+     ⚠️ 首版只比"卡正文**前 60 字**"是否作为子串出现 → **在副本前填充 ≥61 字符即可规避**（N7），
+     现改为整段包含关系：填充/加引号/插字都会打断包含关系，规避路径被堵。
   ⑤ **表格结构**：索引与卡文件里的 Markdown 表格列数一致（复用 `verify_md_tables.py` 的判据）。
 
-反向对照（TG-6 ⑤"倒过来试"，`--selftest` 全自动）：删一份卡文件 / 改一处状态 / 往 Sprint 文档塞卡正文 /
-卡文件名与 `card:` 不符 → 各自必须 FAIL；合规 fixture 必须 PASS。
+反向对照（TG-6 ⑤"倒过来试"，fixture 段全自动）：删一份卡文件 / 改一处状态 / 往 Sprint 文档塞卡正文
+（含 **≥61 字符填充**样本）/ 卡文件名与 `card:` 不符 → 各自必须 FAIL；合规 fixture 必须 PASS。
 
 用法：
-    .venv\\Scripts\\python.exe verify\\verify_card_index.py                 # 自检（fixture）
-    .venv\\Scripts\\python.exe verify\\verify_card_index.py --check         # 真数据（迁移期宽松档）
-    .venv\\Scripts\\python.exe verify\\verify_card_index.py --check --strict # 迁移完成后全判据
+    .venv\\Scripts\\python.exe verify\\verify_card_index.py                 # 默认档：真数据 strict 判据 + fixture 反向对照
+    .venv\\Scripts\\python.exe verify\\verify_card_index.py --check         # 真数据（同上；保留的等价写法）
+    .venv\\Scripts\\python.exe verify\\verify_card_index.py --check --strict # 显式全判据
+    .venv\\Scripts\\python.exe verify\\verify_card_index.py --selftest      # 只跑 fixture 反向对照（不校验真数据）
 """
 
 from __future__ import annotations
@@ -46,8 +50,8 @@ SPRINT_DIR = ROOT / "docs" / "iteration" / "sprint"
 # 判据参数一律来自政策数据（不得写死在本文件——实测被 verify_no_policy_hardcode.py 判为 R1）
 _CARD_INDEX = load_policy().card_index
 REQUIRED_SECTIONS: tuple[str, ...] = tuple(str(s) for s in _CARD_INDEX["required_sections"])
-BODY_PREFIX_CHARS: int = int(_CARD_INDEX["body_prefix_chars"])
 MIN_FINGERPRINT_CHARS: int = int(_CARD_INDEX["min_fingerprint_chars"])
+MIN_LINE_CHARS: int = int(_CARD_INDEX["min_line_chars"])
 PASSED = 0
 
 
@@ -147,6 +151,14 @@ def check_phase(phase_dir: Path, strict: bool, body_threshold: int, root: Path |
                 problems.append(f"{rel(path, root)}: 缺必备节 {missing}（实测节名：{sections}）")
 
     # ④ Sprint 文档不得复制卡正文
+    #    A3（finding N7，2026-09-25）**收紧为全文行级指纹比对**：首版取卡正文**前 N 字**当指纹、
+    #    在 Sprint 文档里找该子串 —— 只要在副本前填充 ≥N+1 个字符，指纹就不再连续出现，
+    #    判据**静默放行**（填充规避）。现在改为**整段**参与比对（不再截断成前 N 字）：
+    #      * `line in para`：该行整行是卡正文的一段（**≥61 字符填充样本**就是这一形态——
+    #        填充只是加了一行，被复制的那一行仍然整行落在卡正文里）；
+    #      * `para in line`：卡正文的**整段**被原样嵌进更长的行（首版"前 N 字子串"的合法收紧版：
+    #        指纹由 N 字延长到**整段**，填充/插字都会打断包含关系）。
+    #    **合法的计划表行天然仍被放行**：它是表格行（被下面 `startswith("|")` 排除），且首格是卡号。
     if strict and files:
         sprint_dir = root / "docs" / "iteration" / "sprint"
         bodies: list[tuple[str, str]] = []
@@ -160,56 +172,34 @@ def check_phase(phase_dir: Path, strict: bool, body_threshold: int, root: Path |
                     if ln.strip() and not ln.strip().startswith("|")
                 )
                 if len(para) >= MIN_FINGERPRINT_CHARS:
-                    bodies.append((card, para[:BODY_PREFIX_CHARS]))
+                    bodies.append((card, para))
         for sprint in sorted(
             [*sprint_dir.glob("*.md"), *sprint_dir.glob("*.MD")]  # ⚠️ 两种扩展名都要（实测该目录 23 个小写 + 23 个大写）
         ) if sprint_dir.is_dir() else []:
             stext = sprint.read_text(encoding="utf-8", errors="replace")
-            sline_list = stext.splitlines()
-            for card, prefix in bodies:
-                if not prefix:
+            for i, sline in enumerate(stext.splitlines()):
+                line = sline.strip()
+                # 表格行不是"正文段落"（引用/索引天然出现在表格里）→ 不参与 ④
+                if len(line) < MIN_LINE_CHARS or line.startswith("|"):
                     continue
-                hit = False
-                for i, sline in enumerate(sline_list):
-                    if prefix not in sline:
-                        continue
-                    if _fingerprint_in_plan_row(sline, card, prefix):
-                        continue          # 合法的"按卡号引用的计划表行"
-                    problems.append(
-                        f"{rel(sprint, root)}:{i + 1}: 出现卡片 {card} 的正文片段（前 {BODY_PREFIX_CHARS} 字命中）"
-                        f"——Sprint 文档只按卡号引用，不复制正文")
-                    hit = True
-                    break
-                if not hit:
-                    continue
+                for card, para in bodies:
+                    if line in para or para in line:
+                        problems.append(
+                            f"{rel(sprint, root)}:{i + 1}: 该行与卡片 {card} 的正文段落整段重合"
+                            f"（行长 {len(line)} / 段落长 {len(para)}）"
+                            f"——Sprint 文档只按卡号引用，不复制正文（判据 ④：全文行级指纹比对）")
+                        break
     return problems
 
 
-def _fingerprint_in_plan_row(line: str, card: str, fingerprint: str) -> bool:
-    """该行是否是"**按卡号引用的计划表行**"（合法引用，不算复制正文）。
+def run(strict: bool = True, body_threshold: int = 0, root: Path | None = None) -> list[str]:
+    """跑全部阶段（`strict=True` 是**默认档**——见 `main()` 的说明）。
 
-    为什么必须豁免（2026-09-23 P1 试点实测）：Sprint 文档的 §2 计划表按设计就是
-    `| 卡号 | 主题/计划内容 | 验收 | 点 |` —— 主题列**天然**与卡正文首句同源。
-    首版闸门把这种行判成"复制卡正文"，逼出一次**对已关闭 Sprint 文档的历史改写**
-    （已 revert：历史过程记录不得为过 lint 而修饰）。合法的计划表行要满足：
-      ① 是表格行；② **首格就是该卡号**（明确按卡号引用）；
-      ③ 卡正文要么出现在**单元格开头**（`| 卡号 | <正文>… |`），要么出现在**很靠后**的位置
-         （`…（卡正文已独立成文：cards/…）` 这类"正文摘要 + 指向卡文件"的写法），
-         而不是出现在 `text[:index]` 附近的普通段落里（那种才是真复制）。
-    """
-    if not line.strip().startswith("|"):
-        return False
-    cells = split_row(line)
-    if not cells or cells[0] != card:
-        return False
-    idx = line.find(fingerprint)
-    if idx < 0:
-        return False
-    return idx < 40 or idx > 60
+    `body_threshold` 是**历史参数，已无消费点**（finding M-d/N7 实测的"死旋钮"）：判据 ④ 的阈值
+    一律来自 `agents/policy.json::card_index`。保留形参只为兼容既有调用方（fixture 自检）；
+    CLI 侧对此显式打印"已失效"，避免"旋钮转了但没接线"的假象。
 
-
-def run(strict: bool, body_threshold: int, root: Path | None = None) -> list[str]:
-    """跑全部阶段。**单个阶段内的异常不得吞掉**（首版实测：check_phase 抛 TypeError 时
+    **单个阶段内的异常不得吞掉**（首版实测：check_phase 抛 TypeError 时
     自检把"没拿到 problems"当成"没问题" → 反向对照 D 假绿）。异常一律转成 problem 文本，
     让闸门对"自己坏了"与"数据坏了"都给非零退出。"""
     root = root or ROOT
@@ -260,7 +250,7 @@ def _fixture(base: Path) -> Path:
     return phase
 
 
-def selfcheck() -> int:
+def selfcheck(check_real: bool = True) -> int:
     with tempfile.TemporaryDirectory() as td:
         base = Path(td)
         _fixture(base)
@@ -295,8 +285,19 @@ def selfcheck() -> int:
             "它应当只存在于本卡文件之中，任何 Sprint 文档都不应复制这段文字。\n",
             encoding="utf-8")
         p = run(True, 120, base)
-        ok("反向对照 D Sprint 文档出现卡正文 → FAIL（严格档）",
-           any("正文片段" in x for x in p), f"problems={p[:1]}")
+        ok("反向对照 D Sprint 文档出现卡正文 → FAIL",
+           any("整段重合" in x for x in p), f"problems={p[:1]}")
+
+        # 反向对照 D3：**≥61 字符填充规避**必须被判 FAIL（finding N7 的原始样本）。
+        # 首版只比"卡正文前 60 字"是否出现 → 在副本**前面**填 61+ 字符即可让指纹不连续 ⇒ 静默放行。
+        # 现按"整行落在卡正文段落里"判：填充不改变"这一行仍是卡正文的一段"这个事实。
+        (base / "docs/iteration/sprint/2026-01-01-sprint-1.md").write_text(
+            "# Sprint-1\n\n## 3. 看板\n\n" + ("填" * 61) + "\n\n"
+            "D-1 的正文内容写在这里，它应当只存在于本卡文件之中，任何 Sprint 文档都不应复制这段文字。\n",
+            encoding="utf-8")
+        p = run(True, 120, base)
+        ok("反向对照 D3 ≥61 字符填充规避 → FAIL（N7 回归样本）",
+           any("整段重合" in x for x in p), f"problems={p[:1]}")
 
         # 反向对照 D2：**合法计划表行**必须放行（防"把正常计划表判成违规"——
         # 首版就是这个假阳性逼出一次对已关闭 Sprint 文档的历史改写，已 revert）
@@ -307,7 +308,7 @@ def selfcheck() -> int:
             encoding="utf-8")
         p = run(True, 120, base)
         ok("反向对照 D2 合法计划表行（首格=卡号，正文位于单元格开头）→ PASS",
-           not any("正文片段" in x for x in p), f"problems={p[:1]}")
+           not any("整段重合" in x for x in p), f"problems={p[:1]}")
         (base / "docs/iteration/sprint/2026-01-01-sprint-1.md").unlink(missing_ok=True)
 
         # 反向对照 E：孤儿卡文件（有文件无索引行）
@@ -317,32 +318,57 @@ def selfcheck() -> int:
         p = run(True, 200, base)
         ok("反向对照 E 孤儿卡文件 → FAIL", any("孤儿文件" in x for x in p), f"problems={p[:1]}")
 
-    # 真数据（默认宽松档：迁移期只要求一一对应，不要求必备节/正文分离）
-    real = run(False, 200)
+    # 真数据：**A3 起按默认档（strict）判**——由 `main()` 调用（`--selftest` 可显式跳过）。
+    # 原因（finding N7/M-e）：迁移已宣称完成，而套件以**无参**调用本脚本；首版在这里只 WARN
+    # ⇒ "SUITE PASSED" 并不能证明卡索引一致（实测同一份坏数据：`--check` rc=1 而套件模式 rc=0+WARN）。
+    # **闸门自己给自己发警告 = 放行**；且真数据判据**只允许跑一次**（同一事实两处判会分叉）。
+    if not check_real:
+        ok("真数据判据由 main() 以默认档执行", True, "（本函数只跑 fixture 自检）")
+        print(f"\nALL PASS ({PASSED} assertions)")
+        return 0
+    real = run(True, 0)
     if real:
-        warn("真数据（宽松档）尚未通过——迁移未开始属预期", f"{len(real)} 项，示例：{real[0][:80]}")
-    else:
-        ok("真数据（宽松档）通过", True, "索引↔卡文件已一一对应")
+        print(f"FAIL: 真数据未通过默认档（{len(real)} 项）：")
+        for p in real[:40]:
+            print(f"  - {p}")
+        if len(real) > 40:
+            print(f"  … 另有 {len(real) - 40} 项")
+        print("提示：迁移已完成 ⇒ 默认档与 `--check --strict` 同判；不得靠降档换绿。")
+        return 1
+    ok("真数据（默认档 = strict）通过", True, "索引↔卡文件一一对应 / 必备节 / 正文分离")
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
 
 
 def main() -> int:
-    if "--check" in sys.argv:
-        problems = run(strict="--strict" in sys.argv,
-                       body_threshold=int(sys.argv[sys.argv.index("--body-threshold") + 1])
-                       if "--body-threshold" in sys.argv else 200)
-        if problems:
-            print(f"CARD-INDEX FAIL（{len(problems)} 项）：")
-            for p in problems[:40]:
-                print(f"  - {p}")
-            if len(problems) > 40:
-                print(f"  … 另有 {len(problems) - 40} 项")
-            return 1
-        print("CARD-INDEX PASS：索引↔卡文件一一对应"
-              + ("（含必备节与正文分离）" if "--strict" in sys.argv else "（宽松档）"))
-        return 0
-    return selfcheck()
+    """CLI 入口。
+
+    **默认档（无参数）＝ real-data 全判据 → 再跑 fixture 反向对照**（A3/N7/M-e）。
+    `--check` / `--strict` 保持既有语义（真数据 + 严格判据）；`--selftest` 显式跳过真数据、
+    只跑 fixture 反向对照（阈值/自检调试用）。
+    为什么默认档必须判真数据：套件（`run_suite.py`）以**无参**调用本脚本，默认档若只做 fixture
+    自检，"SUITE PASSED" 就与真数据无关——这正是 N7 实测的失效形态（同一坏数据 rc=0+WARN）。
+    """
+    if "--body-threshold" in sys.argv:
+        # finding M-d/N7 实测的**死旋钮**：本参数贯穿 run/check_phase 但从未被读取，
+        # 真阈值一律取自 agents/policy.json::card_index。原样保留只为兼容旧命令行，
+        # 但必须**显式打印"已失效"**——"旋钮转了但没接线"正是这条 finding 的形态。
+        print("NOTE: --body-threshold 已失效（阈值一律取自 agents/policy.json::card_index，"
+              "见 finding M-d/N7）；本参数当前无任何消费点。")
+    if "--selftest" in sys.argv:
+        # 显式调试档：**只跑 fixture**（真数据判据由默认档/--check 负责，不重复判两处）
+        return selfcheck(check_real=False)
+    problems = run(strict="--strict" in sys.argv or "--check" not in sys.argv)
+    if problems:
+        print(f"CARD-INDEX FAIL（{len(problems)} 项）：")
+        for p in problems[:40]:
+            print(f"  - {p}")
+        if len(problems) > 40:
+            print(f"  … 另有 {len(problems) - 40} 项")
+        return 1
+    print("CARD-INDEX PASS：索引↔卡文件一一对应（含必备节与正文分离）")
+    # 真数据过了 → 再跑 fixture 反向对照（断言自检与真数据判据**同源**，不是两套口径）
+    return selfcheck(check_real=False)
 
 
 if __name__ == "__main__":

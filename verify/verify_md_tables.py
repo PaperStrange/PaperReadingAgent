@@ -26,6 +26,7 @@ VERIFY_META = {'features': 'Markdown 表格结构自检：未转义管道切分�
 
 import sys
 from collections import Counter
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -116,39 +117,66 @@ def main() -> int:
     quiet = "--quiet" in sys.argv
     policy = load_policy()
     targets = [Path(a) for a in args] if args else [ROOT / t for t in policy.md_table_targets]
-    legacy = {str((ROOT / f).resolve()) for f in policy.md_table_legacy_files}
+    # A2（M-a/N2/R3）：棘轮 = `{路径: 缺陷数上限}`，不是路径白名单。
+    legacy_caps = {str((ROOT / f).resolve()): cap for f, cap in policy.md_table_legacy_files.items()}
+    review_by = policy.md_table_review_by
+    today = str(date.today())
 
     all_problems: list[str] = []
     baselined: list[str] = []
-    legacy_in_scope = 0
+    baseline_files_scanned: set[str] = set()
     print("Markdown 表格结构自检（未转义管道切分 + 转义平衡）：")
+    print(f"  棘轮基线：{len(legacy_caps)} 个文件（按文件设缺陷上限）；review_by={review_by}，"
+          f"今日={today} → {'**已过期**' if today > review_by else '未到期'}")
     for path in targets:
         if not path.is_file():
             print(f"  SKIP（不存在）: {path}")
             continue
         found = check_file(path, quiet)
-        if str(path.resolve()) in legacy:
-            # 棘轮：历史文件的既存缺陷**只报不判失败**（见 policy::md_table_legacy_files 说明）
-            baselined += found
-            legacy_in_scope += 1
-            if found and not quiet:
-                print(f"    [baseline] {len(found)} 处既存缺陷（历史文件，只报不判失败）")
+        cap = legacy_caps.get(str(path.resolve()))
+        if cap is not None:
+            # 棘轮（ratchet）：历史文件的既存缺陷**不必清零**，但**只许变紧**——
+            # `len(found) > cap` 即 FAIL。定义域仍是"政策里点名的那些文件"（路径比较语义保留）：
+            # 基线之外的任何文件，缺陷一律进 all_problems（新文件/新改动一律判失败）。
+            baseline_files_scanned.add(str(path))
+            if len(found) > cap:
+                # 超出上限 → 该文件的缺陷**全部**进 FAIL 清单（点名具体行，便于逐处修）
+                all_problems += found
+                if not quiet:
+                    print(f"    [baseline] 上限 {cap}，实测 {len(found)} → **超出上限，判失败**")
+            else:
+                baselined += found
+                if not quiet:
+                    print(f"    [baseline] 实测 {len(found)} <= 上限 {cap}（历史既存缺陷，只报不判失败）")
         else:
             all_problems += found
 
     if baselined:
-        files = sorted({p.split(":")[1] for p in baselined if ":" in p})
-        print(f"\n棘轮基线（历史文件，不判失败）：{len(baselined)} 处，涉及 {len(files)} 个文件")
+        base_files = sorted({p.rsplit(":", 1)[0] for p in baselined})
+        print(f"\n棘轮基线（历史文件，上限内不判失败）：{len(baselined)} 处，涉及 {len(base_files)} 个文件")
+
+    if baselined:
+        base_files = sorted({p.rsplit(":", 1)[0] for p in baselined})
+        print(f"\n棘轮基线（历史文件，上限内不判失败）：{len(baselined)} 处，涉及 {len(base_files)} 个文件")
+
+    # 到期日：过期 = 基线失效 → FAIL（提示"必须重评基线"）
+    if today > review_by:
+        print(f"\nMD-TABLE FAIL：棘轮基线已过期（review_by={review_by}，今日={today}）"
+              f"——**必须重评基线**：逐处复核历史缺陷是否仍成立、上限是否可下调，并更新 "
+              f"agents/policy.json::md_table_legacy_files.review_by（不得静默延期）。")
+        return 1
 
     if all_problems:
-        print(f"\nMD-TABLE FAIL（{len(all_problems)} 项，非基线文件）：")
+        print(f"\nMD-TABLE FAIL（{len(all_problems)} 项，非基线文件或超出上限的基线文件）：")
         for p in all_problems:
             print(f"  - {p}")
         print("\n修法：① 内容里的 `|` 加反斜杠转义（`\\|`）；② 补齐/删除多余的单元格分隔符；"
               "③ 若行数属**表头与数据行列数不同**（如标题行少一列），改分隔行 `|---|...|` 与表头对齐。")
         return 1
-    # 注：基线文件数按**本次实际扫描到的**计（首版打印的是政策里的总数，跑子集时会误导）
-    print(f"\nMD-TABLE PASS（{len(targets)} 个文件；其中 {legacy_in_scope} 个历史文件走棘轮基线）")
+    # 注：基线文件数按**本次实际扫描到的**计（首版打印的是政策里的总数，跑子集时会误导；
+    # 又：首版把 15 个问题串当 15 个文件打印——见 N8 的计数口径问题）
+    print(f"\nMD-TABLE PASS（{len(targets)} 个文件；其中 {len(baseline_files_scanned)} 个历史文件走棘轮基线、"
+          f"均在各自的 defect 上限内）")
     return 0
 
 

@@ -31,10 +31,10 @@
   },
   "archive_role_prefix": "tech-research",
   "card_index": {
-    "_comment": "TG-14④ 卡索引 lint 的判据参数（原写在 verify/verify_card_index.py，被 verify_no_policy_hardcode.py 判为 R1 阈值硬编码——闸门又抓住了写闸门的人）",
+    "_comment": "TG-14④ 卡索引 lint 的判据参数（原写在 verify/verify_card_index.py，被 verify_no_policy_hardcode.py 判为 R1 阈值硬编码——闸门又抓住了写闸门的人）。A3（finding N7，2026-09-25）收紧 ④：首版只比「卡正文前 N 字」是否作为子串出现在 Sprint 文档某行——**在副本前填充 ≥61 字符即可规避**（指纹不再连续，判据静默放行）。现改为**全文行级指纹比对**：卡正文段落（整段，非前 N 字）必须整段不被 Sprint 文档的**任何一行**包含。填充/加引号/插字都会打断包含关系 → 规避路径被堵；合法计划表行仍然放行（它天然只含卡正文的**开头句**，不含整段）。",
     "required_sections": ["状态", "规模", "来源", "Sprint"],
-    "body_prefix_chars": 60,
-    "min_fingerprint_chars": 25
+    "min_fingerprint_chars": 25,
+    "min_line_chars": 30
   },
   "md_table_docs": [
     "docs/1-WORKFLOW.MD",
@@ -53,13 +53,14 @@
     "docs/iteration/sprint/*.MD"
   ],
   "md_table_legacy_files": {
-    "_comment": "棘轮（ratchet）基线：这些**历史 Sprint/验收文档**里的表格结构缺陷是既存的（2026-09-23 扩覆盖时首次被扫到，共 15 处：内容里的管道未转义 / 表头与数据行列数不符）。它们**只报不判失败**，避免为了让闸门变绿而去改写已关闭 Sprint 的历史记录（2026-09-23 实测过一次越界改写，已 revert）。**新文件/新改动一律判失败**；若要清这批历史债，另开卡逐处人工修（每处需人判：补表头列 / 转义内容管道 / 合并单元格）。",
-    "files": [
-      "docs/iteration/sprint/2026-08-30-sprint-6.md",
-      "docs/iteration/sprint/2026-09-07-sprint-15.md",
-      "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD",
-      "docs/iteration/sprint/2026-09-12-sprint-16.md"
-    ]
+    "_comment": "棘轮（ratchet）基线：这些**历史 Sprint/验收文档**里的表格结构缺陷是既存的（2026-09-23 扩覆盖时首次被扫到，共 15 处：内容里的管道未转义 / 表头与数据行列数不符）。避免为了让闸门变绿而改写已关闭 Sprint 的历史记录（2026-09-23 实测过一次越界改写，已 revert）。A2 修法（finding M-a/N2/R3，2026-09-25）：**按文件设上限**——`files` 由路径列表改为 `{路径: 缺陷数上限}`，闸门对基线文件也判 `len(found) > cap → FAIL`（棘轮只许变紧：上限只减不增，且**不许用「修好一处、新增一处」把总量顶回上限**——上限值本身只能在重评基线时下调）。上限来源＝各文件实测缺陷数。**新文件/新改动一律判失败**；清这批历史债需另开卡逐处人工修（每处需人判：补表头列 / 转义内容管道 / 合并单元格）。",
+    "review_by": "2026-10-31",
+    "files": {
+      "docs/iteration/sprint/2026-08-30-sprint-6.md": 1,
+      "docs/iteration/sprint/2026-09-07-sprint-15.md": 12,
+      "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD": 1,
+      "docs/iteration/sprint/2026-09-12-sprint-16.md": 1
+    }
   },
   "close_gate": {
     "scope_ref_step": "scope",

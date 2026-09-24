@@ -208,25 +208,64 @@ class Policy:
         return self.policy_file[key]
 
     @property
-    def md_table_legacy_files(self) -> tuple[str, ...]:
-        """棘轮基线：这些文件里的表格缺陷**只报不判失败**（历史既存债，见 policy 内说明）。"""
+    def md_table_legacy_files(self) -> dict[str, int]:
+        """棘轮基线：`{相对路径: 缺陷数上限}`（历史既存债，见 policy 内说明）。
+
+        A2（finding M-a/N2/R3，2026-09-25）：首版是**路径列表**，闸门只做路径比较 ⇒ 基线文件内
+        **任意数量**的新缺陷全被吸收（实测：注入 200 处仍 `MD-TABLE PASS`）。现改为**按文件设上限**：
+        `verify_md_tables.py` 对基线文件判 `len(found) > cap → FAIL`（棘轮只许变紧）。
+        上限必须是正整数（`0` 也允许：表示该文件已清干净，不得再回退）。
+        """
         val = self._data("md_table_legacy_files")
         files = val.get("files") if isinstance(val, dict) else val
-        if not isinstance(files, list):
-            raise PolicyError(f"md_table_legacy_files.files 必须是列表，实际 {files!r}")
-        return tuple(str(f) for f in files)
+        if not isinstance(files, dict):
+            raise PolicyError(
+                f"md_table_legacy_files.files 必须是 {{路径: 缺陷数上限}} 映射（A2 上限制），实际 {files!r}")
+        out: dict[str, int] = {}
+        for path, cap in files.items():
+            if isinstance(cap, bool) or not isinstance(cap, int) or cap < 0:
+                raise PolicyError(
+                    f"md_table_legacy_files.files[{path!r}] 的缺陷数上限必须是 ≥0 的整数，实际 {cap!r}"
+                    f"——上限写错会让棘轮静默失效")
+            out[str(path)] = cap
+        return out
+
+    @property
+    def md_table_review_by(self) -> str:
+        """棘轮基线的**到期日**（`YYYY-MM-DD`）。过期即 FAIL（提示"必须重评基线"）。
+
+        为什么必须有到期日（R3）：没有到期日的豁免就是**永久豁免**——基线会变成"历史债合法化"的
+        挡箭牌，而"重评"这件事不会有任何触发点。
+        """
+        val = self._data("md_table_legacy_files")
+        raw = val.get("review_by") if isinstance(val, dict) else None
+        text = str(raw or "").strip()
+        # 严格 `YYYY-MM-DD`：闸门要按字典序比较日期，格式一乱比较就无意义（fail-closed，不猜）
+        parts = text.split("-")
+        if len(parts) != 3 or [len(p) for p in parts] != [4, 2, 2] or not all(p.isdigit() for p in parts):
+            raise PolicyError(
+                f"md_table_legacy_files.review_by 必须是 'YYYY-MM-DD'，实际 {raw!r}"
+                f"——格式非法会让到期判定失去意义")
+        return text
 
     @property
     def card_index(self) -> dict:
-        """TG-14④ 卡索引 lint 的参数（必备节 / 指纹长度阈值）。
+        """TG-14④ 卡索引 lint 的参数（必备节 / 指纹长度阈值 / 行级比对的最小行长）。
 
         2026-09-23：这些值最初写在 `verify/verify_card_index.py` 里，被
         `verify_no_policy_hardcode.py` 判为 R1（阈值硬编码）——**闸门又一次抓住了写闸门的人**。
+        2026-09-25（A3/N7）：`body_prefix_chars`（只比前 N 字）被**含填充的副本**规避，
+        改为全文行级指纹比对后由 `min_line_chars` 取代；两键都必须存在且为正整数。
         """
         val = self._data("card_index")
-        for key in ("required_sections", "body_prefix_chars", "min_fingerprint_chars"):
+        for key in ("required_sections", "min_fingerprint_chars", "min_line_chars"):
             if key not in val:
                 raise PolicyError(f"card_index 缺键 {key!r}")
+        for key in ("min_fingerprint_chars", "min_line_chars"):
+            raw = val[key]
+            if isinstance(raw, bool) or not isinstance(raw, int) or raw <= 0:
+                raise PolicyError(f"card_index.{key} 必须是正整数，实际 {raw!r}"
+                                  f"——阈值写错会让 ④ 判据静默失效（这正是 N7 的形态）")
         return val
 
     @property

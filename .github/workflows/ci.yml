@@ -81,6 +81,27 @@ jobs:
           }
           Write-Host "close-readiness: checked $checked sprint doc(s) declaring a real anchor"
 
+      - name: Explicit gate tiers (card index / md tables / policy hardcode / lint)
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          # A3（finding M-e/M-f/N7，2026-09-25）：**显式**调用四个闸门并**打印实际档位/参数**。
+          # 此前 CI 只显式接了 verify_close_readiness.py，其余四个只经套件**默认参数**间接运行，
+          # 于是"跑的是哪一档"在日志里不可核（实测：card_index 默认档在坏数据上只 WARN ⇒ 套件绿
+          # 不能证明卡索引一致）。这里每个闸门都打印它的档位，任一步非零即整步失败（fail-closed）。
+          # 与"Offline verify suite"步骤的分工：套件跑**全部** offline 脚本（覆盖自动扩展），
+          # 本步骤固化**档位可核**（严格档 + 参数可见）——两侧都保留，不互相替代。
+          Write-Host "gate: verify_card_index.py --check --strict  (档位=严格：索引↔卡文件 + 必备节 + 正文分离；阈值取自 agents/policy.json::card_index)"
+          python verify/verify_card_index.py --check --strict
+          Write-Host "gate: verify_md_tables.py  (档位=默认全扫描集；棘轮基线上限 + review_by 由 agents/policy.json::md_table_legacy_files 决定)"
+          python verify/verify_md_tables.py
+          Write-Host "gate: verify_no_policy_hardcode.py  (档位=默认仓库全扫 scripts/ + verify/；豁免台账 verify/policy-hardcode-exemptions.json)"
+          python verify/verify_no_policy_hardcode.py
+          Write-Host "gate: verify_lint.py  (档位=默认 A/B 硬闸门 + C 级只报；规则分级取自 agents/policy.json::lint_rules；ruff pin 见 requirements-windows.txt)"
+          python verify/verify_lint.py
+
       - name: Build reactflow frontend
         working-directory: paper-qa-script/reactflow-paperqa-prototype/frontend
         run: |
