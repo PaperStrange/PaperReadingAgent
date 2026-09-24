@@ -161,7 +161,9 @@ def check_phase(phase_dir: Path, strict: bool, body_threshold: int, root: Path |
                 )
                 if len(para) >= MIN_FINGERPRINT_CHARS:
                     bodies.append((card, para[:BODY_PREFIX_CHARS]))
-        for sprint in sorted(sprint_dir.glob("*.md")) if sprint_dir.is_dir() else []:
+        for sprint in sorted(
+            [*sprint_dir.glob("*.md"), *sprint_dir.glob("*.MD")]  # ⚠️ 两种扩展名都要（实测该目录 23 个小写 + 23 个大写）
+        ) if sprint_dir.is_dir() else []:
             stext = sprint.read_text(encoding="utf-8", errors="replace")
             sline_list = stext.splitlines()
             for card, prefix in bodies:

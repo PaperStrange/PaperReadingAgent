@@ -255,15 +255,25 @@ class Policy:
 
     @property
     def md_table_targets(self) -> tuple[str, ...]:
-        """Markdown 结构自检的默认文件集（`verify/verify_md_tables.py` 消费）。
+        """Markdown 结构自检的目标集 = 显式文档 + glob 展开（`verify/verify_md_tables.py` 消费）。
 
-        2026-09-23 实战：该清单最初写在新闸门文件里，随即被 `verify_no_policy_hardcode.py`
-        判为 R3（路径清单硬编码）——**闸门先抓住了写闸门的人**，这条正是它该有的行为。
+        2026-09-23 两次被闸门/子代理抓到的覆盖缺口，都记在这里：
+          ① 该清单最初写在新闸门文件里 → 被 `verify_no_policy_hardcode.py` 判为 R3（闸门先抓住了写闸门的人）；
+          ② 首版只列了 `testing-governance/backlog.MD` 一个阶段文件 → **迁移新增的瘦索引与 95 个卡文件
+             默认一个都不查**（P2 子代理实测指出）。现改为"显式文档 + glob"，新增阶段/卡文件自动纳入。
         """
-        val = self._data("md_table_targets")
-        if not isinstance(val, list) or not val:
-            raise PolicyError(f"md_table_targets 必须是非空列表，实际 {val!r}")
-        return tuple(str(v) for v in val)
+        docs = self._data("md_table_docs")
+        globs = self._data("md_table_globs")
+        for label, val in (("md_table_docs", docs), ("md_table_globs", globs)):
+            if not isinstance(val, list) or not val:
+                raise PolicyError(f"{label} 必须是非空列表，实际 {val!r}")
+        out: list[str] = [str(p) for p in docs]
+        for pattern in globs:
+            out += sorted(str(p.relative_to(REPO_ROOT)).replace("\\", "/")
+                          for p in REPO_ROOT.glob(str(pattern)) if p.is_file())
+        # 去重保序
+        seen: set[str] = set()
+        return tuple(p for p in out if not (p in seen or seen.add(p)))
 
     @property
     def close_gate(self) -> dict:
@@ -313,7 +323,7 @@ class Policy:
         consumed = {
             "version", "_comment", "spec_glob", "spec_dir", "scope_min_deviation_chars",
             "scope_ref_sources", "lint_paths", "lint_rules", "archive_role_prefix", "close_gate",
-            "ledger_status", "md_table_targets", "card_index",
+            "ledger_status", "md_table_docs", "md_table_globs", "card_index",
         }
         for key in self.policy_file:
             if key not in consumed:

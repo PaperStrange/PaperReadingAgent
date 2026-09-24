@@ -36,7 +36,7 @@
     "body_prefix_chars": 60,
     "min_fingerprint_chars": 25
   },
-  "md_table_targets": [
+  "md_table_docs": [
     "docs/1-WORKFLOW.MD",
     "docs/2-ARCHITECTURE.MD",
     "docs/3-LEARNED.MD",
@@ -44,8 +44,13 @@
     "docs/5-VERSIONS.MD",
     "verify/README.md",
     "verify/TEST-MATRIX.MD",
-    "agents/README.md",
-    "docs/iteration/phases/testing-governance/backlog.MD"
+    "agents/README.md"
+  ],
+  "md_table_globs": [
+    "docs/iteration/phases/*/backlog.MD",
+    "docs/iteration/phases/*/cards/*.md",
+    "docs/iteration/sprint/*.md",
+    "docs/iteration/sprint/*.MD"
   ],
   "close_gate": {
     "scope_ref_step": "scope",
