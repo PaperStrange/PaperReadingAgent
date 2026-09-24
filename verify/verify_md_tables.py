@@ -114,24 +114,38 @@ def check_file(path: Path, quiet: bool = False) -> list[str]:
 def main() -> int:
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     quiet = "--quiet" in sys.argv
-    targets = [Path(a) for a in args] if args else [ROOT / t for t in load_policy().md_table_targets]
+    policy = load_policy()
+    targets = [Path(a) for a in args] if args else [ROOT / t for t in policy.md_table_targets]
+    legacy = {str((ROOT / f).resolve()) for f in policy.md_table_legacy_files}
 
     all_problems: list[str] = []
+    baselined: list[str] = []
     print("Markdown 表格结构自检（未转义管道切分 + 转义平衡）：")
     for path in targets:
         if not path.is_file():
             print(f"  SKIP（不存在）: {path}")
             continue
-        all_problems += check_file(path, quiet)
+        found = check_file(path, quiet)
+        if str(path.resolve()) in legacy:
+            # 棘轮：历史文件的既存缺陷**只报不判失败**（见 policy::md_table_legacy_files 说明）
+            baselined += found
+            if found and not quiet:
+                print(f"    [baseline] {len(found)} 处既存缺陷（历史文件，只报不判失败）")
+        else:
+            all_problems += found
+
+    if baselined:
+        files = sorted({p.split(":")[1] for p in baselined if ":" in p})
+        print(f"\n棘轮基线（历史文件，不判失败）：{len(baselined)} 处，涉及 {len(files)} 个文件")
 
     if all_problems:
-        print(f"\nMD-TABLE FAIL（{len(all_problems)} 项）：")
+        print(f"\nMD-TABLE FAIL（{len(all_problems)} 项，非基线文件）：")
         for p in all_problems:
             print(f"  - {p}")
         print("\n修法：① 内容里的 `|` 加反斜杠转义（`\\|`）；② 补齐/删除多余的单元格分隔符；"
               "③ 若行数属**表头与数据行列数不同**（如标题行少一列），改分隔行 `|---|...|` 与表头对齐。")
         return 1
-    print(f"\nMD-TABLE PASS（{len(targets)} 个文件，0 处结构问题）")
+    print(f"\nMD-TABLE PASS（{len(targets)} 个文件；其中 {len(legacy)} 个历史文件走棘轮基线）")
     return 0
 
 

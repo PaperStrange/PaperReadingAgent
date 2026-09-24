@@ -208,6 +208,15 @@ class Policy:
         return self.policy_file[key]
 
     @property
+    def md_table_legacy_files(self) -> tuple[str, ...]:
+        """棘轮基线：这些文件里的表格缺陷**只报不判失败**（历史既存债，见 policy 内说明）。"""
+        val = self._data("md_table_legacy_files")
+        files = val.get("files") if isinstance(val, dict) else val
+        if not isinstance(files, list):
+            raise PolicyError(f"md_table_legacy_files.files 必须是列表，实际 {files!r}")
+        return tuple(str(f) for f in files)
+
+    @property
     def card_index(self) -> dict:
         """TG-14④ 卡索引 lint 的参数（必备节 / 指纹长度阈值）。
 
@@ -323,7 +332,7 @@ class Policy:
         consumed = {
             "version", "_comment", "spec_glob", "spec_dir", "scope_min_deviation_chars",
             "scope_ref_sources", "lint_paths", "lint_rules", "archive_role_prefix", "close_gate",
-            "ledger_status", "md_table_docs", "md_table_globs", "card_index",
+            "ledger_status", "md_table_docs", "md_table_globs", "md_table_legacy_files", "card_index",
         }
         for key in self.policy_file:
             if key not in consumed:

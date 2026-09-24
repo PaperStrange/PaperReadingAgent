@@ -52,6 +52,15 @@
     "docs/iteration/sprint/*.md",
     "docs/iteration/sprint/*.MD"
   ],
+  "md_table_legacy_files": {
+    "_comment": "棘轮（ratchet）基线：这些**历史 Sprint/验收文档**里的表格结构缺陷是既存的（2026-09-23 扩覆盖时首次被扫到，共 15 处：内容里的管道未转义 / 表头与数据行列数不符）。它们**只报不判失败**，避免为了让闸门变绿而去改写已关闭 Sprint 的历史记录（2026-09-23 实测过一次越界改写，已 revert）。**新文件/新改动一律判失败**；若要清这批历史债，另开卡逐处人工修（每处需人判：补表头列 / 转义内容管道 / 合并单元格）。",
+    "files": [
+      "docs/iteration/sprint/2026-08-30-sprint-6.md",
+      "docs/iteration/sprint/2026-09-07-sprint-15.md",
+      "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD",
+      "docs/iteration/sprint/2026-09-12-sprint-16.md"
+    ]
+  },
   "close_gate": {
     "scope_ref_step": "scope",
     "coverage": {
