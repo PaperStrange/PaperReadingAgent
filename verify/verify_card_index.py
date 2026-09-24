@@ -163,13 +163,47 @@ def check_phase(phase_dir: Path, strict: bool, body_threshold: int, root: Path |
                     bodies.append((card, para[:BODY_PREFIX_CHARS]))
         for sprint in sorted(sprint_dir.glob("*.md")) if sprint_dir.is_dir() else []:
             stext = sprint.read_text(encoding="utf-8", errors="replace")
+            sline_list = stext.splitlines()
             for card, prefix in bodies:
-                if prefix and prefix in stext:
+                if not prefix:
+                    continue
+                hit = False
+                for i, sline in enumerate(sline_list):
+                    if prefix not in sline:
+                        continue
+                    if _fingerprint_in_plan_row(sline, card, prefix):
+                        continue          # 合法的"按卡号引用的计划表行"
                     problems.append(
-                        f"{rel(sprint, root)}: 出现卡片 {card} 的正文片段（前 {BODY_PREFIX_CHARS} 字命中）"
+                        f"{rel(sprint, root)}:{i + 1}: 出现卡片 {card} 的正文片段（前 {BODY_PREFIX_CHARS} 字命中）"
                         f"——Sprint 文档只按卡号引用，不复制正文")
+                    hit = True
                     break
+                if not hit:
+                    continue
     return problems
+
+
+def _fingerprint_in_plan_row(line: str, card: str, fingerprint: str) -> bool:
+    """该行是否是"**按卡号引用的计划表行**"（合法引用，不算复制正文）。
+
+    为什么必须豁免（2026-09-23 P1 试点实测）：Sprint 文档的 §2 计划表按设计就是
+    `| 卡号 | 主题/计划内容 | 验收 | 点 |` —— 主题列**天然**与卡正文首句同源。
+    首版闸门把这种行判成"复制卡正文"，逼出一次**对已关闭 Sprint 文档的历史改写**
+    （已 revert：历史过程记录不得为过 lint 而修饰）。合法的计划表行要满足：
+      ① 是表格行；② **首格就是该卡号**（明确按卡号引用）；
+      ③ 卡正文要么出现在**单元格开头**（`| 卡号 | <正文>… |`），要么出现在**很靠后**的位置
+         （`…（卡正文已独立成文：cards/…）` 这类"正文摘要 + 指向卡文件"的写法），
+         而不是出现在 `text[:index]` 附近的普通段落里（那种才是真复制）。
+    """
+    if not line.strip().startswith("|"):
+        return False
+    cells = split_row(line)
+    if not cells or cells[0] != card:
+        return False
+    idx = line.find(fingerprint)
+    if idx < 0:
+        return False
+    return idx < 40 or idx > 60
 
 
 def run(strict: bool, body_threshold: int, root: Path | None = None) -> list[str]:
@@ -253,7 +287,7 @@ def selfcheck() -> int:
         ok("反向对照 C 缺必备节 → FAIL（strict 档）", any("缺必备节" in x for x in p), f"problems={p[:1]}")
         _fixture(base)
 
-        # 反向对照 D：Sprint 文档塞入卡正文
+        # 反向对照 D：Sprint 文档塞入卡正文（**非计划表行**——普通段落里复制正文）
         (base / "docs/iteration/sprint/2026-01-01-sprint-1.md").write_text(
             "# Sprint-1\n\n## 3. 看板\n\n说明文字里嵌了卡片正文：D-1 的正文内容写在这里，"
             "它应当只存在于本卡文件之中，任何 Sprint 文档都不应复制这段文字。\n",
@@ -261,7 +295,18 @@ def selfcheck() -> int:
         p = run(True, 120, base)
         ok("反向对照 D Sprint 文档出现卡正文 → FAIL（严格档）",
            any("正文片段" in x for x in p), f"problems={p[:1]}")
-        (base / "docs/iteration/sprint/2026-01-01-sprint-1.md").unlink()
+
+        # 反向对照 D2：**合法计划表行**必须放行（防"把正常计划表判成违规"——
+        # 首版就是这个假阳性逼出一次对已关闭 Sprint 文档的历史改写，已 revert）
+        _fixture(base)  # 重建阶段 fixture（D 用例前已把 D-2 卡删掉）
+        (base / "docs/iteration/sprint/2026-01-01-sprint-1.md").write_text(
+            "# Sprint-1\n\n## 2. 计划\n\n| 卡号 | 主题 | 点 |\n|---|---|---|\n"
+            "| D-1 | D-1 的正文内容写在这里，它应当只存在于本卡文件之中，任何 Sprint 文档都不应复制这段文字。 | 1 |\n",
+            encoding="utf-8")
+        p = run(True, 120, base)
+        ok("反向对照 D2 合法计划表行（首格=卡号，正文位于单元格开头）→ PASS",
+           not any("正文片段" in x for x in p), f"problems={p[:1]}")
+        (base / "docs/iteration/sprint/2026-01-01-sprint-1.md").unlink(missing_ok=True)
 
         # 反向对照 E：孤儿卡文件（有文件无索引行）
         (base / "docs/iteration/phases/demo/cards/D-3.md").write_text(
