@@ -208,6 +208,19 @@ class Policy:
         return self.policy_file[key]
 
     @property
+    def card_index(self) -> dict:
+        """TG-14④ 卡索引 lint 的参数（必备节 / 指纹长度阈值）。
+
+        2026-09-23：这些值最初写在 `verify/verify_card_index.py` 里，被
+        `verify_no_policy_hardcode.py` 判为 R1（阈值硬编码）——**闸门又一次抓住了写闸门的人**。
+        """
+        val = self._data("card_index")
+        for key in ("required_sections", "body_prefix_chars", "min_fingerprint_chars"):
+            if key not in val:
+                raise PolicyError(f"card_index 缺键 {key!r}")
+        return val
+
+    @property
     def scope_min_deviation_chars(self) -> int:
         val = self._data("scope_min_deviation_chars")
         if not isinstance(val, int) or val <= 0:
@@ -300,7 +313,7 @@ class Policy:
         consumed = {
             "version", "_comment", "spec_glob", "spec_dir", "scope_min_deviation_chars",
             "scope_ref_sources", "lint_paths", "lint_rules", "archive_role_prefix", "close_gate",
-            "ledger_status", "md_table_targets",
+            "ledger_status", "md_table_targets", "card_index",
         }
         for key in self.policy_file:
             if key not in consumed:

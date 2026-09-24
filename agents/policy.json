@@ -30,6 +30,12 @@
     "report_only": "D101,D102,D103,E501"
   },
   "archive_role_prefix": "tech-research",
+  "card_index": {
+    "_comment": "TG-14④ 卡索引 lint 的判据参数（原写在 verify/verify_card_index.py，被 verify_no_policy_hardcode.py 判为 R1 阈值硬编码——闸门又抓住了写闸门的人）",
+    "required_sections": ["状态", "规模", "来源", "Sprint"],
+    "body_prefix_chars": 60,
+    "min_fingerprint_chars": 25
+  },
   "md_table_targets": [
     "docs/1-WORKFLOW.MD",
     "docs/2-ARCHITECTURE.MD",

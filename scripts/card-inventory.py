@@ -56,7 +56,8 @@ def split_row(line: str) -> list[str]:
     cells, cur = [], []
     for i, ch in enumerate(line):
         if ch == PIPE and (i == 0 or line[i - 1] != ESC):
-            cells.append("".join(cur)); cur = []
+            cells.append("".join(cur))
+            cur = []
         else:
             cur.append(ch)
     cells.append("".join(cur))
