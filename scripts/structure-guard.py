@@ -9,8 +9,8 @@
     snapshot → 编辑 → verify
 
 `snapshot` 把**政策派生**的文档集合的结构清单落盘（默认 `agents/runtime/doc-structure.json`）；
-`verify` 只对**丢失/变形**报错（新增标题 / 新增表格 / 新增文件一律 OK 并打印），因此它可以在**任何**
-Markdown 结构编辑前后无条件各跑一次，而不因"我刚加了内容"误报（新增不是失败）。
+`verify` 只对**丢失/变形**报错（新增标题 / 新增表格 / **表格新增行** / 新增文件一律 OK 并打印），
+因此它可以在**任何** Markdown 结构编辑前后无条件各跑一次，而不因"我刚加了内容"误报（新增不是失败）。
 
 ## 判据（verify，逐条对应 R1 的真实形态）
   ① 标题被删 → FAIL 点名 `文件:行 标题`（R1-1 `## 2. 启动条件`、R1-5 `## 7. 我接手的工作面`）
@@ -18,6 +18,11 @@ Markdown 结构编辑前后无条件各跑一次，而不因"我刚加了内容"
   ③ 表格块消失 / 列数变化 / 行数减少 → FAIL（R1-3 数据行被顶掉一格、R1-4 整表被压成 1 格）
   ④ 文件消失 → FAIL
   退出码：rc=1 有任何丢失/变形；rc=0 否则。
+
+**③ 的边界（F2，2026-09-25 实测修正）**：判据只对**丢失/变形**报错——表格**行数增加**（追加一行）
+与新增表格块都是**新增**，rc=0 并打印 `[新增]`。旧实现把"追加一行"报成「表格列数变化」
+（`row_columns` 两个列表长度不同 ⇒ 不等 ⇒ 命中列数分支），与本节契约相反；现逐行口径只对齐到
+基线已有的那些行。`--replay` 的 F2-a~F2-d 四条对照把该契约钉成可执行断言。
 
 **合法结构变更**（有意加列 / 改标题 / 重排表格）会同样报 FAIL——这是**刻意的**：`verify` 不猜意图，
 编辑前后各跑一次时任何结构差分都必须由人确认，确认后**重做 `snapshot`** 即为新基线。
@@ -44,6 +49,9 @@ Markdown 结构编辑前后无条件各跑一次，而不因"我刚加了内容"
     .venv\\Scripts\\python.exe scripts\\structure-guard.py verify   [--root <dir>] [--baseline <json>]
     .venv\\Scripts\\python.exe scripts\\structure-guard.py --replay
 退出码：0=通过；1=有丢失/变形（verify）或自检断言失败（--replay）；2=政策/用法错误。
+
+`--replay` = **5 类真实 R1 输入**（必须全部被拦下）+ **4 类 F2 反向对照**（追加行必须放行、
+删行/改列数/删标题必须被拦下），全部在 `%TEMP%` 副本上跑，真文件只读。
 
 `--root` 只改变"**文档树在哪**"（replay 的临时镜像用），**不改变"政策是什么"**：政策数据只有一个真源
 `agents/policy.json`，不为副本再造第二份政策（否则"两处政策各说一套"就是下一类漂移）。
@@ -245,7 +253,12 @@ def _anchor_diff(rel: str, base: list[str], cur: list[str]) -> tuple[list[str], 
 
 
 def _row_diff_detail(rel: str, btable: dict, ctable: dict) -> str:
-    """点名**第一处**列数不同的行（只在两侧行数相同时调用，故逐行下标可直接对齐）。"""
+    """点名**第一处**列数不同的行。
+
+    F2 起只对**基线已有的那些行**（`row_columns[:len(基线)]`）逐位对齐——行数增加时多出来的
+    行不再进入对齐（它们是"新增"，不是"变形"），所以下标 `j` 仍与基线行一一对应，
+    `ctable['start_line'] + j` 依旧是该行的真实行号。
+    """
     brow = btable["row_columns"]
     crow = ctable["row_columns"]
     for j, (bc, cc) in enumerate(zip(brow, crow, strict=False)):
@@ -270,12 +283,26 @@ def _table_diff(rel: str, base: list[dict], cur: list[dict]) -> tuple[list[str],
         # 判据顺序是**语义**问题（首版把两者的顺序写反，于是"删掉一整行"被报成"列数变化：
         # 表头 3 列 → 3 列"——行数少了却说列数变了）：先判**行数减少**（整行被吞），
         # 再判**列数变化**（行列不对齐 = 单元格被顶出，R1-3）。两者都 FAIL，但点名必须对得上事实。
+        #
+        # F2（2026-09-25 实测修正）：上面这版"先判行数、再判列数"只是把**行数减少**那一支修对了，
+        # 行数**增加**时第二支照样误报——`ctable["row_columns"] != btable["row_columns"]` 在两个
+        # 列表长度不同时**必然成立**（列表不等），于是"追加一行"被报成「表格列数变化」
+        # （实测：`backlog.MD` 19→20 行、5 列不变，rc=1）。这与模块头「新增标题 / 新增表格 /
+        # 新增文件一律 OK 并打印」的契约直接冲突：**行追加也是新增**。
+        # 现把逐行口径**只对齐到基线已有的那些行**（`crow[:btable["rows"]]`）：
+        #   行数减少 = 丢失 → FAIL；基线行的列数签名变了 = 变形 → FAIL；
+        #   多出来的行 = 新增 → 放行并计入 additions（`verify` 打印 `[新增]`）。
+        brow, crow = btable["row_columns"], ctable["row_columns"]
         if ctable["rows"] < btable["rows"]:
             failures.append(f"{rel}:{btable['start_line']} 表格行数减少："
                             f"{btable['rows']} 行 → {ctable['rows']} 行（表头 {btable['header']}）")
-        elif ctable["row_columns"] != btable["row_columns"]:
+        elif crow[:len(brow)] != brow:
             failures.append(f"{rel}:{btable['start_line']} 表格列数变化："
                             f"{_row_diff_detail(rel, btable, ctable)}")
+        elif ctable["rows"] > btable["rows"]:
+            additions.append(f"{rel}:{ctable['start_line']} 表格新增行："
+                             f"{btable['rows']} 行 → {ctable['rows']} 行"
+                             f"（表头 {btable['header']}，列数 {ctable['columns']} 不变；新增不判失败）")
     for k, ctable in enumerate(cur):
         if not used[k]:
             additions.append(f"{rel}:{ctable['start_line']} 新增表格："
@@ -488,6 +515,69 @@ def _damage_r1_5(mirror: Path) -> list[str]:
     return [f"{rel}:{line}", "我接手的工作面", "标题被删"]
 
 
+def _damage_f2_append(mirror: Path) -> list[str]:
+    """F2-a：**追加一行**（复制末行，行数 +1、列数不变）——必须**放行**并报『新增』。
+
+    这正是被误报的输入（旧实现：`backlog.MD` 19→20 行被报「表格列数变化」）。
+    """
+    rel = "docs/iteration/phases/testing-governance/backlog.MD"
+    path = mirror / rel
+    lines = _read_text(path).split("\n")
+    blocks = _blocks(lines)
+    if not blocks:
+        raise ReplayError("F2-a：副本里没有表格块")
+    _, end, _ = max(blocks, key=lambda b: b[1] - b[0])
+    lines.insert(end + 1, lines[end])
+    _write_text(path, "\n".join(lines))
+    return [rel, "表格新增行"]
+
+
+def _damage_f2_drop_row(mirror: Path) -> list[str]:
+    """F2-b：**删掉一行数据行**（行数 −1、列数不变）——必须 FAIL 并点名该表。"""
+    rel = "docs/iteration/phases/testing-governance/backlog.MD"
+    path = mirror / rel
+    lines = _read_text(path).split("\n")
+    blocks = _blocks(lines)
+    if not blocks:
+        raise ReplayError("F2-b：副本里没有表格块")
+    start, end, block = max(blocks, key=lambda b: b[1] - b[0])
+    del lines[end]
+    _write_text(path, "\n".join(lines))
+    # 点名两件事：表的位置（`文件:表头行`）与表的身份（表头原文）
+    return [f"{rel}:{start + 1}", "表格行数减少", block[0]]
+
+
+def _damage_f2_shrink_cell(mirror: Path) -> list[str]:
+    """F2-c：**某数据行少一格**（列数 5→4，行数不变）——必须 FAIL 并点名『表格列数变化』。
+
+    R1-3 打的是 sprint-17 的处置表；本条打 `backlog.MD`，用来证明"列数"判据在**行数不变**时
+    仍然只认列变形（与 F2-a"行数变了但列没变 → 放行"构成一对反向对照）。
+    """
+    rel = "docs/iteration/phases/testing-governance/backlog.MD"
+    path = mirror / rel
+    lines = _read_text(path).split("\n")
+    blocks = _blocks(lines)
+    if not blocks:
+        raise ReplayError("F2-c：副本里没有表格块")
+    start, end, _ = max(blocks, key=lambda b: b[1] - b[0])
+    row = lines[end].rstrip()
+    last = row.rfind("|")
+    prev = row.rfind("|", 0, last)
+    lines[end] = row[: prev + 1]
+    _write_text(path, "\n".join(lines))
+    return [f"{rel}:{start + 1}", "表格列数变化"]
+
+
+def _damage_f2_drop_heading(mirror: Path) -> list[str]:
+    """F2-d：**删掉整行标题**（`## 1. 功能卡`）——必须 FAIL 并点名。
+
+    R1-1 删的是 `## 2. 启动条件`；本条删另一个标题，避免"只对某一个字符串成立"。
+    """
+    rel = "docs/iteration/phases/testing-governance/backlog.MD"
+    line = _drop_line(mirror / rel, lambda s: s == "## 1. 功能卡", "F2-d")
+    return [f"{rel}:{line}", "## 1. 功能卡", "标题被删"]
+
+
 REPLAY_CASES = (
     ("R1-1", "锚点行被吞：`## 2. 启动条件` 整行标题消失（testing-governance/backlog.MD）",
      ["docs/iteration/phases/testing-governance/backlog.MD"], _damage_r1_1),
@@ -501,6 +591,22 @@ REPLAY_CASES = (
     ("R1-5", "追加新节时吞掉 `## 7. 我接手的工作面` 标题（本文档族；现场已补回并重编号为 §8）",
      ["docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD"],
      _damage_r1_5),
+)
+
+# F2（2026-09-25）：把模块头「新增一律放行，只对丢失/变形报错」的契约钉成**可执行**的四条对照。
+# 旧实现实测：`ctable["row_columns"] != btable["row_columns"]` 在行数不同时必然成立 ⇒
+# 「追加一行」（19→20 行、5 列不变）被判「表格列数变化」，rc=1，与契约相反。
+# `want_rc` 是**期望**退出码：新增 = 0（放行），丢失/变形 = 1（拦下）。
+F2_CASES = (
+    ("F2-a", "追加一行数据行（行数 +1、列数不变）→ **必须放行**（rc=0）并报『新增』"
+             "（旧实现误报『表格列数变化』= 契约反例）",
+     ["docs/iteration/phases/testing-governance/backlog.MD"], _damage_f2_append, 0),
+    ("F2-b", "删掉一行数据行（行数 −1）→ rc=1 且点名该表（`文件:表头行` + 表头原文 + 『表格行数减少』）",
+     ["docs/iteration/phases/testing-governance/backlog.MD"], _damage_f2_drop_row, 1),
+    ("F2-c", "某数据行少一格（列数 5→4、行数不变）→ rc=1 且点名『表格列数变化』",
+     ["docs/iteration/phases/testing-governance/backlog.MD"], _damage_f2_shrink_cell, 1),
+    ("F2-d", "删掉整行标题 `## 1. 功能卡` → rc=1 且点名『标题被删』",
+     ["docs/iteration/phases/testing-governance/backlog.MD"], _damage_f2_drop_heading, 1),
 )
 
 PASSED = 0
@@ -536,19 +642,29 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess:
 
 
 def _evidence(text: str, markers: list[str]) -> str:
-    for line in text.splitlines():
-        if "[FAIL]" in line and any(m in line for m in markers):
-            return line.strip()[:150]
+    """取一条**含判据结论**的原文行作证据（先找 `[FAIL]`，再找 `[新增]`——两个标签都必须能取到：
+    F2-a 是"新增 → 放行"的对照，它的证据就在 `[新增]` 行上，只在 `[FAIL]` 里找会取不到）。"""
+    lines = text.splitlines()
+    for tag in ("[FAIL]", "[新增]"):
+        for line in lines:
+            if tag in line and any(m in line for m in markers):
+                return line.strip()[:150]
     return text.strip().splitlines()[-1][:150] if text.strip() else ""
 
 
 def cmd_replay() -> int:
-    """用 **5 次 R1 的真实输入**在 `%TEMP%` 的**副本**上复跑：每类必须被 `verify` 拦下并点名，干净副本必须 rc=0。
+    """在 `%TEMP%` 的**副本**上复跑两组自检，每组都必须被 `verify` 按预期处置：
+
+    * **5 类真实 R1 输入**（标题/锚点被吞、单元格被顶出、整表被压平）→ 每类必须被拦下（rc=1）并点名；
+    * **4 类 F2 反向对照**（追加行 / 删行 / 改列数 / 删标题）→ 前一类必须**放行**（rc=0，新增不是失败），
+      后三类必须被拦下（rc=1）——直接钉住「新增一律放行，只对丢失/变形报错」这句契约。
+
+    两组都夹着一条"复原该文件后 rc=0"的收尾断言，证明判决来自损坏本身而不是副本漂移。
 
     **绝不动真文件**：所有损坏只发生在镜像里；收尾用"真实文件摘要（跑前 == 跑后）"作为断言，
     而不是靠"我记得没写"（判据取可核的值）。
     """
-    print("structure-guard --replay：5 类真实 R1 输入在 %TEMP% 副本上复跑（真文件只读）")
+    print("structure-guard --replay：5 类真实 R1 输入 + 4 类 F2 反向对照，全在 %TEMP% 副本上复跑（真文件只读）")
     rels = doc_set(ROOT)
     digest_before = _digest(ROOT, rels)
     tmp = Path(tempfile.mkdtemp(prefix="structure-guard-replay-"))
@@ -592,6 +708,33 @@ def cmd_replay() -> int:
         print("\n5 类 R1 复跑结果（旧实现：事后才发现；本机制：编辑后一跑即拦）：")
         for line in summary:
             print(f"  {line}")
+
+        # ---- F2 反向对照（2026-09-25）：`_table_diff` 的"新增 vs 丢失/变形"契约 --------------
+        print("\nF2 反向对照（表格行/列的『新增放行 ↔ 丢失变形拦下』契约，4 类）：")
+        for case_id, desc, files, damage, want_rc in F2_CASES:
+            print(f"\n[{case_id}] {desc}")
+            markers = damage(mirror)
+            res = _run_cli("verify", "--root", str(mirror), "--baseline", str(baseline))
+            text = res.stdout + res.stderr
+            verdict = "放行（新增不是失败）" if want_rc == 0 else "拦下（丢失/变形）"
+            ok(f"{case_id} verify rc={want_rc}（{verdict}）", res.returncode == want_rc, f"rc={res.returncode}")
+            ok(f"{case_id} 点名到位（{'、'.join(markers)}）", all(m in text for m in markers),
+               _evidence(text, markers))
+            summary.append(f"{case_id} -> {_evidence(text, markers)}")
+            _mirror_copy(ROOT, mirror, files)
+            back = _run_cli("verify", "--root", str(mirror), "--baseline", str(baseline))
+            ok(f"{case_id} 复原该文件后 verify → rc=0（证明判决来自损坏本身，不是副本漂移）",
+               back.returncode == 0, f"rc={back.returncode}")
+
+        print("\nF2 四条对照结果（契约：新增放行 / 丢失·变形拦下）：")
+        for line in summary[-len(F2_CASES):]:
+            print(f"  {line}")
+
+        ok(f"F2-a 的裁决行确实带『新增』标注（放行必须可核，不是静默 rc=0）",
+           "表格新增行" in (summary[-len(F2_CASES)].split(" -> ", 1)[-1]),
+           summary[-len(F2_CASES)].split(" -> ", 1)[-1])
+        ok(f"真文件零改动（F2 对照后复检）：{len(rels)} 份文档摘要 跑前 == 跑后",
+           _digest(ROOT, rels) == digest_before, f"sha256={digest_before[:16]}…")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print(f"\nALL PASS ({PASSED} assertions)")
@@ -606,7 +749,8 @@ def main() -> int:
     parser.add_argument("--root", default="", help="文档树根（默认仓库根；replay 用它指向 %TEMP% 里的副本）")
     parser.add_argument("--out", default="", help=f"snapshot 落盘路径（默认 {SNAPSHOT_REL}）")
     parser.add_argument("--baseline", default="", help=f"verify 的基线（默认 {SNAPSHOT_REL}）")
-    parser.add_argument("--replay", action="store_true", help="用 5 类真实 R1 输入在 %%TEMP%% 副本上复跑自检")
+    parser.add_argument("--replay", action="store_true",
+                        help="用 5 类真实 R1 输入 + 4 类 F2 反向对照在 %%TEMP%% 副本上复跑自检")
     args = parser.parse_args()
 
     if args.replay:

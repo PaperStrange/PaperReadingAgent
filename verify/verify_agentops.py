@@ -7,13 +7,23 @@ UC-11 fetch-spec sha256 命中/失配（M10）/ UC-12 账本并发锁无丢失�
 UC-13 fetch-prices 解析与合并优先级（M9）/ UC-14 评审类 run 的 scope 来源闸门（TG-11）。
 
 运行：.venv\\Scripts\\python.exe verify\\verify_agentops.py（纯离线，隔离到临时 AGENT_OPS_DIR）
+
+**F1（2026-09-25）本脚本不再往仓库里写任何文件**：UC-15/UC-16 要用"临时新增一个角色 spec"来
+证明闸门是数据驱动的，旧实现把探针直接写进**真实** `agents/functions/` 并靠 `finally` 删除——
+后果有两个，都实测过：① 两个并行实例互相 clobber（一方删掉另一方正在用的探针 → 两边都 rc=1，
+套件因此偶发红，正是 `TG-8` 记的"失败脚本在 verify_agentops 与 verify_local_dir 之间漂移"）；
+② 每次运行都往工作区写文件，`git status` 不再干净（测试污染仓库）。
+现改为：把 spec 目录**整体重定向到 %TEMP%**——复制真实 spec 到临时目录，写一份只改
+`spec_dir` 字段（其余键逐字相同）的临时政策 JSON，用 `PAPERQA_AGENT_POLICY` 注入子进程。
+探针只落在临时目录，且本文件断言仓库路径**从未**被创建。
 """
 
 from __future__ import annotations
-VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1~UC-14（离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门）', 'tier': 'offline', 'providers': [], 'est_seconds': 10, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
+VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1~UC-18（离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库）', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 10, 'routes': [], 'requires': ['none']}
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -23,9 +33,13 @@ ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "scripts" / "agent-ops.py"
 FUNCTIONS = ROOT / "agents" / "functions"
 
+# F1：探针 spec 的文件名（旧实现在**仓库** `agents/functions/` 下创建它们）。集中在此，
+# 便于"启动即清理历史遗留 + 收尾断言从未创建"两处共用同一份字面量。
+PROBE_SPECS = ("tg15-probe-role.md", "tg15-undeclared-role.md")
+
 sys.path.insert(0, str(ROOT))
 
-from verify.agent_policy import load_policy  # noqa: E402
+from verify.agent_policy import ENV_POLICY, load_policy  # noqa: E402
 
 # TG-15：角色集合**不再在本文件复制一份**（原先这里写死 {"code-review","doc-audit"}，与
 # agent-ops.py 的 `_REVIEW_ROLES`、verify_close_readiness.py 的 `CLOSE_ROLES` 三处并存 →
@@ -67,10 +81,46 @@ def ok(name: str, cond: bool, detail: str = "") -> None:
 
 def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="verify_agentops_"))
-    base_env = {**os.environ, "AGENT_OPS_DIR": str(tmp), "PYTHONUTF8": "1"}
+    # ---- F1：spec 目录整体重定向到 %TEMP%（本脚本从此不往仓库写文件） -------------------
+    # 旧实现：UC-15/UC-16 直接把探针 spec 写在 `agents/functions/`（真实仓库目录），靠 `finally` 删。
+    # 实测后果：① 两个并行实例共享同一个可变文件 → 互相 clobber（两边都 rc=1）；
+    # ② 运行期间工作区被污染（`git status` 非空）。修法不是"换个文件名"，而是**换掉 spec 根**：
+    # 政策装载的 spec_dir 由 `agents/policy.json::spec_dir` 决定，而政策文件本身可用
+    # `PAPERQA_AGENT_POLICY` 重定向（TG-15 的既有能力）。故：
+    #   ① 复制真实 spec 到 %TEMP%（角色集合必须与真实仓库一致，否则 UC-3/4/9/14 会找不到角色）；
+    #   ② 写一份临时政策 JSON：**只改 spec_dir**，其余键逐字取自真实政策（`_POLICY.policy_file`）；
+    #   ③ 把 `PAPERQA_AGENT_POLICY` 注入每个 CLI 子进程。
+    specs_dir = tmp / "specs"
+    specs_dir.mkdir()
+    for src in sorted(FUNCTIONS.glob("*.md")):
+        shutil.copy2(src, specs_dir / src.name)
+    temp_policy = tmp / "policy.json"
+    temp_policy.write_text(
+        json.dumps({**_POLICY.policy_file, "spec_dir": specs_dir.as_posix()},
+                   ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    # 历史遗留（旧版本跑挂/被中断时留下）：仓库里若还有探针文件，先清掉——它不该存在。
+    for name in PROBE_SPECS:
+        (FUNCTIONS / name).unlink(missing_ok=True)
+    base_env = {**os.environ, "AGENT_OPS_DIR": str(tmp), "PYTHONUTF8": "1",
+                ENV_POLICY: str(temp_policy)}
     runtime = tmp / "runtime"
     registry = runtime / "registry.json"
     try:
+        # 探针隔离的**前置断言**：政策确实指向临时 spec 目录（否则下面的 UC-15/16 会退回写仓库，
+        # 而且失败形态是"静默写进真实目录"——正是本修复要消灭的东西）。
+        ok("F1 政策已重定向：spec_dir 指向 %TEMP%，且与真实政策只差 spec_dir 一个键",
+           _POLICY.policy_file.get("spec_dir") != (specs_dir.as_posix())
+           and {k: v for k, v in json.loads(temp_policy.read_text(encoding="utf-8")).items()
+                if k != "spec_dir"} == {k: v for k, v in _POLICY.policy_file.items() if k != "spec_dir"}
+           and Path(tempfile.gettempdir()).resolve() in specs_dir.resolve().parents,
+           f"specs_dir={specs_dir}（真实 spec_dir={_POLICY.policy_file.get('spec_dir')!r}）")
+        ok("F1 spec 副本齐全（临时目录 == 真实 agents/functions 的角色集）",
+           {p.name for p in specs_dir.glob("*.md")} == {p.name for p in FUNCTIONS.glob("*.md")}
+           and bool(specs_dir.glob("*.md")),
+           f"{len(list(specs_dir.glob('*.md')))} 份")
+
         # UC-10 前置：人工覆盖段先就位（deepseek 模型无价 → pending_price 场景）
         runtime.mkdir(parents=True)
         (runtime / "prices.json").write_text(
@@ -374,15 +424,20 @@ def main() -> int:
         ok("UC-14 非评审 role 不强制 scope 来源（防假红）", r.returncode == 0, (r.stdout + r.stderr).strip()[:80])
 
         # UC-15（TG-15，Sprint-17 D2）：闸门政策**数据驱动**——角色集合/阈值来自数据文件，
-        # 不是代码常量。反向对照：在仓库 spec 目录里临时新增一个声明 `scope_required: true` 的角色，
+        # 不是代码常量。反向对照：在 spec 目录里临时新增一个声明 `scope_required: true` 的角色，
         # **不改任何代码**，CLI 必须立刻要求它声明 scope；把声明改成 false 后必须立刻放行。
         # 这同时证明"删声明绕不过去"（缺声明是报错，不是放行，见数据源完备性自检）。
-        extra_spec = FUNCTIONS / "tg15-probe-role.md"
+        # **F1：探针写在 `specs_dir`（%TEMP%）而不是仓库 `agents/functions/`**——见文件头与 main() 开头。
+        extra_spec = specs_dir / PROBE_SPECS[0]
         try:
             extra_spec.write_text(
                 '---\nname: tg15-probe-role\ndescription: TG-15 数据驱动探针角色\n'
                 'version: "1.0.0"\nscope_required: true\ncoverage_window: self\n---\n\n# probe\n',
                 encoding="utf-8")
+            ok("F1 UC-15 探针落在 %TEMP%（仓库 agents/functions/ 绝不出现探针文件）",
+               extra_spec.is_file() and not (FUNCTIONS / PROBE_SPECS[0]).exists()
+               and Path(tempfile.gettempdir()).resolve() in extra_spec.resolve().parents,
+               f"probe={extra_spec}；仓库路径存在={ (FUNCTIONS / PROBE_SPECS[0]).exists() }")
             r = run(["register", "--role", "tg15-probe-role", "--task", "probe",
                      "--spec", "tg15-probe-role@1.0.0"], base_env, raw=True)
             ok("UC-15 新增角色只改数据（spec 声明 scope_required: true）→ 立刻被要求声明 scope",
@@ -407,11 +462,15 @@ def main() -> int:
             extra_spec.unlink(missing_ok=True)
 
         # UC-16（TG-15）：数据源**缺声明**不是"不需要"，而是 fail-closed 报错（删声明绕不过闸门）
-        probe_spec = FUNCTIONS / "tg15-undeclared-role.md"
+        # **F1：同样写在 `specs_dir`（%TEMP%）**——旧实现把它写进仓库，是并行的第二个 clobber 源。
+        probe_spec = specs_dir / PROBE_SPECS[1]
         try:
             probe_spec.write_text(
                 '---\nname: tg15-undeclared-role\ndescription: 缺 scope_required 声明\n'
                 'version: "1.0.0"\n---\n\n# probe\n', encoding="utf-8")
+            ok("F1 UC-16 探针落在 %TEMP%（仓库路径未被创建）",
+               probe_spec.is_file() and not (FUNCTIONS / PROBE_SPECS[1]).exists(),
+               f"probe={probe_spec}")
             r = run(["list"], base_env, raw=True)
             ok("UC-16 spec 缺 scope_required → CLI fail-closed（POLICY-ERROR，不静默放行）",
                r.returncode != 0 and "POLICY-ERROR" in (r.stdout + r.stderr),
@@ -507,10 +566,19 @@ def main() -> int:
         ok("UC-7 防双写", r.returncode != 0 and "完整性校验" in (r.stdout + r.stderr),
            (r.stdout + r.stderr).strip()[:80])
 
+        # F1 收尾断言：整轮跑完，仓库的 spec 目录**一个探针文件都没有**（且内容与运行前逐字节相同）。
+        # 判据取"文件系统事实"，不是"我记得 unlink 过"——旧实现正是靠这句记忆，而它在并行下不成立。
+        repo_probes = [name for name in PROBE_SPECS if (FUNCTIONS / name).exists()]
+        ok("F1 全程零仓库污染：agents/functions/ 下没有任何探针 spec（并行安全的前提）",
+           not repo_probes, f"残留={repo_probes}")
+        ok("F1 真实 spec 未被改动（临时目录只读复制）",
+           {p.name: p.read_bytes() for p in specs_dir.glob("*.md")}
+           == {p.name: p.read_bytes() for p in FUNCTIONS.glob("*.md")},
+           f"{len(list(FUNCTIONS.glob('*.md')))} 份逐字节一致")
+
         print(f"\nALL PASS ({PASSED} assertions)")
         return 0
     finally:
-        import shutil
         shutil.rmtree(tmp, ignore_errors=True)
 
 
