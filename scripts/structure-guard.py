@@ -9,23 +9,34 @@
     snapshot → 编辑 → verify
 
 `snapshot` 把**政策派生**的文档集合的结构清单落盘（默认 `agents/runtime/doc-structure.json`）；
-`verify` 只对**丢失/变形**报错（新增标题 / 新增表格 / **表格新增行** / 新增文件一律 OK 并打印），
-因此它可以在**任何** Markdown 结构编辑前后无条件各跑一次，而不因"我刚加了内容"误报（新增不是失败）。
+`verify` 只对**丢失/变形**报错：新增标题 / 新增表格 / **表格新增行** / 新增文件一律 OK 并打印，
+**同一行就地改写**（数量不变、文本变了）报 `[修改]` 也 OK，
+因此它可以在**任何** Markdown 结构编辑前后无条件各跑一次，而不因"我刚加了内容 / 我刚改了一行"误报。
 
-## 判据（verify，逐条对应 R1 的真实形态）
-  ① 标题被删 → FAIL 点名 `文件:行 标题`（R1-1 `## 2. 启动条件`、R1-5 `## 7. 我接手的工作面`）
+## 判据（verify，逐条对应 R1 的真实形态；**丢失 = 数量减少**）
+  ① 标题**数量减少** → FAIL 点名 `文件:行 标题`（R1-1 `## 2. 启动条件`、R1-5 `## 7. 我接手的工作面`）
   ② 标题级别变化 → FAIL
   ③ 表格块消失 / 列数变化 / 行数减少 → FAIL（R1-3 数据行被顶掉一格、R1-4 整表被压成 1 格）
   ④ 文件消失 → FAIL
+  ⑤ **同一行就地改写**（标题行 / 行首粗体锚点行：数量不变、文本变了）→ **不是丢失**：报 `[修改]`，rc=0
   退出码：rc=1 有任何丢失/变形；rc=0 否则。
+
+**① 的边界（H1，2026-09-25 实测修正）**：旧实现按**文本集合**判标题与锚点行——基线里的那一行文本在
+新文本里找不到 ⇒ 报「标题被删 / 锚点行被删」，同一行又被报成「新增」。于是**就地改一行**（补一个小节
+号、retarget 一处 `§` 引用——batch G 实测 **5 份文档**的行首粗体锚点行）会同时拿到"被删"与"新增"两条
+**相反**结论、rc=1：一次纯文本修改被误判为丢失，守卫从此变成噪音源。现改为**计数口径**：
+**数量减少 = 丢失 → FAIL**；**数量不变而文本变了 = `[修改]` → rc=0**。
+`--replay` 的 H1-a/H1-b/H1-c 三条对照把该契约钉成可执行断言（就地改写 rc=0 且输出**不得**含「被删」；
+删标题 / 改级别必须仍 rc=1）。5 类 R1 事故全是"数量减少 / 表格变形"，计数口径**一条都没放过**。
 
 **③ 的边界（F2，2026-09-25 实测修正）**：判据只对**丢失/变形**报错——表格**行数增加**（追加一行）
 与新增表格块都是**新增**，rc=0 并打印 `[新增]`。旧实现把"追加一行"报成「表格列数变化」
 （`row_columns` 两个列表长度不同 ⇒ 不等 ⇒ 命中列数分支），与本节契约相反；现逐行口径只对齐到
 基线已有的那些行。`--replay` 的 F2-a~F2-d 四条对照把该契约钉成可执行断言。
 
-**合法结构变更**（有意加列 / 改标题 / 重排表格）会同样报 FAIL——这是**刻意的**：`verify` 不猜意图，
-编辑前后各跑一次时任何结构差分都必须由人确认，确认后**重做 `snapshot`** 即为新基线。
+**合法结构变更**（有意加列 / 改标题**级别** / 删行重排表格）会同样报 FAIL——这是**刻意的**：`verify`
+不猜意图，编辑前后各跑一次时任何结构差分都必须由人确认，确认后**重做 `snapshot`** 即为新基线。
+有意**改标题/锚点行的文字**只报 `[修改]`（rc=0），不需要人工确认——它不改变结构，只是内容更新。
 
 ## 文档集来自政策（**不写第二份路径清单**）
 `agents/policy.json::md_table_docs` + `md_table_globs` 展开，与 `verify/verify_md_tables.py` 的"实扫集"
@@ -51,7 +62,8 @@
 退出码：0=通过；1=有丢失/变形（verify）或自检断言失败（--replay）；2=政策/用法错误。
 
 `--replay` = **5 类真实 R1 输入**（必须全部被拦下）+ **4 类 F2 反向对照**（追加行必须放行、
-删行/改列数/删标题必须被拦下），全部在 `%TEMP%` 副本上跑，真文件只读。
+删行/改列数/删标题必须被拦下）+ **3 类 H1 就地改写对照**（同数量原地改标题行/锚点行必须放行并报
+`[修改]`、改标题级别必须被拦下），全部在 `%TEMP%` 副本上跑，真文件只读。
 
 `--root` 只改变"**文档树在哪**"（replay 的临时镜像用），**不改变"政策是什么"**：政策数据只有一个真源
 `agents/policy.json`，不为副本再造第二份政策（否则"两处政策各说一套"就是下一类漂移）。
@@ -60,6 +72,7 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import hashlib
 import json
 import re
@@ -210,46 +223,121 @@ def _heading_items(entries: list[str]) -> list[tuple[int, int, str]]:
     return out
 
 
-def _heading_diff(rel: str, base: list[str], cur: list[str]) -> tuple[list[str], list[str]]:
+def _clip(text: str, limit: int = 100) -> str:
+    """`[修改]` 判据的行文截断（锚点行可以长到几千字符，整行原文打印两遍会淹掉其它判据）。"""
+    return text if len(text) <= limit else f"{text[:limit]}…（共 {len(text)} 字符）"
+
+
+def _pair_leftovers(base_texts: list[str], cur_texts: list[str]) -> tuple[list[tuple[int, int]],
+                                                                        list[int], list[int]]:
+    """把"按原文对不上"的基线/现有序目一一配对——**配对即『就地修改』，落单的基线 = 丢失**。
+
+    H1（2026-09-25）的判据核心：**丢失看数量，不看文本**。
+    先按相似度（difflib）降序贪心配 `min(m, n)` 对，因此
+      * `m == n`（数量不变）⇒ 全部配成对 ⇒ 无『被删』、无『新增』，只有 `[修改]`（rc=0）——
+        这正是旧实现误报的那个输入；
+      * `m > n`（数量减少）⇒ 最不像的那些基线条目落单 ⇒ 报『被删』（FAIL），余下的配成 `[修改]`：
+        相似度排序让"改了一行 + 删了另一行"能各自点名（而不是把被删的那行也算成修改）。
+    条目数很小（只处理对不上的残项），配对代价可忽略。
+    """
+    cands = sorted(((difflib.SequenceMatcher(None, btext, ctext).ratio(), bi, ci)
+                    for bi, btext in enumerate(base_texts)
+                    for ci, ctext in enumerate(cur_texts)),
+                   key=lambda item: (-item[0], item[1], item[2]))
+    pairs: list[tuple[int, int]] = []
+    used_base: set[int] = set()
+    used_cur: set[int] = set()
+    for _, bi, ci in cands:
+        if bi in used_base or ci in used_cur:
+            continue
+        used_base.add(bi)
+        used_cur.add(ci)
+        pairs.append((bi, ci))
+        if len(pairs) == min(len(base_texts), len(cur_texts)):
+            break
+    pairs.sort()
+    return pairs, [i for i in range(len(base_texts)) if i not in used_base], \
+        [i for i in range(len(cur_texts)) if i not in used_cur]
+
+
+def _heading_diff(rel: str, base: list[str], cur: list[str]) -> tuple[list[str], list[str], list[str]]:
+    """标题比对（H1 起为**计数口径**）：返回 `(failed, modified, added)`。
+
+    ① 原文（含级别）逐字相同的标题先一一对上——对上而**级别变了** ⇒ FAIL（级别是结构，不是文本）；
+    ② 对不上的残项交给 `_pair_leftovers`：配成对 = `[修改]`（数量不变即 rc=0），
+       落单的基线 = **数量减少** ⇒ FAIL『标题被删』，落单的现有 = 新增。
+    """
     failures: list[str] = []
+    modifications: list[str] = []
     additions: list[str] = []
     current = _heading_items(cur)
     used = [False] * len(current)
+    base_left: list[tuple[int, int, str]] = []
     for bline, blevel, btext in _heading_items(base):
         hit = next((k for k, item in enumerate(current) if not used[k] and item[2] == btext), None)
         if hit is None:
-            failures.append(f"{rel}:{bline} 标题被删：{'#' * blevel} {btext}")
+            base_left.append((bline, blevel, btext))
             continue
         used[hit] = True
         cline, clevel, _ = current[hit]
         if clevel != blevel:
             failures.append(f"{rel}:{bline} 标题级别变化：{'#' * blevel} {btext} → 级别 {clevel}"
                             f"（现 {rel}:{cline}）")
-    for k, (cline, clevel, ctext) in enumerate(current):
-        if not used[k]:
-            additions.append(f"{rel}:{cline} 新增标题：{'#' * clevel} {ctext}")
-    return failures, additions
+    cur_left = [item for k, item in enumerate(current) if not used[k]]
+    pairs, base_only, cur_only = _pair_leftovers([t for _, _, t in base_left],
+                                                 [t for _, _, t in cur_left])
+    for bi, ci in pairs:
+        bline, blevel, btext = base_left[bi]
+        cline, clevel, ctext = cur_left[ci]
+        if clevel != blevel:
+            failures.append(f"{rel}:{bline} 标题级别变化：{'#' * blevel} {btext} → 级别 {clevel}"
+                            f"（现 {rel}:{cline}「{_clip(ctext, 60)}」）")
+        else:
+            modifications.append(f"{rel}:{bline} 标题被修改（{'#' * blevel}）：{_clip(btext)} → "
+                                 f"{_clip(ctext)}（现 {rel}:{cline}）")
+    for bi in base_only:
+        bline, blevel, btext = base_left[bi]
+        failures.append(f"{rel}:{bline} 标题被删：{'#' * blevel} {btext}")
+    for ci in cur_only:
+        cline, clevel, ctext = cur_left[ci]
+        additions.append(f"{rel}:{cline} 新增标题：{'#' * clevel} {ctext}")
+    return failures, modifications, additions
 
 
-def _anchor_diff(rel: str, base: list[str], cur: list[str]) -> tuple[list[str], list[str]]:
-    """锚点行比对。`^#+ ` 标题锚点已由 `_heading_diff` 判（含级别与行号），这里只判**行首粗体行**
-    ——R1-2 被吃掉的那行正是粗体标题（`**卡片来源与时间口径…**`），只认 `^#+` 会漏；
-    反过来，若不跳过 `#` 行，同一个标题会被两条判据各报一遍。"""
+def _anchor_diff(rel: str, base: list[str], cur: list[str]) -> tuple[list[str], list[str], list[str]]:
+    """锚点行比对（H1 起为**计数口径**）。`^#+ ` 标题锚点已由 `_heading_diff` 判（含级别与行号），
+    这里只判**行首粗体行**——R1-2 被吃掉的那行正是粗体标题（`**卡片来源与时间口径…**`），只认 `^#+`
+    会漏；反过来，若不跳过 `#` 行，同一个标题会被两条判据各报一遍。
+
+    判据与标题同构（见 `_pair_leftovers`）：**数量减少 = 丢失（FAIL）；数量不变 = `[修改]`（rc=0）**。
+    锚点行没有"级别"，故配对残项一律算 `[修改]`，不存在级别分支。
+    """
     failures: list[str] = []
+    modifications: list[str] = []
     additions: list[str] = []
-    base_items = _plain_anchors(base)
-    cur_items = _plain_anchors(cur)
-    cur_texts = {text for _, text in cur_items}
-    base_texts = {text for _, text in base_items}
-    for line, text in base_items:
-        if text.startswith("#") or text in cur_texts:
+    base_items = [(line, text) for line, text in _plain_anchors(base) if not text.startswith("#")]
+    cur_items = [(line, text) for line, text in _plain_anchors(cur) if not text.startswith("#")]
+    used = [False] * len(cur_items)
+    base_left: list[tuple[int, str]] = []
+    for bline, btext in base_items:
+        hit = next((k for k, (_, text) in enumerate(cur_items) if not used[k] and text == btext), None)
+        if hit is None:
+            base_left.append((bline, btext))
             continue
-        failures.append(f"{rel}:{line} 锚点行被删：{text}")
-    for line, text in cur_items:
-        if text.startswith("#") or text in base_texts:
-            continue
-        additions.append(f"{rel}:{line} 新增锚点行：{text}")
-    return failures, additions
+        used[hit] = True
+    cur_left = [item for k, item in enumerate(cur_items) if not used[k]]
+    pairs, base_only, cur_only = _pair_leftovers([t for _, t in base_left], [t for _, t in cur_left])
+    for bi, ci in pairs:
+        (bline, btext), (cline, ctext) = base_left[bi], cur_left[ci]
+        modifications.append(f"{rel}:{bline} 锚点行被修改：{_clip(btext)} → {_clip(ctext)}"
+                             f"（现 {rel}:{cline}）")
+    for bi in base_only:
+        bline, btext = base_left[bi]
+        failures.append(f"{rel}:{bline} 锚点行被删：{btext}")
+    for ci in cur_only:
+        cline, ctext = cur_left[ci]
+        additions.append(f"{rel}:{cline} 新增锚点行：{ctext}")
+    return failures, modifications, additions
 
 
 def _row_diff_detail(rel: str, btable: dict, ctable: dict) -> str:
@@ -310,8 +398,10 @@ def _table_diff(rel: str, base: list[dict], cur: list[dict]) -> tuple[list[str],
     return failures, additions
 
 
-def compare(files: dict[str, dict], baseline: dict) -> tuple[list[str], list[str]]:
+def compare(files: dict[str, dict], baseline: dict) -> tuple[list[str], list[str], list[str]]:
+    """返回 `(failed, modified, added)`——`modified` 只用于报告，**不进 rc**（H1：同数量改写不是丢失）。"""
     failures: list[str] = []
+    modifications: list[str] = []
     additions: list[str] = []
     for rel in sorted(baseline):
         base = baseline[rel]
@@ -320,12 +410,13 @@ def compare(files: dict[str, dict], baseline: dict) -> tuple[list[str], list[str
                             f"{len(base['tables'])} 个表格块无从核验")
             continue
         cur = files[rel]
-        head_fail, head_add = _heading_diff(rel, base["headings"], cur["headings"])
-        anchor_fail, anchor_add = _anchor_diff(rel, base["anchors"], cur["anchors"])
+        head_fail, head_mod, head_add = _heading_diff(rel, base["headings"], cur["headings"])
+        anchor_fail, anchor_mod, anchor_add = _anchor_diff(rel, base["anchors"], cur["anchors"])
         table_fail, table_add = _table_diff(rel, base["tables"], cur["tables"])
         failures += head_fail + anchor_fail + table_fail
+        modifications += head_mod + anchor_mod
         additions += head_add + anchor_add + table_add
-    return failures, additions
+    return failures, modifications, additions
 
 
 # --------------------------------------------------------------------------- CLI
@@ -391,7 +482,7 @@ def cmd_verify(root: Path, baseline_path: Path) -> int:
     coverage_report(root)
     current_set = doc_set(root)
     files, _ = scan_docs(root, list(baseline) + [rel for rel in current_set if rel not in baseline])
-    failures, additions = compare(files, baseline)
+    failures, modifications, additions = compare(files, baseline)
 
     new_files = [rel for rel in current_set if rel not in baseline]
     for rel in sorted(new_files):
@@ -402,15 +493,21 @@ def cmd_verify(root: Path, baseline_path: Path) -> int:
         print(f"  [新增] {line}")
     if len(additions) > 20:
         print(f"  [新增] … 另有 {len(additions) - 20} 项新增（新增不判失败）")
+    for line in modifications[:20]:
+        print(f"  [修改] {line}")
+    if len(modifications) > 20:
+        print(f"  [修改] … 另有 {len(modifications) - 20} 项（**同数量就地改写**：不判失败；"
+              f"确认无误后重做 snapshot 立新基线）")
     for line in failures:
         print(f"  [FAIL] {line}")
     if failures:
-        print(f"\nSTRUCTURE FAIL（{len(failures)} 项丢失/变形；新增 {len(additions) + len(new_files)} 项不判失败）")
+        print(f"\nSTRUCTURE FAIL（{len(failures)} 项丢失/变形；"
+              f"修改 {len(modifications)} 项 / 新增 {len(additions) + len(new_files)} 项不判失败）")
         print("修法：① 补回被删的标题/锚点行（对照基线里的原文）；② 表格按基线补回单元格或整块；"
               "③ 若这是**有意的**结构变更，人工确认后重做 snapshot 立新基线。")
         return 1
     print(f"\nSTRUCTURE PASS（{len(baseline)} 文件无丢失/变形；"
-          f"新增 {len(additions) + len(new_files)} 项）")
+          f"修改 {len(modifications)} 项 / 新增 {len(additions) + len(new_files)} 项）")
     return 0
 
 
@@ -609,6 +706,77 @@ F2_CASES = (
      ["docs/iteration/phases/testing-governance/backlog.MD"], _damage_f2_drop_heading, 1),
 )
 
+
+def _rewrite_line(path: Path, prefix: str, rewrite, label: str) -> tuple[int, str, str]:
+    """**就地改写**一行（行数不变、文本变了）——返回 `(行号, 原文, 新文)`。
+
+    与 `_drop_line` 成对：同一条判据（"这一行的文本变了"）在旧实现下被报成『被删』，在计数口径下
+    只该报 `[修改]`。找不到该行时抛 `ReplayError`（用例漂了必须显式失败，不静默放过）。
+    """
+    lines = _read_text(path).split("\n")
+    for i, line in enumerate(lines):
+        if line.rstrip().startswith(prefix):
+            old = line.rstrip()
+            lines[i] = rewrite(old)
+            _write_text(path, "\n".join(lines))
+            return i + 1, old, lines[i]
+    raise ReplayError(f"{label}：副本 {path.name} 里找不到以 {prefix!r} 开头的行（真实输入漂了，请复核用例）")
+
+
+def _damage_h1_heading(mirror: Path) -> list[str]:
+    """H1-a：**标题行就地改写**（数量不变）——必须**放行**（rc=0）并报『标题被修改』。
+
+    形态照抄实测到的假阳性：在一行标题里补一处括注（batch G 那批改的是行首粗体锚点行）。
+    旧实现在同一份输出里既报『标题被删』又报『新增标题』、rc=1。
+    """
+    rel = "docs/1-WORKFLOW.MD"
+    line, old, new = _rewrite_line(mirror / rel, "## 3. 项目管理（分支与远程）",
+                                   lambda s: s.replace("（分支与远程）", "（分支与远程／提交纪律）", 1),
+                                   "H1-a")
+    # `[修改]` 行把级别与标题文本分开印（`标题被修改（##）：3. …`），故点名用去掉 `## ` 的文本。
+    return [f"{rel}:{line}", "标题被修改", old[3:], new[3:]]
+
+
+def _damage_h1_anchor(mirror: Path) -> list[str]:
+    """H1-b：**行首粗体锚点行就地改写**（数量不变）——必须**放行**（rc=0）并报『锚点行被修改』。
+
+    这是 batch G 真实踩到的输入：就地给锚点行补一处 `§` 引用（`**…**：` 行仍以 `**` 开头、
+    整行只有一行，数量不变）。R1-2 打的是同一行——**删掉它必须 FAIL，改写它必须放行**。
+    """
+    rel = "docs/1-WORKFLOW.MD"
+    line, old, new = _rewrite_line(mirror / rel, "**卡片来源与时间口径",
+                                   lambda s: s.replace("**：", "；§4.2 亦适用**：", 1), "H1-b")
+    return [f"{rel}:{line}", "锚点行被修改", "；§4.2 亦适用"]
+
+
+def _damage_h1_level(mirror: Path) -> list[str]:
+    """H1-c：**标题级别变化**（文本逐字不变、数量不变）——必须 FAIL 并点名『标题级别变化』。
+
+    计数口径**不是**"只要数量不变就放行"：级别是结构（`##`→`###` 会改变文档树语义），
+    它由"原文相同的标题对上之后比对级别"这一支独立判，与数量无关。
+    """
+    rel = "docs/1-WORKFLOW.MD"
+    line, old, _ = _rewrite_line(mirror / rel, "## 3. 项目管理（分支与远程）",
+                                 lambda s: "###" + s[2:], "H1-c")
+    return [f"{rel}:{line}", "标题级别变化", old]
+
+
+# H1（2026-09-25）：把「**同数量就地改写 = [修改]，不是丢失**」钉成三条可执行对照。
+# 旧实现实测：batch G 就地 retarget 了 5 份文档的行首粗体锚点行 → 同一行被同时报成
+# 「锚点行被删」（FAIL，rc=1）与「新增锚点行」——纯文本修改被误判成丢失，守卫变成噪音源。
+# `want_rc` = 期望退出码；`must_not` = **禁止出现**的子串（就地改写不得留任何"被删"字样）。
+H1_CASES = (
+    ("H1-a", "标题行**就地改写**（数量不变）→ **必须放行**（rc=0）并报『标题被修改』，且不得出现『被删』"
+             "（旧实现报『标题被删』= rc=1）",
+     ["docs/1-WORKFLOW.MD"], _damage_h1_heading, 0, ["被删"]),
+    ("H1-b", "行首粗体锚点行**就地改写**（`**…**：` 行数不变）→ rc=0 且报『锚点行被修改』，不得出现『被删』"
+             "（旧实现报『锚点行被删』= rc=1；与 R1-2『删掉同一行必须 FAIL』构成反向对照）",
+     ["docs/1-WORKFLOW.MD"], _damage_h1_anchor, 0, ["被删"]),
+    ("H1-c", "标题**级别**变化（`## 3. …` → `### 3. …`，文本与数量都不变）→ rc=1 且点名『标题级别变化』"
+             "（计数口径不放宽级别判据）",
+     ["docs/1-WORKFLOW.MD"], _damage_h1_level, 1, []),
+)
+
 PASSED = 0
 
 
@@ -642,10 +810,12 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess:
 
 
 def _evidence(text: str, markers: list[str]) -> str:
-    """取一条**含判据结论**的原文行作证据（先找 `[FAIL]`，再找 `[新增]`——两个标签都必须能取到：
-    F2-a 是"新增 → 放行"的对照，它的证据就在 `[新增]` 行上，只在 `[FAIL]` 里找会取不到）。"""
+    """`--replay` 的取证标签顺序：先 `[FAIL]`，再 `[新增]`，最后 `[修改]`。
+
+    F2-a 是"新增 → 放行"的对照，它的证据在 `[新增]` 行上；H1-a/H1-b 是"就地改写 → 放行"的对照，
+    证据在 `[修改]` 行上——只在 `[FAIL]` 里找会取不到。"""
     lines = text.splitlines()
-    for tag in ("[FAIL]", "[新增]"):
+    for tag in ("[FAIL]", "[新增]", "[修改]"):
         for line in lines:
             if tag in line and any(m in line for m in markers):
                 return line.strip()[:150]
@@ -657,14 +827,18 @@ def cmd_replay() -> int:
 
     * **5 类真实 R1 输入**（标题/锚点被吞、单元格被顶出、整表被压平）→ 每类必须被拦下（rc=1）并点名；
     * **4 类 F2 反向对照**（追加行 / 删行 / 改列数 / 删标题）→ 前一类必须**放行**（rc=0，新增不是失败），
-      后三类必须被拦下（rc=1）——直接钉住「新增一律放行，只对丢失/变形报错」这句契约。
+      后三类必须被拦下（rc=1）——直接钉住「新增一律放行，只对丢失/变形报错」这句契约；
+    * **3 类 H1 反向对照**（标题行就地改写 / 行首粗体锚点行就地改写 / 标题级别变化）→ 前两类必须
+      **放行并报 `[修改]`**（且输出里**不得**出现"被删"——旧实现正是在这里误报），第三类必须被拦下
+      ——直接钉住「丢失看数量，不看文本」这句契约（H1，2026-09-25 实测修正）。
 
-    两组都夹着一条"复原该文件后 rc=0"的收尾断言，证明判决来自损坏本身而不是副本漂移。
+    三组都夹着一条"复原该文件后 rc=0"的收尾断言，证明判决来自损坏本身而不是副本漂移。
 
     **绝不动真文件**：所有损坏只发生在镜像里；收尾用"真实文件摘要（跑前 == 跑后）"作为断言，
     而不是靠"我记得没写"（判据取可核的值）。
     """
-    print("structure-guard --replay：5 类真实 R1 输入 + 4 类 F2 反向对照，全在 %TEMP% 副本上复跑（真文件只读）")
+    print("structure-guard --replay：5 类真实 R1 输入 + 4 类 F2 反向对照 + 3 类 H1 就地改写对照，"
+          "全在 %TEMP% 副本上复跑（真文件只读）")
     rels = doc_set(ROOT)
     digest_before = _digest(ROOT, rels)
     tmp = Path(tempfile.mkdtemp(prefix="structure-guard-replay-"))
@@ -735,6 +909,43 @@ def cmd_replay() -> int:
            summary[-len(F2_CASES)].split(" -> ", 1)[-1])
         ok(f"真文件零改动（F2 对照后复检）：{len(rels)} 份文档摘要 跑前 == 跑后",
            _digest(ROOT, rels) == digest_before, f"sha256={digest_before[:16]}…")
+
+        # ---- H1 就地改写对照（2026-09-25）：标题/锚点的"计数口径"契约 ------------------------
+        print("\nH1 就地改写对照（数量不变 = `[修改]`，不是丢失；3 类）：")
+        h1_start = len(summary)
+        for case_id, desc, files, damage, want_rc, must_not in H1_CASES:
+            print(f"\n[{case_id}] {desc}")
+            markers = damage(mirror)
+            res = _run_cli("verify", "--root", str(mirror), "--baseline", str(baseline))
+            text = res.stdout + res.stderr
+            verdict = "放行（同数量就地改写不是丢失）" if want_rc == 0 else "拦下（丢失/变形）"
+            ok(f"{case_id} verify rc={want_rc}（{verdict}）", res.returncode == want_rc, f"rc={res.returncode}")
+            ok(f"{case_id} 点名到位（{'、'.join(markers)}）", all(m in text for m in markers),
+               _evidence(text, markers))
+            if must_not:
+                ok(f"{case_id} 无 『{'/'.join(must_not)}』 误报（旧实现把就地改写报成『被删』）",
+                   all(m not in text for m in must_not),
+                   "未出现：" + "/".join(must_not))
+            summary.append(f"{case_id} -> {_evidence(text, markers)}")
+            _mirror_copy(ROOT, mirror, files)
+            back = _run_cli("verify", "--root", str(mirror), "--baseline", str(baseline))
+            back_text = back.stdout + back.stderr
+            ok(f"{case_id} 复原该文件后 verify → rc=0（证明判决来自改写本身，不是副本漂移）",
+               back.returncode == 0, f"rc={back.returncode}")
+            if want_rc == 0:
+                # 比"复原后 rc=0"更强的判据：复原后**不得**再出现 `[修改]`——证明那条标注确实
+                # 来自本次改写，而不是副本里本来就有一处改写被这一次的 rc=0 掩盖掉。
+                ok(f"{case_id} 复原后不再报『修改』（该标注来自本次改写，不是副本固有差异）",
+                   "[修改]" not in back_text, f"rc={back.returncode}")
+
+        print("\nH1 三条对照结果（契约：同数量就地改写放行并报『修改』／级别变化拦下）：")
+        for line in summary[h1_start:]:
+            print(f"  {line}")
+        ok("H1-a/H1-b 的裁决行确实带『修改』标注（放行必须可核，不是静默 rc=0）",
+           all("修改" in line.split(" -> ", 1)[-1] for line in summary[h1_start:h1_start + 2]),
+           summary[h1_start].split(" -> ", 1)[-1])
+        ok(f"真文件零改动（H1 对照后复检）：{len(rels)} 份文档摘要 跑前 == 跑后",
+           _digest(ROOT, rels) == digest_before, f"sha256={digest_before[:16]}…")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print(f"\nALL PASS ({PASSED} assertions)")
@@ -750,7 +961,8 @@ def main() -> int:
     parser.add_argument("--out", default="", help=f"snapshot 落盘路径（默认 {SNAPSHOT_REL}）")
     parser.add_argument("--baseline", default="", help=f"verify 的基线（默认 {SNAPSHOT_REL}）")
     parser.add_argument("--replay", action="store_true",
-                        help="用 5 类真实 R1 输入 + 4 类 F2 反向对照在 %%TEMP%% 副本上复跑自检")
+                        help="用 5 类真实 R1 输入 + 4 类 F2 反向对照 + 3 类 H1 就地改写对照"
+                             "在 %%TEMP%% 副本上复跑自检")
     args = parser.parse_args()
 
     if args.replay:
