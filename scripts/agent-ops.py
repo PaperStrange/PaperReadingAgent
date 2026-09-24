@@ -84,6 +84,7 @@ _CHARS_PER_TOKEN = 4.0  # UC-4 兜底：无 token 上报时 tokens ≈ chars/4
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from verify.agent_policy import load_policy, parse_frontmatter  # noqa: E402
+from verify.outbound_guard import refuse_or_exit  # noqa: E402
 
 _POLICY = None
 
@@ -893,9 +894,19 @@ def cmd_fetch_spec(args: argparse.Namespace) -> None:
     }
     url = src.get("url", "")
     want_sha = src.get("sha256", "")
-    if args.offline or not url:
+    if not url:
+        print(f"WARN: 无 url → 回退本地 spec {p.name}")
+        return
+    if args.offline:
         print(f"WARN: offline/无 url → 回退本地 spec {p.name}")
         return
+    # TG-8②：**离线开关**（政策 `agents/policy.json::offline_switch`）在"确实要外呼"这一刻生效。
+    # 顺序理由（可核，不是风格）：上面两个分支都**不产生外呼**（无 url / 命令自带 `--offline`），
+    # 对它们报"离线拒绝"是假红；而一旦要继续走网络，全局开关就必须优先于 `--offline`
+    # ——否则"命令自带的局部离线档"会把全局开关**静默绕过**，而那正是本卡要消灭的形态。
+    # 拒绝还必须在 SSRF 校验**之前**：否则内网 URL 会先撞 SSRF 分支，拒绝原因被替换成 SSRF，
+    # 排障时会以为"是 URL 的问题"而不是"开关开着"。
+    refuse_or_exit(f"fetch-spec {url}")
     # review 修正（Sprint-8 三查）：SSRF 防护——仅 http/https + 拒绝私网/回环/链路本地/保留地址
     from urllib.parse import urlparse
 

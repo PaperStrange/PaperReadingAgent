@@ -29,7 +29,7 @@
 | `gui_check_s5.mjs` | 自动重跑 config / retrieve 双模式标记 / 复制报错按钮 / 计时冻结 | gui | — | 40s | ¥0 | — | playwright, servers |
 | `gui_check_s7.mjs` | 多节点并发计时显示 + 完成后冻结 | gui | — | 60s | ¥0 | — | playwright, servers |
 | `verify_agent.py` | Agent 流程（fake agent）+ 翻译接口 | network | deepseek | 60s | ¥0.3 | /api/translate_preview, /api/run_step | keys, network, index |
-| `verify_agentops.py` | AgentOps 账本 CLI 用例断言 UC-1~UC-18（离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库） | offline | — | 10s | ¥0 | — | none |
+| `verify_agentops.py` | AgentOps 账本 CLI 用例断言 UC-1~UC-19（离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库，UC-19=TG-8 离线开关：三入口拒绝+反向对照+配置面+两侧一致） | offline | — | 20s | ¥0 | — | none |
 | `verify_archive.py` | M16 调研归档完整性校验：report/context/reasoning/evidence 契约 + 证据索引表双向交叉引用（限定 §7 索引表区间、大小写不敏感；fail-closed） | offline | — | 5s | ¥0 | — |  |
 | `verify_artifact_paths.py` | TG-9 产物目录约定闸门：脚本源码的写盘目标必须落在已忽略目录或 %TEMP%（政策 artifact_paths 驱动）+ 忽略根双向差集（须真被 .gitignore 忽略、确有其行、确有代码在用）+ 动态目标棘轮（新文件必须可静态判定）+ 反向对照（注入写仓库根 → rc=1 点名；默认落点实测 git status 干净） | offline | — | 10s | ¥0 | — | git |
 | `verify_card_index.py` | TG-14④ 卡索引 lint：索引↔卡文件一一对应 / 卡号↔文件名一致 / 必备节 / Sprint 不得复制卡正文 / 表格结构；含 5 条反向对照自检 | offline | — | 5s | ¥0 | — | none |

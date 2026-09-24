@@ -18,6 +18,7 @@ from paperqa import Docs, Settings
 from paperqa.agents.search import get_directory_index
 from paperqa.settings import AgentSettings, IndexSettings, ParsingSettings
 
+from app.offline_guard import refuse_if_offline
 from provider_config import get_provider_config
 
 
@@ -214,6 +215,21 @@ class LocalVendorAdapter(EngineAdapter):
         embedding_batch_size = _as_int("embedding_batch_size", 10)
         chunk_chars = _as_int("chunk_chars", 5000)
         chunk_overlap = _as_int("chunk_overlap", 250)
+        # TG-8③：`ParsingSettings` 的**注入面**（默认空 = 逐字段沿用既有值，行为不变）。
+        parsing_overrides: dict[str, Any] = {}
+        # TG-8③（离线验证基座用，非产品参数面）：关掉**媒体 vision 增强**。
+        # 为什么需要它：paperqa 的 `individual_media_enrichment` 只捕获
+        # `litellm.InternalServerError` / `BadRequestError`（settings.py:1134），而占位 key 的 401
+        # 会被 litellm 转成 `RateLimitError` ⇒ 逃出 `asyncio.gather` → 逃出 `Docs.aadd` →
+        # `process_file` 的非 ValueError 分支 `raise` → anyio TaskGroup 报
+        # `unhandled errors in a TaskGroup (1 sub-exception)`（**实测抓到的 flaky 根因**，
+        # 见 `docs/iteration/phases/testing-governance/cards/TG-8.md`）。
+        # 「本地目录 → 本地向量 → 检索」这条链路按设计**不调用 LLM**，故可用本开关关掉该外呼；
+        # 默认**不设置即不改变行为**（产品默认仍是框架默认 ON_WITH_ENRICHMENT）。
+        # 与 `app/config_schema.py` 的 `multimodal`（`readonly: True`，表单暂不可改）的关系：
+        # 本开关是**验证基座的注入面**，不是产品配置项——产品要开放该字段是另一件事（会动表单/SSOT）。
+        if (os.environ.get("PAPERQA_NO_MEDIA_ENRICHMENT") or "").strip().lower() in {"1", "true", "yes", "on"}:
+            parsing_overrides["multimodal"] = 2  # 2 = ON_WITHOUT_ENRICHMENT（解析图片/表格但不调 LLM）
 
         if not api_key:
             raise ValueError("api_key is required（请在 .env 或环境变量设置对应服务商的 Key）")
@@ -224,6 +240,12 @@ class LocalVendorAdapter(EngineAdapter):
         # 所有 litellm 调用都经下方 litellm_params 显式携带 api_key，故移除写回无副作用。
 
         def _litellm_params(model_name: str, temp: float | None = None) -> dict[str, Any]:
+            # TG-8②：**离线开关**——模型 API 的外呼闸门（`st-` 本地向量模型不经此函数，
+            # 见 app/offline_guard.py 的边界说明）。判据在**构造 Router 之前**生效：
+            # 命中即报错，不是等 HTTP 超时；消息点名"哪个模型 + 哪个开关来源"。
+            # 注：`st-` 分支走 `embedding_config={"batch_size": ...}`（见下方 Settings），
+            # 不会被本函数拦住，故"离线 + 本地向量 + 本地索引"这条零外呼链路仍然可用。
+            refuse_if_offline(f"model API {model_name}")
             p: dict[str, Any] = {"model": model_name, "api_key": api_key}
             if api_base:
                 p["api_base"] = api_base
@@ -282,6 +304,7 @@ class LocalVendorAdapter(EngineAdapter):
                 },
                 enrichment_llm=vision_model,
                 enrichment_llm_config=vision_config,
+                **parsing_overrides,  # TG-8③：默认空；仅 PAPERQA_NO_MEDIA_ENRICHMENT 开关时含 multimodal
             ),
             agent=AgentSettings(
                 rebuild_index=False,

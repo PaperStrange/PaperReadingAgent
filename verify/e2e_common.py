@@ -4,12 +4,16 @@
 - config 步**恒显式**携带 provider/api_base/model/vision_model/embedding——缺失 provider 或
   vision_model 时 vision 会回落默认服务商（3-LEARNED 1.46），基座从构造上杜绝该漂移。
 - 所有写盘一律二进制（3-LEARNED 1.47：Windows 文本模式写盘会静默翻译换行）。
+- **自举前端口自检（TG-8）**：`start_backend` 在拉起子进程**之前**先探测端口（8787 后端、
+  5173 前端 dev）——被占用即 **fail-fast 并点名**（哪个端口、占用进程 PID/镜像名、怎么释放或改端口），
+  **绝不静默复用**别人的服务（旧行为见 `wait_healthy` 的历史注释）。
 - 本文件是库而非测试，不参与覆盖矩阵收集（无 VERIFY_META）。
 """
 from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -17,7 +21,18 @@ from pathlib import Path
 
 import httpx
 
-PORT = 8787
+PORT = int(os.environ.get("PAPERQA_VERIFY_PORT", "8787"))
+# TG-8①：端口**可配置**（报告里给出的"改用其它端口"提示必须真的生效——否则提示是空头支票）。
+# 默认 8787 来自 `paper-qa-script/.../backend/main.py:252` 的 uvicorn 端口常量；改端口时两处都要改
+# （前端 dev 端口不在此列：Vite 默认 5173，本仓库 vite.config.mjs 未写死）。
+#
+# `BACKEND_PORTS` = 自举后端时**必须空着**的端口。前端 dev（Vite 默认 5173）一起查的理由是套件的
+# `gui` 档会同时占用两者（run_suite.py:197 的提示），而 dev 前端在跑时后端自举常常"看起来能跑"
+# ——实际前端连的是 dev 后端（2026-09-20 走查：后端两次消失即该形态）。
+# 顺序上 8787 在前：它是本基座直接依赖的服务，先报它信息量最大。
+BACKEND_PORTS = (PORT, 5173)
+# 占用进程查询命令行（Windows 自带；本仓库仅面向 Windows，见 1-WORKFLOW §2 双轨约定）。
+_PORT_OWNER_CMD = "Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue"
 
 
 def build_config_params(cfg: dict, paper_dir: Path, index_name: str) -> dict:
@@ -38,7 +53,38 @@ def build_config_params(cfg: dict, paper_dir: Path, index_name: str) -> dict:
     }
 
 
+def _apply_offline_env() -> dict:
+    """TG-8 正文 ③：离线开关开启时给后端注入 `HF_HUB_OFFLINE`/`TRANSFORMERS_OFFLINE`。
+
+    用**按文件路径加载**而不是 `from verify import offline_guard`：本基座的使用者
+    （套件脚本、临时重放脚本）可能从任意 cwd 启动，`import verify` 在 `verify/` 是命名空间包
+    （无 `__init__.py`）时会解析到**别的**同名目录（实测：`ImportError: cannot import name
+    'offline_guard' from 'verify' (unknown location)`）。按路径加载与 cwd/sys.path 无关，
+    失败也不抛（本动作只影响"HF 是否重试"，离线判据由各外呼入口自己把关）。
+    """
+    import importlib.util
+
+    # ⚠️ 局部变量名不要叫 `path`：本文件里 `_append_metric` 用 `path = os.environ.get(
+    # "PAPERQA_SUITE_METRICS", "")` 表示"缺省不落盘"，而 `verify_artifact_paths.py` 的分解器
+    # 是**按名字**收集赋值的——同名多处且取值不一致 → 判定为"动态目标"，
+    # 于是 e2e_common 的动态目标计数会从 2 顶到 3 而顶破棘轮上限（实测过一次）。
+    guard_path = Path(__file__).resolve().parent / "outbound_guard.py"
+    try:
+        spec = importlib.util.spec_from_file_location("_tg8_outbound_guard", guard_path)
+        if spec is None or spec.loader is None:
+            return {}
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.apply_env()
+    except BaseException:  # noqa: BLE001 —— 含 OfflineRefused/PolicyError：不因开关数据问题挡住自举
+        return {}
+
+
 def start_backend(backend_path: Path, server_log: Path, root: Path) -> subprocess.Popen:
+    # TG-8①：**先自检端口，再拉进程**——占用即明确报错并给出可操作提示（不复用、不换端口）。
+    port_selfcheck(BACKEND_PORTS)
+    # TG-8 正文 ③：离线开关开启时注入 HF 离线变量（消除本地向量模型解析时的 HEAD 重试阻塞）。
+    _apply_offline_env()
     # 035：日志句柄在父进程侧关闭（子进程持自己的副本），避免测试生命周期内句柄泄漏
     fh = open(server_log, "w", encoding="utf-8")
     try:
@@ -66,7 +112,88 @@ def make_cfg(provider: dict) -> dict:
     }
 
 
+def port_in_use(port: int, host: str = "127.0.0.1") -> bool:
+    """端口是否已被占用（**独立探测**：绑定失败即被占，不依赖外部工具）。
+
+    判据取"能否绑定"而不是"能否连上"：只连不绑会漏掉**已绑定但尚未开始 accept** 的进程
+    （uvicorn 启动窗口期正是这样），而那种窗口恰好是"两个后端抢同一端口"的事故形态。
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind((host, int(port)))
+        except OSError:
+            return True
+    return False
+
+
+def port_owner(port: int, timeout_s: int = 15) -> str:
+    """查出占用 `port` 的进程（`PID=… 镜像名=…`；查不到就如实说"查不到"）。
+
+    限制（如实标注）：`Get-NetTCPConnection` 需要提权才能看到**其它用户**的进程名；
+    本机开发场景（同一用户）可用。查不到时仍给出"怎么自己查"的命令，不假装知道。
+    """
+    query = _PORT_OWNER_CMD.format(port=int(port))
+    try:
+        proc = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+             f"{query} | ForEach-Object {{ $_.OwningProcess }} | Sort-Object -Unique"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=timeout_s, check=False,
+        )
+        pids = [p.strip() for p in (proc.stdout or "").splitlines() if p.strip().isdigit()]
+    except (OSError, subprocess.SubprocessError):
+        pids = []
+    if not pids:
+        return f"查不到占用进程（可自行运行：{query}）"
+    names = []
+    for pid in pids[:4]:
+        try:
+            info = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                 f"(Get-Process -Id {pid} -ErrorAction SilentlyContinue).ProcessName"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=timeout_s, check=False,
+            )
+            name = (info.stdout or "").strip() or "?"
+        except (OSError, subprocess.SubprocessError):
+            name = "?"
+        names.append(f"PID={pid} 镜像名={name}")
+    return "；".join(names)
+
+
+def port_selfcheck(ports=BACKEND_PORTS) -> None:
+    """自举前端口自检（TG-8①）：任一端口被占用 → **fail-fast 并点名**（不静默复用、不换端口）。
+
+    报错内容必须包含三件可操作信息（本卡判据）：① **哪个端口**；② **被哪个进程占用**；
+    ③ **怎么改 / 怎么释放**。失败形态是 `RuntimeError`（调用方未捕获 → 进程退出码非 0），
+    且**在拉子进程之前**抛出：不会留下"半自举"的后端进程。
+    """
+    busy = [(p, port_owner(p)) for p in ports if port_in_use(p)]
+    if not busy:
+        return
+    lines = [
+        "ERR: 端口自检失败——以下端口已被占用，本脚本**不会复用**它（TG-8①：占用即 fail-fast，不静默换端口）：",
+    ]
+    for port, owner in busy:
+        lines.append(f"  · 端口 {port}：被 {owner} 占用")
+    alt = (int(ports[0]) + 100) if ports else 0
+    lines += [
+        "  解决方式（二选一）：",
+        "    ① 释放端口：停掉上面的进程（如 dev 后端 `Ctrl+C`，或 `Stop-Process -Id <PID>`）后重跑；",
+        f"    ② 改用其它端口：设环境变量 `PAPERQA_VERIFY_PORT={alt}` 后重跑（本基座的 `PORT` 即读它），",
+        "       并同步改后端 uvicorn 端口（paper-qa-script/reactflow-paperqa-prototype/backend/main.py:252；"
+        "前端 dev 端口用 `npm run dev -- --port <端口>`，Vite 默认 5173 未在本仓库 vite.config.mjs 里写死）。",
+    ]
+    raise RuntimeError("\n".join(lines))
+
+
 def wait_healthy(server: subprocess.Popen, server_log: Path) -> bool:
+    """等 `/api/health` 就绪。**只管健康探测，不管端口归属**（TG-8①）。
+
+    归属校验已上移到 `start_backend` 的 `port_selfcheck`（自举前 fail-fast）：本函数保留
+    "打不开就报错"的职责，不再承担"端口是不是我启的"——旧实现只探端口不校验归属，
+    于是 dev 后端在跑时脚本会**静默复用它**并施加 parse/embed 负载（卡文事故形态）。
+    """
     base = f"http://127.0.0.1:{PORT}"
     for _ in range(60):
         try:
@@ -90,6 +217,7 @@ def stop_backend(server: subprocess.Popen, keep: bool) -> None:
         server.wait(timeout=10)
     except subprocess.TimeoutExpired:
         server.kill()
+        server.wait(timeout=10)  # TG-8③：kill 后也**必须 wait**——否则进程仍可能持有临时目录里的句柄
 
 
 def dump_log_tail(server_log: Path, n: int = 6000) -> None:
@@ -161,9 +289,17 @@ def report_usage(base: str = "", sink: dict | None = None) -> dict:
 
 
 def _append_metric(u: dict) -> None:
-    """把本次用量写成 suite 指标文件的一行（未设置 env 时静默跳过）。"""
-    path = os.environ.get("PAPERQA_SUITE_METRICS", "")
-    if not path:
+    """把本次用量写成 suite 指标文件的一行（未设置 env 时静默跳过）。
+
+    ⚠️ **局部变量名不要叫 `path`**（TG-8③ 实测）：`verify_artifact_paths.py` 的写盘目标分解器
+    是**按变量名**收集赋值的（`TargetResolver.values`），而"套件里先跑过 `verify_agentops.py`"
+    会让扫描集里出现**另一个** `path = Path(args.spec_file)` → 同名多处且取值不一致 → 本文件的
+    `open(path, …)` 被判成"动态目标"，`e2e_common.py` 的计数从 2 顶到 3、**顶破棘轮上限**。
+    后果是**测试顺序依赖**：`verify_artifact_paths.py` 单跑 PASS、在全序列里 FAIL（实测两次）。
+    改名后判据与顺序无关（同类改名见 `_apply_offline_env` 的 `guard_path`）。
+    """
+    metrics_path = os.environ.get("PAPERQA_SUITE_METRICS", "")
+    if not metrics_path:
         return
     try:
         cost = (u.get("cost") or {}) if u else {}
@@ -177,7 +313,7 @@ def _append_metric(u: dict) -> None:
             "partial_cost_cny": cost.get("partial_cost_cny"),
             "unpriced_models": cost.get("unpriced_models") or [],
         }
-        with open(path, "a", encoding="utf-8") as fh:
+        with open(metrics_path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
     except Exception:
         pass

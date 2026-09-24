@@ -341,6 +341,51 @@ class Policy:
     def close_gate(self) -> dict:
         return self._data("close_gate")
 
+    # ---- 数据源 3：离线开关（TG-8） ------------------------------------------------
+    @property
+    def offline_switch(self) -> dict:
+        """离线开关的政策数据（`agents/policy.json::offline_switch`，TG-8）。
+
+        为什么开关数据要在这里校验：`verify/outbound_guard.py` 是**运行时代码**，
+        它只在每个外呼入口前读一次政策；若字段名拼错/取值非法而无人校验，闸门会
+        **静默变成"永远在线"**——这正是"关掉一条闸门不需要改代码"的失效形态
+        （同 `_as_bool` 的 2026-09-23 二查 major）。故此处字段校验一律 fail-closed。
+        """
+        val = self._data("offline_switch")
+        if not isinstance(val, dict):
+            raise PolicyError(f"offline_switch 必须是对象，实际 {val!r}")
+        boolish = [*self._offline_env_true_values(val), *self._offline_env_false_values(val)]
+        if not boolish:
+            raise PolicyError("offline_switch.env_true_values / env_false_values 不得同时为空"
+                              "（空表 = 开关取值无法判定）")
+        if not str(val.get("env_var") or "").strip():
+            raise PolicyError("offline_switch.env_var 缺失（显式开关的环境变量名是政策数据）")
+        if not str(val.get("refusal_reason") or "").strip():
+            raise PolicyError("offline_switch.refusal_reason 缺失（拒绝必须给出可核原因文案）")
+        code = val.get("refuse_exit_code")
+        if isinstance(code, bool) or not isinstance(code, int) or code <= 0:
+            raise PolicyError(f"offline_switch.refuse_exit_code 必须是正整数，实际 {code!r}")
+        hf = val.get("hf_offline_env")
+        if not isinstance(hf, dict):
+            raise PolicyError(f"offline_switch.hf_offline_env 必须是对象，实际 {hf!r}")
+        return val
+
+    def _offline_env_true_values(self, val: dict | None = None) -> tuple[str, ...]:
+        """开关环境变量的**真值**取值集合（小写比较；来自政策数据，不写死在代码里）。"""
+        data = val if val is not None else self.offline_switch
+        raw = data.get("env_true_values")
+        if not isinstance(raw, list) or not all(isinstance(v, str) and v for v in raw):
+            raise PolicyError(f"offline_switch.env_true_values 必须是非空字符串列表，实际 {raw!r}")
+        return tuple(str(v).strip().lower() for v in raw)
+
+    def _offline_env_false_values(self, val: dict | None = None) -> tuple[str, ...]:
+        """开关环境变量的**假值**取值集合。非法取值（如 `flase`）→ 报错，不静默当"关"。"""
+        data = val if val is not None else self.offline_switch
+        raw = data.get("env_false_values")
+        if not isinstance(raw, list) or not all(isinstance(v, str) and v for v in raw):
+            raise PolicyError(f"offline_switch.env_false_values 必须是非空字符串列表，实际 {raw!r}")
+        return tuple(str(v).strip().lower() for v in raw)
+
     # ---- 数据源 3：账本测量口径与历史棘轮（TG-13） --------------------------------
     @property
     def ledger_measurement(self) -> dict:
@@ -472,6 +517,9 @@ class Policy:
             # TG-9：新脚本产物落点约定（忽略根清单 / 扫描集 / 已入库数据文件例外 / 临时落点写法 /
             # 动态目标棘轮），由 verify/verify_artifact_paths.py 消费
             "artifact_paths",
+            # TG-8：离线开关（开关名 / 默认值 / 真值表 / 拒绝文案 / 退出码），
+            # 由 verify/outbound_guard.py（运行时唯一实现）与 verify/agent_policy.py 自身消费
+            "offline_switch",
         }
         for key in self.policy_file:
             if key not in consumed:

@@ -128,6 +128,20 @@
       }
     }
   },
+  "offline_switch": {
+    "_comment": "TG-8：**离线开关**（一个开关关掉全部外呼）。为什么放这里而不是新配置文件：本项目已有唯一真源 `agents/policy.json`（§6 规则：阈值与开关一律进这里，代码里不得写政策常量），开关的『名字 + 关闭语义 + 拒绝文案』属于同类数据；为什么不放 `provider_config`/`.env`：那两处是**服务商凭据与模型**的配置面，与本开关的语义（进程级外呼闸门）不同源。**取值优先级：env `env_var` > 本键 `enabled`**——env 是显式操作者开关（继承到所有子进程，套件里可逐命令注入），本键是默认值（CI/离线机器把仓库配成默认离线只需改一个字段，不必改脚本）。判据（不是靠网络超时）：每个外呼入口在**发起请求之前**查开关，命中即**拒绝并点名**来源与目标 URL。守门/消费方：`verify/outbound_guard.py`（唯一实现，被 `scripts/fetch-prices.py`、`scripts/refresh-providers.py`、`scripts/agent-ops.py fetch-spec`、`paper-qa-script/app/engine.py` 共用）。",
+    "enabled": false,
+    "env_var": "PAPERQA_OFFLINE",
+    "env_true_values": ["1", "true", "yes", "on"],
+    "env_false_values": ["0", "false", "no", "off"],
+    "hf_offline_env": {
+      "_comment": "开关开启时同时注入的 HuggingFace/Transformers 离线变量（TG-8 正文 ③：避免 HEAD 重试阻塞）。它们不影响上面各入口的『拒绝』判据，只消除本地向量模型解析时的外呼重试。",
+      "HF_HUB_OFFLINE": "1",
+      "TRANSFORMERS_OFFLINE": "1"
+    },
+    "refuse_exit_code": 2,
+    "refusal_reason": "离线开关已开启（{source}）→ 拒绝外呼：{target}（不做超时降级、不静默换路径）。关闭方式：设 PAPERQA_OFFLINE=0，或把 agents/policy.json::offline_switch.enabled 改回 false。"
+  },
   "lint_paths": [
     "paper-qa-script",
     "verify",

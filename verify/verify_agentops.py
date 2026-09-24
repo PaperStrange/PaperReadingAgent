@@ -4,7 +4,10 @@
 UC-4 成本估算（价表 + chars/4 兜底 + pending_price）/ UC-5 报告输出模板解析 /
 UC-7 防双写完整性校验 / UC-9 自报上下文与成本覆盖 / UC-10 价表派生 /
 UC-11 fetch-spec sha256 命中/失配（M10）/ UC-12 账本并发锁无丢失更新（M10）/
-UC-13 fetch-prices 解析与合并优先级（M9）/ UC-14 评审类 run 的 scope 来源闸门（TG-11）。
+UC-13 fetch-prices 解析与合并优先级（M9）/ UC-14 评审类 run 的 scope 来源闸门（TG-11）/
+UC-19（TG-8②）离线开关：开关开启 → 三个外呼入口（fetch-spec / fetch-prices / provider 刷新）
+在**发请求之前**拒绝并点名（rc=政策退出码）；开关关闭 → 不误拒；取值拼错 → fail-closed；
+env 优先于政策 `enabled`；HF 离线变量按开关注入；脚本侧(verify/)与后端侧(app/)结论一致。
 
 运行：.venv\\Scripts\\python.exe verify\\verify_agentops.py（纯离线，隔离到临时 AGENT_OPS_DIR）
 
@@ -19,7 +22,7 @@ UC-13 fetch-prices 解析与合并优先级（M9）/ UC-14 评审类 run 的 sco
 """
 
 from __future__ import annotations
-VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1~UC-18（离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库）', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 10, 'routes': [], 'requires': ['none']}
+VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1~UC-19（离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库，UC-19=TG-8 离线开关：三入口拒绝+反向对照+配置面+两侧一致）', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 20, 'routes': [], 'requires': ['none']}
 
 import json
 import os
@@ -557,6 +560,122 @@ def main() -> int:
         stale_exc = sorted(exc_dirs & ledger_ids)
         ok("M-g 例外白名单只减不增：登记过的例外若已在账本里有同名 run → 必须删除该例外",
            not stale_exc, f"已不再需要的例外：{stale_exc[:5]}")
+
+        # UC-19（TG-8②）：**离线开关**——一个开关关掉全部外呼，且在**发起请求之前**拒绝并点名。
+        # 判据（卡文）：开关开启 → 每个被禁止的外呼入口 rc≠0 且点名原因（不是靠网络超时）；
+        #              开关关闭 → 允许（或按设计）。
+        # 反向对照（§6"倒过来试试"）：以下每条的对照分支都断言"**没有**出现 OFFLINE-REFUSED"，
+        # 即不能只证明"开关开着会拒绝"，还要证明"关着不会无故拒绝"（否则闸门可能是恒拒绝）。
+        offline_mod = importlib.util.spec_from_file_location(
+            "offline_guard", ROOT / "verify" / "outbound_guard.py")
+        og = importlib.util.module_from_spec(offline_mod)
+        assert offline_mod.loader is not None
+        offline_mod.loader.exec_module(og)
+        sw = _POLICY.offline_switch
+        env_name = str(sw["env_var"])
+        refuse_code = int(sw["refuse_exit_code"])
+
+        ok("UC-19 开关政策完备：env 名 / 真值表 / 拒绝退出码 / 拒绝文案都来自政策数据",
+           bool(env_name) and bool(sw.get("env_true_values")) and bool(sw.get("env_false_values"))
+           and refuse_code > 0 and "{target}" in str(sw.get("refusal_reason") or ""),
+           f"env={env_name} true={sw.get('env_true_values')} code={refuse_code}")
+
+        stub = tmp / "uc19-remote-spec.md"
+        stub.write_text(
+            "---\nname: uc19-remote\ndescription: x\nversion: '1.0.0'\n"
+            "source:\n  url: https://example.invalid/nope.md\n  ref: v1\n  sha256: abc\n---\nbody\n",
+            encoding="utf-8")
+
+        on_env = {**base_env, env_name: "1"}
+        r_on = run(["fetch-spec", str(stub)], on_env)
+        out_on = r_on.stdout + r_on.stderr
+        ok("UC-19 开关开启 → fetch-spec 外呼被**拒绝**且点名（rc=政策退出码，非超时）",
+           r_on.returncode == refuse_code and "OFFLINE-REFUSED" in out_on
+           and env_name in out_on and "example.invalid" in out_on,
+           f"rc={r_on.returncode}（期望 {refuse_code}）out={out_on.strip()[:110]}")
+
+        fp = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "fetch-prices.py"), "--check"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=on_env, check=False)
+        out_fp = fp.stdout + fp.stderr
+        ok("UC-19 开关开启 → fetch-prices（价格刷新）拒绝全部来源并 rc=政策退出码",
+           fp.returncode == refuse_code and out_fp.count("OFFLINE-REFUSED") >= 1
+           and "api-docs.deepseek.com" in out_fp,
+           f"rc={fp.returncode} out={out_fp.strip().splitlines()[:1]}")
+
+        off_env = {**base_env, env_name: "0"}
+        r_fp_off = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "fetch-prices.py"), "--check"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=off_env, check=False)
+        out_fp_off = r_fp_off.stdout + r_fp_off.stderr
+        ok("UC-19 反向对照：开关关闭 → 同一入口**不再**被开关拒绝（按设计继续尝试抓取）",
+           "OFFLINE-REFUSED" not in out_fp_off and "[deepseek]" in out_fp_off,
+           f"rc={r_fp_off.returncode} out={out_fp_off.strip().splitlines()[:1]}")
+
+        r_spec_off = run(["fetch-spec", str(stub)], off_env)
+        out_spec_off = r_spec_off.stdout + r_spec_off.stderr
+        ok("UC-19 反向对照：开关关闭 → fetch-spec 走既有降级路径（不误报离线拒绝）",
+           "OFFLINE-REFUSED" not in out_spec_off and ("回退本地" in out_spec_off or "WARN" in out_spec_off),
+           f"rc={r_spec_off.returncode} out={out_spec_off.strip()[:110]}")
+
+        r_bad = run(["fetch-spec", str(stub)], {**base_env, env_name: "flase"})
+        out_bad = r_bad.stdout + r_bad.stderr
+        ok("UC-19 开关取值拼错（flase）→ fail-closed 报错，**不静默当成关闭**",
+           r_bad.returncode != 0 and "合法开关取值" in out_bad,
+           f"rc={r_bad.returncode} out={out_bad.strip().splitlines()[-1][:110]}")
+
+        # ②配置面：政策 `enabled=true`（env 未设）同样生效——证明"开关可配置"不只 env 一条路
+        temp_policy_off = tmp / "policy-offline.json"
+        temp_policy_off.write_text(json.dumps(
+            {**_POLICY.policy_file,
+             "offline_switch": {**_POLICY.policy_file["offline_switch"], "enabled": True}},
+            ensure_ascii=False, indent=2), encoding="utf-8")
+        r_pol = run(["fetch-spec", str(stub)], {**base_env, ENV_POLICY: str(temp_policy_off),
+                                                env_name: "0"})
+        out_pol = r_pol.stdout + r_pol.stderr
+        ok("UC-19 env=0 覆盖政策 enabled=true → 放行（**优先级 env > 政策**，可核）",
+           "OFFLINE-REFUSED" not in out_pol, f"rc={r_pol.returncode} out={out_pol.strip()[:80]}")
+        # 未设 env 时：同一份政策（enabled=true）→ 拒绝，且来源点名政策键
+        env_no_switch = {k: v for k, v in base_env.items() if k != env_name}
+        r_pol2 = run(["fetch-spec", str(stub)], {**env_no_switch, ENV_POLICY: str(temp_policy_off)})
+        out_pol2 = r_pol2.stdout + r_pol2.stderr
+        ok("UC-19 配置面生效：未设 env 时政策 enabled=true → 拒绝且来源点名 `offline_switch.enabled`",
+           r_pol2.returncode == refuse_code and "OFFLINE-REFUSED" in out_pol2
+           and "offline_switch.enabled" in out_pol2,
+           f"rc={r_pol2.returncode} out={out_pol2.strip().splitlines()[-1][:130]}")
+
+        # ③HF 离线变量注入（TG-8 正文 ③）：开启时注入、关闭时不注入（不改变既有行为）
+        probe_env = dict(base_env)
+        probe_env.pop(env_name, None)
+        hf_on = {k: v for k, v in (sw.get("hf_offline_env") or {}).items() if not str(k).startswith("_")}
+        injected = og.apply_env(probe_env) if og.offline_enabled() else {}
+        ok("UC-19 开关关闭时**不注入** HF 离线变量（既有行为不变）", injected == {}, f"injected={injected}")
+        os.environ[env_name] = "1"
+        try:
+            injected_on = og.apply_env(dict(probe_env))
+        finally:
+            os.environ.pop(env_name, None)
+        ok("UC-19 开关开启时注入政策声明的 HF 离线变量（消除 HEAD 重试阻塞）",
+           injected_on == hf_on and bool(hf_on), f"injected={injected_on}（政策 {hf_on}）")
+
+        # ④两侧实现一致（app/offline_guard.py 与 verify/outbound_guard.py）：同一 env 取值同结论
+        app_guard_spec = importlib.util.spec_from_file_location(
+            "app_offline_guard", ROOT / "paper-qa-script" / "app" / "offline_guard.py")
+        ag = importlib.util.module_from_spec(app_guard_spec)
+        assert app_guard_spec.loader is not None
+        app_guard_spec.loader.exec_module(ag)
+        os.environ[env_name] = "1"
+        try:
+            same = ag.switch_state()[0] is True and og.offline_enabled() is True
+        finally:
+            os.environ.pop(env_name, None)
+        os.environ[env_name] = "0"
+        try:
+            same = same and ag.switch_state()[0] is False and og.offline_enabled() is False
+        finally:
+            os.environ.pop(env_name, None)
+        ok("UC-19 运行时两侧（脚本侧 verify/ + 后端侧 app/）对同一开关给出一致结论", same,
+           f"app={ag.switch_state()}")
 
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))
