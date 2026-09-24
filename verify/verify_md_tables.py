@@ -7,11 +7,12 @@
 
 判定：
   ① 单元格数一致性——在**未转义**的 `|` 处切分（`\\|` 是转义，属于内容），比对该表块的众数；
-  ② 转义/管道平衡——原始管道数必须等于 未转义管道数 + 转义管道数；不等即说明有**未转义管道**（会切坏表格）。
-
-    为什么单列这一条：修复转义时最典型的错法是"该转义的地方没转义、或转义后整行管道数与预期不符"，
-    而 ① 如果切分器本身对转义处理不当（本轮实测过一次），就会给出与事实相反的结论（把正确的行判为错）。
-    两条一起看，才能自证"是文档坏了"而不是"检查器坏了"。
+  ② **（2026-09-25 删除——原判据是恒真式，D2/D3 审核 R5）**：原文写
+     `unescaped = raw - escaped` 再判 `raw != unescaped + escaped`，即 `raw != raw` ⇒ **分支不可达**，
+     恒不成立。故"两条判据"实际只有一条（R5 的判定）。它想表达的"某行有**单元格内裸管道**"
+     **已由 ① 完整覆盖**：裸 `|` 会让 `split_row` 在该处多切一格 ⇒ 该行单元格数 ≠ 该表众数 ⇒ ① 报错。
+     删除必须**可证**，故本模块自带 `reverse_control()`（由 `main()` 无条件执行）：裸管道坏样本必须报错、
+     `\\|` 好样本必须放行。留一条恒真的"判据"只会让 PASS 的语义虚高（读代码的人以为有两道防线）。
   ③ 只能报，不能自动改：本脚本**不修改文件**（--check 语义），修法由人决定。
   ④ **扫描集双向差集**（A10 / 审核 N1）：扫描集由政策声明（`md_table_coverage.roots` +
      `include_files`）与文件系统双向核对，打印"应扫 N / 实扫 M"并要求相等。
@@ -33,9 +34,10 @@
 """
 
 from __future__ import annotations
-VERIFY_META = {'features': 'Markdown 表格结构自检：未转义管道切分的单元格数一致性 + 管道转义平衡（三次 R1 事故后固化的编辑安全网）', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 2, 'routes': [], 'requires': ['none']}
+VERIFY_META = {'features': 'Markdown 表格结构自检：未转义管道切分的单元格数一致性（② 恒真式判据已删，裸管道由 ① 覆盖，脚本内建坏/好样本反向对照）+ 扫描集双向差集 + 棘轮上限；三次 R1 事故后固化的编辑安全网', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 2, 'routes': [], 'requires': ['none']}
 
 import sys
+import tempfile
 from collections import Counter
 from datetime import date
 from pathlib import Path
@@ -78,10 +80,27 @@ def split_row(line: str) -> list[str]:
     return [c.strip() for c in cells]
 
 
-def pipe_balance(line: str) -> tuple[int, int]:
-    raw = line.count(PIPE)
-    escaped = sum(1 for i, ch in enumerate(line) if ch == PIPE and i and line[i - 1] == ESC)
-    return raw, escaped
+def reverse_control(quiet: bool = False) -> list[str]:
+    """② 删除后的**反向对照**（`TG-6` ⑤"倒过来试"）：证明"裸管道"确实由 ① 抓住。
+
+    删除 ② 的前提是"① 已覆盖"。这句话必须**可执行**，否则删掉一条恒真判据就退化成
+    "少了一道防线"的口头承诺（正是本轮审核在别处抓到的形态）。两个样本：
+      * 坏样本：单元格内**未转义**的 `|` → 该行被多切一格 → ① 必须报错；
+      * 好样本：同一处写成 `\\|`（转义）→ 必须零 problem（防"① 因切分器对转义处理不当而误报"）。
+    """
+    bad = "| a | b | c |\n|---|---|---|\n| 1 | x|y | 3 |\n"
+    good = "| a | b | c |\n|---|---|---|\n| 1 | x\\|y | 3 |\n"
+    problems: list[str] = []
+    with tempfile.TemporaryDirectory() as td:
+        for name, body, want in (("bad.md", bad, True), ("good.md", good, False)):
+            probe = Path(td) / name
+            probe.write_text(body, encoding="utf-8")
+            found = check_file(probe, quiet=True)
+            if (len(found) > 0) is not want:
+                problems.append(f"反向对照 {name}：期望{'报错' if want else '放行'}，实测 {found}")
+            elif not quiet:
+                print(f"  PASS: 反向对照 {name} → {'报错（裸管道被 ① 抓住）' if want else '放行（转义管道不误报）'}")
+    return problems
 
 
 def check_file(path: Path, quiet: bool = False) -> list[str]:
@@ -109,14 +128,10 @@ def check_file(path: Path, quiet: bool = False) -> list[str]:
                     problems.append(
                         f"{path}:{i} 单元格数 {n} ≠ 该表众数 {mode}（表头 {block[0][0]} 行）"
                         f"｜多半是**未转义管道**把行切多了，或行尾少了分隔符")
-    # 管道转义平衡：原始管道数应等于 未转义 + 转义
-    for i, ln in enumerate(lines, 1):
-        if not ln.strip().startswith(PIPE):
-            continue
-        raw, escaped = pipe_balance(ln)
-        unescaped = raw - escaped
-        if raw != unescaped + escaped:  # 恒等式，仅用于自检本函数（防御性）
-            problems.append(f"{path}:{i} 管道计数自相矛盾（raw={raw} unesc={unescaped} esc={escaped}）")
+    # ② 已于 2026-09-25 删除（R5 判定它是恒真式）：原写法 `unescaped = raw - escaped` 后自比
+    # `raw == unescaped + escaped` 恒为真、分支不可达；它想表达的"单元格内有**未转义**管道"
+    # 由 ① 覆盖（裸管道多切一格 ⇒ 该行单元格数 ≠ 该表众数）。反向对照见 `reverse_control()`，
+    # 由 `main()` 无条件执行——"① 已覆盖"必须是**可执行断言**，不是删除时的一句口头承诺。
     if not quiet:
         print(f"  {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}: "
               f"表格块 {len(blocks)}，问题 {len([p for p in problems if str(path) in p])}")
@@ -212,7 +227,14 @@ def main() -> int:
     all_problems: list[str] = list(cov_problems)
     baselined: list[str] = []
     baseline_files_scanned: set[str] = set()
-    print("Markdown 表格结构自检（未转义管道切分 + 转义平衡）：")
+    print("Markdown 表格结构自检（未转义管道切分的单元格数一致性）：")
+    rc_problems = reverse_control(quiet)
+    if rc_problems:
+        print(f"\nMD-TABLE FAIL（{len(rc_problems)} 项反向对照失效：判据与实际行为不符，"
+              f"先修判据再看真数据）:")
+        for item in rc_problems:
+            print(f"  - {item}")
+        return 1
     if expected_n is not None:
         same = expected_n == actual_n and not cov_problems
         print(f"  扫描集双向差集：应扫 {expected_n} / 实扫 {actual_n} → "

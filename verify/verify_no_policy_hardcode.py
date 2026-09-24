@@ -7,7 +7,16 @@
 TG-15 起政策统一落在三处数据：`agents/fanout.json`（步骤/target）、各 spec frontmatter
 （角色属性）、`agents/policy.json`（阈值与开关）；本脚本守住"不许再退回代码里"。
 
-扫描对象：`scripts/**`、`verify/**` 的 `.py`，**同时覆盖 scripts 与 verify 两棵树的同名点**。
+扫描对象（A6 / 审核 R1，2026-09-25 起**政策驱动**）：由
+`agents/policy.json::hardcode_scan_coverage` 声明——`roots`（必扫树，每条必须存在）与 `globs`
+（实际展开，每条必须 ≥1 命中）两侧必须**相等**，闸门打印『应扫 N / 实扫 M』，不一致即 FAIL 并
+逐条点名；`exclude_dirs` 显式排除 vendored（`paper-qa/`）、环境（`.venv`/`node_modules`）、缓存
+与**运行产物**（`agents/runs/`、`.agents/`）。**封闭世界**：仓库里任何含 `.py` 的树必须落在
+roots 或 exclude_dirs 内，出现未纳管的新树即 FAIL。
+
+  为什么必须政策驱动 + 双向差集（实测事故）：旧实现把 `('scripts','verify')` **写死在脚本里**，
+  实测只覆盖 39/182 个 `.py`，而闸门照旧打印 `ALL PASS … clean`——『漏扫』比『漏报』更危险，
+  它让 PASS 从『查过且没问题』退化成『没查』。真正的守门范围必须**可核**，不能靠读代码去猜。
 
 判据（全部基于 AST，不是正则猜）：
   R1 政策变量赋值 —— `ROLE(S)/REVIEW_ROLES/CLOSE_ROLES/SCOPE_*/MIN_*/THRESHOLD/PATHS/ALLOWED_*/
@@ -27,8 +36,9 @@ TG-15 起政策统一落在三处数据：`agents/fanout.json`（步骤/target�
 并断言"从 policy 读取"与"`_exempted_local` 就地豁免"两种写法**必须放行**（防为了过闸门把代码写坏）。
 
 用法：
-    .venv\\Scripts\\python.exe verify\\verify_no_policy_hardcode.py            # 扫描仓库（0 = 干净）
+    .venv\\Scripts\\python.exe verify\\verify_no_policy_hardcode.py            # 扫描政策声明的扫描集（0 = 干净）
     .venv\\Scripts\\python.exe verify\\verify_no_policy_hardcode.py --dir <d>  # 只扫指定目录（自检用）
+    .venv\\Scripts\\python.exe verify\\verify_no_policy_hardcode.py --coverage # 只打印扫描集双向差集
 """
 
 from __future__ import annotations
@@ -36,13 +46,16 @@ VERIFY_META = {'features': 'TG-15⑦ 硬编码政策闸门：scripts/verify 内�
 
 import ast
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 EXEMPTIONS_PATH = Path(__file__).resolve().parent / "policy-hardcode-exemptions.json"
-SCAN_DIRS = ("scripts", "verify")
+# A6（R1）：扫描集**不再写死在这里**，改由 agents/policy.json::hardcode_scan_coverage 声明。
+# 旧实现 `SCAN_DIRS = ("scripts", "verify")` 实测只覆盖 39/182 个 .py（审核 R1 判 major）。
+SCAN_DIRS = ("scripts", "verify")  # 仅保留作"旧实现对照"（反向对照⑨ 用它证明覆盖面确实变宽了）
 SELF_NAME = "verify_no_policy_hardcode.py"
 
 sys.path.insert(0, str(ROOT))
@@ -379,11 +392,128 @@ def _is_exempted_local(node: ast.AST) -> bool:
 
 
 
+def _rel(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(ROOT).as_posix()
+    except ValueError:
+        return path.name
+
+
+def _excluded(rel: str, exclusions: list[str]) -> bool:
+    """`rel`（仓库相对 posix 路径）是否落在 `exclude_dirs` 里。
+
+    裸名（`paper-qa`/`.venv`/`node_modules`/`__pycache__`/…）按**路径任意段**匹配（能抓嵌套
+    的 `node_modules`）；含 `/` 的（`agents/runs`）按前缀匹配。
+    """
+    parts = rel.split("/")
+    for raw in exclusions:
+        item = str(raw).strip("/")
+        if not item:
+            continue
+        if "/" in item:
+            if rel == item or rel.startswith(item + "/"):
+                return True
+        elif item in parts:
+            return True
+    return False
+
+
+def _iter_py(base: Path, exclusions: list[str]) -> list[str]:
+    """`base` 递归下的全部 `.py`（仓库相对路径，已剪枝排除目录）。"""
+    out: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(base):
+        here = Path(dirpath)
+        rel_dir = _rel(here) if here != ROOT else ""
+        rel_dir = "" if rel_dir == ROOT.name or rel_dir == "." else rel_dir
+        dirnames[:] = sorted(d for d in dirnames
+                             if not _excluded(f"{rel_dir}/{d}".strip("/"), exclusions))
+        for fn in sorted(filenames):
+            if fn.endswith(".py"):
+                rel = f"{rel_dir}/{fn}".strip("/")
+                if not _excluded(rel, exclusions):
+                    out.append(rel)
+    return out
+
+
+def scan_coverage() -> tuple[list[str], list[str], list[str], list[str]]:
+    """扫描集 ↔ 文件系统**双向差集**（同 `verify_md_tables.py` 的 A10 做法；审核 R1）。
+
+    返回 `(应扫, 实扫, problems, exclude_dirs)`。
+
+    * **应扫**（expected）= `hardcode_scan_coverage.roots` 递归下的全部 `.py`（每条 roots 必须是**存在**的目录）。
+    * **实扫**（actual）= `hardcode_scan_coverage.globs` 的展开（每条必须 ≥1 命中）。
+    * `exclude_dirs`（vendored / 环境 / 缓存 / 运行产物）在两侧同时生效。
+    * **封闭世界**：仓库里任何含 `.py` 的树必须落在 roots 或 exclude_dirs 内——否则 FAIL 并点名，
+      这样"新加一棵代码树但没人把它纳入闸门"不会静默通过。
+    * 本脚本自身从两侧同时剔除，故 `N == M` 可直接比较（自跳数单独打印）。
+
+    为什么 roots 必须**独立声明**（而不是从 globs 反推）见 `verify_md_tables.coverage_problems()`：
+    从 glob 反推是恒真式，删掉一条 glob 会连带缩小它声明的范围，"少扫一棵树"永远看不出来。
+    """
+    data = load_policy().policy_file.get("hardcode_scan_coverage")
+    if not isinstance(data, dict):
+        raise SystemExit("HARDCODE-ERROR: agents/policy.json 缺 hardcode_scan_coverage"
+                         "（扫描集范围声明；缺它则『应扫/实扫』无从核对 → fail-closed）")
+    roots = [str(p) for p in (data.get("roots") or [])]
+    globs = [str(p) for p in (data.get("globs") or [])]
+    exclusions = [str(p) for p in (data.get("exclude_dirs") or [])]
+    problems: list[str] = []
+    if not roots:
+        problems.append("[覆盖声明] hardcode_scan_coverage.roots 为空 → 应扫集无从计算（fail-closed）")
+    if not globs:
+        problems.append("[覆盖声明] hardcode_scan_coverage.globs 为空 → 实扫集无从计算（fail-closed）")
+
+    expected: set[str] = set()
+    for root in roots:
+        base = ROOT / root
+        if not base.is_dir():
+            problems.append(f"[覆盖声明] roots 里的目录不存在：{root!r}（fail-closed，不静默跳过）")
+            continue
+        expected |= {r for r in _iter_py(base, exclusions)}
+
+    actual: set[str] = set()
+    for pattern in globs:
+        hits = {_rel(p) for p in ROOT.glob(pattern) if p.is_file() and p.suffix == ".py"}
+        hits = {h for h in hits if not _excluded(h, exclusions)}
+        if not hits:
+            problems.append(f"[死 glob] {pattern!r} 命中 0 个文件：留着它 = 让人以为扫了、其实没扫"
+                            f"（删掉或写对，不要留死数据）")
+        actual |= hits
+
+    self_rel = _rel(Path(__file__).resolve())
+    expected.discard(self_rel)
+    actual.discard(self_rel)
+
+    for rel in sorted(expected - actual):
+        problems.append(f"[应扫未扫] {rel}：在 roots 范围内，但没有任何 glob 覆盖它"
+                        f" → 闸门**根本不检查它**（R1 形态：旧实现漏 39/182）")
+    for rel in sorted(actual - expected):
+        problems.append(f"[实扫超出声明] {rel}：被 glob 扫到，但不在 roots 声明范围内"
+                        f" → 要么补进 roots，要么把它移出扫描集（声明与行为必须一致）")
+
+    # 封闭世界：含 .py 的树必须被显式纳管（roots）或显式排除（exclude_dirs）
+    managed = {str(r).strip("/") for r in roots}
+    for entry in sorted(ROOT.iterdir()):
+        if not entry.is_dir() or _excluded(entry.name, exclusions):
+            continue
+        stray = [r for r in _iter_py(entry, exclusions)
+                 if r != self_rel and not any(r.startswith(m + "/") for m in managed)]
+        if stray:
+            problems.append(f"[未纳管树] {entry.name}/ 含 {len(stray)} 个 .py 但既不在 roots 也不在 "
+                            f"exclude_dirs 内（例：{stray[:3]}）——新代码树必须显式纳管或显式排除，"
+                            f"否则闸门会静默漏扫")
+    return sorted(expected), sorted(actual), problems, exclusions
+
+
 def scan(dirs: list[Path], roles: set[str] | None = None) -> list[dict]:
     exemptions = load_exemptions()
     roles = known_roles() if roles is None else roles
     findings: list[dict] = []
     for base in dirs:
+        # 2026-09-25 修复：以前直接用调用方给的（可能是**相对**）路径 → `scan_file` 里的
+        # `path.relative_to(ROOT)` 失败、回落成 `path.name`，于是**所有按文件作用域的豁免
+        # 静默失效**（实测 `--dir verify` 因此报出 6 条本应豁免的发现）。统一 resolve 成绝对路径。
+        base = base.resolve()
         if not base.is_dir():
             continue
         for path in sorted(base.rglob("*.py")):
@@ -393,6 +523,16 @@ def scan(dirs: list[Path], roles: set[str] | None = None) -> list[dict]:
                 continue
             findings += scan_file(path, exemptions, roles)
     return findings
+
+
+def policy_scan_roots() -> list[Path]:
+    """政策声明的扫描**树**（`hardcode_scan_coverage.roots`）；声明与实际不一致即 fail-closed。"""
+    data = load_policy().policy_file.get("hardcode_scan_coverage") or {}
+    roots = [str(p).strip("/") for p in (data.get("roots") or [])]
+    if not roots:
+        raise SystemExit("HARDCODE-ERROR: hardcode_scan_coverage.roots 为空 → 无扫描集（fail-closed）")
+    return [ROOT / r for r in roots]
+
 
 
 # ------------------------------------------------------------------ 反向对照
@@ -465,8 +605,37 @@ def selfcheck() -> int:
     ok("反向对照⑤ `_exempted_local` 就地豁免放行，但同文件真硬编码仍被抓",
        len(findings) == 1 and "_REAL_POLICY_PATHS" in findings[0]["detail"], f"findings={findings}")
 
-    real = scan([ROOT / d for d in SCAN_DIRS])
-    ok("仓库现状：scripts/** 与 verify/** 无政策硬编码", real == [],
+    # ---- A6（R1）扫描集：政策驱动 + 双向差集 + 封闭世界 + 覆盖面确实变宽的对照 ---------------
+    expected, actual, cov_problems, exclusions = scan_coverage()
+    ok("A6 扫描集双向差集（政策 roots ↔ globs）：应扫 N / 实扫 M 一致",
+       not cov_problems and len(expected) == len(actual),
+       f"应扫 {len(expected)} / 实扫 {len(actual)}"
+       + ("" if not cov_problems else f"；problems={cov_problems[:3]}"))
+    old_scan = {r for r in _iter_py(ROOT / SCAN_DIRS[0], []) } | {r for r in _iter_py(ROOT / SCAN_DIRS[1], [])}
+    widened = sorted(set(expected) - old_scan)
+    ok("反向对照⑨ 覆盖面**确实**比旧实现（`SCAN_DIRS=('scripts','verify')`）宽：新纳入文件非空",
+       bool(widened), f"旧实现 {len(old_scan)} 个 → 现应扫 {len(expected)} 个；新纳入 {len(widened)} 个"
+                      f"（例：{widened[:3]}）")
+    # 注入样本必须落在**此前未被扫**的树里，否则这条对照证明不了"新纳入的树真的被检查"
+    probe_rel = next((r for r in widened if r.endswith(".py")), None)
+    if probe_rel is None:
+        ok("反向对照⑨b 此前未被扫的 .py 内注入政策硬编码 → 判违规并点名", False, "没有新纳入的文件可注入")
+    else:
+        src = (ROOT / probe_rel).read_text(encoding="utf-8", errors="replace")
+        with tempfile.TemporaryDirectory() as td:
+            probe = Path(td) / Path(probe_rel).name
+            probe.write_text(src + '\n_INJECTED_POLICY_ROLES = {"code-review", "doc-audit"}\n',
+                             encoding="utf-8")
+            # 用真实入口（`--dir`）跑，判据取**子进程 rc**，不读代码猜
+            import subprocess
+            run = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--dir", str(probe.parent)],
+                                 capture_output=True, text=True, encoding="utf-8", errors="replace")
+        ok(f"反向对照⑨b 此前未被扫的树（{Path(probe_rel).parts[0]}/）内注入政策硬编码 → rc≠0 且点名该文件",
+           run.returncode != 0 and f"{Path(probe_rel).name}:" in run.stdout and "R1" in run.stdout,
+           f"rc={run.returncode} out={run.stdout.strip().splitlines()[0] if run.stdout.strip() else ''}")
+
+    real = scan(policy_scan_roots())
+    ok("仓库现状：政策声明的扫描集（roots 展开）内无政策硬编码", real == [],
        "clean" if not real else f"{len(real)} 条：" + "; ".join(
            f"{f['file']}:{f['line']} {f['rule']} {f['detail'][:60]}" for f in real[:5]))
 
@@ -549,6 +718,23 @@ def main() -> int:
             print(f"{f['file']}:{f['line']} [{f['rule']}] {f['detail']}")
         print(f"--- {len(findings)} findings ---")
         return 1 if findings else 0
+
+    # A6（R1）：**先核扫描集，再看扫描结果**——"应扫/实扫"不一致时，扫描结果本身没有意义
+    # （PASS 会从"查过且没问题"退化成"没查"）。故一致性问题一律 fail-closed。
+    expected, actual, cov_problems, exclusions = scan_coverage()
+    print(f"扫描集双向差集（政策 hardcode_scan_coverage）：应扫 {len(expected)} / 实扫 {len(actual)} → "
+          f"{'一致' if not cov_problems and len(expected) == len(actual) else '**不一致（fail-closed）**'}"
+          f"（roots={[str(p) for p in (load_policy().policy_file.get('hardcode_scan_coverage') or {}).get('roots') or []]}；"
+          f"排除 {exclusions}；本脚本自身跳过 1）")
+    if cov_problems:
+        print(f"\nHARDCODE FAIL（扫描集声明与实际不一致，{len(cov_problems)} 项）：")
+        for item in cov_problems:
+            print(f"  - {item}")
+        return 1
+
+    if "--coverage" in sys.argv:
+        print("（--coverage：只核扫描集，不跑自检与仓库扫描）")
+        return 0
 
     selfcheck()
     print(f"\nALL PASS ({PASSED} assertions)")

@@ -24,7 +24,7 @@ TG-14 的解法是"**一卡一文件 + backlog 退化为瘦索引**"，而这类
     .venv\\Scripts\\python.exe verify\\verify_card_index.py                 # 默认档：真数据 strict 判据 + fixture 反向对照
     .venv\\Scripts\\python.exe verify\\verify_card_index.py --check         # 真数据（同上；保留的等价写法）
     .venv\\Scripts\\python.exe verify\\verify_card_index.py --check --strict # 显式全判据
-    .venv\\Scripts\\python.exe verify\\verify_card_index.py --selftest      # 只跑 fixture 反向对照（不校验真数据）
+    .venv\\Scripts\\python.exe verify\\verify_card_index.py --selftest      # 只跑 fixture 反向对照（不校验真数据）；该档**真实存在**（`main()` 顶部 `if "--selftest" in sys.argv` 分支），2026-09-25 实测 rc=0——D2/D3 审核把它记成"文档写了不存在的参数"是**误判**，此处据实保留并标注
 """
 
 from __future__ import annotations

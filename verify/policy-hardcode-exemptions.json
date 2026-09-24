@@ -22,6 +22,18 @@
       "reason": "探测器自身的内置兜底清单（跨平台 site-packages 名）；本身就是该规则的实现载体。",
       "category": "tool-self",
       "names": ["VENV_PARTS"]
+    },
+    {
+      "file": "src/collect_acl.py",
+      "reason": "ACL Anthology 的**会议/数据集名**（acl/emnlp/naacl），是采集范围的数据取值，不是本仓库的覆盖路径清单。A6 扩大扫描集（审核 R1：旧实现只扫 39/182 个 .py）后首次被 R3 扫到；R3 的语义是『覆盖路径清单须来自 policy.json::lint_paths』，此处不适用。作用域精确到常量名。",
+      "category": "data-processing",
+      "names": ["TARGET_COLLECTIONS"]
+    },
+    {
+      "file": "paper-qa-script/runtime_trace.py",
+      "reason": "运行时埋点的**被追踪对象**（paperqa 的点分模块/函数路径），是插桩目标而非本仓库的覆盖路径清单。A6 扩大扫描集（审核 R1）后首次被 R3 扫到；R3 的语义是『覆盖路径清单须来自 policy.json::lint_paths』，此处不适用。作用域精确到两个类属性名。",
+      "category": "data-processing",
+      "names": ["TARGETS", "MODULE_TARGETS"]
     }
   ],
   "numbers": [],

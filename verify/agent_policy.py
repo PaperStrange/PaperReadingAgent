@@ -381,6 +381,8 @@ class Policy:
             "md_table_coverage",
             # A11（N4）：豁免台账的校验参数（类别白名单/理由长度/作用域），由 verify_no_policy_hardcode.py 消费
             "hardcode_exemptions",
+            # A6（R1）：硬编码闸门扫描集的**范围声明**（roots/globs/exclude_dirs），由 verify_no_policy_hardcode.py 消费
+            "hardcode_scan_coverage",
         }
         for key in self.policy_file:
             if key not in consumed:

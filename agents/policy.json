@@ -58,6 +58,12 @@
     "roots": ["docs", "verify"],
     "include_files": ["agents/README.md"]
   },
+  "hardcode_scan_coverage": {
+    "_comment": "A6（审核 R1，2026-09-25）：`verify/verify_no_policy_hardcode.py` 扫描集的**范围声明**，与文件系统做**双向差集**（同 `md_table_coverage` 的 A10 做法）。roots = 必扫树（每条必须存在，其下全部 `.py` 进扫描集）；globs = 实际展开（每条必须 ≥1 命中）；两侧展开结果必须**相等**，闸门打印『应扫 N / 实扫 M』，不一致即 FAIL 并逐条点名（『应扫未扫』『实扫超出声明』）。roots 是**独立声明**的，删掉一条 glob 不会连带缩小应扫集。exclude_dirs = 显式排除（相对仓库根；裸名按路径任意段匹配，含 `/` 的按前缀匹配）：`paper-qa`（vendored 上游库）、`.venv`/`node_modules`（依赖环境）、`__pycache__`/`.ruff_cache`（缓存）、`agents/runs`（**运行产物**：评审/执行 run 的 scratch 树，含 verify/scripts 的一次性副本，不是仓库源码）、`.agents`（工具态，未跟踪）。**封闭世界**：仓库里任何含 `.py` 的树必须落在 roots 或 exclude_dirs 内——出现未纳管的树即 FAIL（防『新加一棵代码树但没人把它纳入闸门』）。R1 的事故形态：旧实现把 `('scripts','verify')` 写死在脚本里，实测只扫 39/182 个 `.py`，闸门却打印 PASS——『漏扫』让 PASS 的含义从『查过没问题』退化成『没查』。",
+    "roots": ["scripts", "verify", "src", "paper-qa-script"],
+    "globs": ["scripts/**/*.py", "verify/**/*.py", "src/**/*.py", "paper-qa-script/**/*.py"],
+    "exclude_dirs": ["paper-qa", ".venv", "node_modules", "__pycache__", ".ruff_cache", "agents/runs", ".agents"]
+  },
   "md_table_globs": [
     "docs/**/*.md",
     "docs/**/*.MD",

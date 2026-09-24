@@ -3,6 +3,7 @@
 > 归属：`docs/iteration/phases/agents-infra/`（一实例一文件，**不并入 `cards/A-M11.md` 正文**——那张卡是 16.7 KB 的"多智能体/agent 治理"卡，往里塞新实例只会重演 `TG-12` 治的那类漂移）。
 > 体例参照：`docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD`（事故证据台账独立成文）。
 > 性质：**这是"能当回归用例用的真实越界"**，不是事后编造的 fixture——它比人造场景值钱，因为**触发条件完全真实**。
+> 落盘日期：2026-09-25（UTC+8）
 
 ## 1. 可核事实（每条都能用命令复现）
 

@@ -46,7 +46,7 @@
 | `verify_ledger_rounds.py` | TG-10 账本多轮次记录：round 追加（终态可用）/首轮快照保留/产出累加/累计时长/中断事件（round --interrupted 与 interrupt）/list 展示/非法 run 拒绝（离线） | offline | — | 8s | ¥0 | — | none |
 | `verify_lint.py` | G1 Python ruff 闸门：A 级 E9/F63/F7/F82 与 B 级 F401/F811/F841/E702/E711/E712/E722/W292 全仓 0；C 级 D101-103/E501 只报基线；含好坏文件反向对照自检 | offline | — | 15s | ¥0 | — | ruff |
 | `verify_local_dir.py` | F-AC3 引擎接线实证：临时目录 paper_directory → load_index → retrieve 候选来自该目录（免密：注入占位 key，链路无 LLM 调用） | offline | — | 90s | ¥0 | /api/new_session, /api/run_step | self-boots-backend |
-| `verify_md_tables.py` | Markdown 表格结构自检：未转义管道切分的单元格数一致性 + 管道转义平衡（三次 R1 事故后固化的编辑安全网） | offline | — | 2s | ¥0 | — | none |
+| `verify_md_tables.py` | Markdown 表格结构自检：未转义管道切分的单元格数一致性（② 恒真式判据已删，裸管道由 ① 覆盖，脚本内建坏/好样本反向对照）+ 扫描集双向差集 + 棘轮上限；三次 R1 事故后固化的编辑安全网 | offline | — | 2s | ¥0 | — | none |
 | `verify_no_policy_hardcode.py` | TG-15⑦ 硬编码政策闸门：scripts/verify 内不得再写死角色集合/成员判定字面量/覆盖路径清单；豁免须写 category+reason；含三类注入样本反向对照 | offline | — | 10s | ¥0 | — | none |
 | `verify_provider_switch.py` | provider 切换路由实证：内置 4 家 + 自定义（端点级拒绝断言） | network | deepseek, dashscope, openai, openrouter | 30s | ¥0.1 | /api/providers | keys, network |
 | `verify_providers.py` | F-AC8 provider 一文件：文件加载/来源标记/覆盖优先级/非法文件跳过/无密钥泄漏/调研元数据契约 | offline | — | 20s | ¥0 | — |  |
