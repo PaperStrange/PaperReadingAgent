@@ -248,7 +248,7 @@ source:
 | UC-3 | registry 条目含 §3.2 全部字段；状态机 queued→running→succeeded/failed/cancelled 合法流转，非法流转被拒 | §2.1 Langfuse / §2.3 账本模型 | CLI 往返测试（US-8.4/S8） |
 | UC-4 | 成本估算 = usage×prices.json 单价（含 cache 分列）；无 usage 时 `chars/4` 兜底且 `estimated=true` | §2.1 LiteLLM 价表/双轨 | 给定输入输出断言计算值（US-8.4/S8） |
 | UC-5 | 报告解析器能从 spec 输出模板解析出 critical/major/minor/nit 条目（文件:行+建议+必修标记） | §2.3 类型化结果（Pydantic output_type） | 样例报告解析断言（US-8.4/S8） |
-| UC-6 | 同一 code-review 职能以 `task=branch:windows|main` 参数执行两次 → 两份报告 + 账本两条记录（task 区分） | §2.3 Send 并行 / 用户意见①职能化 | 真实 fan-out（S9 验收演示；S8 先以 dry-run 断言） |
+| UC-6 | 同一 code-review 职能以 `task=branch:windows\|main` 参数执行两次 → 两份报告 + 账本两条记录（task 区分） | §2.3 Send 并行 / 用户意见①职能化 | 真实 fan-out（S9 验收演示；S8 先以 dry-run 断言） |
 | UC-7 | registry.json 为唯一账本源：记录只能经 agent-ops CLI 追加，看板/脚本直改会被校验拒绝（防双写） | §2.2 文件为源 / §2.3 账本模型 | CLI 追加 + 校验命令（US-8.4/S8；看板 S9） |
 | UC-8 | SQLite 派生索引与文件源一致：registry.json 变更后（chokidar）库内检索结果更新 | §2.2 文件为源、库为索引 | S9 看板集成测试 |
 | UC-9 | context_occupancy{input_tokens,max_context,ratio} 与 cost_est 在 finish 时可自报并可人工覆盖 | §2.1 自报+估算口径（D4） | CLI finish 参数断言（US-8.4/S8） |

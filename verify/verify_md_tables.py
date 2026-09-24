@@ -13,6 +13,17 @@
     而 ① 如果切分器本身对转义处理不当（本轮实测过一次），就会给出与事实相反的结论（把正确的行判为错）。
     两条一起看，才能自证"是文档坏了"而不是"检查器坏了"。
   ③ 只能报，不能自动改：本脚本**不修改文件**（--check 语义），修法由人决定。
+  ④ **扫描集双向差集**（A10 / 审核 N1）：扫描集由政策声明（`md_table_coverage.roots` +
+     `include_files`）与文件系统双向核对，打印"应扫 N / 实扫 M"并要求相等。
+
+    为什么必须双向（N1 实测）：原先扫描集只有 4 条**窄 glob**（`docs/iteration/phases/*/backlog.MD`
+    这类），于是**阶段级 `.MD`**（`architecture.MD`/`README.MD`/`ROADMAP.MD`/带日期的分析文档）
+    以及 `pre-research/**` 一个都不扫 —— 相关集 **160**、实扫 **131**、**漏 29**，
+    而这 29 份里今天就藏着 **7 处真实表格缺陷**，闸门却打印 `MD-TABLE PASS`。
+    "漏扫"比"漏报"更危险：它让 PASS 的含义从"检查过且没问题"退化成"没检查"。
+    现判据三条：① 政策里每个显式路径必须存在（缺失 fail-closed）；② 每条 glob 必须至少命中 1 个文件
+    （死 glob fail-closed）；③ 应扫集与实扫集必须相等（差集逐条点名）。
+    `roots` 是**独立声明**的（不是从 glob 推导），所以"删掉一棵树的 glob"也会被差集抓到。
 
 用法：
     .venv\\Scripts\\python.exe verify/verify_md_tables.py [文件 …]      # 默认检查项目主文档集
@@ -32,7 +43,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from verify.agent_policy import load_policy  # noqa: E402
+from verify.agent_policy import PolicyError, load_policy  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -112,26 +123,109 @@ def check_file(path: Path, quiet: bool = False) -> list[str]:
     return problems
 
 
+def _rel(path: Path) -> str:
+    return path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else str(path)
+
+
+def coverage_problems(policy) -> tuple[list[str], list[str], list[str]]:
+    """扫描集 ↔ 文件系统**双向差集**（A10 / 审核 finding N1）。返回 `(应扫, 实扫, problems)`。
+
+    * **应扫**（expected）= `md_table_coverage.roots` 递归下的全部 `.md`/`.MD`（大小写都算，
+      与平台无关：判据用 `suffix.lower()`，不依赖 Windows 的大小写不敏感 glob）
+      ∪ `include_files`（目录之外的单个文件，必须存在）。
+    * **实扫**（actual）= `md_table_docs`（每条必须存在）∪ `md_table_globs` 展开（每条必须 ≥1 命中）。
+
+    为什么 `roots` 必须是**独立声明**而不是"从 glob 反推目录"：从 glob 反推是恒真式——
+    删掉一条 glob 会连带缩小它声明的范围，于是"少扫一整棵树"永远看不出来。独立声明后，
+    两侧任一方缺失都会落进差集并被逐条点名（这正是 N1：政策 4 条窄 glob vs 相关集 160）。
+    """
+    cov = policy.policy_file.get("md_table_coverage")
+    if not isinstance(cov, dict):
+        raise PolicyError("agents/policy.json 缺 md_table_coverage（扫描集范围声明；缺它则"
+                          "'应扫/实扫'无从核对 → fail-closed）")
+    roots = [str(p) for p in (cov.get("roots") or [])]
+    include = [str(p) for p in (cov.get("include_files") or [])]
+    docs = [str(p) for p in (policy.policy_file.get("md_table_docs") or [])]
+    globs = [str(p) for p in (policy.policy_file.get("md_table_globs") or [])]
+    problems: list[str] = []
+    if not roots:
+        problems.append("[覆盖声明] md_table_coverage.roots 为空 → 应扫集无从计算（fail-closed）")
+
+    expected: set[str] = set()
+    for rel in include:
+        if not (ROOT / rel).is_file():
+            problems.append(f"[覆盖声明] md_table_coverage.include_files 里的 {rel!r} 不存在（fail-closed）")
+        expected.add(rel)
+    for root in roots:
+        base = ROOT / root
+        if not base.is_dir():
+            problems.append(f"[覆盖声明] md_table_coverage.roots 里的目录不存在：{root!r}（fail-closed）")
+            continue
+        for p in base.rglob("*"):
+            if p.is_file() and p.suffix.lower() == ".md":
+                expected.add(_rel(p))
+
+    actual: set[str] = set()
+    for rel in docs:
+        if not (ROOT / rel).is_file():
+            problems.append(f"[显式文档] {rel!r} 不存在：政策里点名的路径必须真实存在（缺失即 fail-closed，"
+                            f"不静默跳过）")
+            continue
+        actual.add(rel)
+    for pattern in globs:
+        hits = {_rel(p) for p in ROOT.glob(pattern) if p.is_file()}
+        if not hits:
+            problems.append(f"[死 glob] {pattern!r} 命中 0 个文件：留着它 = 让人以为扫了、其实没扫"
+                            f"（删掉或写对，不要留死数据）")
+        actual |= hits
+
+    for rel in sorted(expected - actual):
+        problems.append(f"[应扫未扫] {rel}：在覆盖声明范围内，但没有任何 md_table_docs/md_table_globs "
+                        f"覆盖它 → 闸门**根本不检查它**（N1 形态：漏 29/160）")
+    for rel in sorted(actual - expected):
+        problems.append(f"[实扫超出声明] {rel}：被政策扫到，但不在 md_table_coverage 声明范围内"
+                        f" → 要么补进 roots/include_files，要么把它移出扫描集（声明与行为必须一致）")
+    return sorted(expected), sorted(actual), problems
+
+
 def main() -> int:
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     quiet = "--quiet" in sys.argv
     policy = load_policy()
-    targets = [Path(a) for a in args] if args else [ROOT / t for t in policy.md_table_targets]
+    cov_problems: list[str] = []
+    if args:
+        targets = [Path(a) for a in args]
+        expected_n = actual_n = None
+    else:
+        expected, actual, cov_problems = coverage_problems(policy)
+        expected_n, actual_n = len(expected), len(actual)
+        targets = [ROOT / rel for rel in actual]
+    # 空集 ≠ PASS（N8 的同族，与 `verify_close_readiness` 的"空区间 ≠ 通过"同一判据）：
+    # 显式路径全部不存在时旧实现逐条 SKIP 后打印 `MD-TABLE PASS（0 个文件）`——
+    # 一个"什么都没查"的绿。这里把它变成 FAIL（fail-closed），并点名请求过的路径。
+    missing = [] if not args else [str(p) for p in targets if not p.is_file()]
     # A2（M-a/N2/R3）：棘轮 = `{路径: 缺陷数上限}`，不是路径白名单。
     legacy_caps = {str((ROOT / f).resolve()): cap for f, cap in policy.md_table_legacy_files.items()}
     review_by = policy.md_table_review_by
     today = str(date.today())
 
-    all_problems: list[str] = []
+    all_problems: list[str] = list(cov_problems)
     baselined: list[str] = []
     baseline_files_scanned: set[str] = set()
     print("Markdown 表格结构自检（未转义管道切分 + 转义平衡）：")
+    if expected_n is not None:
+        same = expected_n == actual_n and not cov_problems
+        print(f"  扫描集双向差集：应扫 {expected_n} / 实扫 {actual_n} → "
+              f"{'一致' if same else '**不一致（fail-closed，逐条点名见下）**'}"
+              f"（roots={list((policy.policy_file.get('md_table_coverage') or {}).get('roots') or [])}）")
     print(f"  棘轮基线：{len(legacy_caps)} 个文件（按文件设缺陷上限）；review_by={review_by}，"
           f"今日={today} → {'**已过期**' if today > review_by else '未到期'}")
+    scanned = 0
     for path in targets:
         if not path.is_file():
             print(f"  SKIP（不存在）: {path}")
             continue
+        scanned += 1
         found = check_file(path, quiet)
         cap = legacy_caps.get(str(path.resolve()))
         if cap is not None:
@@ -155,9 +249,11 @@ def main() -> int:
         base_files = sorted({p.rsplit(":", 1)[0] for p in baselined})
         print(f"\n棘轮基线（历史文件，上限内不判失败）：{len(baselined)} 处，涉及 {len(base_files)} 个文件")
 
-    if baselined:
-        base_files = sorted({p.rsplit(":", 1)[0] for p in baselined})
-        print(f"\n棘轮基线（历史文件，上限内不判失败）：{len(baselined)} 处，涉及 {len(base_files)} 个文件")
+    if scanned == 0:
+        print(f"\nMD-TABLE FAIL：本次**一个文件都没解析**（请求 {len(targets)} 个，全部不存在）"
+              f"——『什么都没查』不是通过（N8：空集/缺失 = PASS 的失效形态）。"
+              f"请求过的路径：{missing[:5]}")
+        return 1
 
     # 到期日：过期 = 基线失效 → FAIL（提示"必须重评基线"）
     if today > review_by:
@@ -174,9 +270,11 @@ def main() -> int:
               "③ 若行数属**表头与数据行列数不同**（如标题行少一列），改分隔行 `|---|...|` 与表头对齐。")
         return 1
     # 注：基线文件数按**本次实际扫描到的**计（首版打印的是政策里的总数，跑子集时会误导；
-    # 又：首版把 15 个问题串当 15 个文件打印——见 N8 的计数口径问题）
-    print(f"\nMD-TABLE PASS（{len(targets)} 个文件；其中 {len(baseline_files_scanned)} 个历史文件走棘轮基线、"
-          f"均在各自的 defect 上限内）")
+    # 又：首版把 15 个问题串当 15 个文件打印——见 N8 的计数口径问题）。
+    # A10 起 `scanned` 是**真正解析过的文件数**（不是请求数）：政策模式下它与"实扫"同源，
+    # 于是"应扫 N / 实扫 M"与 PASS 行不会各说一套。
+    print(f"\nMD-TABLE PASS（{scanned} 个文件解析通过；其中 {len(baseline_files_scanned)} 个历史文件"
+          f"走棘轮基线、均在各自的 defect 上限内）")
     return 0
 
 

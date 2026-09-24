@@ -225,17 +225,79 @@ class Detector(ast.NodeVisitor):
 
 # ------------------------------------------------------------------ 豁免加载
 
+def exemption_rules() -> dict:
+    """台账校验参数（`agents/policy.json::hardcode_exemptions`，A11/N4）——政策数据，不写死在这里。"""
+    data = load_policy().policy_file.get("hardcode_exemptions")
+    if not isinstance(data, dict):
+        raise SystemExit("HARDCODE-ERROR: agents/policy.json 缺 hardcode_exemptions"
+                         "（豁免台账的校验参数；缺它则台账不可核 → fail-closed）")
+    for key, typ in (("categories", list), ("min_reason_chars", int),
+                     ("category_wide_categories", list), ("category_wide_files", list)):
+        if not isinstance(data.get(key), typ) or isinstance(data.get(key), bool):
+            raise SystemExit(f"HARDCODE-ERROR: hardcode_exemptions.{key} 类型非法：{data.get(key)!r}")
+    return data
+
+
 def load_exemptions(path: Path | None = None) -> dict:
-    path = path or EXEMPTIONS_PATH
+    """读**并校验**豁免台账（A11 / 审核 N4）。
+
+    为什么必须校验（二查实测的绕过路径）：原实现只要求每条有 category/reason 两个**非空字符串**，
+    于是往台账里加一条 `{"file": "verify/verify_close_readiness.py", "category": "policy",
+    "reason": "…", "categories": ["policy"]}` 就 rc 0、同一屏打印"无政策硬编码 clean"——
+    **一条数据编辑把整份文件静音**，而这与台账自述"绝不整文件豁免"直接冲突，
+    也与本模块"豁免 = 有理由的**最小**例外"的设计相反。
+
+    现四条校验（参数全部来自 policy.json，见 `exemption_rules()`）：
+      ① `category` ∈ 白名单（拼错/自造类别不再静默生效）；
+      ② `reason` 必填且 ≥ `min_reason_chars`（"有理由"要能被复核）；
+      ③ **作用域最小化**：`names`/`functions`/`categories` 不得全空——没有作用域的条目
+         在 `scan_file` 里等价于"豁免该文件的一切发现"，即整文件豁免 → 拒；
+      ④ 类别级豁免（`categories`）是唯一能覆盖整份文件内某一类发现的形态，
+         因此只允许出现在 `category_wide_files`（工具自身的词表），取值限 `category_wide_categories`。
+    """
+    rules = exemption_rules()
+    allowed = {str(c) for c in rules["categories"]}
+    wide_files = {str(f) for f in rules["category_wide_files"]}
+    wide_cats = {str(c) for c in rules["category_wide_categories"]}
+    min_reason = int(rules["min_reason_chars"])
+
+    if path is None:
+        path = EXEMPTIONS_PATH
+    path = Path(path)
     if not path.is_file():
         return {"roles": [], "paths": [], "numbers": [], "status": []}
     data = json.loads(path.read_text(encoding="utf-8"))
     for key in ("roles", "paths", "numbers", "status"):
-        for item in data.get(key) or []:
-            if not str(item.get("category") or "").strip() or not str(item.get("reason") or "").strip():
+        for i, item in enumerate(data.get(key) or []):
+            where = f"{path.name}::{key}[{i}]"
+            file = str(item.get("file") or "").strip()
+            if not file:
+                raise SystemExit(f"HARDCODE-ERROR: 豁免台账 {where} 缺 file（豁免必须指向具体文件）")
+            category = str(item.get("category") or "").strip()
+            if category not in allowed:
                 raise SystemExit(
-                    f"HARDCODE-ERROR: 豁免台账 {path.name} 的 {key} 条目缺 category/reason：{item!r}"
-                    "（豁免必须可核：说明类别与理由）")
+                    f"HARDCODE-ERROR: 豁免台账 {where} 的 category={category!r} 不在白名单 "
+                    f"{sorted(allowed)} 内（{file}）——自造类别不能成为静音开关")
+            reason = str(item.get("reason") or "").strip()
+            if len(reason) < min_reason:
+                raise SystemExit(f"HARDCODE-ERROR: 豁免台账 {where} 的 reason 过短（<{min_reason} 字符，"
+                                 f"{file}）——豁免必须写明理由，否则无法复核")
+            names = [str(n) for n in (item.get("names") or []) if str(n).strip()]
+            funcs = [str(f) for f in (item.get("functions") or []) if str(f).strip()]
+            cats = [str(c) for c in (item.get("categories") or []) if str(c).strip()]
+            if not (names or funcs or cats):
+                raise SystemExit(
+                    f"HARDCODE-ERROR: 豁免台账 {where}（{file}）没有任何作用域"
+                    f"（names/functions/categories 全空）= **整文件豁免**，台账自述『绝不整文件豁免』"
+                    f"——请写明具体的常量名/函数名，或改用就地豁免 `_exempted_local`")
+            if cats:
+                bad = [c for c in cats if c not in wide_cats]
+                if file not in wide_files or bad:
+                    raise SystemExit(
+                        f"HARDCODE-ERROR: 豁免台账 {where}（{file}）用 categories={cats} 做**类别级豁免**"
+                        f"——这会把该文件里这一类发现**全部**静音（N4 实测的形态）。类别级豁免只允许"
+                        f"出现在 {sorted(wide_files)} 且取值限 {sorted(wide_cats)}；"
+                        f"其它文件请按 names/functions 精确豁免")
     return data
 
 
@@ -407,6 +469,48 @@ def selfcheck() -> int:
     ok("仓库现状：scripts/** 与 verify/** 无政策硬编码", real == [],
        "clean" if not real else f"{len(real)} 条：" + "; ".join(
            f"{f['file']}:{f['line']} {f['rule']} {f['detail'][:60]}" for f in real[:5]))
+
+    # ---- N4 反向对照：豁免台账**必须被校验**（一条数据编辑不得静音整份文件）------------
+    # 二查实测：往台账加一条 `{"file": "verify/verify_close_readiness.py", "category": "policy",
+    # "categories": ["policy"], "reason": "…"}` → rc 0，且同一屏打印"无政策硬编码 clean"。
+    bad_ledgers = {
+        "整文件豁免（names/functions/categories 全空）": {
+            "roles": [{"file": "verify/verify_agentops.py", "category": "test-fixture",
+                       "reason": "就想放行整个文件，理由故意写得够长"}]},
+        "类别级静音 categories:[\"policy\"]": {
+            "roles": [{"file": "verify/verify_close_readiness.py", "category": "policy",
+                       "reason": "想用一条类别豁免把这份文件整个静音掉，理由够长",
+                       "categories": ["policy"]}]},
+        "白名单外的自造 category": {
+            "paths": [{"file": "verify/verify_agentops.py", "category": "whatever",
+                       "reason": "随便编一个类别名，理由写得够长", "names": ["SOMETHING"]}]},
+        "理由过短": {
+            "numbers": [{"file": "verify/verify_agentops.py", "category": "test-fixture",
+                         "reason": "短", "names": ["SOMETHING"]}]},
+        "缺 file": {
+            "status": [{"category": "tool-self", "reason": "没有指向任何文件的豁免，理由够长",
+                        "names": ["SOMETHING"]}]},
+    }
+    for label, ledger in bad_ledgers.items():
+        with tempfile.TemporaryDirectory() as td:
+            probe = Path(td) / "exemptions.json"
+            probe.write_text(json.dumps(ledger, ensure_ascii=False), encoding="utf-8")
+            try:
+                load_exemptions(probe)
+                ok(f"N4 反向对照：豁免台账「{label}」→ 必须被拒", False, "未抛错（整文件豁免被放行）")
+            except SystemExit as exc:
+                ok(f"N4 反向对照：豁免台账「{label}」→ 被拒（rc≠0）且点名原因",
+                   "HARDCODE-ERROR" in str(exc), str(exc)[:96])
+
+    with tempfile.TemporaryDirectory() as td:
+        probe = Path(td) / "exemptions.json"
+        probe.write_text(json.dumps(
+            {"roles": [{"file": "verify/verify_agentops.py", "category": "test-fixture",
+                        "reason": "合成角色名 fixture，不是闸门政策；作用域精确到常量名",
+                        "names": ["code-review"]}]}, ensure_ascii=False), encoding="utf-8")
+        good = load_exemptions(probe)
+    ok("N4 正向对照：有理由 + 作用域精确的最小豁免 → 放行（好输入不误报）",
+       (good["roles"][0]["names"] if good.get("roles") else None) == ["code-review"], f"good={good}")
 
     # ---- 退出码断言：**用真实入口跑**，不是"读代码判断它会不会 fail-closed" ----
     # 2026-09-23 doc-audit finding 5：`--dir` 分支被指"恒 return 0"。实测真相是它在

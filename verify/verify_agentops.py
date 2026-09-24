@@ -451,6 +451,54 @@ def main() -> int:
            and len(e17b.get("anchor_backfills") or []) == 1,
            f"backfills={len(e17b.get('anchor_backfills') or [])}")
 
+        # UC-18（审核 N10）：`finish --result-file` **不得改写报告换行**（LF → CRLF 静默改写）
+        # 原实现 `dest.write_text(rel.read_text(encoding="utf-8"), encoding="utf-8")`：读侧做
+        # universal-newline 转换、写侧把 `\n` 落成 `os.linesep`（Windows=CRLF）→ 仓库基线的 LF
+        # 报告被静默改成 CRLF（实测 35721 B → 35913 B / 192 行）。归档步骤最不该动产物字节。
+        for tag, eol in (("lf", "\n"), ("crlf", "\r\n")):
+            rid = f"run-uc18-{tag}"
+            run(["register", "--role", "impact-assessment", "--task", f"eol-{tag}", "--spec",
+                 "impact-assessment@1.4.4", "--run-id", rid], base_env, check=True)
+            run(["update", rid, "--status", "running"], base_env, check=True)
+            report = tmp / f"uc18-{tag}.report.md"
+            report.write_bytes("".join(f"| 行 {i} | {tag} 报告正文 |{eol}" for i in range(120))
+                               .encode("utf-8"))
+            run(["finish", rid, "--status", "succeeded", "--result-file", str(report)],
+                base_env, check=True)
+            dest = tmp / "runs" / rid / "impact-assessment.report.md"
+            src_bytes, dst_bytes = report.read_bytes(), dest.read_bytes()
+            if tag == "lf":
+                ok("UC-18 LF 报告经 finish --result-file 后 CRLF 计数为 0（LF 不被静默改写）",
+                   dst_bytes.count(b"\r\n") == 0, f"CRLF={dst_bytes.count(b'\r\n')} 行")
+                ok("UC-18 LF 报告字节数不变（内容逐字节一致）", dst_bytes == src_bytes,
+                   f"{len(src_bytes)} B → {len(dst_bytes)} B")
+            else:
+                ok("UC-18 CRLF 报告仍保持 CRLF（不反向破坏：源是 CRLF 就存 CRLF）",
+                   dst_bytes.count(b"\r\n") == 120 and dst_bytes == src_bytes,
+                   f"CRLF={dst_bytes.count(b'\r\n')} 行，{len(src_bytes)} B → {len(dst_bytes)} B")
+
+        # A5（审核 M-g）：账本 run_id ↔ `agents/runs/*` 目录名一致性
+        # 背景：`register` 自动 run-id 用 UTC 日期、目录/文档用 UTC+8 → 实测
+        # `run-2026-09-24-doc-audit-066`（账本）↔ `run-2026-09-25-doc-audit-066`（目录）。
+        # 历史例外写在数据文件（agents/policy/run-dir-exceptions.json）并**必须注明理由**。
+        real_ledger = json.loads((ROOT / "agents" / "runtime" / "registry.json")
+                                 .read_text(encoding="utf-8"))
+        ledger_ids = {str(r.get("run_id") or "") for r in real_ledger.get("runs", [])}
+        exc_file = ROOT / "agents" / "policy" / "run-dir-exceptions.json"
+        exc = json.loads(exc_file.read_text(encoding="utf-8")) if exc_file.is_file() else {}
+        exc_items = exc.get("exceptions") or []
+        no_reason = [str(e.get("dir")) for e in exc_items if not str(e.get("reason") or "").strip()]
+        ok("M-g 例外白名单每一条都写了理由（白名单不是静音开关）", not no_reason,
+           f"缺理由：{no_reason[:3]}")
+        exc_dirs = {str(e.get("dir")) for e in exc_items}
+        real_dirs = {p.name for p in (ROOT / "agents" / "runs").iterdir() if p.is_dir()}
+        orphan_dirs = sorted(real_dirs - ledger_ids - exc_dirs)
+        ok("M-g 账本 id ↔ 目录名一致：agents/runs/* 目录名都能在账本里找到同名 run（例外已在数据文件登记）",
+           not orphan_dirs, f"对不上账本且无例外登记的目录：{orphan_dirs[:5]}")
+        stale_exc = sorted(exc_dirs & ledger_ids)
+        ok("M-g 例外白名单只减不增：登记过的例外若已在账本里有同名 run → 必须删除该例外",
+           not stale_exc, f"已不再需要的例外：{stale_exc[:5]}")
+
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))
         data["runs"][0]["output_chars"] = 999999  # 手改

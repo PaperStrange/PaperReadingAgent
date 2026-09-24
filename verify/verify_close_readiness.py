@@ -110,6 +110,45 @@ def _spec_of(policy: AgentPolicy, role: str) -> dict:
     return parse_frontmatter(spec.path) if spec else {}
 
 
+def exact_target(run: dict) -> str:
+    """run 声明的 target（= `task_id`），**精确**取值口径（N3）。
+
+    N3（2026-09-25 二查）实测：判据原是 `target in task_id` 的**子串**匹配，于是
+    `branch:windows-backup`、`OLD-working-tree-JUNK`、`branch:mainline` **全部 PASS**——
+    "只要包含就算满足"让 target 失去判据意义（一个被改名的分支 / 一个被拼接的旧目录名
+    都能冒充关闭要件）。现改为**精确相等**：target 是声明值，不是模式。
+    """
+    return str(run.get("task_id") or "").strip()
+
+
+def ledger_close_window(policy: AgentPolicy, runs: list[dict]) -> str | None:
+    """从**账本侧**推导本次关闭窗口的起点（N6，`started_at` 最小值）。
+
+    为什么不能取自 §9 自己（二查实测的绕过路径）：原实现是
+    `window_start = min(§9 各行的 started_at)`，于是**删掉 §9 里最早的几行**就把窗口整体抬高，
+    落在窗口之前、账本里真实存在的 run 全部退出 `scoped` → "账本有 run 但 §9 未登记"一条都不报
+    → 闸门 PASS。**被校验的文档不得定义自己的校验窗口。**
+
+    做法（不读 §9）：对每条**必填关闭步骤**，取账本里满足它（role + target 精确匹配）的**最新** run
+    ——最新 = 本次关闭那一批（更早的同 role run 属于上一个 Sprint 的关闭，不应被本 Sprint 的 §9 要求）；
+    再取这些 run 的 `started_at` 最小值 = 窗口起点。账本里连一条关闭 run 都没有时返回 None
+    （此时需求侧 C1 已经报"缺 run"，本函数不替它下结论）。
+    """
+    starts: list[str] = []
+    for step in policy.close_ledger_steps:
+        bucket = [r for r in runs if str(r.get("role") or "") == step.role]
+        if step.targets:
+            wanted = set(step.targets)
+            bucket = [r for r in bucket if exact_target(r) in wanted]
+        if not bucket:
+            continue
+        latest = max(bucket, key=lambda r: str(r.get("started_at") or ""))
+        start = str(latest.get("started_at") or "")
+        if start:
+            starts.append(start)
+    return min(starts) if starts else None
+
+
 # --------------------------------------------------------------------- 判据
 
 def check_requirements(policy: AgentPolicy, runs: list[dict]) -> list[str]:
@@ -129,10 +168,11 @@ def check_requirements(policy: AgentPolicy, runs: list[dict]) -> list[str]:
             problems.append(f"[C1/需求] 关闭流水线步骤 {step.order}:{step.step} 缺 run（role={step.role}）")
             continue
         for target in step.targets:
-            if not any(target in str(r.get("task_id") or "") for r in bucket):
+            if not any(exact_target(r) == target for r in bucket):
                 problems.append(
                     f"[C1/需求] 步骤 {step.order}:{step.step} 缺 target={target!r} 的 run"
-                    f"（已有 task_id：{[str(r.get('task_id')) for r in bucket][:3]}）")
+                    f"（target 判据为**精确匹配**，子串不算；已有 task_id："
+                    f"{[str(r.get('task_id')) for r in bucket][:3]}）")
 
     # 〇查必须先于二查：顺序来自数据（scope_ref_step 指向的第一步 vs 其余步骤），不是写死的角色名
     ref_step_name = str(policy.close_gate.get("scope_ref_step") or "")
@@ -202,15 +242,18 @@ def check_c2(policy: AgentPolicy, runs: list[dict]) -> list[str]:
 
 
 def check_linkage(policy: AgentPolicy, sprint: dict, runs: list[dict]) -> list[str]:
-    """§9 结构化表 ↔ 账本**双向**一致（防"写了没跑"/"跑了没写"）。"""
+    """§9 结构化表 ↔ 账本**双向**一致（防"写了没跑"/"跑了没写"）。
+
+    **窗口起点取自账本侧**（`ledger_close_window`），不取自被校验的 §9 文档——
+    否则"删掉 §9 里最早的几行"就能把窗口抬高、把早期 run 挤出检查范围（N6 实测的绕过路径）。
+    文档侧只参与**区间比对**：§9 最早一行不得晚于账本窗口起点。
+    """
     problems: list[str] = []
     by_id = {r.get("run_id"): r for r in runs}
     ledger_roles = {s.role for s in policy.close_ledger_steps} | policy.review_roles
     table_ids = {row["run_id"] for row in sprint["rows"]}
 
-    window = [str(r.get("started_at") or "") for row in sprint["rows"]
-              if (r := by_id.get(row["run_id"])) is not None]
-    window_start = min(window) if window else None
+    window_start = ledger_close_window(policy, runs)
     scoped = [r for r in runs if r.get("role") in ledger_roles
               and (window_start is None or str(r.get("started_at") or "") >= window_start)]
 
@@ -219,6 +262,16 @@ def check_linkage(policy: AgentPolicy, sprint: dict, runs: list[dict]) -> list[s
     for r in scoped:
         if r.get("run_id") not in table_ids:
             problems.append(f"[linkage] 账本有 run 但 §9 run 表未登记：{r.get('run_id')}")
+
+    # 区间比对（窗口**不得取自被校验文档自身**）：§9 最早一行晚于账本窗口起点 = 有人在用
+    # "少写几行"缩小窗口。逐条点名在上面，这里给出窗口级结论（便于一眼看出是区间问题）。
+    doc_starts = [str(by_id[row["run_id"]].get("started_at") or "")
+                  for row in sprint["rows"] if row["run_id"] in by_id]
+    doc_starts = [s for s in doc_starts if s]
+    if window_start and doc_starts and min(doc_starts) > window_start:
+        problems.append(
+            f"[linkage/区间] §9 run 表最早一行（{min(doc_starts)}）晚于**账本侧**关闭窗口起点"
+            f"（{window_start}）→ 有账本 run 落在 §9 区间之外未登记（窗口起点不得取自被校验文档自身）")
     return problems
 
 
@@ -248,17 +301,23 @@ def check_c3(policy: AgentPolicy, sprint: dict, runs: list[dict], att: Attributi
             f"doc-only 都不覆盖）：" + ", ".join(s[:10] for s in unowned[:8])
             + (" …" if len(unowned) > 8 else ""))
 
-    # §9 行声明的覆盖范围必须与账本一致（防"文档写了覆盖、账本没有窗口"）
+    # §9 行声明的覆盖范围必须与账本一致（防"文档写了覆盖、账本没有窗口"）。
+    # N6（2026-09-25 二查）：原先**只比对 `scope_source`** → §9 把 role/target 写错也 PASS。
+    # role/target 是 §9 表的定位字段：写错整行的指向就错了（gate 会去查另一个 run），
+    # 因此三者一并比对（"-"/空 = 该格未填，不比对）。
     by_id = {r.get("run_id"): r for r in runs}
     for row in sprint["rows"]:
         run = by_id.get(row["run_id"])
         if run is None:
             continue
-        declared_source = str(row.get("scope_source") or "").strip()
-        actual_source = str(run.get("scope_source") or "").strip()
-        if declared_source not in {"-", ""} and declared_source != actual_source:
-            problems.append(f"[C3] §9 表 {row['run_id']} 的 scope_source={declared_source!r} "
-                            f"与账本 {actual_source!r} 不一致")
+        for field in ("scope_source", "role", "target"):
+            declared = str(row.get(field) or "").strip()
+            if declared in {"-", ""}:
+                continue
+            actual = exact_target(run) if field == "target" else str(run.get(field) or "").strip()
+            if declared != actual:
+                problems.append(f"[C3] §9 表 {row['run_id']} 的 {field}={declared!r} "
+                                f"与账本 {actual!r} 不一致（定位字段写错 = 指向了另一个对象）")
     return problems
 
 
@@ -589,6 +648,35 @@ def _selfcheck() -> int:
     p = evaluate(policy, ghost, runs, att=_fixture_attribution(runs))
     ok("linkage 反向对照：§9 写了 run 但账本无记录 → FAIL",
        any("账本无记录" in x for x in p), f"problems={p[:1]}")
+
+    # ---- N3 反向对照：target 判据必须是**精确匹配**（子串匹配 = 改名即可冒充）---------
+    for tampered, expected_target in (("branch:windows-backup", "branch:windows"),
+                                      ("branch:mainline", "branch:main"),
+                                      ("OLD-working-tree-JUNK", "working-tree")):
+        mutant = [dict(r, task_id=tampered) if exact_target(r) == expected_target else r for r in runs]
+        rows = [{"run_id": r["run_id"], "role": r["role"], "target": r["task_id"],
+                 "scope_source": r.get("scope_source") or "-", "coverage": "core",
+                 "deviation": r.get("scope_deviation") or "-"} for r in mutant]
+        p = evaluate(policy, parse_sprint(_doc(rows, SHA_A)), mutant, att=_fixture_attribution(mutant))
+        ok(f"N3 反向对照：task_id={tampered!r} 不得冒充 target={expected_target!r}（精确匹配，子串不算）→ FAIL",
+           any(f"缺 target={expected_target!r}" in x for x in p), f"problems={p[:1]}")
+
+    # ---- N6a 反向对照：**删掉 §9 里最早的两行**不得让窗口抬高（窗口取自账本侧）-------
+    p = evaluate(policy, parse_sprint(_doc(good["rows"][2:], SHA_A)), runs,
+                 att=_fixture_attribution(runs))
+    ok("N6 反向对照 a：§9 删掉最早两行 → 仍 FAIL（账本有 run 未登记 + 区间比对）",
+       any("账本有 run 但 §9 run 表未登记" in x and "run-k-001" in x for x in p)
+       and any("linkage/区间" in x for x in p), f"problems={p[:2]}")
+    p = evaluate(policy, parse_sprint(_doc(good["rows"], SHA_A)), runs, att=_fixture_attribution(runs))
+    ok("N6 正向对照：§9 行齐全时窗口比对不误报（好输入 rc=0）", p == [], f"problems={p[:1]}")
+
+    # ---- N6b 反向对照：§9 的 role / target 写错 → FAIL（原先只比对 scope_source）------
+    for field, bad in (("role", "doc-audit"), ("target", "branch:production")):
+        rows = [dict(r) for r in good["rows"]]
+        rows[2] = {**rows[2], field: bad}
+        p = evaluate(policy, parse_sprint(_doc(rows, SHA_A)), runs, att=_fixture_attribution(runs))
+        ok(f"N6 反向对照 b：§9 第 3 行 {field} 写错（{bad!r}）→ FAIL（role/target 一并比对）",
+           any(f"{field}={bad!r} 与账本" in x for x in p), f"problems={p[:1]}")
 
     p = evaluate(policy, good, runs, att=_fixture_attribution(runs, unowned_extra=False),
                  check_coverage=False)

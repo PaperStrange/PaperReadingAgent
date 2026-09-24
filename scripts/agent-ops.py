@@ -44,7 +44,7 @@ import os
 import re
 import sys
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 if os.name == "nt":
@@ -146,6 +146,20 @@ def _resolve_sha(value: str) -> str | None:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+# A5（审核 finding M-g）：**自动 run-id 的日期段用 UTC+8**（项目权威时区），与 run 目录/文档命名同口径。
+# 实测漂移：本地 2026-09-25 00:47 登记的 run 被自动命名成 `run-2026-09-24-doc-audit-066`
+# （`_now()` 是 UTC），而同一次运行的产物目录按 UTC+8 叫 `run-2026-09-25-doc-audit-066`
+# → 账本 id ↔ 目录名对不上（断言见 verify/verify_agentops.py 的「M-g 断言」）。
+# 只改 **id 的日期段**：账本时间戳（started_at/ended_at/rounds）仍是 UTC 口径，
+# 这样 `_duration_minutes`、`list` 与既有断言都不受影响（最小可行改动）。
+_TZ_OFFSET_HOURS = 8  # UTC+8（项目权威时区；见 docs/1-WORKFLOW.MD 的时间口径）
+
+
+def _local_date() -> str:
+    """项目权威时区的日期 `YYYY-MM-DD`（自动 run-id 的日期段）。"""
+    return (datetime.now(timezone.utc) + timedelta(hours=_TZ_OFFSET_HOURS)).strftime("%Y-%m-%d")
 
 
 def _duration_minutes(start: str, end: str) -> float | None:
@@ -372,7 +386,7 @@ def cmd_register(args: argparse.Namespace) -> None:
     # review 修正（Sprint-8 三查）：显式 run_id 查重（_find_run 只命中第一条）
     if any(r["run_id"] == args.run_id for r in data["runs"]):
         raise SystemExit(f"run_id {args.run_id} 已存在，请更换")
-    run_id = args.run_id or f"run-{_now()[:10]}-{args.role}-{len(data['runs']) + 1:03d}"
+    run_id = args.run_id or f"run-{_local_date()}-{args.role}-{len(data['runs']) + 1:03d}"
     # review 修正（Sprint-9 三查 P2）：run-id 将成为 runs/ 下的目录名，限字符集防路径穿越
     if not re.fullmatch(r"[A-Za-z0-9._-]+", run_id):
         raise SystemExit(f"run_id 含非法字符（仅允许字母数字 . _ -）：{run_id!r}")
@@ -518,7 +532,14 @@ def cmd_finish(args: argparse.Namespace) -> None:
             RUNS_DIR.mkdir(parents=True, exist_ok=True)
             dest = RUNS_DIR / r["run_id"] / f"{r['role']}.report.md"
             dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(rel.read_text(encoding="utf-8"), encoding="utf-8")
+            # 审核 N10（2026-09-25）：**按字节复制**，不得改写换行。
+            # 原实现是 `dest.write_text(rel.read_text(encoding="utf-8"), encoding="utf-8")`：
+            # `read_text` 做 universal-newline 转换（CRLF→LF），`write_text` 又把 `\n` 写回
+            # `os.linesep`（Windows = CRLF）——于是**仓库基线 LF 的报告被静默改成 CRLF**
+            # （实测 35721 B → 35913 B / 192 行）。这与 D1 的 EOL 事故同族（`2206f376` 修过
+            # 同一族的另一处，漏了这里），而且是"最不该动字节"的一步：归档动作改变了产物本身。
+            # 复制实现按字节，源是 LF 就存 LF、源是 CRLF 就存 CRLF（不反向破坏），BOM 亦原样保留。
+            dest.write_bytes(rel.read_bytes())
             # review 修正（Sprint-8 三查）：基准用 _AGENTS_BASE（AGENT_OPS_DIR 重定向时不再崩溃）
             r["result_files"] = [str(dest.relative_to(_AGENTS_BASE))]
     if args.cost_override is not None:

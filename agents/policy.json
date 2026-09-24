@@ -46,11 +46,24 @@
     "verify/TEST-MATRIX.MD",
     "agents/README.md"
   ],
+  "hardcode_exemptions": {
+    "_comment": "A11（审核 N4）：`verify/policy-hardcode-exemptions.json` 的**台账校验参数**。二查实测：台账里加一条 `categories:[\"policy\"]` 即 rc 0，同一屏还打印『无政策硬编码 clean』——与台账自述『绝不整文件豁免』直接冲突（一条数据编辑就把整份代码静音）。校验四条：① `category` 必在白名单；② `reason` 必填且 ≥ min_reason_chars；③ **作用域最小化**——每条的 names/functions/categories 不得全空（无作用域的条目 = 整文件豁免）；④ 类别级豁免（`categories`）只允许给 `category_wide_files`（工具自身的词表），取值限 `category_wide_categories`。",
+    "categories": ["test-fixture", "tool-self", "data-processing", "cli-contract", "display-only"],
+    "min_reason_chars": 10,
+    "category_wide_categories": ["status"],
+    "category_wide_files": ["verify/verify_no_policy_hardcode.py"]
+  },
+  "md_table_coverage": {
+    "_comment": "A10（审核 N1/R1）：`md_table_docs` + `md_table_globs` 的**范围声明**，用于与文件系统做**双向差集**。roots = 递归纳入其下全部 `.md`/`.MD` 的目录；include_files = 目录之外的单个文件（必须存在）。闸门实测『应扫 N / 实扫 M』并要求 N==M：差集非空即 FAIL 并逐条点名——这正是 N1 的形态（政策只写了 4 条窄 glob，阶段级 `.MD` 与分析类文档从不自动纳入，实测漏 29/160，其中 7 处是真缺陷）。根是**独立声明**的：删掉某条 glob 不会连带缩小应扫集，故『少扫一棵树』也会被抓。",
+    "roots": ["docs", "verify"],
+    "include_files": ["agents/README.md"]
+  },
   "md_table_globs": [
-    "docs/iteration/phases/*/backlog.MD",
-    "docs/iteration/phases/*/cards/*.md",
-    "docs/iteration/sprint/*.md",
-    "docs/iteration/sprint/*.MD"
+    "docs/**/*.md",
+    "docs/**/*.MD",
+    "verify/**/*.md",
+    "verify/**/*.MD",
+    "agents/README.md"
   ],
   "md_table_legacy_files": {
     "_comment": "棘轮（ratchet）基线：这些**历史 Sprint/验收文档**里的表格结构缺陷是既存的（2026-09-23 扩覆盖时首次被扫到，共 15 处：内容里的管道未转义 / 表头与数据行列数不符）。避免为了让闸门变绿而改写已关闭 Sprint 的历史记录（2026-09-23 实测过一次越界改写，已 revert）。A2 修法（finding M-a/N2/R3，2026-09-25）：**按文件设上限**——`files` 由路径列表改为 `{路径: 缺陷数上限}`，闸门对基线文件也判 `len(found) > cap → FAIL`（棘轮只许变紧：上限只减不增，且**不许用「修好一处、新增一处」把总量顶回上限**——上限值本身只能在重评基线时下调）。上限来源＝各文件实测缺陷数。**新文件/新改动一律判失败**；清这批历史债需另开卡逐处人工修（每处需人判：补表头列 / 转义内容管道 / 合并单元格）。",

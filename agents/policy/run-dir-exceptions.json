@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "_comment": "A5（审核 finding M-g）：`agents/runs/*` 目录名 ↔ 账本 run_id 一致性断言的**历史例外白名单**。判据见 verify/verify_agentops.py 的「M-g 断言」：目录名必须能在 agents/runtime/registry.json 里找到**同名** run；例外必须登记在这里并写明理由（缺 reason 的条目会让断言直接失败——白名单不是静音开关）。**例外只许减不许增**：新增目录对不上账本就说明 run-id 生成或登记路径又坏了，应修工具而不是往这里加条目。",
+  "exceptions": [
+    {
+      "dir": "_acceptance-scratch-2026-09-20",
+      "reason": "验收走查的**临时工作区**，不是 run 产物目录（名字不以 `run-` 开头、也没有对应 run）。内含 archive-missing-evidence / b-empty-evidence / c-no-context / d-no-reasoning 四个合成档案，用来给 verify_archive.py 的负例提供素材。"
+    },
+    {
+      "dir": "run-2026-09-12-provider-refresh-001",
+      "reason": "provider 刷新动作（scheduled-tasks.py 直跑）留下的产物目录。该动作**不写账本**——这正是审核 C-04 记录的形态（『动作已执行但无账本记录』），目录被保留作为该事实的证据，因此不对应任何 run_id。"
+    },
+    {
+      "dir": "run-2026-09-20-provider-refresh-001",
+      "reason": "同 `run-2026-09-12-provider-refresh-001`（同类第二次）：provider 刷新不落账本，只留产物目录。"
+    },
+    {
+      "dir": "run-2026-09-25-doc-audit-066",
+      "reason": "**时钟偏移**（finding M-g 的实测样本）：目录/文档按 UTC+8 命名（2026-09-25），而账本 id 由 `register` 自动生成、用了 UTC 日期 → 账本里叫 `run-2026-09-24-doc-audit-066`（started_at=2026-09-24T16:47:43+00:00 = 本地 09-25 00:47）。A5 已把自动 run-id 改为 UTC+8 口径；这条历史记录按白名单保留（账本禁手改）。**不得再新增同类条目。**"
+    }
+  ]
+}

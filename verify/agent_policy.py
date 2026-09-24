@@ -309,6 +309,11 @@ class Policy:
           ① 该清单最初写在新闸门文件里 → 被 `verify_no_policy_hardcode.py` 判为 R3（闸门先抓住了写闸门的人）；
           ② 首版只列了 `testing-governance/backlog.MD` 一个阶段文件 → **迁移新增的瘦索引与 95 个卡文件
              默认一个都不查**（P2 子代理实测指出）。现改为"显式文档 + glob"，新增阶段/卡文件自动纳入。
+
+        A10（2026-09-25，finding N1）起本属性**不再是闸门的唯一入口**：`verify_md_tables.py` 为了做
+        "应扫/实扫"双向差集，会分别读 `md_table_docs`/`md_table_globs` 并各自核对（显式路径必须存在、
+        每条 glob 必须命中 ≥1 文件、两侧集合必须相等）。本属性保留为"合并后的目标集"这一语义的
+        对外 API（等价于那两个集合的并集），不再被差值逻辑依赖。
         """
         docs = self._data("md_table_docs")
         globs = self._data("md_table_globs")
@@ -372,6 +377,10 @@ class Policy:
             "version", "_comment", "spec_glob", "spec_dir", "scope_min_deviation_chars",
             "scope_ref_sources", "lint_paths", "lint_rules", "archive_role_prefix", "close_gate",
             "ledger_status", "md_table_docs", "md_table_globs", "md_table_legacy_files", "card_index",
+            # A10（N1）：md_table_globs 的**范围声明**（roots/include_files），由 verify_md_tables.py 消费
+            "md_table_coverage",
+            # A11（N4）：豁免台账的校验参数（类别白名单/理由长度/作用域），由 verify_no_policy_hardcode.py 消费
+            "hardcode_exemptions",
         }
         for key in self.policy_file:
             if key not in consumed:

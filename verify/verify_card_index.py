@@ -109,7 +109,7 @@ def rel(path: Path, root: Path) -> str:
             return str(path)
 
 
-def check_phase(phase_dir: Path, strict: bool, body_threshold: int, root: Path | None = None) -> list[str]:
+def check_phase(phase_dir: Path, strict: bool, root: Path | None = None) -> list[str]:
     root = root or ROOT
     problems: list[str] = []
     backlog = phase_dir / "backlog.MD"
@@ -192,12 +192,8 @@ def check_phase(phase_dir: Path, strict: bool, body_threshold: int, root: Path |
     return problems
 
 
-def run(strict: bool = True, body_threshold: int = 0, root: Path | None = None) -> list[str]:
+def run(strict: bool = True, root: Path | None = None) -> list[str]:
     """跑全部阶段（`strict=True` 是**默认档**——见 `main()` 的说明）。
-
-    `body_threshold` 是**历史参数，已无消费点**（finding M-d/N7 实测的"死旋钮"）：判据 ④ 的阈值
-    一律来自 `agents/policy.json::card_index`。保留形参只为兼容既有调用方（fixture 自检）；
-    CLI 侧对此显式打印"已失效"，避免"旋钮转了但没接线"的假象。
 
     **单个阶段内的异常不得吞掉**（首版实测：check_phase 抛 TypeError 时
     自检把"没拿到 problems"当成"没问题" → 反向对照 D 假绿）。异常一律转成 problem 文本，
@@ -210,7 +206,7 @@ def run(strict: bool = True, body_threshold: int = 0, root: Path | None = None) 
         if not (phase_dir / "backlog.MD").is_file():
             continue
         try:
-            problems += check_phase(phase_dir, strict, body_threshold, root)
+            problems += check_phase(phase_dir, strict, root)
         except Exception as exc:  # noqa: BLE001 —— 闸门自身异常必须显式失败，不能静默
             problems.append(f"{phase_dir.name}: 检查过程异常（{type(exc).__name__}: {exc}）"
                             f"——闸门自身出错也必须 FAIL，不得当作通过")
@@ -254,11 +250,11 @@ def selfcheck(check_real: bool = True) -> int:
     with tempfile.TemporaryDirectory() as td:
         base = Path(td)
         _fixture(base)
-        ok("自检 ① 合规 fixture → PASS", run(True, 200, base) == [], "problems=[]")
+        ok("自检 ① 合规 fixture → PASS", run(True, base) == [], "problems=[]")
 
         # 反向对照 A：删一份卡文件
         (base / "docs/iteration/phases/demo/cards/D-2.md").unlink()
-        p = run(True, 200, base)
+        p = run(True, base)
         ok("反向对照 A 删卡文件 → FAIL（孤儿索引行）",
            any("孤儿索引行" in x for x in p), f"problems={p[:1]}")
         _fixture(base)
@@ -267,7 +263,7 @@ def selfcheck(check_real: bool = True) -> int:
         (base / "docs/iteration/phases/demo/cards/D-2.md").write_text(
             "# D-9\n\n- `card`: D-9\n\n## 状态\nx\n\n## 规模\n1\n\n## 来源\ny\n\n## Sprint\nSprint-2\n",
             encoding="utf-8")
-        p = run(True, 200, base)
+        p = run(True, base)
         ok("反向对照 B 卡号↔文件名不符 → FAIL",
            any("与文件名" in x for x in p), f"problems={p[:1]}")
         _fixture(base)
@@ -275,7 +271,7 @@ def selfcheck(check_real: bool = True) -> int:
         # 反向对照 C：缺必备节
         (base / "docs/iteration/phases/demo/cards/D-1.md").write_text(
             "# D-1\n\n- `card`: D-1\n\n## 正文\n只有正文。\n", encoding="utf-8")
-        p = run(True, 200, base)
+        p = run(True, base)
         ok("反向对照 C 缺必备节 → FAIL（strict 档）", any("缺必备节" in x for x in p), f"problems={p[:1]}")
         _fixture(base)
 
@@ -284,7 +280,7 @@ def selfcheck(check_real: bool = True) -> int:
             "# Sprint-1\n\n## 3. 看板\n\n说明文字里嵌了卡片正文：D-1 的正文内容写在这里，"
             "它应当只存在于本卡文件之中，任何 Sprint 文档都不应复制这段文字。\n",
             encoding="utf-8")
-        p = run(True, 120, base)
+        p = run(True, base)
         ok("反向对照 D Sprint 文档出现卡正文 → FAIL",
            any("整段重合" in x for x in p), f"problems={p[:1]}")
 
@@ -295,7 +291,7 @@ def selfcheck(check_real: bool = True) -> int:
             "# Sprint-1\n\n## 3. 看板\n\n" + ("填" * 61) + "\n\n"
             "D-1 的正文内容写在这里，它应当只存在于本卡文件之中，任何 Sprint 文档都不应复制这段文字。\n",
             encoding="utf-8")
-        p = run(True, 120, base)
+        p = run(True, base)
         ok("反向对照 D3 ≥61 字符填充规避 → FAIL（N7 回归样本）",
            any("整段重合" in x for x in p), f"problems={p[:1]}")
 
@@ -306,7 +302,7 @@ def selfcheck(check_real: bool = True) -> int:
             "# Sprint-1\n\n## 2. 计划\n\n| 卡号 | 主题 | 点 |\n|---|---|---|\n"
             "| D-1 | D-1 的正文内容写在这里，它应当只存在于本卡文件之中，任何 Sprint 文档都不应复制这段文字。 | 1 |\n",
             encoding="utf-8")
-        p = run(True, 120, base)
+        p = run(True, base)
         ok("反向对照 D2 合法计划表行（首格=卡号，正文位于单元格开头）→ PASS",
            not any("整段重合" in x for x in p), f"problems={p[:1]}")
         (base / "docs/iteration/sprint/2026-01-01-sprint-1.md").unlink(missing_ok=True)
@@ -315,7 +311,7 @@ def selfcheck(check_real: bool = True) -> int:
         (base / "docs/iteration/phases/demo/cards/D-3.md").write_text(
             "# D-3\n\n- `card`: D-3\n\n## 状态\nx\n\n## 规模\n1\n\n## 来源\ny\n\n## Sprint\nz\n",
             encoding="utf-8")
-        p = run(True, 200, base)
+        p = run(True, base)
         ok("反向对照 E 孤儿卡文件 → FAIL", any("孤儿文件" in x for x in p), f"problems={p[:1]}")
 
     # 真数据：**A3 起按默认档（strict）判**——由 `main()` 调用（`--selftest` 可显式跳过）。
@@ -326,7 +322,7 @@ def selfcheck(check_real: bool = True) -> int:
         ok("真数据判据由 main() 以默认档执行", True, "（本函数只跑 fixture 自检）")
         print(f"\nALL PASS ({PASSED} assertions)")
         return 0
-    real = run(True, 0)
+    real = run(True)
     if real:
         print(f"FAIL: 真数据未通过默认档（{len(real)} 项）：")
         for p in real[:40]:
@@ -349,12 +345,6 @@ def main() -> int:
     为什么默认档必须判真数据：套件（`run_suite.py`）以**无参**调用本脚本，默认档若只做 fixture
     自检，"SUITE PASSED" 就与真数据无关——这正是 N7 实测的失效形态（同一坏数据 rc=0+WARN）。
     """
-    if "--body-threshold" in sys.argv:
-        # finding M-d/N7 实测的**死旋钮**：本参数贯穿 run/check_phase 但从未被读取，
-        # 真阈值一律取自 agents/policy.json::card_index。原样保留只为兼容旧命令行，
-        # 但必须**显式打印"已失效"**——"旋钮转了但没接线"正是这条 finding 的形态。
-        print("NOTE: --body-threshold 已失效（阈值一律取自 agents/policy.json::card_index，"
-              "见 finding M-d/N7）；本参数当前无任何消费点。")
     if "--selftest" in sys.argv:
         # 显式调试档：**只跑 fixture**（真数据判据由默认档/--check 负责，不重复判两处）
         return selfcheck(check_real=False)
