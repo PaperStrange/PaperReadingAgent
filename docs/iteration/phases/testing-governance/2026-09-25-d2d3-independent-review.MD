@@ -77,7 +77,7 @@
 
 | 步 | 动作 | 依赖 | 完成判据 |
 |---|---|---|---|
-| **A1** | 修 **M-b**（锚点规范化 + fail-closed + 受控回填口） | 无（二查终报不阻塞） | 短 sha/不存在 sha 被拒；审计 run 覆盖窗口可正确重算；C3 在真数据上能算出 `092a2f78..HEAD` 的归属或按例外表放行 |
+| **A1** | 修 **M-b/N5**（锚点规范化 + fail-closed + 受控回填口） | 无 | ✅ **已完成（2026-09-25）**：`register --coverage-anchor` 与 `finish --covers-through` 走 `_resolve_sha()`（`git rev-parse --verify <v>^{commit}` → 必须 40 位十六进制），解析失败 **`COVERAGE-ANCHOR-ERROR` fail-closed**；新增受控回填子命令 `set-anchor <run_id> --anchor <sha> --reason <≥10 字符>`，每次回填追写 `anchor_backfills`（可审计）。**反向对照**：`verify_agentops.py` **UC-17 四条**（短 sha **被规范化**为 40 位 / 无法解析的 sha **被拒** / 回填缺理由**被拒** / 回填成功且留痕）→ **ALL PASS（61 断言）**。**回填实测**：`doc-audit-066`、`code-review-067`、`code-review-065(cancelled)` 三条锚点由 `092a2f78` → `092a2f784c9749126dc0f7483fe78ba721f424d0`（各 `backfills=1`）；回填后 `verify_close_readiness --sprint sprint-17` **不再输出"静默丢弃/不是完整 sha"** → 窗口恢复有效 |
 | **A2** | 修 **M-a**（棘轮上限制 + `review_by`） | 无 | 基线文件注入 1 处新缺陷 → FAIL；正常 → PASS |
 | **A3** | 修 **M-e/M-f**（`card_index` 默认 strict；CI 显式调用四个闸门并打印实际参数） | 无 | CI 日志可见各闸门档位；strict 判据在 CI 运行 |
 | **A4** | 收口 **M-c**（三处数字改引用工具输出） | 无 | `grep` 无手抄的 95/1858/17 |

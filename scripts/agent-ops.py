@@ -128,6 +128,21 @@ def _git_head() -> str:
     return head_sha(REPO_ROOT)
 
 
+def _resolve_sha(value: str) -> str | None:
+    """把用户给的锚点/区间端点**规范化成完整 40 位 sha**；无法解析返回 None（调用方 fail-closed）。
+
+    审核发现 F1/N5：短 sha 会让 `CoverageWindow.covers()` 恒 False（`order` 里只有完整 sha），
+    该 run 的覆盖窗口被**静默丢弃**。因此这里不接受"能存就行"的值：能解析就规范化，不能解析就报错。
+    """
+    value = (value or "").strip()
+    if not value:
+        return None
+    from verify.agent_policy import git
+
+    out = git(REPO_ROOT, "rev-parse", "--verify", f"{value}^{{commit}}", allow_fail=True).strip()
+    return out if re.fullmatch(r"[0-9a-f]{40}", out) else None
+
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -370,7 +385,17 @@ def cmd_register(args: argparse.Namespace) -> None:
     if spec is not None:
         fm = parse_frontmatter(spec.path)
         coverage_window = (fm.get("coverage_window") or "").strip() or None
-    coverage_anchor = (getattr(args, "coverage_anchor", "") or "").strip() or _git_head()
+    raw_anchor = (getattr(args, "coverage_anchor", "") or "").strip()
+    if raw_anchor:
+        # 审核 F1/N5：显式锚点必须**规范化**（短 sha → 完整 40 位），解析失败 fail-closed
+        resolved = _resolve_sha(raw_anchor)
+        if not resolved:
+            raise SystemExit(
+                f"COVERAGE-ANCHOR-ERROR: --coverage-anchor {raw_anchor!r} 无法解析为提交"
+                "（短 sha 会让覆盖窗口被静默丢弃，故 fail-closed）")
+        coverage_anchor = resolved
+    else:
+        coverage_anchor = _git_head()
     entry = {
         "run_id": run_id,
         "task_id": args.task or "",
@@ -435,6 +460,30 @@ def cmd_update(args: argparse.Namespace) -> None:
 
 
 @_with_registry_lock
+def cmd_set_anchor(args: argparse.Namespace) -> None:
+    """受控回填：修正**已登记** run 的 `coverage_anchor`（审核 N5/F1 要求的口子）。
+
+    约束：必须给 `--reason`（≥10 字符：谁修、为什么、依据哪条审核发现）；sha 必须可解析并规范化；
+    每次回填追加一条 `anchor_backfills` 记录（可审计，不是静默改数）。
+    """
+    data = _load_registry()
+    r = _find_run(data, args.run_id)
+    resolved = _resolve_sha(args.anchor)
+    if not resolved:
+        raise SystemExit(f"COVERAGE-ANCHOR-ERROR: {args.anchor!r} 无法解析为提交（fail-closed）")
+    reason = (args.reason or "").strip()
+    if len(reason) < 10:
+        raise SystemExit("回填必须给 --reason（≥10 字符的理由）：谁修、为什么、依据哪条审核发现")
+    old = r.get("coverage_anchor")
+    r["coverage_anchor"] = resolved
+    r.setdefault("anchor_backfills", []).append(
+        {"at": _now(), "from": old, "to": resolved, "reason": reason, "by": args.by})
+    _save_registry(data)
+    print(f"anchor updated {r['run_id']}: {str(old or '')[:8] or 'none'} -> {resolved[:8]} "
+          f"(backfills={len(r['anchor_backfills'])})")
+
+
+@_with_registry_lock
 def cmd_finish(args: argparse.Namespace) -> None:
     data = _load_registry()
     r = _find_run(data, args.run_id)
@@ -447,7 +496,15 @@ def cmd_finish(args: argparse.Namespace) -> None:
     r["ended_at"] = _now()
     # TG-15 ③：收尾时记录覆盖上界（= 收尾时的 HEAD）——此前"三查锚点"要人往 Sprint 文档手抄，
     # 抄漏/抄错没有任何装置能发现；改为 run 自动记录后，闸门直接读账本，文档不再是覆盖真源。
-    r["covers_through"] = (getattr(args, "covers_through", "") or "").strip() or _git_head() or r.get("covers_through")
+    raw_through = (getattr(args, "covers_through", "") or "").strip()
+    if raw_through:
+        resolved_through = _resolve_sha(raw_through)
+        if not resolved_through:
+            raise SystemExit(
+                f"COVERAGE-ANCHOR-ERROR: --covers-through {raw_through!r} 无法解析为提交（fail-closed）")
+        r["covers_through"] = resolved_through
+    else:
+        r["covers_through"] = _git_head() or r.get("covers_through")
 
     if args.output_chars is not None:
         r["output_chars"] = args.output_chars
@@ -869,6 +926,11 @@ def main() -> int:
     p.add_argument("--write", action="store_true", help="把候选例外写到 agents/runtime/coverage-candidates.json")
     p.add_argument("--fail-on-unowned", action="store_true", help="存在未归属提交即退出 1（CI/关闭前置）")
 
+    p = sub.add_parser("set-anchor", help="审核 N5/F1：受控回填已登记 run 的 coverage_anchor（必须给理由）")
+    p.add_argument("run_id")
+    p.add_argument("--anchor", required=True, help="新锚点（短 sha 会被规范化为完整 40 位；无法解析则拒绝）")
+    p.add_argument("--reason", required=True, help="回填理由（≥10 字符）：谁修、为什么、依据哪条审核发现")
+    p.add_argument("--by", default="main-agent")
     p = sub.add_parser("validate-spec")
     p.add_argument("spec_file")
     p = sub.add_parser("fetch-spec")
@@ -884,6 +946,7 @@ def main() -> int:
         "list": cmd_list, "validate-spec": cmd_validate_spec, "fetch-spec": cmd_fetch_spec,
         "parse-report": cmd_parse_report, "prices-derive": _derive_prices,
         "round": cmd_round, "interrupt": cmd_interrupt, "close-sync": cmd_close_sync,
+        "set-anchor": cmd_set_anchor,
     }[args.cmd](args)
     return 0
 

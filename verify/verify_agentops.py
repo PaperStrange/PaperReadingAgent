@@ -424,6 +424,33 @@ def main() -> int:
            r.returncode == 0, (r.stdout + r.stderr).strip()[:80])
 
 
+        # UC-17（审核 F1/N5）：coverage_anchor 必须**规范化**为完整 sha，无法解析则 fail-closed
+        head_full = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"],
+                                   capture_output=True, text=True, encoding="utf-8").stdout.strip()
+        head_short = head_full[:8]
+        run(["register", "--role", "impact-assessment", "--task", "anchor", "--spec", "impact-assessment@1.4.4",
+             "--run-id", "run-uc17-short", "--coverage-anchor", head_short], base_env, check=True)
+        e17 = next(x for x in json.loads(registry.read_text(encoding="utf-8"))["runs"]
+                   if x["run_id"] == "run-uc17-short")
+        ok("UC-17 短 sha 锚点被规范化为完整 40 位", e17.get("coverage_anchor") == head_full,
+           f"anchor={str(e17.get('coverage_anchor'))[:12]}… ({len(str(e17.get('coverage_anchor')))} chars)")
+        r = run(["register", "--role", "impact-assessment", "--task", "anchor", "--spec", "impact-assessment@1.4.4",
+                 "--run-id", "run-uc17-bad", "--coverage-anchor", "deadbeefdeadbeef"], base_env, raw=True)
+        ok("UC-17 无法解析的锚点 → 拒绝（fail-closed，不静默存坏值）",
+           r.returncode != 0 and "COVERAGE-ANCHOR-ERROR" in (r.stdout + r.stderr),
+           (r.stdout + r.stderr).strip()[:70])
+        r = run(["set-anchor", "run-uc17-short", "--anchor", head_short, "--reason", "太短"], base_env, raw=True)
+        ok("UC-17 回填缺理由（<10 字符）→ 拒绝", r.returncode != 0 and "理由" in (r.stdout + r.stderr),
+           (r.stdout + r.stderr).strip()[:70])
+        r = run(["set-anchor", "run-uc17-short", "--anchor", head_short,
+                 "--reason", "审核 F1：短 sha 使覆盖窗口被静默丢弃，回填为完整 sha"], base_env, raw=True)
+        e17b = next(x for x in json.loads(registry.read_text(encoding="utf-8"))["runs"]
+                    if x["run_id"] == "run-uc17-short")
+        ok("UC-17 受控回填成功且留痕（anchor_backfills）",
+           r.returncode == 0 and e17b.get("coverage_anchor") == head_full
+           and len(e17b.get("anchor_backfills") or []) == 1,
+           f"backfills={len(e17b.get('anchor_backfills') or [])}")
+
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))
         data["runs"][0]["output_chars"] = 999999  # 手改
