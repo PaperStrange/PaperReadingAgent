@@ -522,6 +522,21 @@ def _validate_scope(args: argparse.Namespace, data: dict) -> tuple[str, str | No
 
 
 
+def _norm_sprint(value: object) -> str | None:
+    """Sprint 标识归一成**纯编号字符串**（`"Sprint-18"` / `"18"` / `"018"` → `"18"`）。
+
+    与 `verify/verify_close_readiness.py::_norm_sprint` **同一口径**——M-A 判定域
+    派生要按它比较；两处各写一套的话，"回填进得去、闸门认不出"就会重现。
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+    m = re.search(r"[Ss]print[-\s]?0*(\d+)", text)
+    if m is None:
+        m = re.fullmatch(r"0*(\d+)", text)
+    return m.group(1) if m else None
+
+
 @_with_registry_lock
 def cmd_register(args: argparse.Namespace) -> None:
     """`register` 子命令：登记一条 run（校验 scope 来源、规范化锚点、初始化测量字段）。"""
@@ -557,11 +572,23 @@ def cmd_register(args: argparse.Namespace) -> None:
         coverage_anchor = resolved
     else:
         coverage_anchor = _git_head()
+    # M-A（TG-19）：**显式 Sprint 身份**——判定域由此派生（闸门侧 `run_sprint_identity()`
+    # 优先读本字段，读不到才退回从 `task_id` 猜）。给不出合法编号即 fail-closed：
+    # 一个拼错的身份会让该 run 在**所有** Sprint 的判定域里都"不可派生"，
+    # 从而被 fail-closed 保留进别的 Sprint（静默噪音），比当场报错难查得多。
+    raw_sprint = (getattr(args, "sprint", "") or "").strip()
+    sprint_id = _norm_sprint(raw_sprint) if raw_sprint else None
+    if raw_sprint and sprint_id is None:
+        raise SystemExit(
+            f"SPRINT-ID-ERROR: --sprint {raw_sprint!r} 归不出 Sprint 编号"
+            "（接受形如 `Sprint-18` / `18` / `018`）；身份宁可留空也不要写错")
     entry = {
         "run_id": run_id,
         "task_id": args.task or "",
         "role": args.role,
         "spec_source": args.spec,
+        # M-A：判定域派生用的显式身份（可空 = 未声明；闸门会退回 task_id 派生）
+        "sprint": sprint_id,
         "scope_source": scope_source,
         "scope_deviation": scope_deviation,
         # TG-15：覆盖窗口为**自动记录**字段；covered(run) = (coverage_anchor,
@@ -781,6 +808,49 @@ def cmd_set_scope(args: argparse.Namespace) -> None:
               + f" (backfills={len(r['scope_backfills'])})")
     else:
         print(f"set-scope {r['run_id']}: 无变化（未写盘）")
+
+
+@_with_registry_lock
+def cmd_set_sprint(args: argparse.Namespace) -> None:
+    """受控回填：给**已登记** run 补/改 `sprint`（Sprint 身份；`TG-19` M-A 收尾）。
+
+    **为什么需要这个口**：M-A 的判定域按 Sprint 身份派生，而 2026-09-25 实测出三条
+    身份缺口（见 `cards/TG-19.md`「交付落地」节的数据缺口 2/3）：
+
+      * `run-…-065` 的 `task_id` **为空**（B1 记录里它是 Sprint-17 的作用域 run）
+        ⇒ 身份不可派生；
+      * `run-…-code-review-074`~`-080`（修复验证复核）的 `task_id` 不含 Sprint
+        ⇒ 会被"窗口内保留"规则带进**上一个** Sprint 的域
+        （实测把 Sprint-16 的域右端拉到 Sprint-17 的提交）；
+      * `run-…-062`（TG-15 改动面评估）同族。
+
+    与 `set-scope` / `set-anchor` **同构**：必须 `--reason`（≥10 字符）；同值 = 无操作
+    （不改库、不留痕、报"无变化"）；每次实际变更追加 `sprint_backfills`
+    （field/from/to/reason/by）。
+    `role` 不参与本判据（身份是**既成事实**，不是角色属性），故不由命令行覆盖。
+    """
+    data = _load_registry()
+    r = _find_run(data, args.run_id)
+    reason = (args.reason or "").strip()
+    if len(reason) < 10:
+        raise SystemExit(
+            "回填必须给 --reason（≥10 字符的理由）：为什么回填、依据哪份记录/卡")
+    new = _norm_sprint(args.sprint)
+    if new is None:
+        raise SystemExit(
+            f"SPRINT-ID-ERROR: --sprint {args.sprint!r} 归不出 Sprint 编号"
+            "（接受形如 `Sprint-17` / `17` / `017`）；身份宁可留空也不要写错")
+    old = r.get("sprint")
+    if (old or None) == new:
+        print(f"set-sprint {r['run_id']}: 无变化（未写盘；现值={new!r}）")
+        return
+    r["sprint"] = new
+    r.setdefault("sprint_backfills", []).append(
+        {"at": _now(), "field": "sprint", "from": old, "to": new,
+         "reason": reason, "by": args.by})
+    _save_registry(data)
+    print(f"sprint updated {r['run_id']}: {old!r} -> {new!r} "
+          f"(backfills={len(r['sprint_backfills'])})")
 
 
 @_with_registry_lock
@@ -1372,6 +1442,9 @@ def main() -> int:
     p.add_argument("--context-input-tokens", type=int)
     p.add_argument("--context-max-tokens", type=int)
     p.add_argument("--run-id", default="")
+    p.add_argument("--sprint", default="",
+                   help="TG-19 M-A：该 run 属于哪个 Sprint（判定域派生的显式身份；"
+                        "可空 = 未声明，闸门退回从 task_id 派生）")
     p.add_argument("--scope-source", default="",
                    help="TG-11：评审类 run 的 scope 来源，形如 impact-assessment:<run_id>")
     p.add_argument("--deviation", default="",
@@ -1465,6 +1538,16 @@ def main() -> int:
     p.add_argument("--reason", required=True,
                    help="回填理由（≥10 字符）：为什么回填、依据哪份记录/卡")
     p.add_argument("--by", default="main-agent")
+    p = sub.add_parser("set-sprint",
+                       help="TG-19 M-A 收尾：受控回填 run 的 Sprint 身份"
+                            "——判定域按它派生；必须给理由，同值=无操作")
+    p.add_argument("run_id")
+    p.add_argument("--sprint", required=True,
+                   help="新 Sprint 身份（`Sprint-17` / `17` / `017`；"
+                        "归不出编号即 fail-closed）")
+    p.add_argument("--reason", required=True,
+                   help="回填理由（≥10 字符）：为什么回填、依据哪份记录/卡")
+    p.add_argument("--by", default="main-agent")
     p = sub.add_parser("mark-produced",
                        help="D0-3(a)/TG-17⑤：把已登记 run **逐条**标注为「产出型 run」"
                             "（实现类工作挂评审 role，不承担内容覆盖）；必带理由+留痕")
@@ -1490,6 +1573,7 @@ def main() -> int:
         "parse-report": cmd_parse_report, "prices-derive": _derive_prices,
         "round": cmd_round, "interrupt": cmd_interrupt, "close-sync": cmd_close_sync,
         "set-anchor": cmd_set_anchor, "set-scope": cmd_set_scope,
+        "set-sprint": cmd_set_sprint,
         "set-output-chars": cmd_set_output_chars,
         "mark-produced": cmd_mark_produced,
     }[args.cmd](args)

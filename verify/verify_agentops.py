@@ -1022,6 +1022,60 @@ def main() -> int:
            f"rc={r.returncode} marks={len(row20b.get('produced_only_marks') or [])} "
            f"problems={_empty_window_problems(row20b)[:1]}")
 
+        # UC-22（TG-19 M-A 收尾）：Sprint 身份的**显式登记 + 受控回填**。
+        # 判定域按 `sprint` 字段派生 ⇒ 身份写错会让该 run 静默掉进**别的** Sprint 的域；
+        # 而"新函数插在装饰器与它的函数之间"会让 `@_with_registry_lock` 挂错对象
+        # （2026-09-25 实测：`register` 因此**丢掉账本锁**、`_norm_sprint` 反而拿到锁并
+        # 在 `cmd_set_sprint` 内自锁超时）⇒ 本 UC 同时断言"写命令仍在锁内"。
+        run(["register", "--role", "impact-assessment", "--task", "uc22-sprint-id",
+             "--spec", "impact-assessment@1.4.4", "--run-id", "run-uc22-sprint",
+             "--sprint", "Sprint-18"], base_env, check=True)
+
+        def _row22(rid: str = "run-uc22-sprint") -> dict:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+            return next(x for x in data["runs"] if x["run_id"] == rid)
+
+        ok("UC-22 register --sprint 归一化：'Sprint-18' → '18'（与闸门同口径：纯编号）",
+           _row22().get("sprint") == "18", f"sprint={_row22().get('sprint')!r}")
+        r = run(["register", "--role", "impact-assessment", "--task", "bad",
+                 "--spec", "impact-assessment@1.4.4", "--run-id", "run-uc22-bad",
+                 "--sprint", "abc"], base_env, raw=True)
+        present = {x["run_id"] for x in json.loads(registry.read_text(encoding="utf-8"))["runs"]}
+        ok("UC-22 反向对照：非法身份（abc）→ 拒绝且不留半条 run（fail-closed）",
+           r.returncode != 0 and "SPRINT-ID-ERROR" in (r.stdout + r.stderr)
+           and "run-uc22-bad" not in present, f"rc={r.returncode}")
+        r = run(["set-sprint", "run-uc22-sprint", "--sprint", "19",
+                 "--reason", "UC-22：判定域派生所需的身份回填（受控、带理由）"],
+                base_env, raw=True)
+        marks = _row22().get("sprint_backfills") or []
+        ok("UC-22 set-sprint 回填成功 + 四件套留痕（field/from/to/reason/by）",
+           r.returncode == 0 and _row22().get("sprint") == "19" and len(marks) == 1
+           and {"field", "from", "to", "reason", "by"} <= set(marks[-1]),
+           f"rc={r.returncode} sprint={_row22().get('sprint')!r} marks={len(marks)}")
+        r = run(["set-sprint", "run-uc22-sprint", "--sprint", "Sprint-19",
+                 "--reason", "UC-22：同值必须无操作（不得追加假留痕）"],
+                base_env, raw=True)
+        ok("UC-22 幂等/防假痕：同值 = 无操作（报『无变化』且留痕条数不变）",
+           r.returncode == 0 and "无变化" in r.stdout
+           and len(_row22().get("sprint_backfills") or []) == 1,
+           f"rc={r.returncode} marks={len(_row22().get('sprint_backfills') or [])}")
+        r = run(["set-sprint", "run-uc22-sprint", "--sprint", "20",
+                 "--reason", "short"], base_env, raw=True)
+        ok("UC-22 反向对照：过短 --reason → 拒绝（回填必须带可核理由）",
+           r.returncode != 0, f"rc={r.returncode}")
+        probe = subprocess.run(
+            [sys.executable, "-c",
+             "import importlib.util;spec=importlib.util.spec_from_file_location("
+             "'a','scripts/agent-ops.py');m=importlib.util.module_from_spec(spec);"
+             "spec.loader.exec_module(m);"
+             "print(','.join(n for n in ('cmd_register','cmd_set_sprint','cmd_update',"
+             "'cmd_finish','cmd_set_scope','cmd_set_anchor','cmd_round',"
+             "'cmd_interrupt') if not hasattr(getattr(m,n),'__wrapped__')))"],
+            cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8")
+        ok("UC-22 锁覆盖：写命令必须仍在 `@_with_registry_lock` 内（装饰器不得被挤开）",
+           probe.stdout.strip() == "",
+           f"未加锁={probe.stdout.strip()!r} rc={probe.returncode}")
+
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))
         data["runs"][0]["output_chars"] = 999999  # 手改

@@ -126,3 +126,12 @@
 - **反向对照**：改 `VERIFY_META` 一句话、不 derive ⇒ `verify_matrix.py check` 必 FAIL（本次实测）；derive 后转 PASS（同时刻实测）。
 - **复用面**：一切"由源生成的产物"（`TEST-MATRIX.MD`、`tg14-baseline.json`、`suite_result.json`、`prices.json` 派生价表…）——**改源就要重生成；本地绿 ≠ 派生一致**。
 
+## 案例 14｜新函数插在**装饰器与它的函数之间** ⇒ 守卫挂错对象、被守卫的函数**裸奔**
+
+- **现象**：为 `TG-19` M-A 收尾加 `_norm_sprint()` 时，我把它插在 `@_with_registry_lock` 与 `def cmd_register(...)` **之间**——装饰器于是挂到了 `_norm_sprint` 上。后果两条：① **`register` 丢掉了账本锁**（登记路径重新变成 last-writer-wins 竞态，正是 M10 当初加锁要治的形态）；② `_norm_sprint` 被加锁，而它在 `cmd_set_sprint`（同样加锁）内部被调用 ⇒ **同进程二次加锁**，Windows `msvcrt.locking` 重试 ~10s 后抛"锁获取超时"。表现为"新命令一跑就报锁被占用"，而裸锁、其他写命令（`set-anchor`/`set-output-chars`）全都正常——**症状指向锁，根因在装饰器**。
+- **证据**：`set-sprint` CLI 实测 `锁获取超时… 被另一进程占用`（9.1s）；逐层排除记录——裸 `_registry_lock()` 三次连续获取均 0.0s OK；`cmd_set_sprint.__wrapped__(ns)`（绕过装饰器）**成功**写入；patch `_file_lock` 打 `traceback` 后栈显示第二次获取发生在 `cmd_set_sprint:834 | new = _norm_sprint(args.sprint)`，且调用者是 `wrapper:339`。
+- **根因**：Python 装饰器与它修饰的 `def` 之间**不允许插入任何语句**——插入即"偷走装饰器"。而该错误**不会报语法错**，只会让守卫静默换人（本例里两处后果都是静默的：丢锁不可见、自锁只表现为超时）。
+- **机制（已落）**：① 把 `_norm_sprint` 移到装饰器**之上**（恢复 `cmd_register` 的锁）；② **机检**——`verify/verify_agentops.py` 的 UC-22 里加了"8 条写命令必须都带守卫"这一条（子进程 + importlib 读真模块，不是读源码文本），**装饰器再被挤开就红**。
+- **反向对照**：修前 `cmd_register` 缺 `__wrapped__`（丢锁）、`_norm_sprint` 反而带守卫（实测栈）；修后 `未加锁=''` 且 `set-sprint` 全路径通过（写入 + 留痕 + 同值无操作）。
+- **复用面**：一切"用装饰器挂守卫"的机制（锁、审计留痕、权限、限流）——**守卫与函数的相邻性必须机检**；凡在两者之间插入代码的编辑，都要在同一提交里跑"守卫覆盖"断言。
+
