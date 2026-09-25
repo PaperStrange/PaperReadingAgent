@@ -22,6 +22,11 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 2026-09-25（未闭环核查 O1）：checkout@v4 默认 fetch-depth=1（浅克隆），而关闭前置闸门的
+          # C3 覆盖闭环要跑 `git rev-list <锚点>..HEAD`——浅克隆下锚点不可达会直接报错。
+          # 填真锚点后该分支首次实跑，故必须取全历史。
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -144,6 +149,9 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 同上（e2e 手动作业）：全历史，避免锚点不可达。
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
