@@ -145,6 +145,49 @@ def ratchet_problems(current: dict, previous: dict | None, *, today: str,
                     f"[棘轮] {pointer} 的 {parent}.measured_total={total} ≠ 上限之和 {s}"
                     f"（差 {total - s}）——改对或删掉该字段；留着一个没人读的『实测总数』"
                     f"就是静默配额的另一种写法")
+        # ---- M-C（TG-19，2026-09-25 D3）：把重评时的**实测值钉进政策** -------------
+        # 为什么需要：原判据只与 `git HEAD` 比较 ⇒ 只拦得住**未提交**的上调；
+        # 一次**已提交**的放宽即成为新基线（复核机制缺口 2 / 3-LEARNED 1.66）。
+        # 下面三条把"cap 记在实测之上"变成可机检的事实，
+        # `committed_rebase_problems()` 再把"提交态放宽"变成**具名事件**。
+        measured_ptr = f"{parent}.measured_value" if parent else "measured_value"
+        measured_at_ptr = f"{parent}.measured_at" if parent else "measured_at"
+        measured = dig(current, measured_ptr)
+        measured_at = dig(current, measured_at_ptr)
+        if not measured_at:
+            problems.append(f"[棘轮] {pointer} 缺 {measured_at_ptr}——没有测量日期的"
+                            f"实测快照无法判断它是否还对应这批上限（fail-closed）")
+        if not isinstance(measured, dict):
+            problems.append(f"[棘轮] {pointer} 缺 {measured_ptr}（对象）——没有实测快照"
+                            f"就无法判定『上限是否记在实测之上』；cap 因此可能是静默配额")
+        else:
+            for key, value in sorted(caps.items()):
+                if key not in measured:
+                    problems.append(f"[棘轮] {measured_ptr} 缺键 {key!r}——上限表里有、"
+                                    f"快照里没有 ⇒ 该键的上限无从对照（fail-closed）")
+                    continue
+                try:
+                    cap_v, meas_v = int(value), int(measured[key])
+                except (TypeError, ValueError):
+                    problems.append(f"[棘轮] {pointer}.{key} 或 {measured_ptr}.{key} "
+                                    f"不是整数（cap={value!r} measured={measured[key]!r}）")
+                    continue
+                if cap_v > meas_v:
+                    problems.append(
+                        f"[棘轮] {pointer}.{key} 的上限 {cap_v} **高于**重评时的实测 "
+                        f"{meas_v}（{measured_at_ptr}={measured_at}）⇒ cap 记在实测之上 = "
+                        f"给新增违规发**静默配额**；要么把 cap 降到实测，要么走一次"
+                        f"『重评基线』（同时改 measured_value 并写 rebased_at + 理由）")
+            for key in sorted(set(measured) - set(caps)):
+                problems.append(f"[棘轮] {measured_ptr} 多出键 {key!r}（上限表里没有）"
+                                f"——实测值里留着没人读的键 = 死数据/拼写漂移")
+            if isinstance(total, int):
+                ms = sum(v for v in measured.values() if isinstance(v, int))
+                if ms != total:
+                    problems.append(
+                        f"[棘轮] {parent}.measured_total={total} ≠ 实测快照之和 {ms}"
+                        f"（差 {total - ms}）——『实测总数』必须同时等于 Σcaps 与"
+                        f" Σmeasured_value")
         if previous is None:
             warnings.append(f"{pointer}: 无 git HEAD 可比基准（新分支/未入库）——本次只判 review_by")
             continue
@@ -165,6 +208,49 @@ def ratchet_problems(current: dict, previous: dict | None, *, today: str,
                                 f"（上限只许下调；要放宽必须走『重评基线』并改 review_by，"
                                 f"而不是改数字——否则新增违规会被静默吸收）")
     return problems, warnings
+
+
+def committed_rebase_problems(committed: dict | None, parent_policy: dict | None, *,
+                              pointers: tuple[tuple[str, str], ...]) -> list[str]:
+    """**提交态的放宽必须是一次具名事件**（M-C / `TG-19`）。
+
+    背景（复核机制缺口 2）：`ratchet_problems` 比的是"工作区 vs `git HEAD`"⇒ 它只能拦住
+    **未提交**的上调；一次**已提交**的放宽立刻成为新基线（`measured_total` 也可同步抬），
+    事后没有任何装置能看出它被放宽过。本函数比的是 **`HEAD` vs `HEAD~1`**：只要上一个
+    提交抬高了某个 `cap`（或抬高 `measured_value` 来"配合"），该棘轮块就必须带
+    **`rebased_at` + `rebased_reason`（≥10 字符）**——把盲区变成一条可审计的记录。
+    **它不判"这次放宽是否合理"**（那是评审的事），只保证"放宽有人署名、有理由、有日期"。
+    """
+    problems: list[str] = []
+    if committed is None or parent_policy is None:
+        return problems
+    for pointer, _review in pointers:
+        new_caps, old_caps = dig(committed, pointer), dig(parent_policy, pointer)
+        if not isinstance(new_caps, dict) or not isinstance(old_caps, dict):
+            continue
+        raised = [k for k, v in sorted(new_caps.items())
+                  if k in old_caps and isinstance(v, int)
+                  and isinstance(old_caps[k], int) and v > old_caps[k]]
+        block = pointer.rsplit(".", 1)[0] if "." in pointer else ""
+        mv_ptr = f"{block}.measured_value" if block else "measured_value"
+        new_mv, old_mv = dig(committed, mv_ptr), dig(parent_policy, mv_ptr)
+        raised_mv: list[str] = []
+        if isinstance(new_mv, dict) and isinstance(old_mv, dict):
+            raised_mv = [k for k, v in sorted(new_mv.items())
+                         if k in old_mv and isinstance(v, int)
+                         and isinstance(old_mv[k], int) and v > old_mv[k]]
+        if not (raised or raised_mv):
+            continue
+        rebased_at = dig(committed, f"{block}.rebased_at") if block else None
+        reason = dig(committed, f"{block}.rebased_reason") if block else None
+        if not rebased_at or not reason or len(str(reason).strip()) < 10:
+            problems.append(
+                f"[棘轮/提交态] {pointer} 在上一个提交（HEAD）里被**上调**"
+                f"（cap: {raised or '—'}；measured_value: {raised_mv or '—'}）"
+                f"却没有 `{block}.rebased_at` + `{block}.rebased_reason`（≥10 字符）⇒ "
+                f"提交态的放宽必须是一次**具名事件**（谁、何时、依据哪次实测）；"
+                f"补上这两个字段，或把上限改回去")
+    return problems
 
 
 def guard_problems(root: Path = ROOT) -> tuple[list[str], list[str]]:
@@ -223,24 +309,38 @@ def probe_o_mode(root: Path = ROOT) -> list[str]:
 def selftest() -> int:
     today = "2026-09-25"
     pointers = (("lint_readability_ratchet.caps", "lint_readability_ratchet.review_by"),)
-    cur = {"lint_readability_ratchet": {"caps": {"E501": 10}, "review_by": "2099-01-01"}}
+
+    def _blk(caps: dict, *, measured: dict | None = None,
+             review: str | None = "2099-01-01",
+             measured_at: str | None = "2026-09-25", **extra) -> dict:
+        """构造一个棘轮块（M-C 起 `measured_value` / `measured_at` 是**必备**字段）。"""
+        blk: dict = {"caps": caps,
+                     "measured_value": dict(caps) if measured is None else measured}
+        if review is not None:
+            blk["review_by"] = review
+        if measured_at is not None:
+            blk["measured_at"] = measured_at
+        blk.update(extra)
+        return blk
+
+    cur = {"lint_readability_ratchet": _blk({"E501": 10})}
     prev = {"lint_readability_ratchet": {"caps": {"E501": 10}}}
     problems, _ = ratchet_problems(cur, prev, today=today, pointers=pointers)
     ok("反向对照 A 上限不变 → PASS", problems == [], f"problems={problems[:1]}")
-    raised = {"lint_readability_ratchet": {"caps": {"E501": 11}, "review_by": "2099-01-01"}}
+    raised = {"lint_readability_ratchet": _blk({"E501": 11}, measured={"E501": 11})}
     problems, _ = ratchet_problems(raised, prev, today=today, pointers=pointers)
     ok("反向对照 B 上限上调（10 → 11）→ FAIL",
        any("上调" in p for p in problems), f"problems={problems[:1]}")
-    lowered = {"lint_readability_ratchet": {"caps": {"E501": 9}, "review_by": "2099-01-01"}}
+    lowered = {"lint_readability_ratchet": _blk({"E501": 9})}
     problems, _ = ratchet_problems(lowered, prev, today=today, pointers=pointers)
     ok("反向对照 C 上限下调（10 → 9）→ PASS（收紧永远放行）", problems == [], f"problems={problems[:1]}")
-    added = {"lint_readability_ratchet": {"caps": {"E501": 10, "D103": 5}, "review_by": "2099-01-01"}}
+    added = {"lint_readability_ratchet": _blk({"E501": 10, "D103": 5})}
     problems, _ = ratchet_problems(added, prev, today=today, pointers=pointers)
     ok("反向对照 D 新增上限键 → PASS（新对象进入棘轮）", problems == [], f"problems={problems[:1]}")
-    removed = {"lint_readability_ratchet": {"caps": {}, "review_by": "2099-01-01"}}
+    removed = {"lint_readability_ratchet": _blk({})}
     problems, _ = ratchet_problems(removed, prev, today=today, pointers=pointers)
     ok("反向对照 E 删除上限键 → PASS（回到严格判定，方向更紧）", problems == [], f"problems={problems[:1]}")
-    expired = {"lint_readability_ratchet": {"caps": {"E501": 10}, "review_by": "2020-01-01"}}
+    expired = {"lint_readability_ratchet": _blk({"E501": 10}, review="2020-01-01")}
     problems, _ = ratchet_problems(expired, prev, today=today, pointers=pointers)
     ok("反向对照 F review_by 过期 → FAIL", any("已过期" in p for p in problems), f"problems={problems[:1]}")
     missing = {"lint_readability_ratchet": {"caps": {"E501": 10}}}
@@ -249,15 +349,51 @@ def selftest() -> int:
        any("没有到期日" in p for p in problems), f"problems={problems[:1]}")
     # 反向对照 I（2026-09-25 复核 #3 finding）：`measured_total` 与上限之和必须相等——
     # 实测它曾停在 2833 而四类合计 2815（"没人读的第二份声明"，同族形态）。
-    skewed = {"lint_readability_ratchet": {"caps": {"E501": 10}, "review_by": "2099-01-01",
-                                           "measured_total": 18}}
+    skewed = {"lint_readability_ratchet": _blk({"E501": 10}, measured_total=18)}
     problems, _ = ratchet_problems(skewed, prev, today=today, pointers=pointers)
     ok("反向对照 I `measured_total` ≠ 上限之和 → FAIL（第二份会漂的声明）",
        any("measured_total" in p and "上限之和" in p for p in problems), f"problems={problems[:1]}")
-    aligned = {"lint_readability_ratchet": {"caps": {"E501": 10}, "review_by": "2099-01-01",
-                                            "measured_total": 10}}
+    aligned = {"lint_readability_ratchet": _blk({"E501": 10}, measured_total=10)}
     problems, _ = ratchet_problems(aligned, prev, today=today, pointers=pointers)
     ok("反向对照 I2 二者相等 → PASS（防假红）", problems == [], f"problems={problems[:1]}")
+
+    # ---- M-C（TG-19 D3）：棘轮完整性（实测值钉死 + 提交态放宽具名）----------------
+    no_meas = {"lint_readability_ratchet": {"caps": {"E501": 10},
+                                            "review_by": "2099-01-01",
+                                            "measured_at": "2026-09-25"}}
+    problems, _ = ratchet_problems(no_meas, prev, today=today, pointers=pointers)
+    ok("M-C 反向对照 J 缺 `measured_value` → FAIL（没有实测快照 ⇒ cap 可能是静默配额）",
+       any("measured_value" in p and "缺" in p for p in problems),
+       f"problems={problems[:1]}")
+    no_date = {"lint_readability_ratchet": _blk({"E501": 10}, measured_at=None)}
+    problems, _ = ratchet_problems(no_date, prev, today=today, pointers=pointers)
+    ok("M-C 反向对照 K 缺 `measured_at` → FAIL（实测快照没有测量日期）",
+       any("measured_at" in p for p in problems), f"problems={problems[:1]}")
+    over = {"lint_readability_ratchet": _blk({"E501": 12}, measured={"E501": 10})}
+    problems, _ = ratchet_problems(over, prev, today=today, pointers=pointers)
+    ok("M-C 反向对照 L cap 高于实测（12 > 10）→ FAIL 且点名『静默配额』",
+       any("静默配额" in p for p in problems), f"problems={problems[:1]}")
+    kset = {"lint_readability_ratchet": _blk({"E501": 10},
+                                             measured={"E501": 10, "D999": 1})}
+    problems, _ = ratchet_problems(kset, prev, today=today, pointers=pointers)
+    ok("M-C 反向对照 M 实测快照多出键（上限表里没有）→ FAIL（死数据/拼写漂移）",
+       any("多出键" in p for p in problems), f"problems={problems[:1]}")
+    # 提交态：HEAD vs HEAD~1 的**上调**必须有具名重评（否则盲区）
+    head_raised = {"lint_readability_ratchet": _blk({"E501": 12},
+                                                    measured={"E501": 12})}
+    problems = committed_rebase_problems(head_raised, prev, pointers=pointers)
+    ok("M-C 反向对照 N **提交态**上调而无声 → FAIL（复核机制缺口 2：提交后即成新基线）",
+       any("提交态" in p and "rebased_at" in p for p in problems),
+       f"problems={problems[:1]}")
+    named = {"lint_readability_ratchet": _blk(
+        {"E501": 12}, measured={"E501": 12}, rebased_at="2026-09-25",
+        rebased_reason="重评基线：按当次实测下调（E501 2631→2494）")}
+    problems = committed_rebase_problems(named, prev, pointers=pointers)
+    ok("M-C 反向对照 N2 同样的上调**带 rebased_at + 理由** → PASS（成为具名事件）",
+       problems == [], f"problems={problems[:1]}")
+    problems = committed_rebase_problems(named, head_raised, pointers=pointers)
+    ok("M-C 反向对照 N3 提交态**不变**时不做要求（防假红）", problems == [],
+       f"problems={problems[:1]}")
 
     with tempfile.TemporaryDirectory() as td:
         base = Path(td)
@@ -288,6 +424,11 @@ def main() -> int:
     current = json.loads((ROOT / POLICY_REL).read_text(encoding="utf-8"))
     previous = git_policy()
     problems, warnings = ratchet_problems(current, previous, today=today, pointers=RATCHETS)
+    # M-C：**提交态**的放宽（HEAD vs HEAD~1）必须带 `rebased_at` + `rebased_reason`——
+    # 这一层补的正是"与 git HEAD 比较"的盲区（复核机制缺口 2）。
+    committed, committed_parent = git_policy("HEAD"), git_policy("HEAD~1")
+    problems += committed_rebase_problems(committed, committed_parent,
+                                          pointers=RATCHETS)
     gp, gw = guard_problems()
     problems += gp
     warnings += gw
@@ -304,7 +445,8 @@ def main() -> int:
             print(f"  … 另有 {len(problems) - 40} 项")
         return 1
     print(f"GATE-INTEGRITY PASS：守卫行 {len(GUARD_REQUIRED)} 个闸门在位（含真实 `-O` 探针红）；"
-          f"{len(RATCHETS)} 个棘轮上限与 HEAD 逐项比较无上调")
+          f"{len(RATCHETS)} 个棘轮的上限与 HEAD 逐项比较无上调、且都带 "
+          f"`measured_value`/`measured_at`；提交态（HEAD vs HEAD~1）无未署名的放宽")
     rc = selftest()
     if rc == 0:
         print(f"EVIDENCE: verify_gate_integrity.py assertions={PASSED} rc=0 "

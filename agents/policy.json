@@ -59,7 +59,18 @@
         "missing_timestamp": 0,
         "rounds_mismatch": 1,
         "terminal_not_written_back": 0
-      }
+      },
+      "measured_value": {
+        "output_chars_zero": 12,
+        "missing_result_files_review": 9,
+        "zero_duration": 3,
+        "round_duration": 3,
+        "negative_duration": 0,
+        "missing_timestamp": 0,
+        "rounds_mismatch": 1,
+        "terminal_not_written_back": 0
+      },
+      "_measured_value_why": "M-C（TG-19，2026-09-25 D3）：重评基线那一刻的逐类实测值快照。判据：每个 cap ≤ 对应 measured_value、键集逐键相等、`measured_total`（若声明）同时等于两者之和；改任一侧必须带 `rebased_at` + `rebased_reason`。活读数由守门闸门 verify/verify_ledger_measurement.py 测并判 `实测 ≤ cap`。"
     }
   },
   "artifact_paths": {
@@ -172,6 +183,13 @@
       "D103": 205,
       "E501": 2494
     },
+    "measured_value": {
+      "D101": 12,
+      "D102": 46,
+      "D103": 205,
+      "E501": 2494
+    },
+    "_measured_value_why": "M-C（TG-19，2026-09-25 D3）：把**重评基线那一刻的实测值**钉进政策。判据（verify/verify_gate_integrity.py）：`cap ≤ measured_value` 逐键成立、`measured_value` 键集与 `caps` 逐键相等、`measured_total` 同时等于 Σcaps 与 Σmeasured_value；**改 caps 或 measured_value 必须带 `rebased_at` + `rebased_reason`**（提交态的放宽因此成为一次**具名事件**，不再是盲区）。**它不是活读数**：活读数由守门闸门（`verify_lint.py`）测并判 `实测 ≤ cap`；三者串起来即 `实测 ≤ cap ≤ 重评时实测`。",
     "_remeasure_2026_09_25_close": "关闭期**下调**（只减不增）：D103 207→205（补 10 处 public 函数 docstring）、E501 2631→2552（把本批新增/改写的长 CJK docstring 与注释行按**显示宽度**折行——ruff 的 E501 按显示宽度计、CJK 占 2 列）。上一版把 cap 记在实测之上（E501 2631 vs 冻结 HEAD 实测 2615）留下的**静默配额**已按 `docs/3-LEARNED.MD` 1.66 收掉：现在 **cap = 当次实测**（零余量）。**已知局限（复核 finding iv）**：`verify_gate_integrity.py` 的单调性判据与 `git HEAD` 比较 ⇒ 它只能拦住**未提交**的上调；一次**已提交**的放宽会成为新基线（要堵这一层需要『把实测值也钉进政策』，属 Sprint-18 候选）。**`measured_total` 必须等于四类 cap 之和**（该等式已由 `verify_gate_integrity.py` 机检——2026-09-25 复核 #3 实测它曾停在 2833 而实测合计 2815，属『没人读的第二份声明』，同族形态）。",
     "measured_total": 2757
   },
@@ -241,7 +259,16 @@
       "docs/iteration/sprint/2026-09-07-sprint-15.md": 12,
       "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD": 1,
       "docs/iteration/sprint/2026-09-12-sprint-16.md": 1
-    }
+    },
+    "measured_at": "2026-09-25",
+    "measured_value": {
+      "docs/iteration/sprint/2026-08-30-sprint-6.md": 1,
+      "docs/iteration/sprint/2026-09-07-sprint-15.md": 12,
+      "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD": 1,
+      "docs/iteration/sprint/2026-09-12-sprint-16.md": 1
+    },
+    "_measured_value_why": "M-C：上限来源＝各文件实测缺陷数（本表即 2026-09-25 实测），故 `measured_value` 与 `files` 逐键相等（零余量）。改任一侧都必须带 `rebased_at` + `rebased_reason`（见 verify_gate_integrity.py 的棘轮完整性判据）。",
+    "_tg18_note": "TG-18（D3）：这 15 处历史缺陷逐处修掉后，本键整体删除（棘轮归零不需要上限表）——删键本身也要带 `rebased_at` + 理由。"
   },
   "deduction_rates": {
     "_comment": "§2.1.1（用户 2026-09-25 采纳 v0）：**未闭环 critical/major 的扣率**。这是**政策数据**——不是文档举例、不是脚本常量；闸门与将来的结算调用一律从这里读（政策数据化，见 docs/1-WORKFLOW.MD §6）。守门闸门 = verify/verify_deduction_rates.py；条文见 docs/iteration/sprint/2026-09-21-governance-batch-plan.MD §2.1.1 与 cards/TG-15.md（两处**只引用本键，不复制数值**）。计分口径：以**被判级的卡**为对象，`扣分 = 卡点数 × Σ(未闭环发现的比例)`；比例只按**级别**取，不按条数线性累加。",
@@ -326,6 +353,42 @@
       {"id": "c_level_total", "regex": "C\\s*级[^\\n]{0,24}?\\d{3,}\\s*条", "hint": "C 级条数以 verify_lint.py 报告行现跑为准"}
     ],
     "baseline": {
+      "docs/3-LEARNED.MD": 8,
+      "docs/4-ALGORITHM.MD": 4,
+      "docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-learned.MD": 3,
+      "docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-runs.MD": 1,
+      "docs/iteration/phases/refactor-analysis/2026-09-21-fac13-14-impact.MD": 1,
+      "docs/iteration/phases/refactor-analysis/backlog.MD": 1,
+      "docs/iteration/phases/refactor-analysis/cards/F-AC10.md": 1,
+      "docs/iteration/phases/testing-governance/2026-09-25-d2d3-independent-review.MD": 1,
+      "docs/iteration/phases/testing-governance/2026-09-25-governance-exit-evidence.MD": 3,
+      "docs/iteration/phases/testing-governance/2026-09-25-open-items-check.MD": 3,
+      "docs/iteration/phases/testing-governance/cards/TG-10.md": 1,
+      "docs/iteration/phases/testing-governance/cards/TG-13.md": 1,
+      "docs/iteration/phases/testing-governance/cards/TG-14.md": 1,
+      "docs/iteration/phases/testing-governance/cards/TG-17.md": 3,
+      "docs/iteration/phases/testing-governance/cards/TG-6.md": 2,
+      "docs/iteration/phases/testing-governance/cards/TG-7.md": 4,
+      "docs/iteration/phases/testing-governance/cards/TG-8.md": 3,
+      "docs/iteration/pre-research/tech/2026-08-31-testing-governance.MD": 1,
+      "docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD": 1,
+      "docs/iteration/sprint/2026-08-30-sprint-8.md": 4,
+      "docs/iteration/sprint/2026-08-30-sprint-9.md": 2,
+      "docs/iteration/sprint/2026-08-31-f2-acceptance-guide.MD": 3,
+      "docs/iteration/sprint/2026-08-31-sprint-10.md": 1,
+      "docs/iteration/sprint/2026-08-31-sprint-11.md": 5,
+      "docs/iteration/sprint/2026-08-31-sprint-12.md": 3,
+      "docs/iteration/sprint/2026-08-31-sprint-13.md": 5,
+      "docs/iteration/sprint/2026-08-31-sprint-14.md": 5,
+      "docs/iteration/sprint/2026-09-07-sprint-15.md": 19,
+      "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD": 5,
+      "docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD": 9,
+      "docs/iteration/sprint/2026-09-12-sprint-16.md": 6,
+      "docs/iteration/sprint/2026-09-21-sprint-17.md": 1
+    },
+    "measured_at": "2026-09-25",
+    "_measured_value_why": "M-C（TG-19，2026-09-25 D3）：重评基线那一刻的逐文件实测值快照；判据 = 每个 cap ≤ 对应 measured_value、键集逐键相等，改任一侧必须带 `rebased_at` + `rebased_reason`。",
+    "measured_value":     {
       "docs/3-LEARNED.MD": 8,
       "docs/4-ALGORITHM.MD": 4,
       "docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-learned.MD": 3,
