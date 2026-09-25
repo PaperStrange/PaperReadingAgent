@@ -38,6 +38,7 @@
 | `verify_close_readiness.py` | TG-15 关闭前置闸门：C1 声明完备 / C2 指涉可核（含 A-M13 的"全账本 role 必有 spec"封闭世界）/ C3 覆盖闭环（锚点→域右端每提交有归属），需求全来自 fanout.json + spec frontmatter；含变异用例自 fanout 自动生成的反向对照；M-A（TG-19）：判定域必须由**被判定物**派生（Sprint 身份 + 该 Sprint 的作用域 run + 该 Sprint 的最后一条覆盖 run 作右端），域不可派生时退出码 4（domain-unavailable）且不产出结论；A-M13④：§9 在飞宽限内只提示不判（口径同 ledger_measurement.in_flight） | offline | — | 15s | ¥0 | — | none |
 | `verify_close_tax_reading.py` | 关闭税读数机器派生（TG-19 M-E）：从 code-review / doc-audit 报告重新派生 code_major / code_critical / doc_items，并要求 Sprint 文档的机读读数行与之逐字一致（禁止手抄）；含缺失行 fail-closed、报告缺失显式 SKIP 与反向对照自检 | offline | — | 5s | ¥0 | — | none |
 | `verify_config_schema.py` | 配置 SSOT 一致性 + M7 前端零硬编码 + Settings 升级基线护栏（114 断言，离线） | offline | — | 5s | ¥0 | /api/config_schema, /api/config/validate | none |
+| `verify_decision_register.py` | 决策登记册机检（TG-20 ③④⑤）：章节在位 / 条目 8 字段齐全 / 受控状态词 / 被取代指向存在的条目 / path:line 指针可核 / §4.1 引文↔出处逐条核对 / 待回填可见；含 9 条反向对照自检 | offline | — | 5s | ¥0 | — | none |
 | `verify_deduction_rates.py` | §2.1.1 扣率数据闸门：deduction_rates 读取器 fail-closed（缺键/超界/负值/全0/步长非法/判据缺证据/无到期日约束/折算级别越界）+ 纯函数 deduction_for 正反例（合并开关与比例均来自数据、封顶优先于取整） | offline | — | 5s | ¥0 | — | none |
 | `verify_derived_numbers.py` | 派生数字不得手抄：按文件棘轮约束"现测/实测 <数字>"式当期主张（断言数/卡数/文件数/脚本数/字节/C 级条数/棘轮计数）；生成物豁免、上限只减不增、review_by 到期即 FAIL；含 6 条反向对照自检 | offline | — | 4s | ¥0 | — | none |
 | `verify_e2e.py` | deepseek 全链路 6 步（LLM+vision + 本地 st- 向量） | network | deepseek | 120s | ¥0.3 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
@@ -62,4 +63,4 @@
 | `verify_smoke.py` | 冒烟 8 项：paperqa 导入/后端 12 路由加载/runtime_trace 目标/PDF 解析等（离线） | offline | — | 10s | ¥0 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session, /api/health, /api/providers, /api/config_schema, /api/config/validate, /api/translate_preview, /api/usage, /api/checkpoints | none |
 | `verify_usage.py` | Retro③ token 用量采集与成本换算：解析/累计/增量/价表查找/缺价不臆测/换算式/回调防裁剪（离线） | offline | — | 5s | ¥0 | — | none |
 
-共 56 个脚本：offline 25 / network 10 / gui 21。
+共 57 个脚本：offline 26 / network 10 / gui 21。

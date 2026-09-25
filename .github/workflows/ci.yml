@@ -117,6 +117,10 @@ jobs:
           python verify/verify_no_policy_hardcode.py
           Write-Host "gate: verify_lint.py  (档位=默认 A/B 硬闸门 + C 级只报；规则分级取自 agents/policy.json::lint_rules；ruff pin 见 requirements-windows.txt)"
           python verify/verify_lint.py
+          # TG-20 ③（2026-09-25 D6）：决策登记册机检——字段齐全 / 受控状态词 / 被取代指向存在的条目 /
+          # `path:line` 指针可核 / §4.1 逐字引文↔出处逐条核对。它此前是**纯人工**维护的。
+          Write-Host "gate: verify_decision_register.py  (档位=真数据：docs/6-DECISIONS.md；含 7 条反向对照自检)"
+          python verify/verify_decision_register.py
           # A-M12（2026-09-25 提前交付，Sprint 归属仍为 Sprint-18/G2）：结构守卫的**自检**档。
           # CI 里没有"编辑前的快照"可比（快照是本地工作流的运行态产物），所以这里只跑 `--replay`：
           # 它在 %TEMP% 的副本上复跑 R1 的真实输入 + F2/H1/T1 反向对照，断言每类都被**按期望**处置

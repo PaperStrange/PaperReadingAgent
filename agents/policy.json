@@ -485,7 +485,8 @@
       "verify/verify_gate_integrity.py",
       "verify/verify_artifact_paths.py",
       "verify/verify_close_readiness.py",
-      "verify/verify_close_tax_reading.py"
+      "verify/verify_close_tax_reading.py",
+      "verify/verify_decision_register.py"
     ],
     "probe_gate": "verify/verify_gate_integrity.py",
     "probe_args": ["--selftest"],
