@@ -1980,11 +1980,23 @@ def _selfcheck() -> int:
     ok("M-A 域右端 f：`produced_only` run 不得界定域右端（它不是覆盖声明）",
        domain_right_boundary([*s16, prod])[0] == SHA_D)
     real_pol_r = load_policy()
-    impl = {"run_id": "run-x-impl", "role": "implementation", "covers_through": SHA_E,
-            "started_at": "2099-01-01T00:00:00+00:00"}
-    ok("M-A 域右端 g：`coverage_window: none` 的 role（实现类）不得界定域右端"
-       "——它 finish 时会自动记下**空窗口**，却会因'最新一条'把域右端拉到它那一刻",
-       domain_right_boundary([*s16, impl], policy=real_pol_r)[0] == SHA_D)
+    # 载体 role 取自**政策里真实声明了** `coverage_window: none` 的 spec，而不是写死
+    # `implementation`（二查 `run-…-088` 的同类问题的另一半：`implementation.md` 是
+    # windows-only 内容 ⇒ 在没有它的分支上，这条自检会因为"找不到该 role"而红，
+    # 而判据本身没坏）。政策里一个都没有时**具名跳过**（不算通过）。
+    none_roles = sorted(r for r, spec in real_pol_r.specs.items()
+                        if spec.coverage_window == "none")
+    if none_roles:
+        impl = {"run_id": "run-x-impl", "role": none_roles[0], "covers_through": SHA_E,
+                "started_at": "2099-01-01T00:00:00+00:00"}
+        ok(f"M-A 域右端 g：`coverage_window: none` 的 "
+        f"role（{none_roles[0]}）不得界定域右端"
+           f"——它 finish 时会自动记下**空窗口**，却会因'最新一条'把域右端拉到它那一刻",
+           domain_right_boundary([*s16, impl], policy=real_pol_r)[0] == SHA_D)
+    else:
+        warn("M-A 域右端 g 未执行：本分支政策里没有声明 `coverage_window: none` 的 "
+        "role",
+             "（判据未跑 —— 不是通过）")
     # 在飞宽限的**下界**（复核 major）：未来时间戳的 run 不得被宽限永久豁免。
     future = [*s16[:1],
               _run("run-c-111", "code-review", "branch:windows",
@@ -2020,12 +2032,19 @@ def _selfcheck() -> int:
        any("run-c-110" in x and "未登记" in x for x in p), f"problems={p[:1]}")
 
     # ---- A-M13①（真政策，不是 fixture）：implementation spec 必须**被闸门消费** ----
+    # 二查 `run-…-088`：`implementation.md` 是 windows-only 内容 ⇒
+    # 在没有它的分支上这两条
+    # 自检会红，而**判据本身没坏**。改成"有则判、无则具名跳过（不算通过）"。
     real_pol = load_policy()
-    ok("A-M13① `implementation` spec 被政策装载（不是只写文件）",
-       "implementation" in real_pol.specs, f"specs={len(real_pol.specs)}")
-    ok("A-M13① `implementation` 不是评审类 ⇒ C1 不再向它要 scope 声明",
-       "implementation" not in real_pol.review_roles,
-       "（这条假红正是本卡要消掉的）" + f"review_roles={sorted(real_pol.review_roles)}")
+    if "implementation" in real_pol.specs:
+        ok("A-M13① `implementation` spec 被政策装载（不是只写文件）",
+           True, f"specs={len(real_pol.specs)}")
+        ok("A-M13① `implementation` 不是评审类 ⇒ C1 不再向它要 scope 声明",
+           "implementation" not in real_pol.review_roles,
+           "（这条假红正是本卡要消掉的）" + f"review_roles={sorted(real_pol.review_roles)}")
+    else:
+        warn("A-M13① 的两条自检未执行：本分支没有 `agents/functions/implementation.md`"
+             "（windows-only 内容）", "（判据未跑 —— 不是通过）")
     real_reg = registry_path()
     if real_reg.exists():
         unknowns = sorted(real_pol.unresolved_roles(

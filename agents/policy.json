@@ -34,7 +34,7 @@
       "_comment": "退化值判定（时间戳口径），三类都是『不是测量值』：zero = started_at 与 ended_at 逐字节相同（dur 恰 0.00，把『未测得』写成『零耗时』）；round = dur 恰为 round_minutes_multiple 的整数倍（写入时刻凑整，2026-09-25 实测 3 例恰 10.00 分钟）；missing = 终态 run 缺任一端时间戳。",
       "round_minutes_multiple": 10
     },
-    "report_round_pattern": "(?:Round\\s*(\\d+)|第\\s*(\\d+)\\s*轮)",
+    "report_round_pattern": "(?m)^\\s*(?:#{1,6}\\s*|[-*]\\s*)?(?:Round\\s*(\\d+)|第\\s*(\\d+)\\s*轮)",
     "terminal_report_globs": ["*.report.md", "*report*.md", "*final*.md"],
     "run_dir_exceptions_file": "agents/policy/run-dir-exceptions.json",
     "dur_minutes_tolerance": 0.01,
