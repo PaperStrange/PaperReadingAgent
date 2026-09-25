@@ -170,10 +170,10 @@
       "D101": 12,
       "D102": 46,
       "D103": 205,
-      "E501": 2576
+      "E501": 2570
     },
-    "_remeasure_2026_09_25_close": "关闭期**下调**（只减不增）：D103 207→205（补 10 处 public 函数 docstring）、E501 2631→2576（把本批新增/改写的长 CJK docstring 与注释行按**显示宽度**折行——ruff 的 E501 按显示宽度计、CJK 占 2 列；全仓 2830→2576）。上一版把 cap 记在实测之上（E501 2631 vs 冻结 HEAD 实测 2615）留下的**静默配额**已按 `docs/3-LEARNED.MD` 1.66 收掉：现在 **cap = 当次实测**（零余量）。",
-    "measured_total": 2839
+    "_remeasure_2026_09_25_close": "关闭期**下调**（只减不增）：D103 207→205（补 10 处 public 函数 docstring）、E501 2631→2576（把本批新增/改写的长 CJK docstring 与注释行按**显示宽度**折行——ruff 的 E501 按显示宽度计、CJK 占 2 列；**E501 单类**全仓 2830→2576，四类合计 2839 见 `measured_total`）。上一版把 cap 记在实测之上（E501 2631 vs 冻结 HEAD 实测 2615）留下的**静默配额**已按 `docs/3-LEARNED.MD` 1.66 收掉：现在 **cap = 当次实测**（零余量）。**已知局限（2026-09-25 修复验证复核 finding iv）**：`verify_gate_integrity.py` 的单调性判据与 `git HEAD` 比较 ⇒ 它只能拦住**未提交**的上调；一次**已提交**的放宽会成为新基线（要堵这一层需要『把实测值也钉进政策』，属 Sprint-18 候选）。",
+    "measured_total": 2833
   },
   "archive_role_prefix": "tech-research",
   "card_index": {

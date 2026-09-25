@@ -883,13 +883,15 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
     runs = load_runs(registry_path())
     sprint = parse_sprint(path.read_text(encoding="utf-8"))
 
-    # **账本不存在 ≠ 账本有问题**（C4，2026-09-25 关闭期实测）：`agents/runtime/registry.json`
+    # **账本不存在 ≠ 账本有问题**（C4，2026-09-25 关闭期实测）：
+    # `agents/runtime/registry.json`
     # 被 `.gitignore` 忽略 ⇒ **CI 的全新 checkout 必然没有它**。此时 C1/需求（"流水线步骤跑过没有"）、
     # linkage（账本↔§9 双向一致）与 C3 覆盖归属**都无从判定**——它们的数据源就是账本。
     # 旧行为是把"没有数据"判成"数据不合格"（实测 10 项 FAIL：4 条"缺 run" + 6 条"§9 写了但账本无记录"），
     # 于是**推上去那一刻 windows 的必需检查恒红**，而修法只能是伪造账本。
     # 现按 `verify_ledger_measurement.py`（code-review-072 critical）的同一口径处理：
-    # **缺账本 → 显式 SKIP（理由上屏、rc=0）**；**账本存在但坏 → 照旧 fail-closed**（下见 evaluate 前的解析）。
+    # **缺账本 → 显式 SKIP（理由上屏、rc=0）**；
+    # **账本存在但坏 → 照旧 fail-closed**（下见 evaluate 前的解析）。
     ledger_path = registry_path()
     ledger_missing = not ledger_path.is_file()
     if ledger_missing:
@@ -1190,6 +1192,41 @@ def _selfcheck() -> int:
     ok(f"B3 反向对照（数据驱动）：把 scope_ref_step 改指 {other_step!r} → 同一 role "
        f"({other_role}) 的空窗口**转为不判问题**（作用是政策给的，不是代码认角色名）",
        att_flip.window_problems() == [], f"problems={att_flip.window_problems()[:1]}")
+
+    # ---- B5（2026-09-25 修复验证复核 BLOCKER）：左端点是**开区间** ⇒ "锚点比文档锚点更老"的窗口
+    # 必须照常覆盖；旧实现要求两个端点都在序号表里 ⇒ 实测 14/14 窗口全失效、`(三查锚点,
+    # HEAD]`
+    # 这个规范窗口根本无法表达（第一个锚点后提交对任何窗口都不可归属）。
+    # 三条对照钉住新口径。
+    SHA_OLD = "aaaa1111" + "0" * 32  # 代表"更老、不在序号表内"的锚点
+    SHA_ODD = "bbbb2222" + "0" * 32  # 代表"与本次历史无关"的锚点
+    order_b5 = order_index([SHA_B, SHA_A])  # SHA_B 最新、SHA_A 次之
+    w_older = CoverageWindow(run_id="run-b5-older", role=other_role, anchor=SHA_OLD,
+                             through=SHA_B, from_run=True)
+    att_older = Attribution(anchor=SHA_A, head=SHA_B, shas=[SHA_A], order=order_b5,
+                            windows=[w_older], exceptions=[], root=None, policy=policy,
+                            older_anchors={SHA_OLD})
+    ok("B5 正向对照：窗口锚点**证明为更老**（祖先关系已判过）→ 照常覆盖区间内提交"
+       "（左端点是开区间，锚点不必落在序号表内）",
+       att_older.owner(SHA_A, ()) == "run:run-b5-older"
+       and att_older.owner(SHA_B, ()) == "run:run-b5-older",
+       f"owner(A)={att_older.owner(SHA_A, ())} owner(B)={att_older.owner(SHA_B, ())}")
+    w_odd = CoverageWindow(run_id="run-b5-odd", role=other_role, anchor=SHA_ODD,
+                           through=SHA_B, from_run=True)
+    att_odd = Attribution(anchor=SHA_A, head=SHA_B, shas=[SHA_A], order=order_b5,
+                          windows=[w_odd], exceptions=[], root=None, policy=policy)
+    ok("B5 反向对照 a：锚点**无法证明更老**（与本次历史无关 / shallow 历史）→ 不覆盖（fail-closed），"
+       "且 `window_problems()` **逐条点名**（不再静默丢弃）",
+       att_odd.owner(SHA_A, ()) is None
+       and any("证明不了" in p and "run-b5-odd" in p for p in att_odd.window_problems()),
+       f"owner={att_odd.owner(SHA_A, ())} problems={att_odd.window_problems()[:1]}")
+    w_scope_odd = CoverageWindow(run_id="run-b5-scope", role=scope_role, anchor=SHA_ODD,
+                                 through=SHA_B, from_run=True)
+    att_scope_odd = Attribution(anchor=SHA_A, head=SHA_B, shas=[SHA_A], order=order_b5,
+                                windows=[w_scope_odd], exceptions=[], root=None, policy=policy)
+    ok("B5 反向对照 b：**作用域类** run 的窗口即使对不上历史也**不点名**"
+       "（它不承担内容覆盖，报它是结构性假红）",
+       att_scope_odd.window_problems() == [], f"problems={att_scope_odd.window_problems()[:1]}")
 
     # 短 sha 是**另一族**缺陷，与 run 类别无关：作用域类 run 也必须判（否则"跑完即登记"
     # 之外还会多一条"短 sha 免检"的后门）。

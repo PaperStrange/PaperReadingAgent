@@ -174,24 +174,36 @@ def guard_problems(root: Path = ROOT) -> tuple[list[str], list[str]]:
 
 
 def probe_o_mode(root: Path = ROOT) -> list[str]:
-    """② 动态证明：`python -O <probe_gate> --selftest` 必须**非零退出**并点名 `__debug__`。"""
-    gate = root / PROBE_GATE
-    if not gate.is_file():
-        return [f"[守卫] 探针闸门 {PROBE_GATE} 不存在——`-O` 动态证明无从执行（fail-closed）"]
-    cmd = [sys.executable, "-O", str(gate), *PROBE_ARGS]
-    try:
-        proc = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True,
-                              encoding="utf-8", errors="replace", timeout=300)
-    except (OSError, subprocess.SubprocessError) as exc:
-        return [f"[守卫] `-O` 探针无法执行（{type(exc).__name__}: {exc}）——fail-closed"]
-    out = (proc.stdout or "") + (proc.stderr or "")
-    if proc.returncode == 0:
-        return [f"[守卫] `-O` 探针 `{' '.join(cmd[1:])}` **退 0** ——说明该闸门在 `-O` 下会"
-                f"静默通过（判据被剥离）；守卫行没起作用"]
-    if "__debug__" not in out:
-        return [f"[守卫] `-O` 探针非零退出（rc={proc.returncode}）但输出未点名 `__debug__`"
-                f"——无法确认是守卫拦下的（可能是别的失败）"]
-    return []
+    """② 动态证明：`guard_required` 里**每一个**闸门在 `-O` 下都必须**非零退出且不打印成功行**。
+
+    2026-09-25 修复验证复核 finding (ii)：原实现只跑 `probe_gate` 一条（等于自证），
+    其余 7 条只靠"文本里有那行"（静态）——静态检查证明不了那行**真的拦得住**。
+    现逐个真跑；判据 = `rc != 0` **且** 输出里没有 `ALL PASS`（"不打印成功行"才是要害；
+    措辞里是否含 `__debug__` 只作附注、不作判据——有的闸门由更早的守卫分支以 rc=2 退出）
+    。
+    """
+    problems: list[str] = []
+    for rel in (list(GUARD_REQUIRED) or [PROBE_GATE]):
+        gate = root / rel
+        if not gate.is_file():
+            problems.append(f"[守卫] 探针闸门 {rel} 不存在——`-O` 动态证明无从执行（fail-closed）")
+            continue
+        args = tuple(PROBE_ARGS) if rel == PROBE_GATE else ()
+        cmd = [sys.executable, "-O", str(gate), *args]
+        try:
+            proc = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace", timeout=300)
+        except (OSError, subprocess.SubprocessError) as exc:
+            problems.append(f"[守卫] `-O` 探针无法执行 {rel}（{type(exc).__name__}: {exc}）——fail-closed")
+            continue
+        out = (proc.stdout or "") + (proc.stderr or "")
+        if proc.returncode == 0:
+            problems.append(f"[守卫] `-O` 下 {rel} **退 0** ——该闸门在 `-O` 里静默通过"
+                            f"（判据被剥离）；守卫行没起作用")
+        elif "ALL PASS" in out:
+            problems.append(f"[守卫] `-O` 下 {rel} 虽非零退出（rc={proc.returncode}）却仍打印了 "
+                            f"`ALL PASS`——成功行与退出码互相矛盾（本 Sprint 要治的失信形态）")
+    return problems
 
 
 def selftest() -> int:

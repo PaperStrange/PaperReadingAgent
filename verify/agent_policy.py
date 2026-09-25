@@ -3,16 +3,22 @@
 **为什么需要这个模块**（背景与判据见 `docs/iteration/phases/testing-governance/backlog.MD` 的 `TG-15` 卡）：
 
 闸门原先靠"遇到一个场景加一条判据"成长——角色名写死在 `scripts/agent-ops.py`（`_REVIEW_ROLES`）、
-`verify/verify_close_readiness.py`（`CLOSE_ROLES`）、`verify/verify_agentops.py`（又一份），
-覆盖路径写死在 `verify/verify_lint.py`（`DEFAULT_PATHS`），归档识别写死在 `scripts/report-freshness.py`
+`verify/verify_close_readiness.py`（`CLOSE_ROLES`）、
+`verify/verify_agentops.py`（又一份），
+覆盖路径写死在 `verify/verify_lint.py`（`DEFAULT_PATHS`），
+归档识别写死在 `scripts/report-freshness.py`
 （`startswith("tech-research")`），阈值写死在 `agent-ops`（`_MIN_DEVIATION_CHARS`）。
-后果：**加一个角色 / 换一个分支 / 改一个步骤都要改代码**，而改代码这件事本身没有任何闸门在守。
+后果：**加一个角色 / 换一个分支 / 改一个步骤都要改代码**，
+而改代码这件事本身没有任何闸门在守。
 
 本模块把"哪些角色要声明 scope""关闭必须跑哪些步骤/目标""阈值多少"全部**从数据读取**：
 
-  数据源 1  `agents/fanout.json::sprint_close_pipeline`  —— 关闭流水线的步骤 / role / targets / ledger 标记
-  数据源 2  各角色 spec（`agents/functions/<role>.md`）的 YAML frontmatter —— `scope_required` 等角色属性
-  数据源 3  `agents/policy.json`（本卡新增）—— 不可从上述两者推导的**阈值与开关**（偏离理由最小长度、
+  数据源 1  `agents/fanout.json::
+  sprint_close_pipeline`  —— 关闭流水线的步骤 / role / targets / ledger 标记
+  数据源 2  各角色 spec（`agents/functions/<role>.md`）
+  的 YAML frontmatter —— `scope_required` 等角色属性
+  数据源 3  `agents/policy.json`（本卡新增）
+  —— 不可从上述两者推导的**阈值与开关**（偏离理由最小长度、
             覆盖路径清单、归档识别开关、范围声明的引用前缀）
 
 **没有循环依赖**（这是本卡最容易做错的地方）。`TG-15` ① 的三条不变式是**内部判据**，
@@ -40,7 +46,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# 环境变量覆盖（测试与 CI 注入 fixture 用；优先级：env > agents/policy.json > 本文件兜底）
+# 环境变量覆盖（测试与 CI 注入 fixture 用；优先级：
+# env > agents/policy.json > 本文件兜底）
 ENV_POLICY = "PAPERQA_AGENT_POLICY"
 ENV_FANOUT = "PAPERQA_FANOUT"
 ENV_SPEC_DIR = "PAPERQA_AGENT_SPECS"
@@ -139,7 +146,8 @@ class SpecRole:
     def declared(self) -> bool:
         """两个声明字段都在 → 该 spec 满足封闭世界要求。
 
-        2026-09-23 doc-audit finding 2 修正：此前只把 `scope_required` 做成不变量，而 §6（政策数据化）的
+        2026-09-23 doc-audit finding 2 修正：此前只把 `scope_required` 做成不变量，
+        而 §6（政策数据化）的
         条文明写"两个字段都必须显式声明"，且 `coverage_window` 决定该 run **是否参与 C3 覆盖计算**
         ——也就是说缺它就没有任何东西能判定"这个 run 该不该覆盖"，这正是"文档承诺 > 实现"的形态。
         现把两个字段一起纳入不变量。
@@ -227,7 +235,8 @@ class Policy:
     def md_table_legacy_files(self) -> dict[str, int]:
         """棘轮基线：`{相对路径: 缺陷数上限}`（历史既存债，见 policy 内说明）。
 
-        A2（finding M-a/N2/R3，2026-09-25）：首版是**路径列表**，闸门只做路径比较 ⇒ 基线文件内
+        A2（finding M-a/N2/R3，2026-09-25）：首版是**路径列表**，
+        闸门只做路径比较 ⇒ 基线文件内
         **任意数量**的新缺陷全被吸收（实测：注入 200 处仍 `MD-TABLE PASS`）。现改为**按文件设上限**：
         `verify_md_tables.py` 对基线文件判 `len(found) > cap → FAIL`（棘轮只许变紧）。
         上限必须是正整数（`0` 也允许：表示该文件已清干净，不得再回退）。
@@ -255,7 +264,8 @@ class Policy:
         """
         val = self._data("md_table_legacy_files")
         raw = val.get("review_by") if isinstance(val, dict) else None
-        # 严格 `YYYY-MM-DD`：闸门要按字典序比较日期，格式一乱比较就无意义（fail-closed，不猜）
+        # 严格 `YYYY-MM-DD`：闸门要按字典序比较日期，格式一乱比较就无意义（fail-closed，
+        # 不猜）
         return _require_iso_date(raw, "md_table_legacy_files.review_by")
 
     @property
@@ -263,7 +273,8 @@ class Policy:
         """TG-14④ 卡索引 lint 的参数（必备节 / 指纹长度阈值 / 行级比对的最小行长）。
 
         2026-09-23：这些值最初写在 `verify/verify_card_index.py` 里，被
-        `verify_no_policy_hardcode.py` 判为 R1（阈值硬编码）——**闸门又一次抓住了写闸门的人**。
+        `verify_no_policy_hardcode.py` 判为 R1（阈值硬编码）
+        ——**闸门又一次抓住了写闸门的人**。
         2026-09-25（A3/N7）：`body_prefix_chars`（只比前 N 字）被**含填充的副本**规避，
         改为全文行级指纹比对后由 `min_line_chars` 取代；两键都必须存在且为正整数。
         """
@@ -362,11 +373,15 @@ class Policy:
         """Markdown 结构自检的目标集 = 显式文档 + glob 展开（`verify/verify_md_tables.py` 消费）。
 
         2026-09-23 两次被闸门/子代理抓到的覆盖缺口，都记在这里：
-          ① 该清单最初写在新闸门文件里 → 被 `verify_no_policy_hardcode.py` 判为 R3（闸门先抓住了写闸门的人）；
-          ② 首版只列了 `testing-governance/backlog.MD` 一个阶段文件 → **迁移新增的瘦索引与 95 个卡文件
+          ① 该清单最初写在新闸门文件里 → 被
+          `verify_no_policy_hardcode.py` 判为 R3（闸门先抓住了写闸门的人）；
+          ② 首版只列了
+          `testing-governance/backlog.MD
+          ` 一个阶段文件 → **迁移新增的瘦索引与 95 个卡文件
              默认一个都不查**（P2 子代理实测指出）。现改为"显式文档 + glob"，新增阶段/卡文件自动纳入。
 
-        A10（2026-09-25，finding N1）起本属性**不再是闸门的唯一入口**：`verify_md_tables.py` 为了做
+        A10（2026-09-25，finding N1）起本属性**不再是闸门的唯一入口**：
+        `verify_md_tables.py` 为了做
         "应扫/实扫"双向差集，会分别读 `md_table_docs`/`md_table_globs` 并各自核对（显式路径必须存在、
         每条 glob 必须命中 ≥1 文件、两侧集合必须相等）。本属性保留为"合并后的目标集"这一语义的
         对外 API（等价于那两个集合的并集），不再被差值逻辑依赖。
@@ -632,7 +647,8 @@ class Policy:
         ratchet = val.get("legacy_ratchet")
         if not isinstance(ratchet, dict):
             raise PolicyError(f"ledger_measurement.legacy_ratchet 必须是对象，实际 {ratchet!r}")
-        # 两处日期都必须严格 `YYYY-MM-DD`（比较失去意义 = 棘轮永不失效）——只校验，取值走专用属性
+        # 两处日期都必须严格 `YYYY-MM-DD`（比较失去意义 = 棘轮永不失效）——只校验，
+        # 取值走专用属性
         _require_iso_date(ratchet.get("cutoff_local_date"), "legacy_ratchet.cutoff_local_date")
         _require_iso_date(ratchet.get("review_by"), "legacy_ratchet.review_by")
         caps = ratchet.get("caps")
@@ -672,13 +688,15 @@ class Policy:
         """数据源自身的完备性，**与数据源的具体取值无关**（`verify_no_policy_hardcode.py` 断言它为空）。
 
         1. `fanout.json` 的每个 ledger 步骤 role 必须有 spec；
-        2. 每个被枚举的 spec 必须**显式**声明 `scope_required`（`allow_undeclared` 时降级为提示）；
+        2. 每个被枚举的 spec 必须**显式**声明
+        `scope_required`（`allow_undeclared` 时降级为提示）；
         3. `policy.json` 不得残留未被任何代码读取的键（防"数据文件变成新的垃圾场"）。
 
         注意第 2 条为什么是**不变式**而不是"再看一眼的警告"：C1 的判据是"凡声明
         `scope_required: true` 的 run 必须有 scope 声明"——若允许"未声明"存在，它就同时
         从判据里消失（**删声明 = 关掉闸门**）。所以缺声明只能是**错误**。
-        `allow_undeclared` 仅为一次性数据迁移开的口子（`PAPERQA_POLICY_ALLOW_UNDECLARED=1`），
+        `allow_undeclared`
+        仅为一次性数据迁移开的口子（`PAPERQA_POLICY_ALLOW_UNDECLARED=1`），
         迁移脚本自带 `--check` 收口，运行时一律 fail-closed。
         """
         problems: list[str] = []
@@ -706,20 +724,25 @@ class Policy:
             # 由 verify/verify_lint.py 消费
             "lint_readability_ratchet",
             "ledger_status", "md_table_docs", "md_table_globs", "md_table_legacy_files", "card_index",
-            # A10（N1）：md_table_globs 的**范围声明**（roots/include_files），由 verify_md_tables.py 消费
+            # A10（N1）：md_table_globs 的**范围声明**（roots/include_files），
+            # 由 verify_md_tables.py 消费
             "md_table_coverage",
-            # A11（N4）：豁免台账的校验参数（类别白名单/理由长度/作用域），由 verify_no_policy_hardcode.py 消费
+            # A11（N4）：豁免台账的校验参数（类别白名单/理由长度/作用域），
+            # 由 verify_no_policy_hardcode.py 消费
             "hardcode_exemptions",
-            # A6（R1）：硬编码闸门扫描集的**范围声明**（roots/globs/exclude_dirs），由 verify_no_policy_hardcode.py 消费
+            # A6（R1）：硬编码闸门扫描集的**范围声明**（roots/globs/exclude_dirs），
+            # 由 verify_no_policy_hardcode.py 消费
             "hardcode_scan_coverage",
             # TG-13：账本测量口径（dur/rounds/unknown）+ 退化判定 + 历史棘轮基线，
             # 由 verify/verify_ledger_measurement.py 与 scripts/agent-ops.py 消费
             "ledger_measurement",
-            # TG-9：新脚本产物落点约定（忽略根清单 / 扫描集 / 已入库数据文件例外 / 临时落点写法 /
+            # TG-9：新脚本产物落点约定（忽略根清单 /
+            # 扫描集 / 已入库数据文件例外 / 临时落点写法 /
             # 动态目标棘轮），由 verify/verify_artifact_paths.py 消费
             "artifact_paths",
             # TG-8：离线开关（开关名 / 默认值 / 真值表 / 拒绝文案 / 退出码），
-            # 由 verify/outbound_guard.py（运行时唯一实现）与 verify/agent_policy.py 自身消费
+            # 由 verify/outbound_guard.py（运行时唯一实现）
+            # 与 verify/agent_policy.py 自身消费
             "offline_switch",
             # §2.1.1（用户 2026-09-25 采纳 v0）：未闭环 critical/major 的扣率口径
             # （比例表 / 同根因合并开关 / 封顶 / 取整步长 / 棘轮折算 / "未闭环"四判据）
@@ -753,7 +776,8 @@ def _load_fanout(path: Path) -> tuple[dict, tuple[CloseStep, ...]]:
         role = str(item.get("role") or "").strip()
         if not role:
             raise PolicyError(f"{path} 的步骤缺 role：{item!r}")
-        # targets：单任务用 task.target，多任务用 tasks[].target（两形态都支持，避免为旧数据加特例）
+        # targets：单任务用 task.target，多任务用 tasks[].target（两形态都支持，
+        # 避免为旧数据加特例）
         targets: list[str] = []
         for t in ([item["task"].get("target")] if isinstance(item.get("task"), dict) else []):
             if t:
@@ -910,7 +934,8 @@ def coverage_windows_from_runs(runs, policy: "Policy | None" = None) -> list[Cov
 
     传入 `policy` 时按 spec 的 `coverage_window` 声明过滤：声明为 `none` 的角色
     （如 tech-research / workspace-check）**不参与 C3 覆盖计算**——这条此前只写在文档里，
-    现由 `SpecRole.participates_in_coverage` 提供判据（doc-audit finding 2 的修法之一）。
+    现由 `SpecRole.participates_in_coverage` 提供判据（doc-audit finding 2 的修法之一）
+    。
 
     D0-3(a)：账本行的 `produced_only`（`mark-produced` 写入，**逐条列名 + 必带理由**）
     透传到窗口上，供 `window_problems()` 区分"产出型 run"与"内容评审类 run"。
@@ -947,16 +972,42 @@ def attribution(root: Path | None, anchor: str, head: str, runs,
       2. C3-T 例外表（sha 钉死，见 `attribution.exceptions` 校验）；
       3. `doc-only` 自动归类（改动文件**全部**命中 `doc_only_globs`）——不覆盖未来提交。
 
-    传 `policy` 时，声明 `coverage_window: none` 的角色不贡献窗口（判据同 `coverage_windows_from_runs`）。
+    传 `policy` 时，声明 `coverage_window:
+    none` 的角色不贡献窗口（判据同 `coverage_windows_from_runs`）。
     """
     shas = rev_list(root, anchor, head)
     order = order_index([head, *shas])
     windows = coverage_windows_from_runs(runs, policy)
+    # B4（2026-09-25 复核 BLOCKER）：窗口锚点不在本次序号表内时，**先判它是不是"更老"**——
+    # 左端点是开区间，锚点比文档锚点更老是**合法且常见**的形态（本次复核 run 的锚点
+    # `9ffc108d` 就早于文档锚点 `f30c6e47`）。判据用 git 的祖先关系（可核），
+    # 判不了就**不**进集合（走 fail-closed + 逐条点名）。
+    older_anchors: set[str] = set()
+    for w in windows:
+        if w.anchor in order or w.anchor in older_anchors:
+            continue
+        if _is_ancestor(root, w.anchor, anchor):
+            older_anchors.add(w.anchor)
     return Attribution(
         anchor=anchor, head=head, shas=shas, order=order, windows=windows,
         exceptions=list(exceptions or []),
-        root=root, policy=policy,
+        root=root, policy=policy, older_anchors=older_anchors,
     )
+
+
+def _is_ancestor(root: Path | None, older: str, newer: str) -> bool:
+    """`older` 是否为 `newer` 的祖先（含相等）——用于判定"窗口锚点比文档锚点更老"。
+
+    解析不了（git 失败 / sha 不存在 / 非祖先）→ `False`（调用方按 fail-closed 处理：
+    不覆盖 + 逐条点名），**不做乐观推断**。
+    """
+    if not older or not newer:
+        return False
+    try:
+        git(root, "merge-base", "--is-ancestor", older, newer)
+    except Exception:  # noqa: BLE001 —— 任何失败都只是"证明不了"
+        return False
+    return True
 
 
 class Attribution:
@@ -970,7 +1021,8 @@ class Attribution:
     def __init__(self, *, anchor: str, head: str, shas: list[str],
                  order: dict[str, int], windows: list[CoverageWindow],
                  exceptions: list[dict], root: Path | None,
-                 policy: "Policy | None" = None):
+                 policy: "Policy | None" = None,
+                 older_anchors: set[str] | None = None):
         self.anchor = anchor
         self.head = head
         self.shas = shas
@@ -979,7 +1031,32 @@ class Attribution:
         self.exceptions = exceptions
         self.root = root
         self.policy = policy
+        # B4（2026-09-25 复核 BLOCKER）：**已证明早于文档锚点**的窗口锚点集合
+        # （`git merge-base --is-ancestor` 判过）。左端点是**开区间**，
+        # 故这类锚点虽然不在
+        # 序号表里，窗口依然有效——旧实现把它们一律当"不覆盖"，实测 14/14 窗口全失效。
+        self.older_anchors = set(older_anchors or ())
         self._files: dict[str, list[str]] = {}
+
+    def _covers(self, window: CoverageWindow, sha: str) -> bool:
+        """窗口是否覆盖该提交（B4 修：左端点是**开区间**，锚点不必落在序号表内）。
+
+        三种情形（①② 是"能证明"，③ 是"不能证明"）：
+          ① 锚点在序号表内 → 交给
+             `CoverageWindow.covers()` 按序号比较（原口径，未改动）；
+          ② 锚点**已证明早于文档锚点**（`older_anchors`）→ 左端视为 **-∞**：
+             只要 `through` 在表内且 `order[through] <= order[sha]` 即覆盖；
+          ③ 其余（未来锚点 / 与本次历史无关联的提交 / 解析失败）
+          → **不覆盖**（fail-closed，
+             宁可点名也不做乐观推断），并由 `window_problems()
+             ` 逐条点名——**不再静默丢弃**。
+        """
+        if window.anchor in self.order:
+            return window.covers(sha, self.order)
+        if window.anchor in self.older_anchors:
+            return window.through in self.order and \
+                self.order[window.through] <= self.order.get(sha, -1)
+        return False
 
     # -- B3：覆盖窗口语义（作用域类 run vs 内容评审类 run） -----------------------
     def scope_role_names(self) -> set[str]:
@@ -1040,6 +1117,21 @@ class Attribution:
         """
         problems: list[str] = []
         full = 40
+        # B4（2026-09-25 复核 BLOCKER）：**窗口根本没参与计算**要能看见。
+        # 旧实现在"锚点不在序号表内"时静默返回"不覆盖"——实测 14/14 窗口全失效、
+        # 规范窗口 `(三查锚点, HEAD]` 无法表达，而 `window_problems()` 一个字都不报。
+        # 只对**承担内容覆盖**的窗口点名（作用域类 / 已标注产出型不带覆盖声称，
+        # 报它们是噪音）。
+        for w in self.windows:
+            if w.produced_only or self.is_scope_run(w.role):
+                continue
+            if w.anchor in self.order or w.anchor in self.older_anchors:
+                continue
+            problems.append(
+                f"{w.run_id}（role={w.role}）的 coverage_anchor={w.anchor[:12]} 既不在本次计算范围"
+                f"（{self.anchor[:8]}..{self.head[:8]}）内、也**证明不了**它早于文档锚点 "
+                f"⇒ 该窗口贡献 0 覆盖（fail-closed，不乐观推断）。要么它的锚点本就不该在这条历史上"
+                f"（改锚点），要么本次历史不完整（shallow clone？`fetch-depth: 0` 是必需项）。")
         for w in self.windows:
             for label, sha in (("coverage_anchor", w.anchor), ("covers_through", w.through)):
                 if len(sha) != full or any(c not in "0123456789abcdef" for c in sha.lower()):
@@ -1130,7 +1222,7 @@ class Attribution:
 
     def owner(self, sha: str, doc_only_globs: tuple[str, ...]) -> str | None:
         for w in self.windows:
-            if w.covers(sha, self.order):
+            if self._covers(w, sha):
                 return f"run:{w.run_id}"
         if sha in self.exception_shas():
             return "exception"
