@@ -10,7 +10,8 @@
                  `agents/policy.json::scope_min_deviation_chars`）；
                  窗口起点取自**账本侧**（`ledger_close_window`），
                  窗口之前的 run 属历史、不产生问题
-    C2 指涉可核：任何外部引用必须解析到"存在且可用"的对象；运行数据里的每个 role 必须能落到 spec
+    C2 指涉可核：任何外部引用必须解析到"存在且可用"的对象；
+    运行数据里的每个 role 必须能落到 spec
     C3 覆盖闭环：`git rev-list <锚点>..<HEAD>` 的**每个提交**必须有归属
 
 需求来源（**只有两个**，本文件不再有角色名单）：
@@ -78,6 +79,7 @@ from verify.agent_policy import (  # noqa: E402
     ENV_POLICY,
     Attribution,
     PolicyError,
+    _is_ancestor,
     attribution,
     coverage_windows_from_runs,
     head_sha,
@@ -257,8 +259,10 @@ def scope_step_runs(policy: AgentPolicy, runs: list[dict]) -> list[dict]:
 def scope_window_problems(policy: AgentPolicy, runs: list[dict], candidate: dict) -> list[str]:
     """候选作用域 run 能否当"本次关闭的起点"——**次序/时序**判据，违反即返回**具名问题**。
 
-    为什么必须有上界（2026-09-25 独立复核 finding 2，major）：原实现取"作用域步骤**最新**的
-    那条 run"且**没有上界**，于是往账本里追加一条更晚的作用域 run，窗口起点就被抬到它那一刻
+    为什么必须有上界（2026-09-25 独立复核 finding 2，major）：
+    原实现取"作用域步骤**最新**的
+    那条 run"且**没有上界**，于是往账本里追加一条更晚的作用域 run，
+    窗口起点就被抬到它那一刻
     ⇒ 本次关闭的全部流水线 run 落到窗口之外 ⇒ C1 与 §9 linkage **静默失明**（实测：
     追加一条
     `2026-09-25T04:30` 的 run 后，同一份"漏登记最早一行"的 §9 从 FAIL 2 项变成 PASS 0 项；
@@ -275,7 +279,8 @@ def scope_window_problems(policy: AgentPolicy, runs: list[dict], candidate: dict
       ③ **引用它的 run 不得比它更早**：`scope_source` 引用了候选 run 的后续步骤 run，其
          `started_at` 早于被引用者 ⇒ 引用不可能成立（数据被改过），窗口不可采信。
 
-    ②的口径说明（**与复核建议的字面口径有一处有意分歧，已标注**）：字面上"晚于任何后续步骤
+    ②的口径说明（**与复核建议的字面口径有一处有意分歧，已标注**）：
+    字面上"晚于任何后续步骤
     的**最早** run 即违规"在本仓数据上**恒真**——窗口的全部意义就是把**上一个 Sprint** 的
     后续步骤 run 排除在外（真数据里它们在窗口起点之前有几十条），故那条字面判据会把正常
     收窄判成违规、并让窗口退回全域（C1 立刻多出 34 条历史噪音，正是 D1 要治的失效）。
@@ -558,7 +563,8 @@ def check_linkage(policy: AgentPolicy, sprint: dict, runs: list[dict],
     """§9 结构化表 ↔ 账本**双向**一致（防"写了没跑"/"跑了没写"）。
 
     **窗口起点取自账本侧**（`ledger_close_window`），不取自被校验的 §9 文档——
-    否则"删掉 §9 里最早的几行"就能把窗口抬高、把早期 run 挤出检查范围（N6 实测的绕过路径）。
+    否则"删掉 §9 里最早的几行"就能把窗口抬高、
+    把早期 run 挤出检查范围（N6 实测的绕过路径）。
     文档侧只参与**区间比对**：§9 最早一行不得晚于账本窗口起点。
 
     `window_start` 由 `evaluate()` 统一推导后传入（与 `check_c1` 同一个窗口；
@@ -832,7 +838,8 @@ def _fixture_attribution(runs: list[dict], *, exceptions: list[dict] | None = No
 
     覆盖窗口 (SHA_A, SHA_D] 覆盖 B、C、D 三个提交。
     `unowned_extra=True` 时改写 run 的窗口
-    使它们只覆盖到 SHA_C —— 于是 SHA_D（HEAD 本身）无归属，模拟"覆盖表/窗口落后于 HEAD"。
+    使它们只覆盖到 SHA_C —— 于是 SHA_D（HEAD 本身）无归属，
+    模拟"覆盖表/窗口落后于 HEAD"。
     """
     shas = [SHA_B, SHA_C, SHA_D]
     order = {SHA_D: 0, SHA_C: 1, SHA_B: 2, SHA_A: 3}
@@ -887,7 +894,8 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
     # `agents/runtime/registry.json`
     # 被 `.gitignore` 忽略 ⇒ **CI 的全新 checkout 必然没有它**。此时 C1/需求（"流水线步骤跑过没有"）、
     # linkage（账本↔§9 双向一致）与 C3 覆盖归属**都无从判定**——它们的数据源就是账本。
-    # 旧行为是把"没有数据"判成"数据不合格"（实测 10 项 FAIL：4 条"缺 run" + 6 条"§9 写了但账本无记录"），
+    # 旧行为是把"没有数据"判成"数据不合格"（实测 10 项 FAIL：
+    # 4 条"缺 run" + 6 条"§9 写了但账本无记录"），
     # 于是**推上去那一刻 windows 的必需检查恒红**，而修法只能是伪造账本。
     # 现按 `verify_ledger_measurement.py`（code-review-072 critical）的同一口径处理：
     # **缺账本 → 显式 SKIP（理由上屏、rc=0）**；
@@ -1108,7 +1116,8 @@ def _selfcheck() -> int:
        and evaluate(policy, good, runs, att=_att(runs)) == [],
        f"derive={derive_close_window(policy, runs)}")
 
-    # 正向：作用域 run 之后**还没跑**任何后续步骤（关闭刚开工）时，不得因为"之后一条都没有"
+    # 正向：作用域 run 之后**还没跑**任何后续步骤（关闭刚开工）时，
+    # 不得因为"之后一条都没有"
     # 而误判——此时"整条流水线"并不存在，判定域不该被弃用。
     fresh = [_run("run-k-fresh", scope_role, "planned", "2026-09-21T01:00:00+00:00")]
     fresh_doc = parse_sprint(_doc(_rows(fresh), SHA_A))
@@ -1193,7 +1202,8 @@ def _selfcheck() -> int:
        f"({other_role}) 的空窗口**转为不判问题**（作用是政策给的，不是代码认角色名）",
        att_flip.window_problems() == [], f"problems={att_flip.window_problems()[:1]}")
 
-    # ---- B5（2026-09-25 修复验证复核 BLOCKER）：左端点是**开区间** ⇒ "锚点比文档锚点更老"的窗口
+    # ---- B5（2026-09-25 修复验证复核 BLOCKER）：
+    # 左端点是**开区间** ⇒ "锚点比文档锚点更老"的窗口
     # 必须照常覆盖；旧实现要求两个端点都在序号表里 ⇒ 实测 14/14 窗口全失效、`(三查锚点,
     # HEAD]`
     # 这个规范窗口根本无法表达（第一个锚点后提交对任何窗口都不可归属）。
@@ -1227,6 +1237,16 @@ def _selfcheck() -> int:
     ok("B5 反向对照 b：**作用域类** run 的窗口即使对不上历史也**不点名**"
        "（它不承担内容覆盖，报它是结构性假红）",
        att_scope_odd.window_problems() == [], f"problems={att_scope_odd.window_problems()[:1]}")
+    # B5 反向对照 c（2026-09-25 修复验证复核 finding，**回归修复的对照**）：
+    # 第一版 `_is_ancestor` 只 `except Exception`，而 `git()
+    # ` 抛的 `PolicyError` 是 `SystemExit`
+    # 子类 ⇒ 捕获不到 ⇒ "判不了"变成**整闸门硬中止**（POLICY-ERROR、无报告），
+    # 且上一条点名分支
+    # 沦为死代码。本对照**直接打真实函数 + 真实仓库**（不是注入 older_anchors）：
+    # 一个无法解析的 sha 必须返回 False（交由上层点名），**不得抛错**。
+    ok("B5 反向对照 c：`_is_ancestor` 对**无法解析的锚点**必须返回 False 而**不得抛错**"
+       "（否则整闸门中止、点名分支成死代码）",
+       _is_ancestor(ROOT, "deadbeef" * 5, head_sha(ROOT)) is False, "bogus sha → False")
 
     # 短 sha 是**另一族**缺陷，与 run 类别无关：作用域类 run 也必须判（否则"跑完即登记"
     # 之外还会多一条"短 sha 免检"的后门）。
@@ -1384,7 +1404,8 @@ def _selfcheck() -> int:
 
     # ---- spec 缺声明：封闭世界**是运行时不变量**（防"删声明即绕过 C1"）---------
     # 注意：TG-15 起该检查在 `load_policy()` 里直接抛 PolicyError（而不是"返回一个完好的
-    # Policy、再让某个自检报出来"）——否则普通命令会带着缺口照常运行，而缺口正是绕过入口。
+    # Policy、再让某个自检报出来"）——否则普通命令会带着缺口照常运行，
+    # 而缺口正是绕过入口。
     (tmp / "specs" / "sneaky-role.md").write_text(
         '---\nname: sneaky-role\ndescription: 未声明 scope_required\nversion: "1.0.0"\n---\n',
         encoding="utf-8")
@@ -1395,7 +1416,8 @@ def _selfcheck() -> int:
         ok("C1 反向对照：spec 缺 scope_required → 装载即 fail-closed（删声明绕不过 C1）",
            "未声明 scope_required" in str(exc), str(exc)[:110])
 
-    # 迁移期口子必须**显式开启**、且拿掉后立刻回到 fail-closed（否则它就是"永久绕过开关"）
+    # 迁移期口子必须**显式开启**、
+    # 且拿掉后立刻回到 fail-closed（否则它就是"永久绕过开关"）
     os.environ["PAPERQA_POLICY_ALLOW_UNDECLARED"] = "1"
     try:
         relaxed = _load_fixture_policy(tmp)

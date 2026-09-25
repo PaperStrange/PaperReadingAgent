@@ -98,7 +98,8 @@ def parse_frontmatter(path: Path) -> dict:
 def _as_bool(raw: str | bool | None, *, field: str = "?", where: str = "?") -> bool | None:
     """解析布尔声明。**不给"拼错即 False"留活口**（2026-09-23 二查 major）：
     `_as_bool("ture")` 旧实现静默返回 False ⇒ 该角色**静默退出 C1 声明完备性检查**——
-    一个拼写错误就能关掉一条闸门，这正是"数据驱动闸门"最该防的失效形态。现在非法取值直接报错。
+    一个拼写错误就能关掉一条闸门，这正是"数据驱动闸门"最该防的失效形态。
+    现在非法取值直接报错。
     """
     if raw is None:
         return None
@@ -149,7 +150,8 @@ class SpecRole:
         2026-09-23 doc-audit finding 2 修正：此前只把 `scope_required` 做成不变量，
         而 §6（政策数据化）的
         条文明写"两个字段都必须显式声明"，且 `coverage_window` 决定该 run **是否参与 C3 覆盖计算**
-        ——也就是说缺它就没有任何东西能判定"这个 run 该不该覆盖"，这正是"文档承诺 > 实现"的形态。
+        ——也就是说缺它就没有任何东西能判定"这个 run 该不该覆盖"，
+        这正是"文档承诺 > 实现"的形态。
         现把两个字段一起纳入不变量。
         """
         return self.scope_required is not None and self.coverage_window is not None
@@ -259,7 +261,8 @@ class Policy:
     def md_table_review_by(self) -> str:
         """棘轮基线的**到期日**（`YYYY-MM-DD`）。过期即 FAIL（提示"必须重评基线"）。
 
-        为什么必须有到期日（R3）：没有到期日的豁免就是**永久豁免**——基线会变成"历史债合法化"的
+        为什么必须有到期日（R3）：
+        没有到期日的豁免就是**永久豁免**——基线会变成"历史债合法化"的
         挡箭牌，而"重评"这件事不会有任何触发点。
         """
         val = self._data("md_table_legacy_files")
@@ -378,12 +381,14 @@ class Policy:
           ② 首版只列了
           `testing-governance/backlog.MD
           ` 一个阶段文件 → **迁移新增的瘦索引与 95 个卡文件
-             默认一个都不查**（P2 子代理实测指出）。现改为"显式文档 + glob"，新增阶段/卡文件自动纳入。
+             默认一个都不查**（P2 子代理实测指出）。现改为"显式文档 + glob"，
+             新增阶段/卡文件自动纳入。
 
         A10（2026-09-25，finding N1）起本属性**不再是闸门的唯一入口**：
         `verify_md_tables.py` 为了做
         "应扫/实扫"双向差集，会分别读 `md_table_docs`/`md_table_globs` 并各自核对（显式路径必须存在、
-        每条 glob 必须命中 ≥1 文件、两侧集合必须相等）。本属性保留为"合并后的目标集"这一语义的
+        每条 glob 必须命中 ≥1 文件、两侧集合必须相等）。
+        本属性保留为"合并后的目标集"这一语义的
         对外 API（等价于那两个集合的并集），不再被差值逻辑依赖。
         """
         docs = self._data("md_table_docs")
@@ -978,7 +983,8 @@ def attribution(root: Path | None, anchor: str, head: str, runs,
     shas = rev_list(root, anchor, head)
     order = order_index([head, *shas])
     windows = coverage_windows_from_runs(runs, policy)
-    # B4（2026-09-25 复核 BLOCKER）：窗口锚点不在本次序号表内时，**先判它是不是"更老"**——
+    # B4（2026-09-25 复核 BLOCKER）：窗口锚点不在本次序号表内时，
+    # **先判它是不是"更老"**——
     # 左端点是开区间，锚点比文档锚点更老是**合法且常见**的形态（本次复核 run 的锚点
     # `9ffc108d` 就早于文档锚点 `f30c6e47`）。判据用 git 的祖先关系（可核），
     # 判不了就**不**进集合（走 fail-closed + 逐条点名）。
@@ -1000,12 +1006,21 @@ def _is_ancestor(root: Path | None, older: str, newer: str) -> bool:
 
     解析不了（git 失败 / sha 不存在 / 非祖先）→ `False`（调用方按 fail-closed 处理：
     不覆盖 + 逐条点名），**不做乐观推断**。
+
+    ⚠️ **必须同时兜住 `SystemExit`**（2026-09-25 修复验证复核 finding，回归修复）：
+    `git()` 非零退出时抛的是 `PolicyError`，而它是 `SystemExit` 的子类、
+    **不是 `Exception`**——
+    第一版写 `except Exception` ⇒ 捕获不到，于是"锚点解析不了 / 不是祖先 / shallow 历史"
+    本该返回 `False` 的情形会**把整个关闭闸门硬中止**（`POLICY-ERROR`，连报告都不出），
+    并让 `window_problems()` 的点名分支沦为**死代码**（复核实测：
+    bogus / 孤儿分支 / shallow
+    缺失 / 普通非祖先四种输入全部 `RAISED PolicyError`）。
     """
     if not older or not newer:
         return False
     try:
         git(root, "merge-base", "--is-ancestor", older, newer)
-    except Exception:  # noqa: BLE001 —— 任何失败都只是"证明不了"
+    except (Exception, SystemExit):  # noqa: BLE001 —— 任何失败都只是"证明不了"
         return False
     return True
 
@@ -1132,6 +1147,14 @@ class Attribution:
                 f"（{self.anchor[:8]}..{self.head[:8]}）内、也**证明不了**它早于文档锚点 "
                 f"⇒ 该窗口贡献 0 覆盖（fail-closed，不乐观推断）。要么它的锚点本就不该在这条历史上"
                 f"（改锚点），要么本次历史不完整（shallow clone？`fetch-depth: 0` 是必需项）。")
+            # 残留缺口（2026-09-25 复核 finding 2b）：**上界**不在序号表内时，
+            # 窗口同样贡献 0 覆盖，
+            # 而旧实现**静默**——同一族缺陷的另一半，一并点名。
+            if w.through not in self.order:
+                problems.append(
+                    f"{w.run_id}（role={w.role}）的 covers_through={w.through[:12]} 不在本次计算范围"
+                    f"（{self.anchor[:8]}..{self.head[:8]}）内 ⇒ 该窗口贡献 0 覆盖（静默丢弃的同族形态）。"
+                    f"常见成因：该上界属于**另一条历史**（如 rebase/换分支后的提交）或本地历史不完整。")
         for w in self.windows:
             for label, sha in (("coverage_anchor", w.anchor), ("covers_through", w.through)):
                 if len(sha) != full or any(c not in "0123456789abcdef" for c in sha.lower()):
