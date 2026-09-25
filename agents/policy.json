@@ -280,6 +280,10 @@
   "md_table_coverage": {
     "_comment": "A10（审核 N1/R1）：`md_table_docs` + `md_table_globs` 的**范围声明**，用于与文件系统做**双向差集**。roots = 递归纳入其下全部 `.md`/`.MD` 的目录；include_files = 目录之外的单个文件（必须存在）。闸门实测『应扫 N / 实扫 M』并要求 N==M：差集非空即 FAIL 并逐条点名——这正是 N1 的形态（政策只写了 4 条窄 glob，阶段级 `.MD` 与分析类文档从不自动纳入，实测漏 29/160，其中 7 处是真缺陷）。根是**独立声明**的：删掉某条 glob 不会连带缩小应扫集，故『少扫一棵树』也会被抓。",
     "roots": ["docs", "verify"],
+    "conditional_roots": {
+      "_comment": "TG-17 G2 条目 3（2026-09-25 D5）：**按分支可能不存在的子树**（windows-only）。缺席时的判据**不靠**『应扫==实扫』那种自洽式结论，而靠 git 里的直接证据：① 该路径在 `HEAD` 的树里**存在**而工作区没有 ⇒ **FAIL（被删）**；② `HEAD` 里也没有 ⇒ 该根按设计缺席，记一条**具名 SKIP**（判决行不得再打 `MD-TABLE PASS`）。为什么必需：实测在没有 `docs/iteration/` 的树里（main 检出）同一份政策打印『应扫 8 / 实扫 8 → PASS』——少审 156 个文件这件事在读数里不可见（机制反例档案例 3）。",
+      "docs/iteration": "windows-only：`main` 分支按设计没有这棵树（CI 在 main 上跑同一份政策）"
+    },
     "include_files": ["agents/README.md"]
   },
   "hardcode_scan_coverage": {

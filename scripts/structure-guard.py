@@ -207,9 +207,14 @@ def coverage_report(root: Path) -> list[str]:
     if root.resolve() != ROOT.resolve():
         print("  [覆盖] --root 非仓库根：跳过 md_table_coverage 双向差集（政策集按该根解析）")
         return []
-    expected, actual, problems = coverage_problems(policy())
+    # D5 起 `coverage_problems()` 返回**四元组**（`TG-17` 条目 3 加了条件根的 `skips`）。
+    # **这个调用点我漏改了，被 pre-commit 钩子当场拦下**（钩子跑的就是这条路径）——
+    # 反过来证明"不可跳过层"真的在起作用：只在 CI 里跑的话，这个 `ValueError` 要等到 push 之后。
+    expected, actual, problems, skips = coverage_problems(policy())
     print(f"  [覆盖] 双向差集（判据复用 verify_md_tables）：应扫 {len(expected)} / 实扫 {len(actual)} → "
           f"{'一致' if len(expected) == len(actual) and not problems else '**不一致**'}")
+    for line in skips:
+        print(f"  [覆盖] SKIP{line}")
     return list(problems)
 
 

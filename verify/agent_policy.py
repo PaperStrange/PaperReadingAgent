@@ -900,6 +900,29 @@ def head_sha(root: Path | None = None) -> str:
     return git(root, "rev-parse", "HEAD", allow_fail=True)
 
 
+def path_in_head(root: Path | None, rel: str, rev: str = "HEAD") -> bool:
+    """`rel` 在该 rev 的**提交树**里是否存在（文件或目录都算）。
+
+    用途（`TG-17` G2 条目 3/7，2026-09-25
+    D5）：把"**分支本来就没有**"与"**本分支上被删掉**"
+    分开——两者的**直接证据**都在这条命令里，而不是"父目录在不在"这种间接推断。
+
+    为什么必须用直接证据（这条被实测打过脸）：`verify_derived_numbers.py` 原先按
+    "父目录不存在 ⇒ 判为分支差异"放行，于是 `rm -r docs/iteration/pre-research` 后闸门
+    仍然 rc=0（复核 F2），**而且"在不存在目录下新增一个基线键"变成了静默预留豁免**。
+
+    返回 `False` 有两种成因（分支本就没有 / git 不可用）——调用方必须**分别**处理：
+    本函数只回答"树里有没有"，不替调用方猜"为什么没有"。
+    """
+    if not rel:
+        return False
+    out = git(root, "ls-tree", "-r", "--name-only", rev, "--", rel, allow_fail=True)
+    if out:
+        return True
+    # 目录为空时 `ls-tree -r` 不输出 ⇒ 退一步问"这个路径本身在不在树里"
+    return bool(git(root, "ls-tree", "--name-only", rev, "--", rel, allow_fail=True))
+
+
 def rev_list(root: Path | None, anchor: str, to: str = "HEAD") -> list[str]:
     """`git rev-list <anchor>..<to>`（新→旧）。anchor 非法时抛错，不静默当空。"""
     if not anchor:

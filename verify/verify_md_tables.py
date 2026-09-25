@@ -45,7 +45,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from verify.agent_policy import PolicyError, load_policy  # noqa: E402
+from verify.agent_policy import PolicyError, load_policy, path_in_head  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -142,13 +142,24 @@ def _rel(path: Path) -> str:
     return path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else str(path)
 
 
-def coverage_problems(policy) -> tuple[list[str], list[str], list[str]]:
-    """扫描集 ↔ 文件系统**双向差集**（A10 / 审核 finding N1）。返回 `(应扫, 实扫, problems)`。
+def coverage_problems(policy) -> tuple[list[str], list[str], list[str], list[str]]:
+    """扫描集 ↔ 文件系统**双向差集**（A10 / 审核 finding N1）。
+
+    返回 `(应扫, 实扫, problems, skips)`——**四元组**（`TG-17` G2 条目 3，2026-09-25 D5
+    由三元组扩为四元组：条件根的缺席是 **SKIP**，不是 problem，也不是"通过"）。
 
     * **应扫**（expected）= `md_table_coverage.roots` 递归下的全部 `.md`/`.MD`（大小写都算，
       与平台无关：判据用 `suffix.lower()`，不依赖 Windows 的大小写不敏感 glob）
       ∪ `include_files`（目录之外的单个文件，必须存在）。
     * **实扫**（actual）= `md_table_docs`（每条必须存在）∪ `md_table_globs` 展开（每条必须 ≥1 命中）。
+    * **条件根**（`conditional_roots`）=
+    按分支可能不存在的子树（本仓＝`docs/iteration`，
+      windows-only）。判据**不接受**"应扫 ==
+      实扫"这种自洽式结论（整棵子树缺席时两侧同步缩水、
+      等式仍成立 ⇒ 少审上百个文件在读数里不可见，反例档案例 3）；改用 git
+      里的**直接证据**：
+      该路径在 `HEAD` 树里存在而工作区没有 ⇒ **FAIL（被删）**；`HEAD` 里也没有 ⇒ 记一条
+      **具名 SKIP**（调用方据此**不得**再打印 `PASS` 横幅 —— M-B 的反空转口径）。
 
     为什么 `roots` 必须是**独立声明**而不是"从 glob 反推目录"：从 glob 反推是恒真式——
     删掉一条 glob 会连带缩小它声明的范围，于是"少扫一整棵树"永远看不出来。独立声明后，
@@ -160,9 +171,12 @@ def coverage_problems(policy) -> tuple[list[str], list[str], list[str]]:
                           "'应扫/实扫'无从核对 → fail-closed）")
     roots = [str(p) for p in (cov.get("roots") or [])]
     include = [str(p) for p in (cov.get("include_files") or [])]
+    conditional = [str(k) for k in (cov.get("conditional_roots") or {})
+                   if k != "_comment"]
     docs = [str(p) for p in (policy.policy_file.get("md_table_docs") or [])]
     globs = [str(p) for p in (policy.policy_file.get("md_table_globs") or [])]
     problems: list[str] = []
+    skips: list[str] = []
     if not roots:
         problems.append("[覆盖声明] md_table_coverage.roots 为空 → 应扫集无从计算（fail-closed）")
 
@@ -179,6 +193,25 @@ def coverage_problems(policy) -> tuple[list[str], list[str], list[str]]:
         for p in base.rglob("*"):
             if p.is_file() and p.suffix.lower() == ".md":
                 expected.add(_rel(p))
+    # 条件根：缺席要么是"被删"（FAIL），要么是"该分支本就没有"（具名 SKIP）。
+    for root in conditional:
+        base = ROOT / root
+        if base.is_dir():
+            for p in base.rglob("*"):
+                if p.is_file() and p.suffix.lower() == ".md":
+                    expected.add(_rel(p))
+            continue
+        if path_in_head(ROOT, root):
+            problems.append(
+                f"[覆盖声明] 条件根 {root!r} 在 `HEAD` "
+                f"的提交树里**存在**、工作区却缺失 ⇒ "
+                f"这是**被删**（不是分支差异）→ "
+                f"fail-closed（该子树下的文档会整体绕开本闸门）")
+        else:
+            reason = str((cov.get("conditional_roots") or {})[root])
+            skips.append(f"[条件根缺席] {root}：本分支的提交树里没有它（{reason}）⇒ "
+            f"该子树"
+                         f"**本次未审**；判决行按 SKIP 处理（不是通过）")
 
     actual: set[str] = set()
     for rel in docs:
@@ -200,7 +233,7 @@ def coverage_problems(policy) -> tuple[list[str], list[str], list[str]]:
     for rel in sorted(actual - expected):
         problems.append(f"[实扫超出声明] {rel}：被政策扫到，但不在 md_table_coverage 声明范围内"
                         f" → 要么补进 roots/include_files，要么把它移出扫描集（声明与行为必须一致）")
-    return sorted(expected), sorted(actual), problems
+    return sorted(expected), sorted(actual), problems, skips
 
 
 def main() -> int:
@@ -208,11 +241,12 @@ def main() -> int:
     quiet = "--quiet" in sys.argv
     policy = load_policy()
     cov_problems: list[str] = []
+    cov_skips: list[str] = []
     if args:
         targets = [Path(a) for a in args]
         expected_n = actual_n = None
     else:
-        expected, actual, cov_problems = coverage_problems(policy)
+        expected, actual, cov_problems, cov_skips = coverage_problems(policy)
         expected_n, actual_n = len(expected), len(actual)
         targets = [ROOT / rel for rel in actual]
     # 空集 ≠ PASS（N8 的同族，与 `verify_close_readiness` 的"空区间 ≠ 通过"同一判据）：
@@ -237,9 +271,13 @@ def main() -> int:
         return 1
     if expected_n is not None:
         same = expected_n == actual_n and not cov_problems
+        cov = policy.policy_file.get("md_table_coverage") or {}
+        cond = [k for k in (cov.get("conditional_roots") or {}) if k != "_comment"]
         print(f"  扫描集双向差集：应扫 {expected_n} / 实扫 {actual_n} → "
               f"{'一致' if same else '**不一致（fail-closed，逐条点名见下）**'}"
-              f"（roots={list((policy.policy_file.get('md_table_coverage') or {}).get('roots') or [])}）")
+              f"（roots={list(cov.get('roots') or [])}＋条件根 {cond}）")
+    for line in cov_skips:
+        print(f"  SKIP{line}")
     print(f"  棘轮基线：{len(legacy_caps)} 个文件（按文件设缺陷上限）；review_by={review_by}，"
           f"今日={today} → {'**已过期**' if today > review_by else '未到期'}")
     scanned = 0
@@ -295,6 +333,16 @@ def main() -> int:
     # 又：首版把 15 个问题串当 15 个文件打印——见 N8 的计数口径问题）。
     # A10 起 `scanned` 是**真正解析过的文件数**（不是请求数）：政策模式下它与"实扫"同源，
     # 于是"应扫 N / 实扫 M"与 PASS 行不会各说一套。
+    if cov_skips:
+        # M-B 的反空转口径：**有条件根缺席 ⇒ 本次没审那棵子树** ⇒ 判决行必须是 SKIP，
+        # 不得打印 PASS 横幅（`_comment`
+        # 里的"应扫==实扫"自洽式结论正是靠这条被顶掉的）。
+        print(f"\nMD-TABLE SKIP（{scanned} 个文件解析通过；但 {len(cov_skips)} "
+        f"棵**条件根**"
+              f"在本分支缺席 ⇒ 该子树**本次未审**——**不是通过**）：")
+        for line in cov_skips:
+            print(f"  - {line}")
+        return 0
     print(f"\nMD-TABLE PASS（{scanned} 个文件解析通过；其中 {len(baseline_files_scanned)} 个历史文件"
           f"走棘轮基线、均在各自的 defect 上限内）")
     return 0

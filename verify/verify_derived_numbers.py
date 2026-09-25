@@ -50,7 +50,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from verify.agent_policy import load_policy  # noqa: E402
+from verify.agent_policy import load_policy, path_in_head  # noqa: E402
 
 if not __debug__:  # noqa: SIM108 —— -O/PYTHONOPTIMIZE 会剥离 assert；守卫必须是普通语句，不能是 assert
     raise SystemExit("本闸门不得在 -O/PYTHONOPTIMIZE 下运行（`__debug__` 为 False ⇒ 判据会被整体剥离）——见 3-LEARNED 1.65")
@@ -182,21 +182,56 @@ def evaluate(counts: dict[str, list[tuple[int, str, str, str]]], *, baseline: di
             if path in existing_files:
                 continue
             # **分支差异 ≠ 死键**（C6，2026-09-25 sync PR #53 的 CI 实测）：
-            # baseline 里大量条目在
-            # `docs/iteration/**`（windows-only）下，
-            # 而 `main`/同步分支没有该目录 ⇒ 这些条目"文件不在"
-            # 是**分支差异**，不是"失效条目"。判据改为按**父目录**是否存在区分（不猜、
-            # 不含糊）：
-            #   * 父目录存在、文件不在 → 真死键 → FAIL（原判据，方向不变）；
-            # * 父目录也不存在 → 该文件所属的树在本分支根本没有 → 记一条 NOTE，
-            # 不判问题。
-            parent = (root / path).parent if root is not None else None
-            if parent is not None and not parent.exists():
-                warnings.append(f"{path}: 所属目录不存在（分支差异，如 windows-only 的 "
-                                f"`docs/iteration/**`）→ 跳过死键判据")
+            # baseline 里大量条目在 `docs/iteration/**`（windows-only）下，而
+            # `main`/同步分支
+            # 没有该目录 ⇒ 这些条目"文件不在"是**分支差异**，不是"失效条目"。
+            #
+            # **判据换成直接证据（TG-17 G2 条目 7，2026-09-25
+            # D5）**：旧实现按"**父目录**是否存在"
+            # 区分，于是把"分支本就没有"与"**本分支上被整目录删除**"混为一谈——复核实测在
+            # windows
+            # 提交的临时 worktree 里 `rm -r docs/iteration/pre-research` 后闸门仍
+            # rc=0（只报 NOTE），
+            # 而修前那是硬 FAIL；更糟的是**在不存在目录下新增一个基线键 =
+            # 静默预留豁免**。
+            # 现按 `git ls-tree HEAD -- <路径>` 判：
+            #   * 该文件**或其所属目录**在 HEAD 的树里存在、工作区却没有 → **被删** ⇒
+            # FAIL；
+            #   * HEAD 里也没有 → 该树在本分支根本没有 ⇒
+            # NOTE（真分支差异，且**不允许**在这里新增键，
+            #     见 `baseline_fresh_keys` 判据）。
+            if path_in_head(root, path):
+                problems.append(
+                    f"[棘轮] baseline 里的 {path} 在 `HEAD` "
+                    f"的提交树里**存在**、工作区却不存在 ⇒ "
+                    f"这是**被删**（不是分支差异）→ "
+                    f"FAIL：要么恢复文件，要么删除该失效条目"
+                    f"（留着它等于给一个未来同名文件预留豁免）")
                 continue
-            problems.append(f"[棘轮] baseline 里的 {path} 已不存在（死键）→ 失效条目必须删除"
-                            f"（留着它等于给一个未来同名文件预留豁免）")
+            parent = str(Path(path).parent).replace("\\", "/")
+            if parent not in (".", "") and path_in_head(root, parent):
+                problems.append(
+                    f"[棘轮] baseline 里的 {path} 已不存在，而它的目录 {parent} 在 "
+                    f"`HEAD` 里存在 ⇒ "
+                    f"该文件**在本分支上被删**（死键）→ 失效条目必须删除"
+                    f"（别用『父目录也不存在』这种间接推断放行）")
+                continue
+            if previous is not None and path not in previous:
+                # F2
+                # 的**第二个洞**（复核原文）：旧放宽让"在不存在目录下新增一个基线键"变成
+                # 静默预留豁免——现在"路径在 HEAD
+                # 里根本不存在"与"这个键是新加的"两条同时成立
+                # ⇒ 直接 FAIL。旧键（`previous` 里已有）才允许按分支差异记 NOTE。
+                problems.append(
+                    f"[棘轮] baseline **新增**了 {path}，而该路径在本分支的 `HEAD` "
+                    f"树里根本不存在 ⇒ "
+                    f"**在不存在的地方新增上限 = 静默预留豁免**（复核 F2 的第二个洞）→ "
+                    f"FAIL："
+                    f"删掉这个键，或先把文件真实建出来")
+                continue
+            warnings.append(f"{path}: 该路径与其所属目录在 `HEAD` 的树里都不存在"
+                            f"（分支差异，如 windows-only 的 `docs/iteration/**`）→ "
+                            f"跳过死键判据")
     return problems, warnings
 
 
@@ -234,6 +269,30 @@ def selftest() -> int:
                            today="2026-09-25", previous=None, existing_files={"docs/a.md"})
     ok("反向对照 F 基线死键（文件已不存在）→ FAIL",
        any("死键" in p for p in problems), f"problems={problems[:1]}")
+
+    # ---- TG-17 G2 条目 7（复核 F2；2026-09-25 D5）：分支差异 vs 被删——证据来自
+    # git（`git ls-tree HEAD`），不是"父目录在不在"这种间接推断
+    def _ev_case(baseline: dict[str, int], previous: dict[str, int] | None):
+        return evaluate({}, baseline=baseline, default_cap=0, review_by="2099-01-01",
+                        today="2026-09-25", previous=previous, existing_files=set(), root=ROOT)
+
+    problems, _ = _ev_case({"docs/1-WORKFLOW.MD": 0}, {"docs/1-WORKFLOW.MD": 0})
+    ok("反向对照 J 基线键指向的文件在 `HEAD` 里存在、工作区被删 → FAIL 且点名『被删』"
+       "（旧实现按父目录推断，会把它当分支差异放行）",
+       any("被删" in p for p in problems), f"problems={problems[:1]}")
+    problems, _ = _ev_case({"docs/iteration/no-such-file-xyz.md": 0},
+                           {"docs/iteration/no-such-file-xyz.md": 0})
+    ok("反向对照 K 目录在 `HEAD` 里存在、文件不在 → FAIL 且点名『在本分支上被删』",
+       any("在本分支上被删" in p for p in problems), f"problems={problems[:1]}")
+    problems, _ = _ev_case({"docs/no-such-tree-xyz/a.md": 0}, {})
+    ok("反向对照 L **新增**基线键而该路径在 `HEAD` 里根本不存在 → FAIL"
+       "（『在不存在的地方新增上限 = 静默预留豁免』，F2 的第二个洞）",
+       any("静默预留豁免" in p for p in problems), f"problems={problems[:1]}")
+    _, warnings = _ev_case({"docs/no-such-tree-xyz/a.md": 0},
+                           {"docs/no-such-tree-xyz/a.md": 0})
+    ok("反向对照 M 同一条目若是**旧键**（HEAD 政策里已有）→ 只记 NOTE"
+       "（真分支差异，不误报）",
+       any("分支差异" in w for w in warnings), f"warnings={warnings[:1]}")
 
     with tempfile.TemporaryDirectory() as td:
         fixture = Path(td) / "docs" / "x.md"
