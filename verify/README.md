@@ -15,6 +15,7 @@
 
 | 脚本 | 内容 | 运行前提（显式化，Sprint-7 M5） |
 |---|---|---|
+| `verify_deduction_rates.py` | **§2.1.1/Sprint-17**：**扣率口径闸门**——未闭环 critical/major 的扣率真源 = `agents/policy.json::deduction_rates`（比例表 / 同根因合并开关 / 封顶 / 取整步长 / 棘轮折算 / "未闭环"四判据），读取器 `Policy.deduction_rates()` + 纯函数 `deduction_for()`。**本文件不出现任何比例数值**：期望值一律由政策算出（`2.5 − 2.5×ratios[major]`），否则闸门自己就成了第二份政策。反向对照两组：**fail-closed**（缺键/比例超界·负值·字符串·布尔/全 0/步长非法/判据缺证据·id 重复·无 `requires_due_date`/折算级别越界，共 14 例）与**数据驱动**（改政策比例 → 结果随之改变；关掉合并开关 → 同根因不再合并；显式传 `rates` 时不读任何文件）。含封顶（3 条不同根因 critical → 剩余 0）与"封顶优先于取整"（0.98 点卡不倒扣） | **offline 档**；`python verify\verify_deduction_rates.py`（自检）；`--show` 打印当前生效口径；首次实际结算时才加 CLI（§2.1.1） |
 | `verify_smoke.py` | 8 项冒烟检查：paperqa 导入、后端 FastAPI 12 条路由、RuntimeTracer、streamlit、litellm、PyMuPDF 页渲染、graphviz(py)、PDF 解析器自动发现 | 无 API 调用，纯离线；无需启动服务 |
 | `verify_prune_callbacks.py` | Sprint-5/M2：litellm 回调去重裁剪单元证据（超上限 32 项 → 去重保留最近 N；`PAPERQA_LITELLM_CALLBACK_LIMIT` 可覆盖默认 20） | 无 API 调用，纯离线 |
 | `verify_agentops.py` | Sprint-8/A-UC：AgentOps 账本 CLI 用例断言（UC-1~UC-14：状态机/成本/防双写/价表/并发锁/抓取解析 + 三查修正回归 + **UC-14=TG-11 评审 scope 来源闸门**；UC-11/12=M10、UC-13=M9；隔离到临时 `AGENT_OPS_DIR`） | 无 API 调用，纯离线 |
@@ -103,6 +104,7 @@ Sprint-16 新增（分层 runner 与门禁）：
 .\.venv\Scripts\python.exe .\verify\verify_runner.py          # TG-5 runner/定时/预算闸门
 .\.venv\Scripts\python.exe .\verify\verify_ledger_measurement.py  # TG-13 账本测量化闸门（真实账本 + 反向对照自检）
 .\.venv\Scripts\python.exe .\verify\verify_artifact_paths.py      # TG-9 产物目录约定闸门（写盘落点必须已忽略/在 %TEMP%）
+.\.venv\Scripts\python.exe .\verify\verify_deduction_rates.py     # §2.1.1 扣率口径闸门（政策数据 + 纯函数 deduction_for 正反例）
 .\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --list # 定时任务与到期状态（prices/nightly-suite/providers）
 ```
 

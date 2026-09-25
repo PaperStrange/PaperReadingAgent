@@ -37,6 +37,7 @@
 | `verify_checkpoint_index.py` | F-AC16 v1 checkpoint 只读索引：扫描/排序/逐篇载荷路径与存在性/坏件 fail-soft/detail 与 resolve_payload/字段白名单（离线合成 fixture） | offline | — | 5s | ¥0 | /api/checkpoints | none |
 | `verify_close_readiness.py` | TG-15 关闭前置闸门：C1 声明完备 / C2 指涉可核 / C3 覆盖闭环（锚点→HEAD 每提交有归属），需求全来自 fanout.json + spec frontmatter；含变异用例自 fanout 自动生成的反向对照 | offline | — | 15s | ¥0 | — | none |
 | `verify_config_schema.py` | 配置 SSOT 一致性 + M7 前端零硬编码 + Settings 升级基线护栏（114 断言，离线） | offline | — | 5s | ¥0 | /api/config_schema, /api/config/validate | none |
+| `verify_deduction_rates.py` | §2.1.1 扣率数据闸门：deduction_rates 读取器 fail-closed（缺键/超界/负值/全0/步长非法/判据缺证据/无到期日约束/折算级别越界）+ 纯函数 deduction_for 正反例（合并开关与比例均来自数据、封顶优先于取整） | offline | — | 5s | ¥0 | — | none |
 | `verify_e2e.py` | deepseek 全链路 6 步（LLM+vision + 本地 st- 向量） | network | deepseek | 120s | ¥0.3 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
 | `verify_e2e_dashscope.py` | dashscope 全链路 6 步 + 同进程 deepseek 切换隔离回归（est = 近次实测 ¥1.013377 × 1.3 ≈ 1.4，2026-09-20 校准，留余量防预检误拒） | network | dashscope, deepseek | 150s | ¥1.4 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
 | `verify_e2e_openai.py` | OpenAI provider+embedding 全流程 + 同进程 deepseek→openai 切换隔离回归 | network | openai, deepseek | 150s | ¥1 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network, balance |
@@ -58,4 +59,4 @@
 | `verify_smoke.py` | 冒烟 8 项：paperqa 导入/后端 12 路由加载/runtime_trace 目标/PDF 解析等（离线） | offline | — | 10s | ¥0 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session, /api/health, /api/providers, /api/config_schema, /api/config/validate, /api/translate_preview, /api/usage, /api/checkpoints | none |
 | `verify_usage.py` | Retro③ token 用量采集与成本换算：解析/累计/增量/价表查找/缺价不臆测/换算式/回调防裁剪（离线） | offline | — | 5s | ¥0 | — | none |
 
-共 52 个脚本：offline 21 / network 10 / gui 21。
+共 53 个脚本：offline 22 / network 10 / gui 21。

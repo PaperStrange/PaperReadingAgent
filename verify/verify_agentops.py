@@ -781,6 +781,128 @@ def main() -> int:
         ok("UC-19 运行时两侧（脚本侧 verify/ + 后端侧 app/）对同一开关给出一致结论", same,
            f"app={ag.switch_state()}")
 
+        # UC-20（D0-3(a)/TG-17⑤）：**产出型 run 的逐条标注**——实现类工作补登记挂评审
+        # role 时，
+        # 其覆盖窗口恒为空区间，B3 会判"内容评审类空窗口 FAIL"。对产出型 run
+        # 报这条是结构性假红，
+        # 修法是把它"不承担内容覆盖"落成**账本数据**（不是放宽判据，也不是回填
+        # covers_through 伪造覆盖）。
+        # 断言覆盖：成功路径 + 留痕 + 四条拒绝路径 + 幂等（不留假痕）+ 撤回 +
+        # 窗口判据随之翻转。
+        head_full20 = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"],
+                                     capture_output=True, text=True,
+                                     encoding="utf-8").stdout.strip()
+        run(["register", "--role", "code-review", "--task", "uc20-produced-only",
+             "--spec", "code-review@1.2.2", "--run-id", "run-uc20-produced",
+             "--coverage-anchor", head_full20,
+             "--scope-source", "self-chosen", "--deviation", 
+                 "实现类工作补登记（UC-20 fixture）"],
+            base_env, check=True)
+        run(["update", "run-uc20-produced", "--status", "running"], base_env, check=True
+            )
+        run(["finish", "run-uc20-produced", "--status", "succeeded",
+             "--covers-through", head_full20], base_env, check=True)
+
+        def _row20(rid: str = "run-uc20-produced") -> dict:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+            return next(x for x in data["runs"] if x["run_id"] == rid)
+
+        def _empty_window_problems(row: dict) -> list[str]:
+            """复用**真实判据**（账本行 → 窗口 → `window_problems`），不另写判据。"""
+            from verify.agent_policy import (Attribution, coverage_windows_from_runs,
+                                             order_index)
+            anchor = str(row.get("coverage_anchor") or "")
+            att = Attribution(anchor=anchor, head="", shas=[],
+                              order=order_index([anchor]),
+                              windows=coverage_windows_from_runs([row]),
+                              exceptions=[], root=None, policy=_POLICY)
+            return [p for p in att.window_problems() if "空区间" in p]
+
+        ok("UC-20 前置：未标注的内容评审 run 空窗口 → FAIL（这是标注要消掉的判据）",
+           bool(_empty_window_problems(_row20())),
+           f"problems={_empty_window_problems(_row20())[:1]}")
+
+        reason20 = ("TG-13 类实现工作：口径定义 + 闸门 + 反向对照，"
+                    "补登记挂 code-review role，非内容评审")
+        r = run(["mark-produced", "run-uc20-produced", "--reason", reason20],
+                base_env, raw=True)
+        row20 = _row20()
+        marks20 = row20.get("produced_only_marks") or []
+        ok("UC-20 标注成功：账本写入 produced_only=True + 理由 + 留痕数组（逐条列名）",
+           r.returncode == 0 and row20.get("produced_only") is True
+           and row20.get("produced_only_reason") == reason20
+           and len(marks20) == 1 and marks20[0].get("action") == "mark"
+           and marks20[0].get("reason") == reason20 and str(marks20[0].get("by") or ""),
+           f"rc={r.returncode} marks={len(marks20)}")
+        ok("UC-20 正向对照：标注后该 run 的空窗口**不再判问题**（判据随账本数据翻转）",
+           _empty_window_problems(_row20()) == [],
+           f"problems={_empty_window_problems(_row20())}")
+        r = run(["list", "--role", "code-review"], base_env, raw=True)
+        ok("UC-20 可见性：`list` 对该 run 打出 `produced(!)`（豁免不得静默生效）",
+           "produced(!)" in (r.stdout + r.stderr),
+           f"out={r.stdout.strip().splitlines()[-2][-60:]}")
+
+        r = run(["mark-produced", "run-uc20-produced", "--reason", "太短"],
+                base_env, raw=True)
+        ok("UC-20 反向对照：缺/过短 `--reason` → 拒绝（标注必须带可核理由）",
+           r.returncode != 0 and "理由" in (r.stdout + r.stderr),
+           (r.stdout + r.stderr).strip()[:70])
+        r = run(["mark-produced", "run-does-not-exist", "--reason", reason20],
+                base_env, raw=True)
+        ok("UC-20 反向对照：不存在的 run → 拒绝（不得凭空造一条标注）",
+           r.returncode != 0, (r.stdout + r.stderr).strip()[:70])
+        run(["register", "--role", "impact-assessment", "--task", "uc20-nonreview",
+             "--spec", "impact-assessment@1.4.4", "--run-id", "run-uc20-nonreview",
+             "--coverage-anchor", head_full20], base_env, check=True)
+        run(["update", "run-uc20-nonreview", "--status", "running"], base_env, check=
+            True)
+        run(["finish", "run-uc20-nonreview", "--status", "succeeded",
+             "--covers-through", head_full20], base_env, check=True)
+        r = run(["mark-produced", "run-uc20-nonreview", "--reason", reason20],
+                base_env, raw=True)
+        ok("UC-20 反向对照：非评审类 role → 拒绝（语义是「评审 role 但不做内容评审」）",
+           r.returncode != 0 and "COVERAGE-PRODUCED-ERROR" in (r.stdout + r.stderr),
+           (r.stdout + r.stderr).strip()[:80])
+        prev20 = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD~1"],
+                                capture_output=True, text=True,
+                                encoding="utf-8").stdout.strip()
+        run(["register", "--role", "code-review", "--task", "uc20-nonempty",
+             "--spec", "code-review@1.2.2", "--run-id", "run-uc20-nonempty",
+             "--coverage-anchor", prev20, "--scope-source", "self-chosen",
+             "--deviation", "窗口非空（UC-20 fixture）"], base_env, check=True)
+        run(["update", "run-uc20-nonempty", "--status", "running"], base_env, check=True
+            )
+        run(["finish", "run-uc20-nonempty", "--status", "succeeded",
+             "--covers-through", head_full20], base_env, check=True)
+        r = run(["mark-produced", "run-uc20-nonempty", "--reason", reason20],
+                base_env, raw=True)
+        ok("UC-20 反向对照：窗口**非空**的 run → 拒绝（标注与账本事实矛盾）",
+           r.returncode != 0 and "空区间" in (r.stdout + r.stderr),
+           (r.stdout + r.stderr).strip()[:80])
+
+        n_before20 = len(_row20().get("produced_only_marks") or [])
+        r = run(["mark-produced", "run-uc20-produced",
+                 "--reason", "UC-20：重复标注应无操作（同值不得追加假留痕）"],
+                base_env, raw=True)
+        n_after20 = len(_row20().get("produced_only_marks") or [])
+        ok("UC-20 幂等/防假痕：重复标注 = 无操作（rc=0、报「无变化」、**不**追加留痕）",
+           r.returncode == 0 and "无变化" in (r.stdout + r.stderr)
+           and n_after20 == n_before20,
+           f"rc={r.returncode} marks {n_before20}->{n_after20}")
+
+        r = run(["mark-produced", "run-uc20-produced", "--undo",
+                 "--reason", "UC-20：撤回标注后判据必须恢复（不可撤回的写入是坑）"],
+                base_env, raw=True)
+        row20b = _row20()
+        ok("UC-20 撤回（--undo）：produced_only 复位、留痕保留、空窗口判据**重新 FAIL**"
+            ,
+           r.returncode == 0 and row20b.get("produced_only") is False
+           and (row20b.get("produced_only_marks") or [])[-1].get("action") == "unmark"
+           and str(row20b.get("produced_only_reason") or "") == ""
+           and bool(_empty_window_problems(row20b)),
+           f"rc={r.returncode} marks={len(row20b.get('produced_only_marks') or [])} "
+           f"problems={_empty_window_problems(row20b)[:1]}")
+
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))
         data["runs"][0]["output_chars"] = 999999  # 手改

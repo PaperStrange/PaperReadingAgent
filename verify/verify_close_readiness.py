@@ -696,6 +696,13 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
         att = attribution(ROOT, anchor, head, runs, exceptions, policy=policy)
 
     problems = evaluate(policy, sprint, runs, att=att, check_coverage=check_coverage)
+    # D0-3(a)：已标注的"产出型 run"**逐条打印**——它让一条判据对该 run 失效，
+    # 若只存在于账本 JSON 里，关闭报告就会"看着全绿"而无人知道有豁免在生效。
+    notes = att.produced_only_notes() if att is not None else []
+    for note in notes:
+        print(
+            f"NOTE[produced_only] {note}（该 run 不承担内容覆盖；未归属提交仍一条不少）"
+            )
     if problems:
         print(f"CLOSE-READINESS FAIL（{len(problems)} 项）：")
         for p in problems:
@@ -707,7 +714,9 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
                 print("  " + line)
         return 1
     print(f"CLOSE-READINESS PASS：{path.name}（run 表 {len(sprint['rows'])} 行，"
-          f"锚点 {(sprint.get('anchor') or '')[:8]}，覆盖提交 {len(att.shas) if att else 0}）")
+          f"锚点 {(sprint.get('anchor') or '')[:8]}"
+          f"，覆盖提交 {len(att.shas) if att else 0}"
+          f"，产出型标注 {len(notes)}）")
     return 0
 
 
@@ -896,6 +905,58 @@ def _selfcheck() -> int:
     ok("B3 正向对照：作用域类 run 的**短 sha** 仍判问题（空区间豁免不扩到短 sha 缺陷）",
        any("不是完整 40 位" in x for x in att_short.window_problems()),
        f"problems={att_short.window_problems()[:1]}")
+
+    # ---- D0-3(a)（2026-09-25）：产出型 run 的**逐条标注** ---------------------------
+    # 背景（`TG-17` ⑤）：账本原先没有实现类 role ⇒ 实现类工作补登记挂评审 role
+    # （实测 run-…-code-review-068），其窗口恒为空区间 ⇒ B3 判"内容评审类空窗口 FAIL"。
+    # 对**产出型** run 报这一条是结构性假红（它没有内容覆盖的声称可违反）。
+    # 修法不是放宽判据，而是把"它不是内容评审"落成**账本数据**：`agent-ops
+    # mark-produced`
+    # 逐条列名 + 必带理由 + 留痕数组。这里锁死三条边界：
+    #   ① 未标注的内容评审类 run 空窗口 **仍 FAIL**（收窄只由账本数据触发）；
+    #   ② 标注后不再报，且**必须被逐条打印**（豁免不得静默生效）；
+    #   ③ 短 sha **不因标注豁免**（标注只管"空区间"这一条判据）。
+    def _att_for_row(row: dict) -> Attribution:
+        """用**真实入口**（账本行 → `window_problems`）判定，
+        不另写一份"长度相等就算空"的判据（那是两套口径）。
+
+        `order_index` 取自上面 B3 块的同名导入（模块层面不再重复导入：那会被 ruff 判
+        F811 重定义 + F401 未使用——本仓 B 级硬闸门为 0，不允许为方便留 import）。
+        """
+        windows = coverage_windows_from_runs([row], policy)
+        return Attribution(anchor=str(row.get("coverage_anchor") or ""), head="", shas=[
+            ],
+                           order=order_index([str(row.get("coverage_anchor") or "")]),
+                           windows=windows, exceptions=[], root=None, policy=policy)
+
+    produced_row = {
+        "run_id": "run-produced-910", "role": "code-review", "status": "succeeded",
+        "coverage_anchor": SHA_A, "covers_through": SHA_A, "coverage_window": "self",
+        "scope_source": "self-chosen", "scope_deviation": "实现类工作补登记（fixture）",
+    }
+    probs = _att_for_row(produced_row).window_problems()
+    ok("D0-3(a) 反向对照 a：**未标注**的内容评审类 run 空窗口 → 仍 FAIL"
+       "（豁免只由账本数据触发，不由「忘了传字段」触发）",
+       any("空区间" in x for x in probs), f"problems={probs[:1]}")
+
+    marked_row = {**produced_row, "produced_only": True,
+                  "produced_only_reason": "实现类工作（TG-13 口径+闸门），非内容评审"}
+    att_marked = _att_for_row(marked_row)
+    ok("D0-3(a) 正向对照：已标注 `produced_only` 的 run 空窗口 → 不再判问题",
+       att_marked.window_problems() == [], 
+           f"problems={att_marked.window_problems()[:1]}")
+    ok("D0-3(a) 可见性：已标注的 run 被 `produced_only_notes()` 逐条打印"
+       "（豁免必须看得见，否则关闭报告会\"看着全绿\"而无人知情）",
+       any("run-produced-910" in n and "produced_only" in n
+           for n in att_marked.produced_only_notes()),
+       f"notes={att_marked.produced_only_notes()[:1]}")
+
+    short_marked_row = {**marked_row, "covers_through": SHA_A[:8]}
+    ok("D0-3(a) 反向对照 b：**短 sha 不因标注豁免**（标注只跳过\"空区间\"一条判据，"
+       "不构成通用放行）",
+       any("不是完整 40 位" in x for x in _att_for_row(short_marked_row).window_problems
+           ()),
+       f"problems={_att_for_row(short_marked_row).window_problems()[:1]}")
 
     inwin = _run("run-hist-901", "agent-onboarding-review", "onboarding-scan",
                  "2026-09-21T02:30:00+00:00", scope="", dev=None)

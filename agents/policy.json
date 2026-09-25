@@ -217,6 +217,59 @@
       "docs/iteration/sprint/2026-09-12-sprint-16.md": 1
     }
   },
+  "deduction_rates": {
+    "_comment": "§2.1.1（用户 2026-09-25 采纳 v0）：**未闭环 critical/major 的扣率**。这是**政策数据**——不是文档举例、不是脚本常量；闸门与将来的结算调用一律从这里读（政策数据化，见 docs/1-WORKFLOW.MD §6）。守门闸门 = verify/verify_deduction_rates.py；条文见 docs/iteration/sprint/2026-09-21-governance-batch-plan.MD §2.1.1 与 cards/TG-15.md（两处**只引用本键，不复制数值**）。计分口径：以**被判级的卡**为对象，`扣分 = 卡点数 × Σ(未闭环发现的比例)`；比例只按**级别**取，不按条数线性累加。",
+    "ratios": {
+      "critical": 0.5,
+      "major": 0.2,
+      "minor": 0.0,
+      "nit": 0.0
+    },
+    "ratios_note": "比例表：级别 → 占卡点数的比例。每条必须是 ∈[0,1] 的有限数（不得写注释键——注释写在本键；写成字符串/超界/负值一律 fail-closed）。**至少一项 > 0**：全 0 等于规则恒不扣分 = 静默关掉规则，故拒绝。",
+    "merge_same_root_cause": true,
+    "merge_same_root_cause_note": "**同根因合并开关**（不是常量）：true = 同一根因的多条发现合并计一次、取其中最高级别；false = 逐条线性累加。根因分组由调用方给（`deduction_for(..., root_causes=...)`）；**未给分组时按「每条各自一个根因」处理——不静默合并**（静默合并会低估扣分，是 fail-open 方向）。",
+    "cap_at_card_points": true,
+    "cap_note": "**封顶**：单卡总扣分不超过该卡点数（下限 0、不倒扣）。false = 不封顶。",
+    "rounding_step": 0.05,
+    "rounding_note": "**取整步长**：结果四舍五入到 rounding_step（与账本精度 0.05 一致）。必须是 (0,1] 内的有限数。",
+    "ratchet_item_folding": {
+      "_comment": "§2.1.1 第 5 条：原「棘轮『上限制+到期日』未闭环 → 扣 0.5」**折算为一条 major**（= 卡点数 × ratios[unclosed_folds_to_level]），不再单独列固定值——避免同一件事两种算法。调用方在构造 levels 时为该根因追加 count 条 `unclosed_folds_to_level`；本键由 verify/verify_deduction_rates.py 校验（级别必须在 ratios 里、count 为正整数），以免这条折算又被写回代码常量。",
+      "unclosed_folds_to_level": "major",
+      "count": 1
+    },
+    "unclosed_criteria": [
+      {
+        "id": "fixed",
+        "label": "① 已修",
+        "evidence": "有提交 sha（修复提交本身）",
+        "evidence_kinds": ["commit-sha"],
+        "requires_due_date": false
+      },
+      {
+        "id": "reverse-control",
+        "label": "② 有反向对照",
+        "evidence": "在**未修复**实现上跑出 FAIL 的记录",
+        "evidence_kinds": ["fail-record"],
+        "requires_due_date": false
+      },
+      {
+        "id": "guarded",
+        "label": "③ 有闸门/断言守住",
+        "evidence": "脚本名 + 断言名（两者都要，缺一不算）",
+        "evidence_kinds": ["gate-name", "assertion-name"],
+        "requires_due_date": false
+      },
+      {
+        "id": "deferred",
+        "label": "④ 属显式延期且写了到期日",
+        "evidence": "延期记录 + **到期日**（YYYY-MM-DD）；无到期日 → 视为未闭环",
+        "evidence_kinds": ["deferral-record", "due-date"],
+        "requires_due_date": true
+      }
+    ],
+    "unclosed_criteria_note": "**「未闭环」的四条判据**（逐条可核）：一条发现处于未闭环 ⟺ **四条都拿不出可核证据**。判据是「闭合条件」，故缺证据即未闭环（fail-closed = 多扣分而非少扣分）。结构化约束：≥1 条必须声明 `requires_due_date: true`——否则「显式延期」会静默退化成「说一句延期就算闭环」（这正是第 ④ 条要堵的洞）；`id` 必须唯一（重复 = 判据集合不可枚举）。",
+    "undetermined": "比例表/判据未落为数据之前，结算记为「扣率未定」——**不得默认按 0、不得执行方自选**（§2.1.1 第 6 条）。"
+  },
   "close_gate": {
     "scope_ref_step": "scope",
     "coverage": {

@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import math
 import os
 import re
 import subprocess
@@ -427,6 +428,117 @@ class Policy:
                 "不得留空——否则空窗口该不该报全凭读代码）")
         return val
 
+    # ---- 数据源 3：扣率（§2.1.1，用户 2026-09-25 采纳 v0） -------------------------
+    @property
+    def deduction_rates(self) -> dict:
+        """未闭环 critical/major 的**扣率口径**（`deduction_rates`，§2.1.1）。
+
+        为什么口径必须是数据：v0 提案里比例表（critical/major/minor）与「未闭环」四判据
+        一度只存在于计划文档里，而**文档不是执行面**——结算一旦落地，比例就会被抄进脚本，
+        于是「同一件事两种算法」重演（§2.1.1 第 5 条点名的形态）。
+        落数据 + 登记 `consumed` ⇒ ① 结算方无从自选；
+        ② 键写错/删掉不会被静默当默认值（`closure_problems` 判死键）。
+
+        校验一律 fail-closed（缺键 / 类型错 / 比例超界 / 全 0 / 步长非法 →
+        `PolicyError`）：
+        **比例写错会让规则静默失效或静默放大**，两者都不能靠"读到坏值再猜"。
+        结构性约束里最要紧的一条是 `unclosed_criteria` 必须**至少有一条声明
+        `requires_due_date: true`**——否则第 ④ 条会静默退化成"说一句延期就算闭环"。
+        """
+        val = self._data("deduction_rates")
+        if not isinstance(val, dict):
+            raise PolicyError(f"deduction_rates 必须是对象，实际 {val!r}")
+
+        ratios = val.get("ratios")
+        if not isinstance(ratios, dict) or not ratios:
+            raise PolicyError(
+                f"ratios 必须是非空映射（级别 → 比例），实际 {ratios!r}")
+        for level, ratio in ratios.items():
+            if not str(level).strip():
+                raise PolicyError(f"ratios 出现空级别名：{ratios!r}")
+            if isinstance(ratio, bool) or not isinstance(ratio, (int, float)) \
+                    or not math.isfinite(float(ratio)) \
+                    or not 0.0 <= float(ratio) <= 1.0:
+                raise PolicyError(
+                    f"ratios[{level!r}] 须为 ∈[0,1] 有限数，实际 {ratio!r}"
+                    f"（注释键/字符串/超界都拒——坏值会让扣率静默失真）")
+        if not any(float(r) > 0 for r in ratios.values()):
+            raise PolicyError(
+                f"ratios 全为 0（{ratios!r}）⇒ 规则恒不扣分 = 静默关规则，"
+                f"故 fail-closed；确要停用请改 §2.1.1 条文而非清零")
+
+        merge = val.get("merge_same_root_cause")
+        if not isinstance(merge, bool):
+            raise PolicyError(
+                f"merge_same_root_cause 须为布尔，实际 {merge!r}"
+                f"（拼错不得静默当 false——那会从「合并」变「逐条累加」）")
+        cap = val.get("cap_at_card_points")
+        if not isinstance(cap, bool):
+            raise PolicyError(f"cap_at_card_points 须为布尔，实际 {cap!r}")
+
+        step = val.get("rounding_step")
+        if isinstance(step, bool) or not isinstance(step, (int, float)) \
+                or not math.isfinite(float(step)) or not 0.0 < float(step) <= 1.0:
+            raise PolicyError(
+                f"rounding_step 须为 (0,1] 内有限数，实际 {step!r}"
+                f"（步长写错 = 账本精度对不上，0 还会让取整除零）")
+
+        folding = val.get("ratchet_item_folding")
+        if not isinstance(folding, dict):
+            raise PolicyError(
+                f"ratchet_item_folding 须为对象，实际 {folding!r}"
+                f"（§2.1.1 第 5 条的折算口径；缺它只能写回代码常量）")
+        fold_level = str(folding.get("unclosed_folds_to_level") or "").strip()
+        if fold_level not in ratios:
+            raise PolicyError(
+                f"ratchet_item_folding.unclosed_folds_to_level={fold_level!r} "
+                f"不在级别表 {sorted(ratios)} 内 ⇒ 折算无从取比例")
+        fold_count = folding.get("count")
+        if isinstance(fold_count, bool) or not isinstance(fold_count, int) \
+                or fold_count <= 0:
+            raise PolicyError(
+                f"ratchet_item_folding.count 须为正整数，实际 {fold_count!r}")
+
+        criteria = val.get("unclosed_criteria")
+        if not isinstance(criteria, list) or not criteria:
+            raise PolicyError(
+                f"unclosed_criteria 须为非空列表（四判据是本规则另一半），"
+                f"实际 {criteria!r}")
+        seen: set[str] = set()
+        requires_due_date = 0
+        for i, item in enumerate(criteria):
+            where = f"deduction_rates.unclosed_criteria[{i}]"
+            if not isinstance(item, dict):
+                raise PolicyError(f"{where} 必须是对象，实际 {item!r}")
+            for field in ("id", "label", "evidence"):
+                if not str(item.get(field) or "").strip():
+                    raise PolicyError(
+                        f"{where}.{field} 缺失或为空（判据须逐条可核、可枚举）")
+            cid = str(item["id"]).strip()
+            if cid in seen:
+                raise PolicyError(
+                    f"{where}.id={cid!r} 与前面的判据重复（判据集合不可枚举）")
+            seen.add(cid)
+            kinds = item.get("evidence_kinds")
+            if not isinstance(kinds, list) or not kinds \
+                    or not all(isinstance(k, str) and k.strip() for k in kinds):
+                raise PolicyError(
+                    f"{where}.evidence_kinds 须为非空字符串列表"
+                    f"（证据形态要可枚举），实际 {kinds!r}")
+            rdd = item.get("requires_due_date")
+            if not isinstance(rdd, bool):
+                raise PolicyError(
+                    f"{where}.requires_due_date 须为布尔，实际 {rdd!r}"
+                    f"（缺它无法判定「显式延期须带到期日」这条约束）")
+            requires_due_date += int(rdd)
+        if not requires_due_date:
+            raise PolicyError(
+                "unclosed_criteria 没有任何一条声明 requires_due_date: true "
+                "⇒「显式延期」判据静默退化成「说一句延期就算闭环」"
+                "（§2.1.1 第 ④ 条要求无到期日即视为未闭环）；"
+                "这是放宽方向，故 fail-closed")
+        return val
+
     # ---- 数据源 3：离线开关（TG-8） ------------------------------------------------
     @property
     def offline_switch(self) -> dict:
@@ -609,6 +721,13 @@ class Policy:
             # TG-8：离线开关（开关名 / 默认值 / 真值表 / 拒绝文案 / 退出码），
             # 由 verify/outbound_guard.py（运行时唯一实现）与 verify/agent_policy.py 自身消费
             "offline_switch",
+            # §2.1.1（用户 2026-09-25 采纳 v0）：未闭环 critical/major 的扣率口径
+            # （比例表 / 同根因合并开关 / 封顶 / 取整步长 / 棘轮折算 / "未闭环"四判据）
+            # ，
+            # 由 Policy.deduction_rates() 与纯函数 deduction_for() 消费，
+            # 守门闸门 = verify/verify_deduction_rates.py（首次实际结算时再加 CLI，见
+            # §2.1.1）
+            "deduction_rates",
         }
         for key in self.policy_file:
             if key not in consumed:
@@ -753,6 +872,12 @@ class CoverageWindow:
     anchor: str
     through: str
     from_run: bool  # True=账本自动记录；False=调用方显式传入（fixture/异常）
+    # D0-3(a)（2026-09-25）：该 run 已被**逐条列名 + 带理由**标注为"产出型 run"
+    # （实现类工作补登记挂评审 role，不承担内容覆盖）。默认 False ⇒
+    # 读取方不打标即不生效，
+    # 收窄只由**账本数据**触发，不由"忘了传字段"触发（fail-closed 方向）。
+    produced_only: bool = False
+    produced_only_reason: str = ""
 
     def covers(self, sha: str, order: dict[str, int]) -> bool:
         """`order` = `{sha: index}`（**0 = HEAD/最新**，与 `git rev-list` 输出同序）。
@@ -781,6 +906,11 @@ def coverage_windows_from_runs(runs, policy: "Policy | None" = None) -> list[Cov
     传入 `policy` 时按 spec 的 `coverage_window` 声明过滤：声明为 `none` 的角色
     （如 tech-research / workspace-check）**不参与 C3 覆盖计算**——这条此前只写在文档里，
     现由 `SpecRole.participates_in_coverage` 提供判据（doc-audit finding 2 的修法之一）。
+
+    D0-3(a)：账本行的 `produced_only`（`mark-produced` 写入，**逐条列名 + 必带理由**）
+    透传到窗口上，供 `window_problems()` 区分"产出型 run"与"内容评审类 run"。
+    这里只搬字段，
+    不做判定——判定集中在一处，避免"读到打标就各处自行放行"。
     """
     out: list[CoverageWindow] = []
     for r in runs:
@@ -796,6 +926,8 @@ def coverage_windows_from_runs(runs, policy: "Policy | None" = None) -> list[Cov
         out.append(CoverageWindow(
             run_id=str(r.get("run_id") or "?"), role=role,
             anchor=anchor, through=through, from_run=True,
+            produced_only=bool(r.get("produced_only")),
+            produced_only_reason=str(r.get("produced_only_reason") or ""),
         ))
     return out
 
@@ -891,6 +1023,15 @@ class Attribution:
             （`run-…-code-review-068` 就是这种），若放行则 C3 的压力会静默全落到例外表，
             正是本闸门存在的理由。判据文案真源 =
             `close_gate.coverage.scope_run_window`。
+          * **已标注的"产出型 run"**（D0-3(a)，账本行 `produced_only: true`）——
+            **不判问题**。理由不是"宽限"，而是**它本就不是评审**：这类 run 是"实现类工作
+            补登记挂评审 role"的实例（`TG-17` ⑤：账本原先没有实现类 role），它没有
+            内容覆盖的**声称**可违反。标注由 `scripts/agent-ops.py mark-produced`
+            **逐条列名 + 必带理由**写入账本（留痕数组），**不是通配豁免**：
+            ① 未标注的内容评审类 run 空窗口**仍判 FAIL**；
+            ② 短 sha 判据**不以任何理由豁免**（打标也不放行）；
+            ③ 打标只跳过本行这一条判据，**不产生任何覆盖**（C3 未归属提交一条不少）；
+            ④ 已打标的 run 会被 `produced_only_notes()` 逐条打印，关闭报告里看得见。
         """
         problems: list[str] = []
         full = 40
@@ -908,14 +1049,35 @@ class Attribution:
                 if self.is_scope_run(w.role):
                     # B3：作用域类 run 不承担内容覆盖，空区间是正常形态（见方法文档）
                     continue
+                if w.produced_only:
+                    # D0-3(a)：产出型 run 不声称内容覆盖（逐条列名 + 带理由，
+                    # 见方法文档）
+                    continue
                 problems.append(
                     f"{w.run_id}（role={w.role}，内容评审类）的窗口 "
                     f"({w.anchor[:8]}, {w.through[:8]}] 是**空区间**"
                     f"（登记与收尾在同一提交）"
                     f"→ 该 run 声称覆盖内容却实际贡献 0 覆盖，C3 压力全落到例外表。"
                     f"修复：`scripts/agent-ops.py set-anchor {w.run_id} "
-                    f"--covers-through <sha> --reason <受控回填理由>`（或重跑该评审）")
+                    f"--covers-through <sha> --reason <受控回填理由>`（或重跑该评审）；"
+                    f"若该 run 其实是**实现类工作挂评审 role**（不承担内容覆盖），"
+                    f"用 `agent-ops.py mark-produced {w.run_id} --reason <理由>` "
+                    f"如实标注（不改覆盖、不伪造范围）")
         return problems
+
+    def produced_only_notes(self) -> list[str]:
+        """已标注"产出型 run"的逐条打印（D0-3(a) 的**可见性**要求）。
+
+        为什么必须打印而不是默默跳过：`produced_only` 会让一条判据对该 run 失效，
+        若这件事只存在于 JSON 里，关闭报告就会"看起来全绿"而无人知道有豁免在生效——
+        与例外表"必须逐条 sha 钉死 + 写理由"同源的防滥用设计（可核、可见、可复核）。
+        """
+        return [
+            f"{w.run_id}（role={w.role}）已标注 produced_only："
+            f"窗口 ({w.anchor[:8]}, {w.through[:8]}] 空 ⇒ 不承担内容覆盖；"
+            f"理由={w.produced_only_reason or '（缺理由，账本数据不完整）'}"
+            for w in self.windows if w.produced_only
+        ]
 
     def empty_interval(self) -> bool:
         """锚点→HEAD 之间**没有任何提交**受检（2026-09-23 二查 critical）。
@@ -999,4 +1161,116 @@ def load_coverage_exceptions(path: Path) -> list[dict]:
     if isinstance(data, list):
         return data
     raise PolicyError(f"{path} 结构非法（应为 {{rules: [...]}} 或数组）")
+
+
+# ------------------------------------------- §2.1.1：扣率结算（纯函数，无 I/O）
+
+@dataclass(frozen=True)
+class DeductionResult:
+    """一次扣率结算的可核结果（§2.1.1）。
+
+    **不落账本、不建 CLI**：§2.1.1 明写"结算脚本在**首次实际使用**时再加（避免造用不上的
+    机器）"。
+    本结构与 `deduction_for()` 一起构成那台机器**唯一需要被提前固定的部分**——口径，
+    而口径已经落在 `agents/policy.json::deduction_rates`（数据），不是常量。
+
+    字段一律"可复算"：`counted_levels` 是**合并/封顶前参与计分**的级别序列（按根因分组后
+    的
+    代表级别），故 `ratio == Σ ratios[counted_levels]`、`points == card_points -
+    deduction`
+    可被调用方逐条复核，不必相信本函数。
+    """
+
+    card_points: float
+    counted_levels: tuple[str, ...]
+    ratio: float          # 合并后、封顶前的比例和
+    capped: bool          # 是否被"不超过卡点数"这一步改变过结果
+    deduction: float      # 实际扣分（已按 rounding_step 取整；封顶优先于取整）
+    points: float         # 剩余点数 = card_points - deduction（下限 0，不倒扣）
+
+
+def _round_to_step(value: float, step: float) -> float:
+    """四舍五入到步长网格（先除后乘再 round，避免 0.05 步长下的浮点尾数）。"""
+    return round(round(value / step) * step, 10)
+
+
+def deduction_for(card_points, levels, *, root_causes=None, rates=None,
+                  merge: bool | None = None) -> DeductionResult:
+    """§2.1.1 的**纯结算函数**：`卡点数 + 未闭环发现的级别` → 扣分与剩余点数。
+
+    口径全部来自 `agents/policy.json::deduction_rates`（数据）：
+
+      * 比例**只按级别**取（`ratios[level]`），不按条数线性累加；
+      * `merge_same_root_cause` 为真时，**同一根因**的多条发现合并计一次、取其中最高级别
+        ——根因分组由调用方通过 `root_causes` 给出（与 `levels` 等长、逐项对应）；
+      * **未给 `root_causes` 时按「每条各自一个根因」处理**：这是 fail-closed 方向
+        （静默合并会**低估**扣分；而"少扣分"正是本规则要防止的失效形态）；
+      * `cap_at_card_points` 为真时单卡总扣分不超过卡点数（**封顶优先于取整**：
+        卡点数未必落在取整网格上，取整不得把结果顶过封顶）；
+      * 结果按 `rounding_step` 四舍五入；`points` 为剩余点数（下限 0、不倒扣）。
+
+    **fail-closed**：级别名不在 `ratios` 里（拼错/自造级别）、`root_causes` 与 `levels`
+    不等长、
+    `card_points` 非有限或为负 → 一律 `PolicyError`，**不静默按 0 计**——
+    "读不到就当没有"正是本模块开头点名的失效形态。
+
+    **纯度**：传 `rates` 时本函数不碰任何文件（自检里有对应反向对照：
+    政策路径不存在也照样能算）；
+    不传时取当前政策（`load_policy().deduction_rates()`）——那是**取默认值**，
+    不是隐藏状态。
+    """
+    if rates is None:
+        rates = load_policy().deduction_rates()
+    ratios = {str(k): float(v) for k, v in rates["ratios"].items()}
+    step = float(rates["rounding_step"])
+    if merge is None:
+        merge = bool(rates["merge_same_root_cause"])
+    cap_at_points = bool(rates["cap_at_card_points"])
+
+    if isinstance(card_points, bool) or not isinstance(card_points, (int, float)) \
+            or not math.isfinite(float(card_points)) or float(card_points) < 0:
+        raise PolicyError(
+            f"deduction_for: card_points 必须是 ≥0 的有限数，实际 {card_points!r}")
+
+    level_list = [str(lv).strip() for lv in levels]
+    unknown = sorted({lv for lv in level_list if lv not in ratios})
+    if unknown:
+        raise PolicyError(
+            f"deduction_for: 级别 {unknown} 不在 deduction_rates.ratios 的级别表 "
+            f"{sorted(ratios)} 内——拼错/自造级别不得静默按 0 计")
+
+    if root_causes is None:
+        causes = [f"finding-{i}" for i in range(len(level_list))]
+    else:
+        causes = [str(c).strip() for c in root_causes]
+        if len(causes) != len(level_list):
+            raise PolicyError(
+                f"deduction_for: root_causes 与 levels 须等长"
+                f"（{len(causes)} != {len(level_list)}）"
+                f"——长度对不上时「哪几条同根因」无从判定，静默截断会改变扣分")
+
+    if merge:
+        best: dict[str, str] = {}
+        for level, cause in zip(level_list, causes):
+            current = best.get(cause)
+            if current is None or ratios[level] > ratios[current]:
+                best[cause] = level
+        counted = tuple(best[c] for c in dict.fromkeys(causes))  # 保序，去重
+    else:
+        counted = tuple(level_list)
+
+    ratio = sum(ratios[lv] for lv in counted)
+    raw = float(card_points) * ratio
+    capped = False
+    if cap_at_points:
+        capped = raw > float(card_points)
+        raw = min(raw, float(card_points))
+    deduction = _round_to_step(raw, step)
+    if cap_at_points and deduction > float(card_points):
+        deduction = float(card_points)  # 封顶优先于取整（见 docstring）
+    return DeductionResult(
+        card_points=float(card_points), counted_levels=counted, ratio=round(ratio, 10),
+        capped=capped, deduction=deduction,
+        points=round(float(card_points) - deduction, 10),
+    )
 

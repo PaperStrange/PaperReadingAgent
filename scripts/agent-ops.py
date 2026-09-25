@@ -21,6 +21,12 @@
       [--output-chars N] [--result-file PATH] [--cost-override X] [--estimate-mode chars]
   python scripts/agent-ops.py list [--status S] [--role R] [--limit N]
   python scripts/agent-ops.py close-sync --sprint <sprint.md> [--write] [--fail-on-unowned]   # TG-15⑤ 覆盖候选生成
+  python scripts/agent-ops.py set-anchor <run_id> [--anchor <sha>] [--covers-through
+  <sha>] --reason <理由>
+  python scripts/agent-ops.py set-scope <run_id> [--source <src>] [--deviation <理由>]
+  --reason <理由>
+  python scripts/agent-ops.py mark-produced <run_id> --reason <理由> [--undo]   #
+  D0-3(a)：逐条标注「产出型 run」
   python scripts/agent-ops.py validate-spec <file.md>
   python scripts/agent-ops.py fetch-spec <file.md> [--offline]
   python scripts/agent-ops.py parse-report <file.md>
@@ -702,6 +708,101 @@ def cmd_set_scope(args: argparse.Namespace) -> None:
 
 
 @_with_registry_lock
+def cmd_mark_produced(args: argparse.Namespace) -> None:
+    """受控标注：把某条 run 如实标成**产出型 run**（D0-3(a)，`TG-17` ⑤ 的实例）。
+
+    **要解决的是什么**：账本原先没有实现类 role，于是"实现类工作"被补登记在评审 role 下
+    （实测 `run-2026-09-25-code-review-068`：`task_id` 明写"非分支评审"、`scope_source=s
+    elf-chosen`）。
+    这类 run 的 `coverage_anchor == covers_through` ⇒ 覆盖窗口是空区间，而 B3 的语义是
+    "**内容评审类** run 的空窗口 = 声称覆盖内容却贡献 0 覆盖 ⇒ FAIL"。对**产出型** run
+    报这一条
+    是**结构性假红**：它压根没有内容覆盖的声称可违反。
+
+    **为什么是标注而不是回填 `covers_through`**：回填到 HEAD 等于声称这些提交被评审过，
+    而实际没有——那是**伪造覆盖**（`TG-17` 明令禁止）。标注不改变任何覆盖：
+    窗口仍是空区间、
+    C3 未归属提交一条不少，改变的只是"这条 run 属不属于内容评审"这个**事实判断**。
+
+    **为什么不是通配豁免**（与 `set-scope`/`set-anchor` 同源的防滥用设计）：
+      * **逐条列名**：一次只对一条 run 生效，没有"按 role/按前缀"的批量口子；
+      * **必带理由**：`--reason` ≥10 字符（与 `set-anchor`/`set-scope` 同口径），
+      写入账本；
+      * **留痕数组**：`produced_only_marks[]{at, action, reason, by, window}`，可审计；
+      * **一致性前置条件**（拒绝"随口打标"）：
+          ① 该 run 的 `role` 必须是**评审类**（spec 声明 `scope_required: true`）——
+             非评审类 run 打这个标没有语义；
+          ② 该 run 的窗口必须**确实是空区间**（`coverage_anchor == covers_through`
+          且都是
+             完整 sha）——窗口非空的 run 并未被判"空窗口"，标注既无必要，
+             又会与账本事实矛盾；
+          ③ **已标注** → 无操作（不改库、不追加假留痕，同 B2 的教训）。
+      * 标注只对本行**一条**判据生效（空窗口）；**短 sha 判据不以任何理由豁免**，
+        且已标注的 run 会被 `Attribution.produced_only_notes()`
+        逐条打印（关闭报告里看得见）。
+
+    `--undo` 撤回标注（同样必带理由 + 留痕）：不可撤回的数据写入本身就是个坑，
+    而"标错了只能手改账本"会直接违反"账本不得手改"。
+    """
+    data = _load_registry()
+    r = _find_run(data, args.run_id)
+    reason = (args.reason or "").strip()
+    if len(reason) < 10:
+        raise SystemExit(
+            "标注必须给 --reason（≥10 字符的理由）：为什么这条 run 不承担内容覆盖"
+            "（它是产出型/实现类工作，不是内容评审）")
+
+    if getattr(args, "undo", False):
+        if not r.get("produced_only"):
+            print(f"mark-produced {r['run_id']}: 无变化（未标注过，未写盘）")
+            return
+        r["produced_only"] = False
+        r.pop("produced_only_reason", None)
+        r.setdefault("produced_only_marks", []).append(
+            {"at": _now(), "action": "unmark", "reason": reason, "by": args.by})
+        _save_registry(data)
+        print(f"mark-produced {r['run_id']}: 已撤回标注"
+              f" (marks={len(r['produced_only_marks'])})")
+        return
+
+    if r.get("produced_only"):
+        print(f"mark-produced {r['run_id']}: 无变化（已标注，未追加留痕）")
+        return
+
+    role = str(r.get("role") or "")
+    if role not in _review_roles():
+        raise SystemExit(
+            f"COVERAGE-PRODUCED-ERROR: {r['run_id']} 的 role={role!r} 不是评审类"
+            f"（评审类 = spec 声明 scope_required: true：{sorted(_review_roles())}）"
+            f"——该标注语义是「评审 role 但不做内容评审」，非评审类无意义")
+
+    anchor = str(r.get("coverage_anchor") or "").strip()
+    through = str(r.get("covers_through") or "").strip()
+    if not anchor or not through:
+        raise SystemExit(
+            f"COVERAGE-PRODUCED-ERROR: {r['run_id']} 缺覆盖窗口端点"
+            f"（coverage_anchor={anchor!r} / covers_through={through!r}）"
+            f"——没有窗口就没有「空窗口」这条判据，标注无从生效")
+    if anchor != through or len(anchor) != 40:
+        raise SystemExit(
+            f"COVERAGE-PRODUCED-ERROR: {r['run_id']} 的窗口 "
+            f"({anchor[:12]}, {through[:12]}] 不是**空区间**"
+            f"（或端点非完整 sha）——窗口非空的 run 未被判「空窗口」，"
+            f"标注既无必要又与账本事实矛盾；"
+            f"窗口真实的 run 请走 `set-anchor --reason`（不得用回填伪造覆盖）")
+
+    r["produced_only"] = True
+    r["produced_only_reason"] = reason
+    r.setdefault("produced_only_marks", []).append(
+        {"at": _now(), "action": "mark", "reason": reason, "by": args.by,
+         "window": f"{anchor[:8]}..{through[:8]}"})
+    _save_registry(data)
+    print(f"mark-produced {r['run_id']}: produced_only=True"
+          f"（窗口 {anchor[:8]}..{through[:8]} 空；不承担内容覆盖）"
+          f" (marks={len(r['produced_only_marks'])})")
+
+
+@_with_registry_lock
 def cmd_finish(args: argparse.Namespace) -> None:
     data = _load_registry()
     r = _find_run(data, args.run_id)
@@ -880,8 +981,13 @@ def cmd_list(args: argparse.Namespace) -> None:
             anchor = (r.get("coverage_anchor") or "")[:8] or "none"
             through = (r.get("covers_through") or "")[:8] or "open"
             cov = f" cov={anchor}..{through}"
+        # D0-3(a)：产出型标注必须**一眼可见**——豁免只躺在 JSON 里，
+        # 关闭报告就会"看着全绿"而无人知道有豁免在生效
+        # （与 C3-T 例外表"逐条 sha 钉死 + 写理由"同源的可见性要求）。
+        produced = " produced(!)" if r.get("produced_only") else ""
         print(f"{r['run_id']:30s} {r['role']:20s} {r['status']:10s} "
-              f"cost={r.get('cost_est', {}).get('total')} spec={r['spec_source']} rounds={rounds}{dur}{intr}{scope}{cov}")
+              f"cost={r.get('cost_est', {}).get('total')} spec={r['spec_source']}"
+              f" rounds={rounds}{dur}{intr}{scope}{cov}{produced}")
     print(f"--- {len(rows)} runs ---")
 
 
@@ -1206,6 +1312,15 @@ def main() -> int:
     p.add_argument("--reason", required=True,
                    help="回填理由（≥10 字符）：为什么回填、依据哪份记录/卡")
     p.add_argument("--by", default="main-agent")
+    p = sub.add_parser("mark-produced",
+                       help="D0-3(a)/TG-17⑤：把已登记 run **逐条**标注为「产出型 run」"
+                            "（实现类工作挂评审 role，不承担内容覆盖）；必带理由+留痕")
+    p.add_argument("run_id")
+    p.add_argument("--reason", required=True,
+                   help="标注理由（≥10 字符）：为什么它是产出型/实现类工作而非内容评审")
+    p.add_argument("--undo", action="store_true",
+                   help="撤回该 run 的产出型标注（同样写留痕；撤回后空窗口重新 FAIL）")
+    p.add_argument("--by", default="main-agent")
     p = sub.add_parser("validate-spec")
     p.add_argument("spec_file")
     p = sub.add_parser("fetch-spec")
@@ -1222,6 +1337,7 @@ def main() -> int:
         "parse-report": cmd_parse_report, "prices-derive": _derive_prices,
         "round": cmd_round, "interrupt": cmd_interrupt, "close-sync": cmd_close_sync,
         "set-anchor": cmd_set_anchor, "set-scope": cmd_set_scope,
+        "mark-produced": cmd_mark_produced,
     }[args.cmd](args)
     return 0
 
