@@ -152,7 +152,8 @@ def head_caps(policy_rel: str = POLICY_REL) -> dict[str, int] | None:
 
 def evaluate(counts: dict[str, list[tuple[int, str, str, str]]], *, baseline: dict[str, int],
              default_cap: int, review_by: str, today: str, previous: dict[str, int] | None,
-             existing_files: set[str] | None = None) -> tuple[list[str], list[str]]:
+             existing_files: set[str] | None = None,
+             root: Path | None = None) -> tuple[list[str], list[str]]:
     """纯函数：给定"逐文件命中数 + 上限表 + 基准"，返回 (problems, warnings)。"""
     problems: list[str] = []
     warnings: list[str] = []
@@ -178,9 +179,24 @@ def evaluate(counts: dict[str, list[tuple[int, str, str, str]]], *, baseline: di
                                 f"而不是改数字）")
     if existing_files is not None:
         for path in sorted(baseline):
-            if path not in existing_files:
-                problems.append(f"[棘轮] baseline 里的 {path} 已不存在（死键）→ 失效条目必须删除"
-                                f"（留着它等于给一个未来同名文件预留豁免）")
+            if path in existing_files:
+                continue
+            # **分支差异 ≠ 死键**（C6，2026-09-25 sync PR #53 的 CI 实测）：
+            # baseline 里大量条目在
+            # `docs/iteration/**`（windows-only）下，
+            # 而 `main`/同步分支没有该目录 ⇒ 这些条目"文件不在"
+            # 是**分支差异**，不是"失效条目"。判据改为按**父目录**是否存在区分（不猜、
+            # 不含糊）：
+            #   * 父目录存在、文件不在 → 真死键 → FAIL（原判据，方向不变）；
+            # * 父目录也不存在 → 该文件所属的树在本分支根本没有 → 记一条 NOTE，
+            # 不判问题。
+            parent = (root / path).parent if root is not None else None
+            if parent is not None and not parent.exists():
+                warnings.append(f"{path}: 所属目录不存在（分支差异，如 windows-only 的 "
+                                f"`docs/iteration/**`）→ 跳过死键判据")
+                continue
+            problems.append(f"[棘轮] baseline 里的 {path} 已不存在（死键）→ 失效条目必须删除"
+                            f"（留着它等于给一个未来同名文件预留豁免）")
     return problems, warnings
 
 
@@ -256,7 +272,8 @@ def main() -> int:
         return 0
     problems, warnings = evaluate(counts, baseline=BASELINE, default_cap=DEFAULT_CAP,
                                   review_by=REVIEW_BY, today=today, previous=head_caps(),
-                                  existing_files={rel(p) for p in doc_files()})
+                                  existing_files={rel(p) for p in doc_files()},
+                                  root=ROOT)
     for w in warnings[:20]:
         print(f"WARN: {w}")
     if problems:
