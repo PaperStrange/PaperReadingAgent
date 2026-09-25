@@ -723,14 +723,21 @@
           "cells": 5,
           "title": "关闭税机制化：判定域绑定 / 反空转不变式 / 棘轮完整性 / 关闭税读数派生（G2 头号机制卡；来源＝关闭期复核的机制",
           "title_chars": 109
+        },
+        {
+          "card": "TG-20",
+          "line": 34,
+          "cells": 5,
+          "title": "决策登记册与提问纪律（`docs/6-DECISIONS.md`）：裁决的单一登记处（原文逐字 ＋ 生效状态 ＋ 证据 ",
+          "title_chars": 116
         }
       ],
       "non_card_rows": [],
-      "card_count": 19
+      "card_count": 20
     }
   },
   "totals": {
-    "cards": 99,
+    "cards": 100,
     "phases": 4,
     "non_card_rows": 1
   }
