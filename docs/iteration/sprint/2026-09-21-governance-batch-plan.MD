@@ -97,12 +97,12 @@
 | 语言/文件类型 | 量 | 工具闸门 | 规范依据 | 落地批次 |
 |---|---|---|---|---|
 | **Python** | **112** | `ruff`（启用 pycodestyle/pyflakes/**pydocstyle `D`**/命名 `N` 等规则集）+ 既有 `verify_*.py` 结构约定 | [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) | **G1** |
-| **JavaScript / JSX** | 26 mjs + 7 jsx（含 GUI 检查） | `eslint`（recommended + react 插件）+ `prettier --check` | [Google JavaScript Style Guide](https://google.github.io/styleguide/jsguide.html) | **G2** |
-| **TypeScript / TSX** | 17（Next.js 看板） | `@typescript-eslint` + `prettier --check` | [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html) | **G2** |
-| **JSON / YAML** | 26 / 53（`providers/*.json`、CI workflow、`fanout.json` 等） | JSON：**既有 schema/结构校验**（`validateFanout`、`VERIFY_META` 校验）统一登记；YAML：`yamllint` + workflow 结构校验 | 项目自身 schema + GitHub Actions 语法 | **G2** |
-| **PowerShell** | 7 | **`PSScriptAnalyzer`**（`Invoke-ScriptAnalyzer -Severity Warning,Error`）+ 项目约定（纯 ASCII/带 BOM、`$PSNativeCommandUseErrorActionPreference`，见 1.18 与 CI pip 静默失败） | PSScriptAnalyzer 默认规则集 | **G2** |
-| **Batch** | 4 | 无成熟 linter → **人工评审 + 轻量断言**（编码、换行、`chcp`/`setlocal` 约定） | 项目约定 | **G2** |
-| **Markdown（文档/规范）** | **82** | 结构校验（`TG-14` 的 `verify_card_index.py`：标题层级、表格连续性、**表头↔各行单元格数一致**、卡号无跳号）＋ `markdownlint`（**MD056** `table-column-count`） | `1-WORKFLOW.MD` §6 文档规范 | **G1**（结构）/ **G2**（style） |
+| **JavaScript / JSX** | 26 mjs + 7 jsx（含 GUI 检查） | `eslint`（recommended + react 插件）+ `prettier --check` | [Google JavaScript Style Guide](https://google.github.io/styleguide/jsguide.html) | **G3**（2026-09-25 D4 裁定，原 G2） |
+| **TypeScript / TSX** | 17（Next.js 看板） | `@typescript-eslint` + `prettier --check` | [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html) | **G3**（2026-09-25 D4 裁定，原 G2） |
+| **JSON / YAML** | 26 / 53（`providers/*.json`、CI workflow、`fanout.json` 等） | JSON：**既有 schema/结构校验**（`validateFanout`、`VERIFY_META` 校验）统一登记；YAML：`yamllint` + workflow 结构校验 | 项目自身 schema + GitHub Actions 语法 | **G3**（2026-09-25 D4 裁定，原 G2） |
+| **PowerShell** | 7 | **`PSScriptAnalyzer`**（`Invoke-ScriptAnalyzer -Severity Warning,Error`）+ 项目约定（纯 ASCII/带 BOM、`$PSNativeCommandUseErrorActionPreference`，见 1.18 与 CI pip 静默失败） | PSScriptAnalyzer 默认规则集 | **G3**（2026-09-25 D4 裁定，原 G2） |
+| **Batch** | 4 | 无成熟 linter → **人工评审 + 轻量断言**（编码、换行、`chcp`/`setlocal` 约定） | 项目约定 | **G3**（2026-09-25 D4 裁定，原 G2） |
+| **Markdown（文档/规范）** | **82** | 结构校验（`TG-14` 的 `verify_card_index.py`：标题层级、表格连续性、**表头↔各行单元格数一致**、卡号无跳号）＋ `markdownlint`（**MD056** `table-column-count`） | `1-WORKFLOW.MD` §6 文档规范 | **G1**（结构）/ **G3**（style，2026-09-25 D4 裁定，原 G2） |
 | CSS / TOML | 2 / 5 | 可选（`stylelint` / `taplo`） | — | 后续 |
 
 **闸门要求**：新增 `verify/verify_lint.py`（**offline 档，纳入套件**）——① 逐语言调用上表工具（工具缺失时 **fail-closed** 或显式 `skipped` 并记原因，**不得静默跳过**）；② **反向对照**：注入一处违规（如未使用变量/缺 docstring/超长函数）→ 必须 FAIL；③ **spec 侧**：`agents/functions/code-review.md` 的 `focus` 增 `readability`，判据引用上表规范，`strictness=strict` 时每条可读性问题必须给"为什么读不懂 + 怎么改"；④ 工具能自动抓的交给工具，抓不到的（命名语义、注释质量、隐式假设）由评审按 spec 判。
@@ -116,7 +116,7 @@
 | 批次 | 目标 | 卡（点数） | 合计 | 关键交付 |
 |---|---|---|---|---|
 | **G1 规则落地** | 让"规则"变成**可执行检查点** | `TG-11` 规则绕过复盘+闸门(3)、`TG-6` 验收方式改进(3)、`TG-13` 账本测量化(2)、`TG-14` 一卡一文档(3)、`TG-8` 端口自检+离线开关(2)、`TG-9` 产物目录约定(1) ＋ **搭车项（用户 2026-09-21 批准）**：`F-AC13` 运行按钮(2)、`F-AC14` 复制串台(2) | **14 + 4 搭车 = 18** | 关闭前置闸门 `verify_close_readiness.py`；反向对照规则落地；账本测量化；卡↔文档结构 + 索引 lint；**Python 侧 `ruff` 闸门（§2.3 G1 行）**；两个用户可见 bug 修复 |
-| **G2 载体与验证可信度**（**MM 并行**） | 把纪律挂到**动作**语境 + 治"检查在骗人" | `A-M11` ① 分层提示词、② 四列映射表、⑧ 验证可信度（C2b 24 条）、⑨ 接管判据、⑩ 报告↔run 绑定(合计 3+)、`TG-12` 派生事实机制(3) ＋ **并行线**：`MM-1`(2)、`MM-2`(3)、`MM-3`(2) | **≈12（治理）+ 7（MM 并行）** | 分层提示词（把规则挂动作）；四列映射表；验证可信度通则；接管留痕与边界继承；漂移闸门；**多语言 lint 闸门（§2.3 G2 行）**；**MM schema/生成器/种子模型首跑（与 G2 并行推进）** |
+| **G2 载体与验证可信度**（**MM 并行**）**[已被 [`2026-09-25-governance-batch-plan-G2.MD`](2026-09-25-governance-batch-plan-G2.MD) §0/§8.2 取代（2026-09-25 D4 裁定）：本行的卡集与上限以该计划书为准——`TG-12` / `MM-1/2/3` / 多语言 lint 顺延 G3，G2 = 纯治理 12 点]** | 把纪律挂到**动作**语境 + 治"检查在骗人" | `A-M11` ① 分层提示词、② 四列映射表、⑧ 验证可信度（C2b 24 条）、⑨ 接管判据、⑩ 报告↔run 绑定(合计 3+)、`TG-12` 派生事实机制(3) ＋ **并行线**：`MM-1`(2)、`MM-2`(3)、`MM-3`(2) | **≈12（治理）+ 7（MM 并行）** | 分层提示词（把规则挂动作）；四列映射表；验证可信度通则；接管留痕与边界继承；漂移闸门；**多语言 lint 闸门（§2.3 G2 行）**；**MM schema/生成器/种子模型首跑（与 G2 并行推进）** |
 | **G3 观察与度量（并用起 MM）** | 让"是否稳定"**可判定** | 观察期度量（插入卡额外点数/工时、M1~M3 基线）+ **双盲抽查机制**；**MM 进入实用**（用 G2 已交付的 MM 框架做本轮复盘/决策的思维实验） | **≈8 + 复用 MM** | 三指标基线 + 红线检测；抽查协议首跑；**MM 从 G3 起实际用于"复盘/决策/验收"场景（用户 2026-09-21 口径：MM 与 G2 并行，这样 G3 正好用起来）** |
 
 **批次与红线的对应（§2.2.1）**：G1 = **S0 观测+告警**｜G2 = **S1 部分即死（R1 硬停）**｜G3 起 = **S2 全量即死**。

@@ -23,7 +23,7 @@
 | TG-9 | **新脚本产物目录约定**（Retro 行动项 ④）：新脚本产物默认写**已忽略目录**（运行态 JSON → `age | **✅ 完成（2026-09-25，Sprint-17 D2）**：`verify/verify_artifact_paths.py` + `policy.json::artifact_paths`；状态与 `cards/TG-9.md` 同步 | Sprint-17（治理批 G1） | [cards/TG-9.md](cards/TG-9.md) |
 | TG-10 | **多轮次 agent 的账本记录失真（可观测性缺口）**：同一 run 被追加多轮复核（run-053 共 5 轮）时 | **v1 ✅ 完成（2026-09-21）**；③ 看板 UI 展示待排期 | Sprint-16（v1 已交付）／③ 看板 UI → Sprint-18（G2） | [cards/TG-10.md](cards/TG-10.md) |
 | TG-11 | **规则绕过复盘 + 可执行闸门（用户 2026-09-21 定性为"很严重"）**：2026-09-20/21 我以" | **✅ 完成（Sprint-17；状态与 Sprint 看板及 `cards/TG-11.md` 同步，2026-09-25）**：③a/③b/③c 全交付 + 复盘定稿 | Sprint-17（治理批 G1） | [cards/TG-11.md](cards/TG-11.md) |
-| TG-12 | **文档内容漂移复盘 + 派生事实机制（用户 2026-09-21："sprint17 和以前的开发过程发现的文档内容漂 | **候选（用户 2026-09-21 要求开卡复盘；同类问题已足够成卡）** | Sprint-18（治理批 G2） | [cards/TG-12.md](cards/TG-12.md) |
+| TG-12 | **文档内容漂移复盘 + 派生事实机制（用户 2026-09-21："sprint17 和以前的开发过程发现的文档内容漂 | **候选（用户 2026-09-21 要求开卡复盘；同类问题已足够成卡）** | **G3 候选（2026-09-25 D4 裁定从 G2 移出；需先与 `TG-19` M-E 去重再估点）** | [cards/TG-12.md](cards/TG-12.md) |
 | TG-13 | **账本"测量化"：时长/轮次/账本↔产物一致性**（用户 2026-09-21 拍板"开新卡"，而非并入 TG-10） | **✅ 完成（2026-09-25，Sprint-17 D3）**：`verify/verify_ledger_measurement.py` + `policy.json::ledger_measurement`；状态与 `cards/TG-13.md` 同步 | Sprint-17（治理批 G1） | [cards/TG-13.md](cards/TG-13.md) |
 | TG-14 | **一卡一文档：卡片正文独立成文 + backlog 瘦索引 + 索引 lint**（**由 `TG-12` 机制候选  | **✅ 完成（2026-09-23，D3）** | Sprint-17（治理批 G1） | [cards/TG-14.md](cards/TG-14.md) |
 | TG-15 | **闸门泛化：三不变式 + 数据驱动（替换"逐场景加条件"式硬编码）**（用户 2026-09-23 批准 P1="可以 | **✅ 实质完成（Sprint-17 D2；状态与 Sprint 看板及 `cards/TG-15.md` 同步，2026-09-25）**：①~⑤+⑦⑧ 落地；**⑥ 已裁定顺延**（非完成、非待办）；**2.5 点不减**（改扣分条件） | Sprint-17（治理批 G1） | [cards/TG-15.md](cards/TG-15.md) |

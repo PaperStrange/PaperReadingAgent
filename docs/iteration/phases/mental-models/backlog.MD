@@ -12,9 +12,9 @@
 
 | 卡号 | 一句话 | 状态 | Sprint | 文件 |
 |---|---|---|---|---|
-| MM-1 | 模型 schema 与库结构：统一字段（名称/版本/描述/使用时机/边界/输入/输出/创始人/来源/成功判据/状态）+  | 候选 | Sprint-18（与治理批 G2 并行） | [cards/MM-1.md](cards/MM-1.md) |
-| MM-2 | **半自动生成器**：模型 JSON → spec 骨架（schema 字段 → 五段式映射；**robust**=字段 | 候选 | Sprint-18（与治理批 G2 并行） | [cards/MM-2.md](cards/MM-2.md) |
-| MM-3 | 种子模型实例化首跑：思维实验 → `agents/functions/thought-experiment.md` +  | 候选 | Sprint-18（与治理批 G2 并行） | [cards/MM-3.md](cards/MM-3.md) |
+| MM-1 | 模型 schema 与库结构：统一字段（名称/版本/描述/使用时机/边界/输入/输出/创始人/来源/成功判据/状态）+  | 候选 | 独立并行线（**G2 不含、不占其点数**；2026-09-25 D4 裁定） | [cards/MM-1.md](cards/MM-1.md) |
+| MM-2 | **半自动生成器**：模型 JSON → spec 骨架（schema 字段 → 五段式映射；**robust**=字段 | 候选 | 独立并行线（**G2 不含、不占其点数**；2026-09-25 D4 裁定） | [cards/MM-2.md](cards/MM-2.md) |
+| MM-3 | 种子模型实例化首跑：思维实验 → `agents/functions/thought-experiment.md` +  | 候选 | 独立并行线（**G2 不含、不占其点数**；2026-09-25 D4 裁定） | [cards/MM-3.md](cards/MM-3.md) |
 | MM-4 | 经验文档→候选模型提取 SOP：主代理主管，每次 3-LEARNED 更新时执行，产出候选模型卡（来源标注条目号） | 候选 | — | [cards/MM-4.md](cards/MM-4.md) |
 | MM-5 | 自适应触发扩展机制：初始边界（讨论输入）→ 认可反馈后扩展至其他决策场景；每次扩展记录 + 用户确认 | 候选 | — | [cards/MM-5.md](cards/MM-5.md) |
 | MM-6 | **把各阶段思考（开发/设计/复盘/验收）固化为思维实验并用于"生产环境"的工作方式**：不止开发的工程环境，而是**真 | 候选 | — | [cards/MM-6.md](cards/MM-6.md) |
