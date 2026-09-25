@@ -301,6 +301,24 @@ class Policy:
         return val
 
     @property
+    def structure_ack_min_reason_chars(self) -> int:
+        """结构守卫 `Structure-Removal:` **署名理由**的长度下限
+        （A-M12 ①，2026-09-25 D4）。
+
+        与 `scope_min_deviation_chars`／棘轮 rebase
+        理由同族：**具名事件必须带得起作用的理由**，
+        空署名不许当免检开关。阈值属治理口径 ⇒ 放数据里，不写进
+        `scripts/structure-guard.py`
+        （该脚本被 `verify_no_policy_hardcode.py` 扫；第一版正是写死 `10`
+        被当场判违规）。
+        """
+        val = self._data("structure_ack_min_reason_chars")
+        if not isinstance(val, int) or val <= 0:
+            raise PolicyError(f"structure_ack_min_reason_chars 必须是正整数，实际 "
+            f"{val!r}")
+        return val
+
+    @property
     def scope_ref_sources(self) -> tuple[str, ...]:
         val = self._data("scope_ref_sources")
         if not isinstance(val, list) or not val:
@@ -725,6 +743,9 @@ class Policy:
         # 3. 悬空键：闸门读不到的键 = 死数据
         consumed = {
             "version", "_comment", "spec_glob", "spec_dir", "scope_min_deviation_chars",
+            # A-M12 ①（2026-09-25 D4）：结构守卫署名理由的长度下限，
+            # 由 scripts/structure-guard.py 消费
+            "structure_ack_min_reason_chars",
             "scope_ref_sources", "lint_paths", "lint_rules", "archive_role_prefix", "close_gate",
             # TG-6：C 级（可读性）棘轮基线（计数上限 + measured_at + review_by），
             # 由 verify/verify_lint.py 消费
@@ -1197,6 +1218,37 @@ class Attribution:
                     f"若该 run 其实是**实现类工作挂评审 role**（不承担内容覆盖），"
                     f"用 `agent-ops.py mark-produced {w.run_id} --reason <理由>` "
                     f"如实标注（不改覆盖、不伪造范围）")
+            # **倒挂窗口**（TG-17 G2 条目 1，2026-09-25 D4）：`covers_through` 比
+            # `coverage_anchor` **更早** ⇒ `covers()` 对任何提交都不成立（恒 False），
+            # 而两个端点都"在范围内"、sha 也都是完整 40 位 ⇒ 前面两条判据都不报，
+            # 窗口**静默贡献 0 覆盖**。
+            #
+            # 与"空区间"判据的**分族**（重要，别把两者混为一谈）：
+            #   * 空区间 = "该 run 声称覆盖内容却覆盖 0 个提交" ⇒ 是**覆盖声称**问题，
+            #     故按 run 类别分流（作用域类 / 已标注产出型不判）；
+            #   * 倒挂 = **数据自相矛盾**（窗口的右端早于左端，这段区间根本不存在）
+            #     ⇒ 与"短 sha"同族：**任何 run 都不豁免**。真实成因只有受控回填
+            #     `set-anchor` 把某个端点写到了另一侧（`register`/`finish` 的自动记录
+            #     产不出该形态：`covers_through` 在 `finish`
+            # 时记，必不早于登记时的锚点）。
+            #     真数据实测：账本 17 个窗口里 **0
+            # 例**（本判据是**前置**的，不是事后补的）。
+            #
+            # 只在两个端点**都在**序号表内时判：不在表内时上面两条判据已逐条点名，
+            # 此处再报一次是重复计数（同一缺陷报两条会让"问题条数"失去意义）。
+            if (len(w.anchor) == full and len(w.through) == full
+                    and w.anchor in self.order and w.through in self.order
+                    and self.order[w.through] > self.order[w.anchor]):
+                problems.append(
+                    f"{w.run_id}（role={w.role}）的窗口 "
+                    f"({w.anchor[:8]}, {w.through[:8]}] **倒挂**："
+                    f"covers_through 早于 coverage_anchor"
+                    f"（序号 {self.order[w.through]} > {self.order[w.anchor]}，"
+                    f"序号越小越新）⇒ 该窗口对任何提交都不成立（`covers()` 恒 False）"
+                    f"= 静默 0 覆盖，且两个端点都合法 ⇒ 旧判据一条都不报。"
+                    f"修复：`scripts/agent-ops.py set-anchor {w.run_id} "
+                    f"--covers-through <不早于锚点的 sha> --reason <受控回填理由>`"
+                    f"（若锚点写错了则改 `--anchor <不晚于上界的 sha>`）")
         return problems
 
     def produced_only_notes(self) -> list[str]:

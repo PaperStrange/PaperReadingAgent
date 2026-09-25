@@ -127,6 +127,35 @@ jobs:
           # agents/policy.json::md_table_docs/md_table_globs（与 verify_md_tables.py 同源）。
           Write-Host "gate: structure-guard.py --replay  (档位=全类别复跑自检：R1 真实输入 + F2/H1/T1 反向对照；类别数见脚本自报首行、断言数见末行 ALL PASS (N assertions)，标签不写死数字；不含本地快照比对)"
           python scripts/structure-guard.py --replay
+          # A-M12 ①（2026-09-25 D4）：结构守卫的**不可跳过层**。上面那档只证明"守卫能拦"，
+          # 拦不拦得住取决于"有没有人记得跑"——而这一族事故的根因恰恰是"规则写了没执行"。
+          # 故这里用 **git 当基线**复核本次 push 的整个提交范围：不需要任何本地快照
+          # （快照是本地运行态），基线来自已经存在的事实。有意删除须在提交信息里署名
+          # `Structure-Removal: <路径> :: <理由≥10 字符>`（具名事件；无署名即 FAIL）。
+          # 基线取 push 事件的 before（新分支/强推/取不到时回退 HEAD~1）；解析失败由脚本
+          # fail-closed 成 rc=2——"比不了"不得伪装成 PASS。
+          $guardBase = "${{ github.event.before }}"
+          if (-not $guardBase -or $guardBase -match '^0{40}$') { $guardBase = "HEAD~1" }
+          # `rev-parse` 在这里是**探测**：非零退出不得让本步骤提前中止（Step 级 fail-closed 由
+          # 最后那条 structure-guard 调用负责），故临时关掉原生命令的终止语义，探完立刻还原。
+          $prevNative = $PSNativeCommandUseErrorActionPreference
+          $PSNativeCommandUseErrorActionPreference = $false
+          git rev-parse --verify -q "$guardBase^{commit}" *> $null
+          $baseOk = ($LASTEXITCODE -eq 0)
+          if (-not $baseOk) {
+            Write-Host "structure-guard: base '$guardBase' 在本 checkout 里不可解析 → 回退 HEAD~1"
+            $guardBase = "HEAD~1"
+            git rev-parse --verify -q "HEAD~1^{commit}" *> $null
+            $baseOk = ($LASTEXITCODE -eq 0)
+          }
+          $PSNativeCommandUseErrorActionPreference = $prevNative
+          if (-not $baseOk) {
+            # 单提交分支（没有父提交）没有可比基线 ⇒ **具名跳过**，不冒充通过
+            Write-Host "structure-guard: 本分支没有可解析的父提交（单提交/孤立历史）→ 本步显式跳过（不是通过）"
+          } else {
+            Write-Host "gate: structure-guard.py verify --from-git $guardBase  (档位=git 基线：本次 push 的提交范围；有意删除须带 Structure-Removal 署名行)"
+            python scripts/structure-guard.py verify --from-git $guardBase
+          }
 
       - name: Build reactflow frontend
         working-directory: paper-qa-script/reactflow-paperqa-prototype/frontend

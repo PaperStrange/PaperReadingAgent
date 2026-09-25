@@ -227,9 +227,14 @@ def _table_record(block: list[tuple[int, str]]) -> dict:
     }
 
 
-def scan_file(path: Path) -> dict:
-    """抽一份文件的结构清单：`headings` / `tables` / `anchors`（口径见模块头 schema 节）。"""
-    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+def scan_lines(lines: list[str]) -> dict:
+    """从**行列表**抽结构清单——`scan_file` 的纯函数内核。
+
+    为什么要拆出来（A-M12 ①，2026-09-25 D4）：基线不再只来自"编辑前我自己拍的快照"，
+    还要能来自 **git 对象**（`git show <rev>:<path>`
+    的字节）。两者必须走**同一套扫描口径**，
+    否则"快照基线"与"git 基线"会各判一套（同一个数值两处写死的形态）。
+    """
     headings: list[str] = []
     anchors: list[str] = []
     tables: list[dict] = []
@@ -250,6 +255,11 @@ def scan_file(path: Path) -> dict:
     if block:
         tables.append(_table_record(block))
     return {"headings": headings, "tables": tables, "anchors": anchors}
+
+
+def scan_file(path: Path) -> dict:
+    """抽一份文件的结构清单：`headings` / `tables` / `anchors`（口径见模块头 schema 节）。"""
+    return scan_lines(path.read_text(encoding="utf-8", errors="replace").splitlines())
 
 
 def scan_docs(root: Path, rels: list[str]) -> tuple[dict[str, dict], list[str]]:
@@ -681,6 +691,188 @@ def cmd_verify(root: Path, baseline_path: Path) -> int:
         return 1
     print(f"\nSTRUCTURE PASS（{len(baseline)} 文件无丢失/变形；"
           f"修改 {len(modifications)} 项 / 新增 {len(additions) + len(new_files)} 项）")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# git 基线（A-M12 ① 的"不可跳过"层，2026-09-25 D4）
+
+ACK_RE = re.compile(r"^[ \t]*Structure-Removal[ \t]*[:：][ \t]*"
+                    r"(?P<body>\S.*?)[ \t]*$", re.MULTILINE)
+
+
+def _git(*args: str, root: Path | None = None) -> subprocess.CompletedProcess:
+    """跑一条 git 命令（`-C <root>`；`text=True` + UTF-8，与本仓的 LF 基线一致）。"""
+    return subprocess.run(["git", "-C", str(root or ROOT), *args],
+                          capture_output=True, text=True, encoding="utf-8",
+                          errors="replace")
+
+
+def resolve_rev(root: Path, rev: str) -> str:
+    """把 `rev` 解析成完整 40 位 commit sha；解析不了返回空串（调用方 fail-closed）。
+
+    为什么必须解析而不是直接把字符串喂给 `git show`：解析失败时
+    `git show <坏 rev>:<path>` **每个文件都失败** ⇒ 基线文件集为空 ⇒
+    `compare()` 遍历空基线 ⇒ **打印 PASS**。那正是本仓反复出现的
+    "工具坏了却报成功"（反例档案例 1/2 族）。故先解析，再比。
+    """
+    out = _git("rev-parse", "--verify", f"{rev}^{{commit}}", root=root)
+    sha = (out.stdout or "").strip()
+    if out.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", sha):
+        return ""
+    return sha
+
+
+def git_baseline(root: Path, rev: str,
+                 rels: list[str]) -> tuple[dict[str, dict], list[str], list[str]]:
+    """把 `<rev>` 里**受保护文档**的结构清单当基线。
+
+    返回 `(files, missing_in_rev, unreadable)`：该 rev 里没有的文件（=
+    本次新增，不判失败）、
+    以及取不到内容的文件（fail-closed，调用方点名）。
+
+    **为什么要 git 基线**（`A-M12` ①）：快照式守卫的前提是"我记得在编辑前拍一张"，
+    而 2026-09-25 实测的 R1 第 6 次事故恰恰是"**规则写了没执行**"（卡内 §7 口径缝隙）。
+    git 基线把前提换成**已经存在的事实**（提交历史）⇒ "忘没忘"不再影响判据，
+    本地钩子与 CI 都能在**不依赖任何本地运行态**的情况下跑同一条判据。
+    """
+    files: dict[str, dict] = {}
+    missing: list[str] = []
+    unreadable: list[str] = []
+    for rel in rels:
+        blob = _git("show", f"{rev}:{rel}", root=root)
+        if blob.returncode != 0:
+            missing.append(rel)
+            continue
+        try:
+            files[rel] = scan_lines(blob.stdout.splitlines())
+        except Exception:  # noqa: BLE001 —— 解析不了必须点名，不得当成"这条没有基线"
+            unreadable.append(rel)
+    return files, missing, unreadable
+
+
+def removal_acks(root: Path, base: str, head: str) -> tuple[dict[str, str], list[str]]:
+    """解析 `base..head` 提交信息里的**具名删除署名**。
+
+    格式（一行一条，可在同一条提交信息里写多条）：
+
+    ```
+    Structure-Removal: docs/iteration/sprint/xxx.md :: 删掉已废弃的 §7（并入 §6）
+    ```
+
+    返回 `({路径: 理由}, [格式错误条目])`。规则与 `agents/policy.json` 的棘轮 rebase
+    同构：**放宽必须是一次具名事件**——谁、哪条提交、为什么。理由 <10 字符 ⇒ **格式错误
+    ⇒ rc=2**（fail-closed：不许用空署名当免检开关）。
+    """
+    log = _git("log", "--format=%H%x00%B%x01", f"{base}..{head}", root=root)
+    if log.returncode != 0:
+        return {}, [f"`git log {base}..{head}` "
+        f"失败（rc={log.returncode}）：{log.stderr.strip()[:120]}"]
+    acks: dict[str, str] = {}
+    bad: list[str] = []
+    # 阈值取自
+    # `agents/policy.json::structure_ack_min_reason_chars`（TG-15：政策数据化）。
+    # 第一版把它写死成模块常量 `ACK_MIN_REASON = 10`，被 `verify_no_policy_hardcode.py`
+    # 当场判违规（R1：数值未见于政策）——**闸门抓到了我自己的新硬编码**，这正该如此。
+    min_reason = policy().structure_ack_min_reason_chars
+    for chunk in (log.stdout or "").split("\x01"):
+        if not chunk.strip():
+            continue
+        sha, _, body = chunk.partition("\x00")
+        for m in ACK_RE.finditer(body):
+            path, sep, reason = m.group("body").partition("::")
+            path, reason = path.strip(), reason.strip()
+            if not sep or not path or len(reason) < min_reason:
+                bad.append(f"{sha.strip()[:8]}：{m.group('body').strip()[:80]}"
+                           f"（需要 `<路径> :: <理由≥{min_reason} 字符>`）")
+                continue
+            acks[path.replace("\\", "/")] = reason
+    return acks, bad
+
+
+def _failure_rel(line: str) -> str:
+    """从一条失败文案里取出**文档相对路径**（署名匹配用）。
+
+    失败文案有两种形态：`<rel>:<行号> 标题被删：…` 与 `<rel> 文件消失：…`
+    （`compare()` 的两族）。署名按**路径**匹配 ⇒ 必须先把行号剥掉：
+    第一版直接取 `line.split(" ")[0]`，于是 `docs/x.md:9` 永远不等于署名里的
+    `docs/x.md`——**署名写对了却匹配不上**（自检当场抓到，rc=1 而不是 rc=0）。
+    """
+    head = line.split(" ", 1)[0]
+    path, sep, tail = head.rpartition(":")
+    if sep and tail.isdigit():
+        return path.replace("\\", "/")
+    return head.replace("\\", "/")
+
+
+def cmd_verify_git(root: Path, from_git: str, ack_base: str = "") -> int:
+    """`verify --from-git <rev>`：**不依赖本地快照**的结构守卫（git 当基线）。
+
+    判据与快照档**逐条同一套**（`compare()`）：只对丢失/变形报错，新增一律放行；
+    差别只在"基线从哪来"。`Structure-Removal:` 署名可把**具名删除**降级为可见的
+    `[署名删除]`（不判失败）——署名必须带 ≥10 字符理由，否则 rc=2。
+    """
+    sha = resolve_rev(root, from_git)
+    if not sha:
+        print(f"STRUCTURE ERROR：--from-git {from_git!r} 解析不出提交（fail-closed："
+              f"坏基线会让『比不了』伪装成 PASS）")
+        return 2
+    rels = doc_set(root)
+    baseline, missing_in_rev, unreadable = git_baseline(root, sha, rels)
+    if unreadable:
+        print(f"STRUCTURE ERROR：{len(unreadable)} 份文档在 {sha[:8]} 里取不到内容"
+              f"（{unreadable[:3]}）——fail-closed，不把『读不到』当成『没丢失』")
+        return 2
+    base_for_ack = ack_base or from_git
+    acks, bad_acks = removal_acks(root, base_for_ack, "HEAD")
+    if bad_acks:
+        print(f"STRUCTURE ERROR：{len(bad_acks)} 条 `Structure-Removal:` 署名不合法"
+              f"（fail-closed）")
+        for item in bad_acks[:5]:
+            print(f"  - {item}")
+        return 2
+    print(f"structure-guard verify（git 基线）：root={root} baseline={from_git}"
+          f"（解析为 {sha[:12]}，{len(baseline)} 文件；署名扫描范围 "
+          f"{base_for_ack}..HEAD）")
+    coverage_report(root)
+    current: dict[str, dict] = {}
+    for rel in rels:
+        path = root / rel
+        if not path.is_file():
+            # 文件消失由 compare() 逐条点名（基线里有、现状没有）
+            continue
+        current[rel] = scan_file(path)
+    failures, modifications, additions = compare(current, baseline)
+    signed: list[str] = []
+    kept: list[str] = []
+    for line in failures:
+        rel = _failure_rel(line)
+        if rel in acks:
+            signed.append(f"{line}｜署名理由：{acks[rel]}")
+        else:
+            kept.append(line)
+    for line in signed:
+        print(f"  [署名删除] {line}")
+    for rel in sorted(set(acks) - {_failure_rel(ln) for ln in failures}):
+        print(f"  [提示] 署名 `{rel}` "
+        f"对应本次**没有**结构丢失（署名可留作下一段工作，不是错误）")
+    for line in additions[:20]:
+        print(f"  [新增] {line}")
+    for line in modifications[:20]:
+        print(f"  [修改] {line}")
+    for line in kept:
+        print(f"  [FAIL] {line}")
+    if kept:
+        print(f"\nSTRUCTURE FAIL（{len(kept)} 项丢失/变形；署名删除 {len(signed)} 项 / "
+              f"修改 {len(modifications)} 项 / 新增 {len(additions)} 项）")
+        print("修法：① 补回被删的标题/锚点行（`git show %s:<文件>` 可直接看原样）；"
+              "② 表格按基线补回单元格或整块；③ 若这是**有意的**结构删除，在提交信息里写"
+              " `Structure-Removal: <路径> :: <理由≥10 字符>`（具名事件，CI "
+              "可核）。" % sha[:8])
+        return 1
+    print(f"\nSTRUCTURE PASS（git 基线 {sha[:8]}：{len(baseline)} 文件无丢失/变形；"
+          f"署名删除 {len(signed)} 项 / 修改 {len(modifications)} 项 / 新增 "
+          f"{len(additions)} 项）")
     return 0
 
 
@@ -1580,32 +1772,164 @@ def cmd_replay() -> int:
     return 0
 
 
+def _git_commit(mirror: Path, subject: str, body: str = "") -> str:
+    """在夹具仓库里提交全部改动，返回提交 sha（空串 = 失败，调用方 fail-closed）。
+
+    身份**显式传 `-c user.name/-c user.email`**：自检不该依赖"这台机器碰巧配过 git
+    身份"，
+    否则在干净 runner 上会变成"自检自身坏了"的假红（CI 上真发生过同族假红）。
+    """
+    add = _git("add", "-A", root=mirror)
+    if add.returncode != 0:
+        raise ReplayError(f"夹具仓库 git add 失败：{add.stderr.strip()[:120]}")
+    args = ["-c", "user.name=structure-guard-selfcheck",
+            "-c", "user.email=selfcheck@example.invalid", "commit", "--no-verify",
+            "-m", subject]
+    if body:
+        args += ["-m", body]
+    commit = _git(*args, root=mirror)
+    if commit.returncode != 0:
+        raise ReplayError(f"夹具仓库 git commit 失败：{commit.stderr.strip()[:160]}")
+    return _git("rev-parse", "HEAD", root=mirror).stdout.strip()
+
+
+def cmd_replay_git() -> int:
+    """`--replay-git`：**git 基线档**的自检（在 `%TEMP%` 的**真 git 仓库**副本上）。
+
+    为什么单独一档（`A-M12` ① 的验收）：快照档的自检证明"守卫能拦住损坏"，
+    但证明不了"**不依赖快照也能拦住**"——而后者才是"不可跳过"的全部意义。
+    这里用一个真仓库把五件事钉死：
+
+    1. 干净树 + `--from-git HEAD` ⇒ rc=0（**没有**任何本地快照参与）；
+    2. 删标题（未署名）⇒ rc=1 且点名（判据与快照档同一套）；
+    3. **具名署名**（`Structure-Removal: <路径> :: <理由>`，写在提交信息里）⇒ 降级为
+       可见的 `[署名删除]`、rc=0（有意的结构删除不必拆掉闸门，但必须留名）；
+    4. 同类删除**无署名** ⇒ 仍 rc=1（署名是**具名事件**，不是通配开关）；
+    5. 署名理由 <10 字符、以及**坏修订**（解析不出的 sha/分支）⇒ rc=2 fail-closed
+       （"比不了"不得伪装成 PASS）。
+
+    绝不动真文件：全部损坏与提交只发生在镜像仓库里。
+    """
+    print("structure-guard --replay-git：git 基线档自检（%TEMP% 的真 git 仓库副本；"
+          "不读仓库文档、不动真文件）")
+    rels = doc_set(ROOT)
+    tmp = Path(tempfile.mkdtemp(prefix="structure-guard-git-"))
+    mirror = tmp / "repo-git"
+    try:
+        _setup_fixture_tree(mirror, rels)
+        init = _git("init", "-q", root=mirror)
+        ok("夹具仓库已初始化（真 git 仓库，不在仓库内）",
+           init.returncode == 0 and mirror.resolve() != ROOT.resolve()
+           and Path(tempfile.gettempdir()).resolve() in mirror.resolve().parents,
+           f"mirror={mirror} rc={init.returncode}")
+        head0 = _git_commit(mirror, "fixture baseline（自检用，不进仓库历史）")
+        ok("基线提交就位（40 位 sha "
+        "可核）", bool(re.fullmatch(r"[0-9a-f]{40}", head0)), head0[:12])
+
+        clean = _run_cli("verify", "--root", str(mirror), "--from-git", "HEAD")
+        clean_tail = clean.stdout.strip()
+        clean_tail = clean_tail.splitlines()[-1][:80] if clean_tail else ""
+        ok("git 基线：干净树 → rc=0（**不需要**任何本地快照；判据与快照档同一套）",
+           clean.returncode == 0, f"rc={clean.returncode}；{clean_tail}")
+
+        markers = _damage_r1_1(mirror)
+        rel_drop = markers[0].split(":")[0]
+        bad = _run_cli("verify", "--root", str(mirror), "--from-git", "HEAD")
+        ok("git 基线：删标题（未署名）→ rc=1 且逐条点名（与快照档同判据）",
+           bad.returncode == 1 and all(m in bad.stdout for m in markers),
+           _evidence(bad.stdout + bad.stderr, markers))
+        _restore_fixture(mirror, [rel_drop])
+        back = _run_cli("verify", "--root", str(mirror), "--from-git", "HEAD")
+        ok("git 基线：复原后 rc=0（判决来自损坏本身，不是副本漂移）",
+           back.returncode == 0, f"rc={back.returncode}")
+
+        _damage_r1_1(mirror)
+        _git_commit(mirror, "自检：具名结构删除",
+                    f"Structure-Removal: {rel_drop} :: D4 "
+                    f"自检：故意删除该标题以验证署名机制生效")
+        signed = _run_cli("verify", "--root", str(mirror), "--from-git", "HEAD~1")
+        ok("git 基线：**具名署名**的结构删除 → rc=0 且打印 [署名删除] + "
+        "理由（具名事件，不是静默）",
+           signed.returncode == 0 and "[署名删除]" in signed.stdout
+           and "故意删除该标题" in signed.stdout,
+           _evidence(signed.stdout + signed.stderr, ["[署名删除]"]))
+
+        markers2 = _damage_r1_2(mirror)
+        _git_commit(mirror, "自检：无署名结构删除")
+        bad2 = _run_cli("verify", "--root", str(mirror), "--from-git", "HEAD~1")
+        ok("git 基线：同类删除**无署名** → 仍 rc=1（署名是具名事件，不是通配开关）",
+           bad2.returncode == 1 and all(m in bad2.stdout for m in markers2),
+           _evidence(bad2.stdout + bad2.stderr, markers2))
+
+        markers3 = _damage_r1_3(mirror)
+        rel_bad = markers3[0].split(":")[0]
+        _git_commit(mirror, "自检：坏署名（理由过短）",
+                    f"Structure-Removal: {rel_bad} :: 太短")
+        mal = _run_cli("verify", "--root", str(mirror), "--from-git", "HEAD~1")
+        ok("git 基线：署名理由 <10 字符 → rc=2 fail-closed（空署名不许当免检开关）",
+           mal.returncode == 2 and "署名" in (mal.stdout + mal.stderr),
+           f"rc={mal.returncode}；"
+           f"{(mal.stdout + mal.stderr).strip().splitlines()[-1][:80]}")
+
+        bad_revs = ["deadbeefdeadbeefdeadbeefdeadbeefdeadbeef", "HEAD~99",
+                    "no-such-branch"]
+        rev_codes = [_run_cli("verify", "--root", str(mirror), "--from-git",
+                              rev).returncode
+                     for rev in bad_revs]
+        ok("git 基线：坏修订（解析不出的 sha/分支/越界 ~N）→ 全部 rc=2"
+           "（『比不了』不得伪装成 PASS：旧写法会让基线为空集后打印 PASS）",
+           all(code == 2 for code in rev_codes), f"codes={rev_codes} revs={bad_revs}")
+
+        print(f"\nALL PASS ({PASSED} assertions)")
+        return 0
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> int:
-    """CLI 入口：解析 `snapshot` / `verify` / `--replay` 并分派。"""
+    """CLI 入口：解析 `snapshot` / `verify` / `--replay` / `--replay-git` 并分派。"""
     parser = argparse.ArgumentParser(
-        description="A-M12 Markdown 结构守卫（snapshot / verify / --replay）",
+        description="A-M12 Markdown 结构守卫（snapshot / verify / --replay / "
+        "--replay-git）",
         epilog="rc: 0=通过 / 1=有丢失或变形 / 2=政策与用法错误")
     parser.add_argument("mode", nargs="?", choices=["snapshot", "verify"], default=None)
     parser.add_argument("--root", default="", help="文档树根（默认仓库根；replay 用它指向 %TEMP% 里的副本）")
     parser.add_argument("--out", default="", help=f"snapshot 落盘路径（默认 {SNAPSHOT_REL}）")
     parser.add_argument("--baseline", default="", help=f"verify 的基线（默认 {SNAPSHOT_REL}）")
+    parser.add_argument("--from-git", default="",
+                        help="verify 的基线改取 git 修订（如 HEAD / <sha> / <branch>）"
+                             "——不依赖本地快照，故无法因『忘了 snapshot』被跳过")
+    parser.add_argument("--ack-base", default="",
+                        help="`Structure-Removal:` 署名的扫描起点（默认与 --from-git "
+                        "同值）")
     parser.add_argument("--replay", action="store_true",
                         help="用 5 类真实 R1 输入 + 4 类 F2 反向对照 + 3 类 H1 就地改写对照"
                              " + 3 类 T1 表格对照在 %%TEMP%% 副本上复跑自检")
+    parser.add_argument("--replay-git", action="store_true",
+                        help="git 基线档的自检（在 %%TEMP%% 的真 git "
+                        "仓库副本上：干净放行 / "
+                             "删标题必拦 / 具名署名的删除降级为可见 / 无署名必拦 / "
+                             "坏署名与坏修订 fail-closed）")
     args = parser.parse_args()
 
-    if args.replay:
+    if args.replay and args.replay_git:
+        print("STRUCTURE ERROR：--replay 与 --replay-git "
+        "互斥（两次自检各自建树，别混跑）")
+        return 2
+    if args.replay or args.replay_git:
         if args.mode:
-            print("STRUCTURE ERROR：--replay 不接受 mode（它自带 snapshot/verify 全流程）")
+            print("STRUCTURE ERROR：--replay/--replay-git 不接受 "
+            "mode（它们自带全流程）")
             return 2
         try:
-            return cmd_replay()
+            return cmd_replay() if args.replay else cmd_replay_git()
         except (ReplayError, AssertionError) as exc:
             print(f"\nREPLAY FAIL: {exc}")
             return 1
     if not args.mode:
         parser.print_help()
-        print("STRUCTURE ERROR：需要 mode（snapshot | verify）或 --replay")
+        print("STRUCTURE ERROR：需要 mode（snapshot | verify）或 --replay / "
+        "--replay-git")
         return 2
 
     root = _resolve_root(args.root) if args.root else ROOT
@@ -1613,6 +1937,8 @@ def main() -> int:
         if args.mode == "snapshot":
             out = _resolve_json(args.out) if args.out else ROOT / SNAPSHOT_REL
             return cmd_snapshot(root, out)
+        if args.from_git:
+            return cmd_verify_git(root, args.from_git, args.ack_base)
         baseline = _resolve_json(args.baseline) if args.baseline else ROOT / SNAPSHOT_REL
         return cmd_verify(root, baseline)
     except PolicyError as exc:  # 政策数据缺失/非法 → fail-closed（rc=2，与"验出丢失"的 rc=1 区分）

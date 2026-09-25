@@ -1,0 +1,38 @@
+#!/bin/sh
+# A-M12 ①（2026-09-25 D4）结构守卫的**本地即时层**：提交前跑 git 基线档结构比对。
+#
+# 为什么要有这一层：`scripts/structure-guard.py` 的快照档要求"编辑前先 snapshot"——
+# 而 2026-09-25 实测的 R1 第 6 次事故恰恰是"**规则写了没执行**"（卡内 §7）。本钩子把
+# 判据的基线换成 **git 自己**（`HEAD`），于是"忘没忘拍快照"不再影响判据。
+#
+# 不可跳过的那一层是 CI（`.github/workflows/ci.yml` 的 "Explicit gate tiers" 步骤会把
+# 本次 push 的提交范围喂给同一条判据）；钩子是**便利层**：它可能没装、可能被 `--no-verify`
+# 跳过。两层都用同一条命令、同一个判据，不做两套。
+#
+# 退出码语义（与脚本一致）：0=通过 1=有丢失/变形 2=用法或政策错误。非 0 一律**拒绝提交**。
+set -u
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+cd "$root" || exit 0
+
+# 取仓库 venv 的 python（CI/新克隆没有 venv 时回退 PATH 上的 python）
+py=".venv/Scripts/python.exe"
+[ -x "$py" ] || py=".venv/bin/python"
+[ -x "$py" ] || py="python"
+
+# 首次提交（还没有 HEAD）时跳过：没有基线可比，且这不是"丢失"。
+git rev-parse --verify -q HEAD >/dev/null 2>&1 || exit 0
+
+out=$("$py" scripts/structure-guard.py verify --from-git HEAD 2>&1)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+  echo "STRUCTURE-GUARD：提交被拒（结构守卫 rc=$rc）" >&2
+  echo "$out" | tail -n 20 >&2
+  echo "" >&2
+  echo "修法：① 补回被删的标题/锚点行/单元格（\`git show HEAD:<文件>\` 看原样）；" >&2
+  echo "      ② 若这是**有意的**结构删除，在提交信息里写一行署名后重试：" >&2
+  echo "         Structure-Removal: <相对路径> :: <理由≥10 字符>" >&2
+  echo "      （具名事件——CI 用同一判据复核；不要用 --no-verify 绕过。）" >&2
+  exit 1
+fi
+exit 0

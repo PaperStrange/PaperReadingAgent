@@ -4,6 +4,7 @@
   "spec_glob": "*.md",
   "spec_dir": "agents/functions",
   "scope_min_deviation_chars": 10,
+  "structure_ack_min_reason_chars": 10,
   "scope_ref_sources": [
     "impact-assessment:"
   ],

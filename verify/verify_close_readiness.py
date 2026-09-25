@@ -1524,6 +1524,47 @@ def _selfcheck() -> int:
        f"({other_role}) 的空窗口**转为不判问题**（作用是政策给的，不是代码认角色名）",
        att_flip.window_problems() == [], f"problems={att_flip.window_problems()[:1]}")
 
+    # ---- TG-17 G2 条目 1（2026-09-25 D4）：**倒挂窗口**必须具名 ------------------
+    # 形态：`covers_through` 比 `coverage_anchor` **更早**（序号更大）⇒ `covers()` 恒
+    # False，
+    # 而两个端点都是完整 40 位 sha、又都在序号表内 ⇒ "短 sha"与"锚点/上界不在范围内"
+    # 三条旧判据**一条都不报**，窗口静默贡献 0 覆盖。
+    # 只可能由 `set-anchor` 的受控回填造成（`register`/`finish`
+    # 的自动记录产不出该形态）。
+    # order_index([B, A]) ⇒ B 序号 0（更新）、A 序号 1
+    inv_late, inv_early = SHA_B, SHA_A
+    order_inv = order_index([inv_late, inv_early])
+
+    def _inverted_problems(role: str) -> list[str]:
+        w_inv = CoverageWindow(run_id=f"run-inv-{role}", role=role,
+                               anchor=inv_late, through=inv_early, from_run=True)
+        att_inv = Attribution(anchor=inv_late, head=inv_late, shas=[inv_early],
+                              order=order_inv, windows=[w_inv],
+                              exceptions=[], root=None, policy=policy)
+        return att_inv.window_problems()
+
+    ok("TG-17① 反向对照 a：**倒挂窗口**（covers_through 早于 coverage_anchor）"
+       "⇒ 具名问题且给修复指引（旧判据一条都不报 ⇒ 静默 0 覆盖）",
+       any("倒挂" in x and "set-anchor" in x and "恒 False" in x
+           for x in _inverted_problems("code-review")),
+       f"problems={_inverted_problems('code-review')[:1]}")
+    ok("TG-17① 反向对照 b：倒挂**不按 run 类别豁免**（与『短 sha』同族：数据自相矛盾，"
+       "不是覆盖声称问题）——作用域类 role 与内容评审类都必须被判",
+       bool(_inverted_problems(other_role))
+       and all(any("倒挂" in x for x in _inverted_problems(r))
+               for r in sorted(policy.review_roles)),
+       f"scope_role={_inverted_problems(other_role)[:1]}")
+    # 正向对照：正常窗口（两个端点都在表内且上界不早于锚点）不得误报。
+    order_ok = order_index([inv_late, inv_early])
+    w_ok = CoverageWindow(run_id="run-inv-ok", role="code-review", anchor=inv_early,
+                          through=inv_late, from_run=True)
+    att_ok = Attribution(anchor=inv_early, head=inv_late, shas=[inv_late],
+                         order=order_ok, windows=[w_ok],
+                         exceptions=[], root=None, policy=policy)
+    ok("TG-17① 正向对照：同两个端点**方向正确**时零问题（防假红）",
+       not any("倒挂" in x for x in att_ok.window_problems()),
+       f"problems={att_ok.window_problems()[:1]}")
+
     # ---- B5（2026-09-25 修复验证复核 BLOCKER）：
     # 左端点是**开区间** ⇒ "锚点比文档锚点更老"的窗口
     # 必须照常覆盖；旧实现要求两个端点都在序号表里 ⇒ 实测 14/14 窗口全失效、`(三查锚点,

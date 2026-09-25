@@ -53,6 +53,7 @@ from __future__ import annotations
 VERIFY_META = {'features': '闸门可信度：-O/PYTHONOPTIMIZE 守卫行在位（含真实 -O 探针必须红）+ 棘轮上限与 git HEAD 逐项比较（只许下调、上调即 FAIL）+ review_by 必填未过期 + 未覆盖闸门逐条 WARN；含 7 条反向对照自检', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 6, 'routes': [], 'requires': ['none']}
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -77,6 +78,12 @@ PROBE_ARGS: tuple[str, ...] = tuple(str(a) for a in _CFG.get("probe_args") or ()
 RATCHETS: tuple[tuple[str, str], ...] = tuple((str(r["pointer"]), str(r["review_by_pointer"]))
                                               for r in _CFG["ratchets"])
 POLICY_REL = "agents/policy.json"
+# A-M12 ①（2026-09-25 D4）：结构守卫"不可跳过层"的三处接线（见
+# `unskippable_guard_problems`）。
+# 路径是**本闸门要核的事实**（CI 文件、钩子模板、安装器），不是政策阈值 ⇒ 留在这里。
+CI_REL = ".github/workflows/ci.yml"
+HOOK_REL = "scripts/hooks/pre-commit"
+INSTALLER_REL = "scripts/install-hooks.py"
 PASSED = 0
 
 
@@ -280,6 +287,60 @@ def committed_rebase_problems(committed: dict | None, parent_policy: dict | None
     return problems
 
 
+def unskippable_wiring_problems(*, ci: Path, hook: Path, installer: Path) -> list[str]:
+    """③ 判据本体（A-M12 ①）：结构守卫的「**不可跳过层**」三处接线必须在位。
+
+    要治的形态（本仓实测过的那条）：守卫**有效**但**依赖人记得跑**——快照档的前提是
+    "编辑前先 `snapshot`"，而 R1 第 6 次事故恰恰是"规则写了没执行"。修法分两层：
+      * **便利层** = `scripts/hooks/pre-commit`（模板入库；`.git/hooks/`
+      不在版本控制里，
+        故配 `scripts/install-hooks.py` 安装 + `--check` 核对）；
+      * **不可跳过层** = CI 里那条 `structure-guard.py verify --from-git <base>`——
+        CI 每次 push 都会跑，基线取自 **git**（不是本地快照），"忘没忘"不再影响判据。
+    本判据只认**可核的接线事实**：CI
+    文件里必须有那条调用、模板必须存在且调用**同一条命令**
+    （两层各判一套＝同一个字段两种读法）。它**不**声称"钩子一定装上了"——那只在 `.git/`
+    里，
+    版本控制看不见；这层边界照实说。
+
+    落点由调用方**显式传入**（`unskippable_guard_problems` 用仓库路径，自检用 `%TEMP%`
+    里的
+    字面量探针）——这样自检的写盘目标可以写成"`Path(tempfile.gettempdir())` + 字面量"的
+    单一表达式，满足 `verify_artifact_paths.py` 的静态可判定要求（第一版把落点交给变量，
+    被该闸门当场判为 2 处动态目标）。
+    """
+    problems: list[str] = []
+    if not ci.is_file():
+        problems.append(f"[不可跳过] {CI_REL} 不存在——"
+                        f"结构守卫的不可跳过层只能接在 CI 上（fail-closed）")
+    elif not re.search(r"structure-guard\.py\s+verify\s+--from-git",
+                       ci.read_text(encoding="utf-8", errors="replace")):
+        problems.append(
+            f"[不可跳过] {CI_REL} 里没有 `structure-guard.py verify --from-git …`——"
+            f"守卫就退回『依赖人记得跑快照』的形态（R1 第 6 次事故的根因）")
+    if not hook.is_file():
+        problems.append(f"[不可跳过] {HOOK_REL} 模板不存在"
+                        f"（便利层缺失；CI 层仍在，但本地无即时拦截）")
+    elif not re.search(r"structure-guard\.py\s+verify\s+--from-git",
+                       hook.read_text(encoding="utf-8", errors="replace")):
+        problems.append(f"[不可跳过] {HOOK_REL} 没有调用与 CI **同一条**判据"
+                        f"（两层各判一套＝同一个字段两种读法）")
+    if not installer.is_file():
+        problems.append(f"[不可跳过] {INSTALLER_REL} 不存在——`.git/hooks/` "
+        f"不在版本控制里，"
+                        f"没有安装器就只剩『记得手动拷』")
+    elif "--check" not in installer.read_text(encoding="utf-8", errors="replace"):
+        problems.append(f"[不可跳过] {INSTALLER_REL} 缺 `--check` "
+        f"档——『装没装』必须可核")
+    return problems
+
+
+def unskippable_guard_problems(root: Path = ROOT) -> list[str]:
+    """③ 真数据入口：把三处接线落点解析到 `<root>/…` 后交给判据本体。"""
+    return unskippable_wiring_problems(ci=root / CI_REL, hook=root / HOOK_REL,
+                                       installer=root / INSTALLER_REL)
+
+
 def guard_problems(root: Path = ROOT) -> tuple[list[str], list[str]]:
     """① 守卫行在位（静态）+ 覆盖面 WARN。"""
     problems: list[str] = []
@@ -449,6 +510,50 @@ def selftest() -> int:
                not any("a.py" in p for p in problems), f"problems={problems[:1]}")
         finally:
             globals()["GUARD_REQUIRED"], globals()["GUARD_LINE"] = saved_list, saved_line
+    # A-M12 ① 反向对照：把"不可跳过层"的三处接线分别拿掉 ⇒ 必须逐条 FAIL；
+    # 原样 ⇒ PASS（防假红）。用 `%TEMP%` 里的**真文件副本**做，不动仓库文件。
+    # 落点一律写成"`Path(tempfile.gettempdir())` + 字面量"的**单一表达式**：
+    # 不经变量中转，满足 `verify_artifact_paths.py` 的静态可判定要求
+    # （第一版把落点交给变量，被该闸门当场判为 2 处动态目标 ⇒ 记入本批自检的价值）。
+    ci_probe = Path(tempfile.gettempdir()) / "gate-integrity-unskippable-ci.yml"
+    hook_probe = Path(tempfile.gettempdir()) / "gate-integrity-unskippable-pre-commit"
+    inst_probe = Path(tempfile.gettempdir()) / "gate-integrity-unskippable-installer.py"
+    ci_probe.write_text((ROOT / CI_REL).read_text(encoding="utf-8"), encoding="utf-8")
+    hook_probe.write_text((ROOT / HOOK_REL).read_text(encoding="utf-8"),
+                          encoding="utf-8")
+    inst_probe.write_text((ROOT / INSTALLER_REL).read_text(encoding="utf-8"),
+                          encoding="utf-8")
+    try:
+        def _probe_problems() -> list[str]:
+            return unskippable_wiring_problems(ci=ci_probe, hook=hook_probe,
+                                               installer=inst_probe)
+
+        ok("A-M12① 正向对照：三处接线原样 → 零问题（防假红）",
+           _probe_problems() == [], f"problems={_probe_problems()[:1]}")
+        ci_text = ci_probe.read_text(encoding="utf-8")
+        ci_probe.write_text(
+            ci_text.replace("structure-guard.py verify --from-git",
+                            "structure-guard.py --replay"), encoding="utf-8")
+        ok("A-M12① 反向对照 a：CI 里那条 git 基线调用被拿掉（只剩自检档）→ FAIL 且点名"
+           "（守卫退回『依赖人记得跑快照』的形态）",
+           any("--from-git" in p for p in _probe_problems()),
+           f"problems={_probe_problems()[:1]}")
+        ci_probe.write_text(ci_text, encoding="utf-8")
+        hook_probe.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        ok("A-M12① 反向对照 b：钩子模板空转（不调同一判据）→ FAIL（两层不得各判一套）",
+           any(HOOK_REL in p for p in _probe_problems()),
+           f"problems={_probe_problems()[:1]}")
+        inst_probe.unlink()
+        installer_problems = _probe_problems()
+        ok("A-M12① 反向对照 c：安装器缺失 → FAIL（`.git/hooks/` 不在版本控制里，"
+           "没有安装器就只剩『记得手动拷』）",
+           any(INSTALLER_REL in p for p in installer_problems),
+           next((p for p in installer_problems if INSTALLER_REL in p),
+                installer_problems[:1]))
+    finally:
+        for probe in (ci_probe, hook_probe, inst_probe):
+            probe.unlink(missing_ok=True)
+
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
 
@@ -470,6 +575,8 @@ def main() -> int:
     gp, gw = guard_problems()
     problems += gp
     warnings += gw
+    # A-M12 ①：结构守卫的"不可跳过层"是否接线在位（CI 调用 + 钩子模板 + 安装器）。
+    problems += unskippable_guard_problems()
     problems += probe_o_mode()
     for w in warnings:
         warn(w)
