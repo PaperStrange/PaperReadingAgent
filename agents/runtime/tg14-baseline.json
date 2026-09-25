@@ -1,0 +1,723 @@
+{
+  "phases": {
+    "agents-infra": {
+      "backlog": "docs/iteration/phases/agents-infra/backlog.MD",
+      "cards": [
+        {
+          "card": "A-CLOSE",
+          "line": 13,
+          "cells": 5,
+          "title": "阶段收口：剩余卡处置（迁出/取消）+ 阶段封存归档 + 全局 ROADMAP 切换",
+          "title_chars": 41
+        },
+        {
+          "card": "A-FN",
+          "line": 14,
+          "cells": 5,
+          "title": "职能化 agent 划分：按职能（非分支）定义评审代理，任务参数化（分支=任务输入）；补充调研业界职能划分最佳实",
+          "title_chars": 60
+        },
+        {
+          "card": "A-UC",
+          "line": 15,
+          "cells": 5,
+          "title": "调研结论→用例表：把四条调研线结论转成可测 use cases（验收断言），Sprint 开发时逐条验证实现遵循",
+          "title_chars": 60
+        },
+        {
+          "card": "A-SPEC",
+          "line": 16,
+          "cells": 5,
+          "title": "四职能 spec 文件（impact-assessment / code-review / doc-audit / wo",
+          "title_chars": 60
+        },
+        {
+          "card": "A-LEDGER",
+          "line": 17,
+          "cells": 5,
+          "title": "`scripts/agent-ops.py` 账本 CLI（8 子命令）+ `registry.json` + `run",
+          "title_chars": 60
+        },
+        {
+          "card": "A-IDE",
+          "line": 18,
+          "cells": 5,
+          "title": "跨 IDE 迁移说明（`agents/README.md`）+ 1-WORKFLOW §4.2 三查引用更新",
+          "title_chars": 54
+        },
+        {
+          "card": "A-DASH",
+          "line": 19,
+          "cells": 5,
+          "title": "本地看板应用（Next.js 16 + antd 6.6.2 + better-sqlite3/FTS5 + c",
+          "title_chars": 60
+        },
+        {
+          "card": "A-PM1",
+          "line": 27,
+          "cells": 5,
+          "title": "三查执行器 agent 固化：按 spec 自动 fan-out 评审代理 + 账本登记 + 分诊报告",
+          "title_chars": 51
+        },
+        {
+          "card": "A-PM2",
+          "line": 28,
+          "cells": 5,
+          "title": "Sprint 文档模板生成 agent：planning→燃尽→Retro 自动起草（人审后入库）",
+          "title_chars": 49
+        },
+        {
+          "card": "A-PM3",
+          "line": 29,
+          "cells": 5,
+          "title": "调研结论→用例生成 agent 固化（A-UC 的方法论沉淀）",
+          "title_chars": 31
+        },
+        {
+          "card": "A-PM4",
+          "line": 30,
+          "cells": 5,
+          "title": "新 agent 上线评审 agent（职能粒度/权限/spec 合规检查）",
+          "title_chars": 37
+        },
+        {
+          "card": "A-PM5",
+          "line": 31,
+          "cells": 5,
+          "title": "~~经验教训总结 agent~~ → 已落地（2026-08-30）：`agents/functions/les",
+          "title_chars": 60
+        },
+        {
+          "card": "A-FANOUT",
+          "line": 32,
+          "cells": 5,
+          "title": "看板 fan-out 配置页：可视化编辑 `agents/fanout.json`（五步顺序/运行条件/执行者可调），供",
+          "title_chars": 60
+        },
+        {
+          "card": "A-M1",
+          "line": 33,
+          "cells": 5,
+          "title": "价表人工覆盖段填充（deepseek/qwen/openrouter 单价，来自服务商页面）",
+          "title_chars": 46
+        },
+        {
+          "card": "A-M2",
+          "line": 34,
+          "cells": 5,
+          "title": "~~评审 spec v1.1 timebox~~ → 已由用户问题①方案取代（2026-08-30）：新增 im",
+          "title_chars": 60
+        },
+        {
+          "card": "A-M3",
+          "line": 35,
+          "cells": 5,
+          "title": "main 分支 docs/iteration 悬空引用清理（16 处 pre-existing 行内引用，main 评审",
+          "title_chars": 60
+        },
+        {
+          "card": "A-M4",
+          "line": 36,
+          "cells": 5,
+          "title": "agent-ops fetch-spec 成功路径测试（sha256 命中/失配）+ 账本并发锁（last-writer",
+          "title_chars": 60
+        },
+        {
+          "card": "A-M5",
+          "line": 37,
+          "cells": 5,
+          "title": "~~git/pwsh 环境 SOP~~ → 已完成（2026-08-30）：AMSI 崩溃重试、push/PR",
+          "title_chars": 59
+        },
+        {
+          "card": "A-M6",
+          "line": 38,
+          "cells": 5,
+          "title": "~~仓库留证文件出库（用户问题②）~~ → 已随 PR #24 完成：registry.json/runs 报告",
+          "title_chars": 60
+        },
+        {
+          "card": "A-M7",
+          "line": 39,
+          "cells": 5,
+          "title": "agent spec 模板（用户 2026-08-30）：`agents/functions/_template",
+          "title_chars": 60
+        },
+        {
+          "card": "A-RS",
+          "line": 40,
+          "cells": 5,
+          "title": "深度技术调研 agent（用户 2026-08-30）：`agents/functions/tech-resea",
+          "title_chars": 60
+        },
+        {
+          "card": "A-M8",
+          "line": 41,
+          "cells": 5,
+          "title": "main 补齐 windows 历史分叉（Sprint-9 二查 011 发现）：`paper-qa-scrip",
+          "title_chars": 60
+        },
+        {
+          "card": "A-M9",
+          "line": 42,
+          "cells": 5,
+          "title": "better-sqlite3 选型（Sprint-10 US-10.4，tech-research 调研定论）：维持",
+          "title_chars": 60
+        },
+        {
+          "card": "A-M10",
+          "line": 43,
+          "cells": 5,
+          "title": "main 分支保护（GitHub 安全提示跟进，2026-08-30）：调研最佳实践（[GitHub REST",
+          "title_chars": 59
+        },
+        {
+          "card": "A-M11",
+          "line": 44,
+          "cells": 5,
+          "title": "Agent workflow 与提示词治理迭代（对照 OpenAI/Anthropic 的 `AGENTS.MD`",
+          "title_chars": 59
+        },
+        {
+          "card": "A-M12",
+          "line": 45,
+          "cells": 5,
+          "title": "编辑边界事故族治理：写入前体检 + 标题层检测（由 Sprint-17 内 5 次真实事故提炼；用户 2026-09-2",
+          "title_chars": 71
+        }
+      ],
+      "non_card_rows": [
+        {
+          "first_cell": "—",
+          "line": 55,
+          "cells": 3,
+          "kind": "placeholder"
+        }
+      ],
+      "card_count": 26
+    },
+    "mental-models": {
+      "backlog": "docs/iteration/phases/mental-models/backlog.MD",
+      "cards": [
+        {
+          "card": "MM-1",
+          "line": 15,
+          "cells": 5,
+          "title": "模型 schema 与库结构：统一字段（名称/版本/描述/使用时机/边界/输入/输出/创始人/来源/成功判据/状态）+",
+          "title_chars": 59
+        },
+        {
+          "card": "MM-2",
+          "line": 16,
+          "cells": 5,
+          "title": "半自动生成器：模型 JSON → spec 骨架（schema 字段 → 五段式映射；robust=字段",
+          "title_chars": 60
+        },
+        {
+          "card": "MM-3",
+          "line": 17,
+          "cells": 5,
+          "title": "种子模型实例化首跑：思维实验 → `agents/functions/thought-experiment.md` +",
+          "title_chars": 59
+        },
+        {
+          "card": "MM-4",
+          "line": 18,
+          "cells": 5,
+          "title": "经验文档→候选模型提取 SOP：主代理主管，每次 3-LEARNED 更新时执行，产出候选模型卡（来源标注条目号）",
+          "title_chars": 57
+        },
+        {
+          "card": "MM-5",
+          "line": 19,
+          "cells": 5,
+          "title": "自适应触发扩展机制：初始边界（讨论输入）→ 认可反馈后扩展至其他决策场景；每次扩展记录 + 用户确认",
+          "title_chars": 50
+        },
+        {
+          "card": "MM-6",
+          "line": 20,
+          "cells": 5,
+          "title": "把各阶段思考（开发/设计/复盘/验收）固化为思维实验并用于\"生产环境\"的工作方式：不止开发的工程环境，而是真",
+          "title_chars": 60
+        }
+      ],
+      "non_card_rows": [],
+      "card_count": 6
+    },
+    "refactor-analysis": {
+      "backlog": "docs/iteration/phases/refactor-analysis/backlog.MD",
+      "cards": [
+        {
+          "card": "R-C",
+          "line": 14,
+          "cells": 5,
+          "title": "C Agent 可观测闭环 + E3 v1 只读可视化（原规划 Sprint-4）",
+          "title_chars": 41
+        },
+        {
+          "card": "R-E",
+          "line": 15,
+          "cells": 5,
+          "title": "E1/E2 pip 注入 + 版本检查/更新/回滚（原规划 Sprint-5）",
+          "title_chars": 39
+        },
+        {
+          "card": "R-D",
+          "line": 16,
+          "cells": 5,
+          "title": "D 单机多 worker + 会话外置 + 网关分流（原规划 Sprint-6）",
+          "title_chars": 40
+        },
+        {
+          "card": "R-E3",
+          "line": 17,
+          "cells": 5,
+          "title": "E3 可编辑工作流（原规划 Sprint-7+）",
+          "title_chars": 24
+        },
+        {
+          "card": "F1",
+          "line": 18,
+          "cells": 5,
+          "title": "检索体验与查询质量：多语检索",
+          "title_chars": 14
+        },
+        {
+          "card": "F2",
+          "line": 19,
+          "cells": 5,
+          "title": "配置面板深化 + SSOT 驱动前端（/api/config_schema + 全字段交互 + 单一受控状态）",
+          "title_chars": 55
+        },
+        {
+          "card": "F3",
+          "line": 20,
+          "cells": 5,
+          "title": "Agent 接入后端 + 事件时间线雏形",
+          "title_chars": 20
+        },
+        {
+          "card": "F4",
+          "line": 21,
+          "cells": 5,
+          "title": "本地评测基准（检索/证据/答案三环）",
+          "title_chars": 18
+        },
+        {
+          "card": "F-AC1",
+          "line": 22,
+          "cells": 5,
+          "title": "F2 验收①1.1：标题字号收敛 + 卡片内字体类型统一（token 化），排查全部卡片批量修",
+          "title_chars": 47
+        },
+        {
+          "card": "F-AC2",
+          "line": 23,
+          "cells": 5,
+          "title": "F2 验收①1.2：hints 限高滚动 + 影响上浮标题聚合（\"LLM（6项，3项被改动）\"改动数标红）",
+          "title_chars": 53
+        },
+        {
+          "card": "F-AC3",
+          "line": 24,
+          "cells": 5,
+          "title": "F2 验收①1.3：新增 `local_dir` 字段（默认 data/pdf）+ 后端接线 + 数据源条件隐藏无关参数",
+          "title_chars": 60
+        },
+        {
+          "card": "F-AC4",
+          "line": 25,
+          "cells": 5,
+          "title": "F2 验收②：节点运行完成后自动收起全部展开项，仅留 output_snapshot",
+          "title_chars": 42
+        },
+        {
+          "card": "F-AC5",
+          "line": 26,
+          "cells": 5,
+          "title": "F2 验收③：subcanvas 桌面分辨率响应式自适应（手机暂不考虑）",
+          "title_chars": 36
+        },
+        {
+          "card": "F-AC6",
+          "line": 27,
+          "cells": 5,
+          "title": "F2 验收④：失败一键复制 + 任意状态框选复制已完成卡片 + 主画布报错摘要+可展开完整堆栈；走查追加：节点报",
+          "title_chars": 60
+        },
+        {
+          "card": "F-AC7",
+          "line": 28,
+          "cells": 5,
+          "title": "F2 验收⑤：执行状态信息仅展示在执行节点下（作用域修复）；走查语义修正：切换后展示切换后节点的状态行（",
+          "title_chars": 60
+        },
+        {
+          "card": "F-AC8",
+          "line": 29,
+          "cells": 5,
+          "title": "F2 验收⑥：provider_config 拆一 provider 一文件 + tech-research 官",
+          "title_chars": 60
+        },
+        {
+          "card": "F-AC9",
+          "line": 30,
+          "cells": 5,
+          "title": "F2 验收⑦：subcanvas 手动切换节点 → 主画布联动定位（双向联动）；走查返工：主画布选中未生效 +",
+          "title_chars": 59
+        },
+        {
+          "card": "F-AC10",
+          "line": 31,
+          "cells": 5,
+          "title": "F2 验收⑧：文献级 embedding checkpoint——每篇完成即落盘，失败续跑未完成文献；持续迭代主",
+          "title_chars": 60
+        },
+        {
+          "card": "F-AC11",
+          "line": 32,
+          "cells": 5,
+          "title": "走查 N1（2026-09-10）：卡片 output 字段完整查看（展开/一键复制全文），answer 节点*",
+          "title_chars": 60
+        },
+        {
+          "card": "F-AC12",
+          "line": 33,
+          "cells": 5,
+          "title": "走查 N2（2026-09-10）：fn 卡论文截图清晰度提升（runtime_trace 0.45 缩放 →",
+          "title_chars": 59
+        },
+        {
+          "card": "F-AC13",
+          "line": 34,
+          "cells": 5,
+          "title": "节点运行按钮点击 1~2 次无响应（第 3 次才生效）——根因已定位（2026-09-20 全量按钮审计）*",
+          "title_chars": 60
+        },
+        {
+          "card": "F-AC14",
+          "line": 35,
+          "cells": 5,
+          "title": "复制按钮状态串台：点\"复制答案\"后\"复制 output\"/\"复制报错\"同时显示\"已复制 ✓\"——根因：`Flow",
+          "title_chars": 60
+        },
+        {
+          "card": "F-AC15",
+          "line": 36,
+          "cells": 5,
+          "title": "运行参数显式配置面：把目前只存在于 CLI/env/spec 的参数在前端显式可见/可配置。现状清单",
+          "title_chars": 60
+        },
+        {
+          "card": "F-AC16",
+          "line": 37,
+          "cells": 5,
+          "title": "checkpoint 可见性与可复现：前端展示命中的 checkpoint 明细（`checkpoint_key",
+          "title_chars": 60
+        },
+        {
+          "card": "M1",
+          "line": 45,
+          "cells": 5,
+          "title": "索引一致性增强：Tantivy 段损坏探测升级（files.zip + meta.json + tantivy open",
+          "title_chars": 60
+        },
+        {
+          "card": "M2",
+          "line": 46,
+          "cells": 5,
+          "title": "`prune_litellm_callbacks` 上限配置化（env `PAPERQA_LITELLM_CALLBAC",
+          "title_chars": 60
+        },
+        {
+          "card": "M3",
+          "line": 47,
+          "cells": 5,
+          "title": "staging 清理 UI/自动清理；DOI 源真实 `UNPAYWALL_EMAIL` 实测",
+          "title_chars": 47
+        },
+        {
+          "card": "M4",
+          "line": 48,
+          "cells": 5,
+          "title": "多节点并发计时显示；`runStartTimesRef` 清理",
+          "title_chars": 31
+        },
+        {
+          "card": "M5",
+          "line": 49,
+          "cells": 5,
+          "title": "`verify_provider_switch` 对 openrouter/自定义连通实测；gui 依赖显式化",
+          "title_chars": 55
+        },
+        {
+          "card": "M6",
+          "line": 50,
+          "cells": 5,
+          "title": "文档/知识管理例行勘误（随三查进行）",
+          "title_chars": 18
+        },
+        {
+          "card": "M7",
+          "line": 51,
+          "cells": 5,
+          "title": "默认值漂移收敛：chunk/temperature 等默认值在 config_schema/App.jsx/provid",
+          "title_chars": 60
+        },
+        {
+          "card": "M8",
+          "line": 52,
+          "cells": 5,
+          "title": "remote_resolver SSRF DNS rebinding TOCTOU 强化（解析后 IP 复检）",
+          "title_chars": 55
+        },
+        {
+          "card": "M9",
+          "line": 53,
+          "cells": 5,
+          "title": "价表填充改自动化：按 provider 官网固定 URL 抓取单价 + `prices.json` 更新 + 定",
+          "title_chars": 60
+        },
+        {
+          "card": "M10",
+          "line": 54,
+          "cells": 5,
+          "title": "fetch-spec 成功路径测试（sha256 命中/失配）+ 账本并发锁——原 agents-infra A-M4",
+          "title_chars": 59
+        },
+        {
+          "card": "M11",
+          "line": 55,
+          "cells": 5,
+          "title": "三查执行器 agent 固化（fan-out 自动派发 + 账本登记 + 分诊）——原 agents-infra A-P",
+          "title_chars": 60
+        },
+        {
+          "card": "M12",
+          "line": 56,
+          "cells": 5,
+          "title": "Sprint 文档模板生成 agent（planning→燃尽→Retro 自动起草）——原 agents-infra",
+          "title_chars": 59
+        },
+        {
+          "card": "M13",
+          "line": 57,
+          "cells": 5,
+          "title": "调研结论→用例生成 agent 固化——原 agents-infra A-PM3 迁入（备选）",
+          "title_chars": 47
+        },
+        {
+          "card": "M14",
+          "line": 58,
+          "cells": 5,
+          "title": "新 agent 上线评审 agent——原 agents-infra A-PM4 迁入（备选）",
+          "title_chars": 47
+        },
+        {
+          "card": "M15",
+          "line": 59,
+          "cells": 5,
+          "title": "领域治理壳落地：product/marketing 笔记目录 + 追溯索引登记 + fanout 路由预留（完整 spe",
+          "title_chars": 60
+        },
+        {
+          "card": "M16",
+          "line": 60,
+          "cells": 5,
+          "title": "调研工作流深化（知识沉淀）：① 三级深度响应（工程级/领域专家级/研究学者级，场景自适应+用户可覆盖；工程级=主",
+          "title_chars": 60
+        },
+        {
+          "card": "M17",
+          "line": 61,
+          "cells": 5,
+          "title": "~~思维模型管理~~ → 迁出（2026-09-07 用户拍板）：成立独立阶段 `phases/mental-m",
+          "title_chars": 60
+        },
+        {
+          "card": "M18",
+          "line": 62,
+          "cells": 5,
+          "title": "报告时效与依据变更治理：provider 模型信息/证据源更新后，旧调研报告与其证据快照如何标记\"依据已变/被取",
+          "title_chars": 60
+        },
+        {
+          "card": "F-AC17",
+          "line": 63,
+          "cells": 5,
+          "title": "运行中重复点击的行为定义（仅记录，不实现）：用户 2026-09-21 口径——\"允许用户在运行中点击\"",
+          "title_chars": 60
+        },
+        {
+          "card": "R-A",
+          "line": 78,
+          "cells": 5,
+          "title": "配置 SSOT + 策展 schema（原规划 Sprint-2 部分）",
+          "title_chars": 36
+        },
+        {
+          "card": "R-B",
+          "line": 79,
+          "cells": 5,
+          "title": "数据源抽象（原规划 Sprint-3）",
+          "title_chars": 19
+        },
+        {
+          "card": "F-EXT1",
+          "line": 80,
+          "cells": 5,
+          "title": "体验修复 + provider 扩展（插队）",
+          "title_chars": 22
+        },
+        {
+          "card": "F-EXT2",
+          "line": 81,
+          "cells": 5,
+          "title": "实战问题修复（插队）",
+          "title_chars": 10
+        }
+      ],
+      "non_card_rows": [],
+      "card_count": 47
+    },
+    "testing-governance": {
+      "backlog": "docs/iteration/phases/testing-governance/backlog.MD",
+      "cards": [
+        {
+          "card": "TG-1",
+          "line": 15,
+          "cells": 5,
+          "title": "P1 成文规则：DoD+三查增补\"用户可见功能必须同 PR 交付 verify case + 矩阵登记\"；反例演练留证据",
+          "title_chars": 60
+        },
+        {
+          "card": "TG-2",
+          "line": 16,
+          "cells": 5,
+          "title": "P2 覆盖矩阵 SSOT：脚本头部元数据 + `verify_matrix.py` 生成/校验 + `verify/TE",
+          "title_chars": 60
+        },
+        {
+          "card": "TG-3",
+          "line": 17,
+          "cells": 5,
+          "title": "P4 ATDD case-first：功能卡模板增\"验收 case\"节（实现前先写步骤+断言），下一张新功能卡实测；",
+          "title_chars": 60
+        },
+        {
+          "card": "TG-4",
+          "line": 18,
+          "cells": 5,
+          "title": "provider e2e 三脚本去漂移：参数化共享基座，修复 verify_e2e_openai 潜在 1.46 bug",
+          "title_chars": 60
+        },
+        {
+          "card": "TG-5",
+          "line": 19,
+          "cells": 5,
+          "title": "P3 分层 runner + cron 夜间全量联网套件（fail-closed）。参数已预决（D3）：每周一次",
+          "title_chars": 60
+        },
+        {
+          "card": "TG-6",
+          "line": 20,
+          "cells": 5,
+          "title": "验收方式改进（DoD 补\"人机交互验收面\" + 过程可见证据 + 规范执行可核查）：① DoD 现偏代码执行层，",
+          "title_chars": 60
+        },
+        {
+          "card": "TG-7",
+          "line": 21,
+          "cells": 5,
+          "title": "预算闸门 fail-open：`scripts/scheduled-tasks.py` 的 `load_stat",
+          "title_chars": 60
+        },
+        {
+          "card": "TG-8",
+          "line": 22,
+          "cells": 5,
+          "title": "自举后端前端口自检 + 离线开关统一注入（Retro 行动项 ② 升级为必修）：`verify/e2e_comm",
+          "title_chars": 60
+        },
+        {
+          "card": "TG-9",
+          "line": 23,
+          "cells": 5,
+          "title": "新脚本产物目录约定（Retro 行动项 ④）：新脚本产物默认写已忽略目录（运行态 JSON → `age",
+          "title_chars": 60
+        },
+        {
+          "card": "TG-10",
+          "line": 24,
+          "cells": 5,
+          "title": "多轮次 agent 的账本记录失真（可观测性缺口）：同一 run 被追加多轮复核（run-053 共 5 轮）时",
+          "title_chars": 60
+        },
+        {
+          "card": "TG-11",
+          "line": 25,
+          "cells": 5,
+          "title": "规则绕过复盘 + 可执行闸门（用户 2026-09-21 定性为\"很严重\"）：2026-09-20/21 我以\"",
+          "title_chars": 60
+        },
+        {
+          "card": "TG-12",
+          "line": 26,
+          "cells": 5,
+          "title": "文档内容漂移复盘 + 派生事实机制（用户 2026-09-21：\"sprint17 和以前的开发过程发现的文档内容漂",
+          "title_chars": 60
+        },
+        {
+          "card": "TG-13",
+          "line": 27,
+          "cells": 5,
+          "title": "账本\"测量化\"：时长/轮次/账本↔产物一致性（用户 2026-09-21 拍板\"开新卡\"，而非并入 TG-10）",
+          "title_chars": 60
+        },
+        {
+          "card": "TG-14",
+          "line": 28,
+          "cells": 5,
+          "title": "一卡一文档：卡片正文独立成文 + backlog 瘦索引 + 索引 lint（由 `TG-12` 机制候选",
+          "title_chars": 59
+        },
+        {
+          "card": "TG-15",
+          "line": 29,
+          "cells": 5,
+          "title": "闸门泛化：三不变式 + 数据驱动（替换\"逐场景加条件\"式硬编码）（用户 2026-09-23 批准 P1=\"可以",
+          "title_chars": 60
+        },
+        {
+          "card": "TG-16",
+          "line": 30,
+          "cells": 5,
+          "title": "审查流程与策略内容\"整体过一遍\" → 图文并茂 HTML 汇报（用户 2026-09-23：\"我想需要对现有审查",
+          "title_chars": 60
+        },
+        {
+          "card": "TG-17",
+          "line": 31,
+          "cells": 5,
+          "title": "闸门可信化收尾：覆盖窗口语义 + C1 判定域（来源＝`TG-15` 独立复核批的两条 finding，用户 2",
+          "title_chars": 60
+        },
+        {
+          "card": "TG-18",
+          "line": 32,
+          "cells": 5,
+          "title": "闸门债：15 处历史表格缺陷逐处清理（棘轮基线 4 个文件／15 处；review_by=2026-10-31）",
+          "title_chars": 60
+        }
+      ],
+      "non_card_rows": [],
+      "card_count": 18
+    }
+  },
+  "totals": {
+    "cards": 97,
+    "phases": 4,
+    "non_card_rows": 1
+  }
+}

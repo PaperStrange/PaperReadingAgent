@@ -28,7 +28,9 @@
 
 ```powershell
 # 一个子代理 run 的完整生命周期（任何编排方/IDE terminal 都能执行）：
-.\.venv\Scripts\python.exe .\scripts\agent-ops.py register --role code-review --task branch:windows --spec "code-review@1.2.0" --model deepseek-v4-flash --start
+# TG-11 闸门：评审类 run（code-review/doc-audit）必须声明 scope 来源，否则 register 直接拒绝（fail-closed）：
+#   来自〇查 → --scope-source impact-assessment:<〇查 run_id>；确需自选范围 → --deviation "<≥10 字符的理由>"
+.\.venv\Scripts\python.exe .\scripts\agent-ops.py register --role code-review --task branch:windows --spec "code-review@1.2.0" --model deepseek-v4-flash --scope-source impact-assessment:<kickoff_run_id> --start
 .\.venv\Scripts\python.exe .\scripts\agent-ops.py finish <run_id> --status succeeded --usage-in 10000 --usage-out 2000 --output-chars 3000 --result-file path/to/report.md
 .\.venv\Scripts\python.exe .\scripts\agent-ops.py list --role code-review
 # TG-10：多轮次与中断留痕（终态 run 也可追加；list 显示 rounds=/dur=/int=）

@@ -140,6 +140,19 @@ def collect(verify_dir: Path) -> list[tuple[Path, dict]]:
     return entries
 
 
+def _cell(text: str) -> str:
+    """把任意文本安全地放进 Markdown 表格单元：转义裸管道、去掉换行。
+
+    2026-09-23（TG-15 复核批 + 新建 `verify_md_tables.py` 实测）：`requires` 若是**字符串**
+    而非列表，旧实现 `", ".join(meta["requires"])` 会退化成 `str(...)`，再被下面的
+    `f"| {req} |"` 包一层 → 输出 `| none | |`（**多一格**）。实测 `TEST-MATRIX.MD` 的
+    verify_archive / verify_providers / verify_runner 三行因此被切成 9 格，而矩阵自身是
+    "自动生成勿手改"的 SSOT ⇒ 缺陷会被反复重生成。修法：① 单元格统一走本函数；② `requires`
+    统一归一化为列表（见 `collect()` 的元数据校验）。
+    """
+    return text.replace("\r", " ").replace("\n", " ").replace("|", "\\|").strip()
+
+
 def render_matrix(entries: list[tuple[Path, dict]]) -> str:
     lines = [
         "# TEST-MATRIX.MD —— 覆盖矩阵（TG-2 SSOT，自动生成，勿手改）",
@@ -153,10 +166,10 @@ def render_matrix(entries: list[tuple[Path, dict]]) -> str:
     for path, meta in entries:
         prov = ", ".join(meta["providers"]) if meta["providers"] else "—"
         routes = ", ".join(meta["routes"]) if meta["routes"] else "—"
-        req = ", ".join(meta["requires"]) if isinstance(meta["requires"], list) else str(meta["requires"])
+        req = ", ".join(meta["requires"])
         lines.append(
-            f"| `{path.name}` | {meta['features']} | {meta['tier']} | {prov} | "
-            f"{meta['est_seconds']}s | ¥{meta['est_cost_cny']:g} | {routes} | {req} |"
+            f"| `{_cell(path.name)}` | {_cell(meta['features'])} | {_cell(meta['tier'])} | {_cell(prov)} | "
+            f"{meta['est_seconds']}s | ¥{meta['est_cost_cny']:g} | {_cell(routes)} | {_cell(req)} |"
         )
     n_off = sum(1 for _, m in entries if m["tier"] == "offline")
     n_net = sum(1 for _, m in entries if m["tier"] == "network")

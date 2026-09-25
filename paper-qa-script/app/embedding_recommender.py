@@ -7,7 +7,10 @@
   1. provider 有 embedding API（`provider_config.has_embedding_api`）→ 用服务商**最新策展**模型；
   2. 无 API → 选 HuggingFace **下载量最高 + 兼容中文**的 SentenceTransformer 模型
      （在线查询 `huggingface.co/api/models?filter=sentence-transformers&sort=downloads`，
-     按"multilingual / 已知中文模型"规则过滤取第一个；TTL 缓存 24h，离线/超时回落策展兜底）。
+     按"multilingual / 已知中文模型"规则过滤取第一个；TTL 缓存 24h，
+     **查询失败（超时/网络）**回落策展兜底）；该查询是产品侧第 4 个外呼入口，
+     **受 TG-8 离线开关约束**——离线档下缓存未命中时**明确拒绝**
+     （`OfflineRefused`，点名来源与目标），不发出请求、也不静默降级。
 - 结果与理由通过 `config_notes.hints` 展示给前端，用户可随时用 `embedding_model` 手动覆盖。
 """
 from __future__ import annotations
@@ -21,6 +24,7 @@ from pathlib import Path
 import httpx
 from pydantic import BaseModel
 
+from app.offline_guard import refuse_if_offline
 from provider_config import get_provider_config
 
 _HF_API = "https://huggingface.co/api/models"
@@ -85,9 +89,23 @@ def _write_cache(model_id: str, downloads: int) -> None:
 
 
 async def _query_hf_top_multilingual() -> tuple[str, int] | None:
-    """在线查询 HF 下载量最高的"兼容中文"ST 模型；失败返回 None（回落兜底）。"""
+    """在线查询 HF 下载量最高的"兼容中文"ST 模型；失败返回 None（回落兜底）。
+
+    **外呼闸门（TG-8；2026-09-25 三查 finding major-3）**：本函数是产品侧第 4 个外呼入口
+    （前三个在 `app/engine.py`：LLM / vision / API 向量模型）。原先
+    `orchestration.py` 的 `config` 步骤先调 `RECOMMENDER.recommend()`、**之后**才
+    `make_settings()`（闸门在那儿），于是 `PAPERQA_OFFLINE=1` 下这次
+    `huggingface.co` 请求**已经发出**，拒绝只是"晚一步"——与"一个开关关掉全部外呼"的
+    承诺冲突。现在判据放在**发起请求之前**，且刻意放在 `try` **之外**：本函数的
+    `except Exception` 是"网络抖动就回落兜底"的兜底块，而"离线开关说这次外呼被禁止"
+    不是抖动，不得被降级伪装成正常路径（同 `verify/outbound_guard.py` 的理由）。
+
+    缓存命中与 `PAPERQA_EMBED_RECOMMEND_LIVE=0` 都在到达这里之前返回，故离线档下
+    "本地向量 + 检索"这条零外呼链路不受影响；开关关闭时本函数行为与之前逐字相同。
+    """
     if os.environ.get("PAPERQA_EMBED_RECOMMEND_LIVE", "1") == "0":
         return None
+    refuse_if_offline(f"embedding recommender：{_HF_API}（HuggingFace 在线查询）")
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=True) as client:
             r = await client.get(

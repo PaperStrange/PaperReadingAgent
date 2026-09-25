@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import openreview
-from tqdm import tqdm
 
 
 def safe_str(x: Any) -> str:

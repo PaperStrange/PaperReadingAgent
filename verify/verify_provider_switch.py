@@ -123,7 +123,6 @@ async def main() -> int:
     for k in ("DEEPSEEK_API_KEY", "DASHSCOPE_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"):
         os.environ.pop(k, None)
     _load_dotenv()
-    real_key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
     for p in sorted(PROVIDERS):
         c = get_provider_config(p)
         key = c["api_key"] if p == "deepseek" else "sk-invalid-placeholder"

@@ -83,7 +83,7 @@ def main() -> int:
 
         # ① fresh：provider 刷新时间早于证据
         a = runs / "run-a"
-        rp_a = write_report(a, "fresh case", ["01-a.md"])
+        write_report(a, "fresh case", ["01-a.md"])
         write_evidence(a, "01-a.md", "2026-09-10 10:00 +0800")
         prov_old = build_providers(base / "prov_old", "2026-08-01T00:00:00+08:00")
 
@@ -285,7 +285,7 @@ def main() -> int:
         empty_ev = runs / "run-empty-ev"
         (empty_ev / "evidence").mkdir(parents=True, exist_ok=True)
         (empty_ev / "code-review.report.md").write_text("# code-review\n" + "正文" * 60, encoding="utf-8")
-        res_skip = run(["--runs-dir", str(runs), "--providers-dir", str(prov_tz), "--json", str(base / "e.json")])
+        run(["--runs-dir", str(runs), "--providers-dir", str(prov_tz), "--json", str(base / "e.json")])
         ep = json.loads((base / "e.json").read_text(encoding="utf-8"))
         ok("⑨d 空 evidence/ + 非 tech-research 报告 → 跳过",
            all(r["run_id"] != "run-empty-ev" for r in ep["reports"]), str([r["run_id"] for r in ep["reports"]]))

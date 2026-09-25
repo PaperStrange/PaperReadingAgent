@@ -1,7 +1,9 @@
 ---
 name: agent-onboarding-review
 description: Onboarding gate for a new agent function spec: reviews spec compliance (frontmatter superset, seven-section structure, configurable-params edit point, output template, English body, bilingual trigger keywords, minimal permissions) against _template-agent.md and cross-checks fanout/ledger role registration. Review-only — never modifies files.
-version: "1.0.0"
+version: "1.0.1"
+scope_required: true
+coverage_window: self
 model: ""
 tools: []
 metadata:

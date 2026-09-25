@@ -16,6 +16,10 @@
   .venv\\Scripts\\python.exe verify\\run_suite.py --tier offline
   .venv\\Scripts\\python.exe verify\\run_suite.py --tier network --budget-cny 10
   .venv\\Scripts\\python.exe verify\\run_suite.py --tier offline --verify-dir <fixture> --json <out>
+
+结果 JSON（F4，2026-09-25 起**总是**写）：`--json` 默认 = `verify/suite_result.json`（已 gitignore），
+且**启动时先落一份 `status=running` 的占位**再执行——中途崩/被杀留下的是"正在跑"，
+而不是上一轮那份看起来仍像最新结果的 `ok`（`scheduled-tasks` 只认 `cost_status=measured`，占位不会被误采信）。
 """
 from __future__ import annotations
 VERIFY_META = {'features': 'TG-5 分层 runner：offline/gui/network 分层 + fail-closed + 三态预算闸门（上限可配置）', 'tier': 'offline', 'providers': [], 'est_seconds': 5, 'est_cost_cny': 0, 'routes': [], 'requires': []}
@@ -39,6 +43,12 @@ if hasattr(sys.stdout, "reconfigure"):
 from verify.verify_matrix import collect  # noqa: E402
 
 SELF_NAMES = {"run_suite.py"}
+# F4（2026-09-25）：结果 JSON 的**标准路径**。原实现 `--json` 默认为空字符串，而 `_write_json("")`
+# 直接 return ⇒ 默认跑一次 `run_suite.py --tier offline` **不刷新** `verify/suite_result.json`，
+# 那份旧文件（上次 network 档留下的）看起来仍像"最新结果"——读的人要翻 `finished_at` 才发现不是本轮。
+# 现改为：默认就写这个路径（它已在 `.gitignore` 内 → 不产生 git 产物），
+# 并在**启动时**先落一份 `status=running` 的占位（中途崩/被杀留下的是"正在跑"，不是旧的 `ok`）。
+SUITE_RESULT_REL = "verify/suite_result.json"
 DEFAULT_BUDGET_CNY = 10.0
 EST_SAFETY_FACTOR_DEFAULT = 1.3  # 预检上界 = Σest_cost_cny × 系数（可配置：--est-factor / PAPERQA_EST_SAFETY_FACTOR）
 REFUSE_EXIT = 3
@@ -147,7 +157,8 @@ def main() -> int:
                     help="预估安全系数（预检上界 = Σest_cost_cny × 系数）；缺省读 env PAPERQA_EST_SAFETY_FACTOR，再缺省 1.3")
     ap.add_argument("--verify-dir", default=str(ROOT / "verify"))
     ap.add_argument("--scripts", default="", help="只跑这些脚本（逗号分隔文件名）")
-    ap.add_argument("--json", default="", help="结果 JSON 落盘路径")
+    ap.add_argument("--json", default=SUITE_RESULT_REL,
+                    help=f"结果 JSON 落盘路径（默认 {SUITE_RESULT_REL}——**总是**会写，不会静默跳过）")
     ap.add_argument("--dry-run", action="store_true", help="只列将执行的脚本与预估花费，不执行")
     args = ap.parse_args()
 
@@ -179,6 +190,9 @@ def main() -> int:
 
     print(f"== run_suite tier={args.tier} scripts={len(picked)} est_raw={est_raw} × factor={est_factor} "
           f"→ est_cost={est_cost} CNY budget={budget} CNY ==")
+    # F4：**启动即落占位**（status=running）——见 SUITE_RESULT_REL 处的说明。
+    # 位置在预算/非有限闸门之前：这两条 fail-closed 路径会各自覆写为 refused_*，语义仍然正确。
+    _write_json(args.json, {**summary, "status": "running"})
     if args.tier == "gui":
         print("NOTE: gui 档需要后端 8787 + 前端 5173 已启动（并用 Playwright）；请先确认端口空闲/服务在线，否则本档必然失败。")
     for p, m in picked:
@@ -299,16 +313,22 @@ def _read_metrics(path: Path) -> list[dict]:
 
 
 def _write_json(path_str: str, data: dict) -> None:
-    if not path_str:
-        return
-    p = Path(path_str)
+    """把结果 JSON **原子落盘**（先写 `.tmp` 再 `os.replace`）。
+
+    **不再有"静默跳过"分支**（F4，2026-09-25）：旧实现在 `path_str` 为空时直接 `return`，
+    而 `--json` 的默认值就是空串 ⇒ 默认跑法**不刷新** `verify/suite_result.json`，
+    盘上那份旧结果看起来仍像最新结果（`scheduled-tasks` 靠 `finished_at ≥ t0` 才没被它骗到，
+    但读文件的人会）。现默认路径 = `SUITE_RESULT_REL`；即使调用方显式传空串，
+    也落到默认路径而不是什么都不写——"以为写了其实没写"正是要消灭的形态。
+    """
+    p = Path(path_str.strip() or SUITE_RESULT_REL)
     if not p.is_absolute():
         p = ROOT / p
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_name(p.name + ".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, p)
-    print(f"summary → {p}")
+    print(f"summary → {p}（status={data.get('status')}）")
 
 
 if __name__ == "__main__":

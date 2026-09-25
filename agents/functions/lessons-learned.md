@@ -1,7 +1,9 @@
 ---
 name: lessons-learned
 description: Lessons-learned agent (mandatory sprint-close pre-step): distills new lessons from the sprint execution log / evidence / Retro, produces 3-LEARNED new-entry drafts (phenomenon/fix/lesson three-part form) plus classification-index update suggestions; the main agent reviews and backfills.
-version: "1.1.0"
+version: "1.1.2"
+scope_required: false
+coverage_window: self
 model: ""
 tools: []
 metadata:

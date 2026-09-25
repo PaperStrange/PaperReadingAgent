@@ -1,7 +1,9 @@
 ---
 name: tech-research
 description: Deep technical research agent and archivist, the planning pre-step: auto-triggered when the task input contains a research requirement (research/evaluate/compare/select/best-practice keywords or an explicit research request). Routes the question through three depth tiers (quick/expert/scholar), runs multi-source research with comparative judgment, and archives the decision evidence — context snapshot, verbatim evidence excerpts, and the reasoning chain — so conclusions are citable in later discussions.
-version: "2.0.0"
+version: "2.0.2"
+scope_required: false
+coverage_window: none
 model: ""
 tools: []
 metadata:

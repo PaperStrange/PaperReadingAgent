@@ -2,7 +2,6 @@
 VERIFY_META = {'features': 'parse_chunk_embed 三种模式：run/load 同会话/load 新会话（embed 缓存）', 'tier': 'network', 'providers': ['deepseek'], 'est_seconds': 90, 'est_cost_cny': 0.3, 'routes': ['/api/run_step'], 'requires': ['keys', 'network']}
 
 import asyncio
-import json
 import os
 import subprocess
 import sys
@@ -27,7 +26,8 @@ async def main() -> int:
             except Exception:
                 time.sleep(1)
         else:
-            print("backend not healthy"); return 3
+            print("backend not healthy")
+            return 3
 
         async def session_and_steps():
             sid = httpx.post(f"{BASE}/api/new_session").json()["session_id"]
@@ -58,7 +58,8 @@ async def main() -> int:
             async def step(name, params):
                 t0 = time.perf_counter()
                 r = await c.post(f"{BASE}/api/run_step", json={"session_id": sid1, "run_id": "embed-test", "step": name, "params": params, "upstream": {}})
-                d = r.json(); dt = time.perf_counter() - t0
+                d = r.json()
+                dt = time.perf_counter() - t0
                 return d, dt
             print(f"[candidates] {cands}")
             d1, t1 = await step("parse_chunk_embed", {"candidate_paths": cands, "embed_mode": "run"})
@@ -71,7 +72,8 @@ async def main() -> int:
         async with httpx.AsyncClient(timeout=None) as c:
             t0 = time.perf_counter()
             r = await c.post(f"{BASE}/api/run_step", json={"session_id": sid2, "run_id": "embed-test2", "step": "parse_chunk_embed", "params": {"candidate_paths": cands2, "embed_mode": "load"}, "upstream": {}})
-            d = r.json(); dt = time.perf_counter() - t0
+            d = r.json()
+            dt = time.perf_counter() - t0
             print(f"[3] load(new session): ok={d.get('ok')} dur={dt:.1f}s loaded={d.get('output',{}).get('loaded')} src={d.get('output',{}).get('source')} texts={d.get('output',{}).get('texts_count')}")
         return 0
     finally:
