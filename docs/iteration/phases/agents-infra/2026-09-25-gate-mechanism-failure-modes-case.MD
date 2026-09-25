@@ -206,3 +206,21 @@
 - **反向对照**：用**错误 sha** 过滤 ⇒ 得到另一条 run（本次实测：结论 success 但 head 不是我的）；用 **run id** 复查 ⇒ `head_sha` 与本地 `git rev-parse HEAD` 逐字一致、`branch=windows`、`event=push`（两条都真跑，输出留档）。
 - **复用面**：一切"按标识符取结论"的验证（CI run、账本 run、提交 sha、卡号）——**先证明这个标识符属于你要验证的那件事**，再取结论；验证脚本的输出必须包含**它自己的输入来源**。
 
+## 案例 22｜**编辑边界类事故没有任何闸门覆盖**：同一小时内同型 3 次，"我记得复核"被当场证伪
+
+- **现象**：2026-09-26 关闭期，我在一小时内用 `edit` **连犯三次同一个错误**：把**后一段文字当锚点**替换时，`new_string` **没有把锚点原样写回** ⇒ ① `docs/1-WORKFLOW.MD` 里"**交互类检查的反向对照规则（…）**"这个段内加粗小标题被吞掉、与上一条粘成一句；② 紧接着往 `2026-09-25-sprint-18.md` §10 追加事故行时，把"读数无源"那一行的**行首**吃掉，两行粘成一行；③ **修好②之后，紧接着追加"派单协作"行时又原样犯了第三次**（同锚点、同错法）。**三次全部靠 `read` 复核发现并修复**。
+- **证据**：三条事故记录都在 `docs/iteration/sprint/2026-09-25-sprint-18.md` §10（含"本 Sprint 第 3、4、5 次 R1 同型"的计数与 ⚠️ 留痕）；`docs/1-WORKFLOW.MD` §6 的小标题修复前后逐字可见。
+- **根因**：**闸门的保护面与事故形态不重合**。`scripts/structure-guard.py` 看的是**结构件**（标题行、表格列数、结构删除）——被吞掉的是**段内加粗小标题**（不是标题行）；`verify_md_tables.py` 看的是**单元格数**——两行粘成一行时列数"看起来"仍对得上；`verify_derived_numbers.py` 只看数字主张。**这类"文本被静默并段"的损坏，在现有全部闸门里没有判据。** 更深一层的根因是**动作语义错位**：`edit` 是**字面替换**，"锚点"在工具眼里是**待替换的文本**、在我眼里是**必须保留的边界**——这个错位每次都能重新犯。
+- **机制（待落，G3）**：① **前置条件**：Markdown 编辑的锚点若没有出现在 `new_string` 里，包装脚本必须**拒绝**该次替换或**自动把锚点回写**（本仓已有先例——折行脚本的"前置条件 ＋ 逐字拼回等价"，见案例 20）；② **可见的等价判据**：提交前对"**段落数 / 表格行数是否突变**"做结构比对（现有 `structure-guard` 的扫描口径需扩到"段内加粗小标题与表格行数"）；③ 纪律侧：**同一小时内同型 3 次、而且是在我正把这条风险写进文档的过程中复发的** ⇒ 足以判定"靠我记得复核"这条路**无效**（这正是 `A-M12` 判据④存在的理由）。
+- **反向对照**：三次事故的共同点是"修完上一条之后几分钟内复发"，而**修复动作本身从未失败**（每次都一次 `edit` 修好）⇒ 问题不在"改不动"，而在"**改之前没有判据拦住**"。可复现探针：任取一段 Markdown，用"后一段首行"当 `old_string`、`new_string` 不写回锚点，即可复现"两段并段"，而 `structure-guard` / `md_tables` / `derived_numbers` **全绿**。
+- **复用面**：① 一切**批量或逐处编辑 Markdown** 的动作（R1 家族在本 Sprint 已累计 10 次）；② **"闸门覆盖面"的自述纪律**——凡说"我们有 X 闸门"，必须同时回答"**这类事故**归哪条判据管"；答不出来就是**没有覆盖**，而不是"应该不会发生"。
+
+## 案例 23｜同一系统里**两套"评审类"定义** ⇒ 非评审 role 的空窗口**两头堵**
+
+- **现象**：2026-09-26 关闭期，`lessons-learned` 的 run（`run-2026-09-26-lessons-learned-090`）被 `verify_close_readiness.py` 判 **FAIL**：`[C3-窗口] … 的窗口 (aafa9e89, aafa9e89] 是空区间 → 该 run 声称覆盖内容却实际贡献 0 覆盖`。闸门给出的修复路径之一是 `agent-ops.py mark-produced <run> --reason <理由>`，而该命令**当场拒绝**：`COVERAGE-PRODUCED-ERROR: … role='lessons-learned' 不是评审类（评审类 = spec 声明 scope_required: true：['agent-onboarding-review','code-review','doc-audit']）`。⇒ **一边按"非作用域类、非产出型"判它空窗口违规，另一边按"不是评审类"拒绝给它打标注：两条路都走不通。**
+- **证据**：两条命令的现跑输出（`verify_close_readiness.py --sprint …` 的 FAIL 行；`agent-ops.py mark-produced run-2026-09-26-lessons-learned-090 --reason …` 的 `COVERAGE-PRODUCED-ERROR` 行）；判据真源 = `verify/agent_policy.py::window_problems()`（只用"是否作用域类 / 是否 produced_only"分流）与 `scripts/agent-ops.py` 的 `mark-produced` 守卫（用 `scope_required: true` 定义评审类）。
+- **根因（2026-09-26 复核）**：**"评审类"在一个系统里有两套定义，且没有任何一处把它们对齐**：① `mark-produced` 守卫与 `verify_close_readiness.py` 的 A-M13 断言用 **spec 的 `scope_required`**；② `window_problems()` 的空区间判据用 **"不是作用域类 run、也不是 produced_only"**。`lessons-learned`（`scope_required: false`）在两套定义下分别落在"非评审类"与"承担内容覆盖的 run"，于是被同时要求"你不该声称覆盖"和"你声称了覆盖却覆盖 0 个提交"。
+- **机制（本轮已落一半）**：按事实修正**声明**——`agents/functions/lessons-learned.md` 的 `coverage_window` 由 `self` 改为 `none`（v1.1.3）：它**不评审提交**（产物是 `3-LEARNED` 候选稿），同族分析类 role `tech-research` 早已声明 `none`。改后 `CLOSE-READINESS` 该项消失、域右端回落到真正承担覆盖的 run（`089`），现实跑 **PASS**。**未落的一半（G3）**：`window_problems()` 的空区间判据应**改用与 `mark-produced` 同一套定义**（仅 spec `scope_required: true` 才算内容评审类），并在政策层加一条封闭世界判据——"**非评审类 role 且非作用域类 ⇒ 必须声明 `coverage_window: none`**"；否则下一个"不评审提交的分析类 role"会以完全相同的方式再撞一次。
+- **反向对照**：改声明**前后**同一命令的对照——改前 `FAIL（[C3-窗口] …空区间）`、改后该项消失且闸门 **PASS**；反方向对照由闸门自检承担（`M-A 域右端 g`：声明 `coverage_window: none` 的 role **不得界定域右端**；`D0-3(a)`：`produced_only` 的空窗口不判问题）。
+- **复用面**：① 一切**"同一概念在多处各自定义"**的判据（别名 / 状态词 / 角色分类 / 门槛口径）——两个定义不一致时，被卡住的往往是**最规矩的那个执行者**；② 新增 role 时的**声明自洽清单**：`scope_required` 与 `coverage_window` 必须**联合**成立（本条的规则：不评审提交 ⇒ `none`）。
+
