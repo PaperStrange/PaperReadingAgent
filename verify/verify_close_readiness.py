@@ -89,10 +89,12 @@ from verify.agent_policy import (  # noqa: E402
 )
 from verify.agent_policy import Policy as AgentPolicy  # noqa: E402  （类型注解用；避免与下方局部名冲突）
 
-# `-O` / `PYTHONOPTIMIZE=1` 下 `assert` 被**整条剥离**：判据不会执行，而输出仍然像"跑过了"。
+# `-O` / `PYTHONOPTIMIZE=1` 下 `assert` 被**整条剥离**：判据不会执行，
+# 而输出仍然像"跑过了"。
 # 两道防线：① 这一层直接拒绝在断言被剥离时给出结论（fail-closed，退出码 2）；② `ok()
 # ` 内部
-# 不再用裸 `assert`。① 保证没人能拿"静默空转"的运行当证据，② 保证单条判据即使被别处调用也咬得住。
+# 不再用裸 `assert`。① 保证没人能拿"静默空转"的运行当证据，
+# ② 保证单条判据即使被别处调用也咬得住。
 if not __debug__:  # pragma: no cover —— 只在 -O/PYTHONOPTIMIZE 下触发
     print("CLOSE-READINESS-ERROR: 断言被剥离（python -O / PYTHONOPTIMIZE=1）⇒ 本闸门的判据不会执行，"
           "拒绝输出任何结论（fail-closed，退出码 2）。请用不带 -O 的解释器运行："
@@ -892,7 +894,8 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
 
     # **账本不存在 ≠ 账本有问题**（C4，2026-09-25 关闭期实测）：
     # `agents/runtime/registry.json`
-    # 被 `.gitignore` 忽略 ⇒ **CI 的全新 checkout 必然没有它**。此时 C1/需求（"流水线步骤跑过没有"）、
+    # 被 `.gitignore` 忽略 ⇒ **CI 的全新 checkout 必然没有它**。
+    # 此时 C1/需求（"流水线步骤跑过没有"）、
     # linkage（账本↔§9 双向一致）与 C3 覆盖归属**都无从判定**——它们的数据源就是账本。
     # 旧行为是把"没有数据"判成"数据不合格"（实测 10 项 FAIL：
     # 4 条"缺 run" + 6 条"§9 写了但账本无记录"），
@@ -1065,7 +1068,8 @@ def _selfcheck() -> int:
     # 复核实测：往账本追加**一条**更晚的作用域 run，窗口起点就从 2026-09-21T01:00 抬到
     # 2026-09-25T04:30，
     # 本次关闭的 5 条流水线 run 全部落到窗口外 ⇒ C1/linkage **静默失明**
-    # （同一份"漏登记最早一行"的 §9：注入前 FAIL 2 项 → 注入后 PASS 0 项）；`2099-01-01` 也照收。
+    # （同一份"漏登记最早一行"的 §9：注入前 FAIL 2 项 → 注入后 PASS 0 项）；
+    # `2099-01-01` 也照收。
     # 判据 = ①不得在未来 ②不得晚于整条流水线 ③引用它的 run 不得比它更早；
     # 违反即**弃用起点**
     # 并具名报问题（判定域退回全域 = 宁可多报，不静默收窄）。

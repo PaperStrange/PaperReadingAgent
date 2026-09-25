@@ -50,7 +50,8 @@ rc=1）⇒ "约定"只写在卡文里，代码里没有任何东西守它。本�
        `scripts/` 等
        **已跟踪**文件（` M` 行），不属"运行态产物"，本闸门不越界判别人的在飞工作。
        **不做自我豁免、不用白名单**：本闸门自己只往 `%TEMP%` 与已忽略的 `agents/runtime/` 写，
-       故"运行结束时未跟踪集为空"是它自己能兑现的承诺——容忍项若真有必要，必须是**带 reason
+       故"运行结束时未跟踪集为空"是它自己能兑现的承诺——容忍项若真有必要，
+       必须是**带 reason
        的显式数据**，不得写成"少查几条"。
 
 **机读证据行**（TG-6：新闸门只在**成功路径**打印，失败/SKIP 不打印）：
@@ -103,9 +104,12 @@ from verify.agent_policy import PolicyError, load_policy  # noqa: E402
 
 # `-O` / `PYTHONOPTIMIZE=1` 下 `assert` 被**整条剥离**，
 # 而本闸门的判据全靠断言 ⇒ 剥离后它会
-# 把"未执行判据"打印成 PASS。故：① 这一层显式拒绝在断言被剥离时给出任何结论（fail-closed，
-# 退出码 2；不是"违规"而是"无法判定"）；② `ok()` 内部也不再用裸 `assert`。两道防线都必须有：
-# ① 保证没人能拿一个"静默空转"的运行当证据，② 保证即使有人绕过 ①（如在 `-O` 下 import 本模块
+# 把"未执行判据"打印成 PASS。故：
+# ① 这一层显式拒绝在断言被剥离时给出任何结论（fail-closed，
+# 退出码 2；不是"违规"而是"无法判定"）；② `ok()` 内部也不再用裸 `assert`。
+# 两道防线都必须有：
+# ① 保证没人能拿一个"静默空转"的运行当证据，
+# ② 保证即使有人绕过 ①（如在 `-O` 下 import 本模块
 # 后自行调用）单条判据仍然咬得住。
 if not __debug__:  # pragma: no cover —— 只在 -O/PYTHONOPTIMIZE 下触发
     print("ARTIFACT-PATHS-ERROR: 断言被剥离（python -O / PYTHONOPTIMIZE=1）⇒ 本闸门的判据不会执行，"
@@ -123,29 +127,34 @@ PROJECT_TZ = timezone(timedelta(hours=8))  # 与账本/闸门的时间口径一�
 # "本次运行新出现的"与"启动前就在的"，**不作为容忍依据**（判据仍是"未跟踪集必须为空"）。
 UNTRACKED_AT_START: list[str] = []
 
-# 写盘 sink 的**词表**（工具自身知识：哪些调用会落盘；不是政策——政策是"落点必须已忽略"）。
+# 写盘 sink 的**词表**（工具自身知识：哪些调用会落盘；不是政策——政策是"落点必须已忽略"）
+# 。
 _FILE_METHODS = {"write_text", "write_bytes", "savefig", "to_csv", "to_json", "to_excel",
                  "writeFileSync", "writeFile"}
 _FOLDER_METHODS = {"mkdir", "touch"}
 _QUALIFIED_SINKS = {
     "os.makedirs": ((0,), "folder"), "os.mkdir": ((0,), "folder"), "os.rmdir": ((0,), "folder"),
     "os.remove": ((0,), "file"), "os.unlink": ((0,), "file"),
-    # 复制/改名类**只判目标侧**（第 1 个参数）：源是**读**，把"读仓库里的数据文件"判成"往仓库写"是假红
-    # （实测：`shutil.copy2(SRC_PDF, tmp_pdf)` 的 `SRC_PDF = ROOT/"data"/"pdf"/…` 曾被误判为违规）。
+    # 复制/改名类**只判目标侧**（第 1 个参数）：源是**读**，
+    # 把"读仓库里的数据文件"判成"往仓库写"是假红
+    # （实测：`shutil.copy2(SRC_PDF, tmp_pdf)
+    # ` 的 `SRC_PDF = ROOT/"data"/"pdf"/…` 曾被误判为违规）。
     "os.rename": ((1,), "file"), "os.replace": ((1,), "file"),
     "shutil.copyfile": ((1,), "file"), "shutil.copy": ((1,), "file"),
     "shutil.copy2": ((1,), "file"), "shutil.copytree": ((1,), "folder"),
     "shutil.move": ((1,), "file"), "shutil.rmtree": ((0,), "folder"),
     "zipfile.ZipFile": ((0,), "file"),
     # 2026-09-25 独立复核 finding 1 补：**logging 落盘一族**是"产物写哪儿"的常见落点，
-    # 旧词表里一条都没有 ⇒ `logging.basicConfig(filename=ROOT/"x.log")` 这类写法完全在判定之外。
+    # 旧词表里一条都没有 ⇒ `logging.basicConfig(filename=ROOT/"x.log")
+    # ` 这类写法完全在判定之外。
     "logging.FileHandler": ((0,), "file"),
     "logging.handlers.FileHandler": ((0,), "file"),
     "logging.handlers.RotatingFileHandler": ((0,), "file"),
     "logging.handlers.TimedRotatingFileHandler": ((0,), "file"),
 }
 # 关键字形态的落点（位置参数表表达不了）：`logging.basicConfig(filename=…)`。
-# `logging.basicConfig(level=…)`（无 filename）**不是**落点——判据按关键字取，不按"调用名出现过"取。
+# `logging.basicConfig(level=…)`（无 filename）**不是**落点——判据按关键字取，
+# 不按"调用名出现过"取。
 _KWARG_SINKS = {"logging.basicConfig": ("filename",)}
 # shell 重定向（finding 1 补的第二类绕过形态）：目标不在参数 AST 里，
 # 而在**命令字符串内部**，
@@ -156,7 +165,8 @@ _SHELL_ALWAYS_CALLS = {"system", "popen", "getoutput", "getstatusoutput"}
 _SHELL_MODULES = {"os", "subprocess"}
 _SHELL_REDIRECT_RE = re.compile(r"(?:[12]|&)?>>?")
 _SHELL_TOKEN_STOP = re.compile(r"[\s;|&<>'\"]")
-# 明确的"非文件"目标：设备/已关闭流。`&1` 之类根本取不到 token（`&` 是分隔符），这里只列设备名。
+# 明确的"非文件"目标：设备/已关闭流。`&1` 之类根本取不到 token（`&` 是分隔符），
+# 这里只列设备名。
 _SHELL_DEVICES = {"/dev/null", "/dev/zero", "/dev/stdout", "/dev/stderr", "nul", "none"}
 _ENV_LOOKUP = {"get", "getenv"}
 _DROP_ATTRS = {"parent", "parents"}
@@ -907,8 +917,10 @@ def audit(files: list[Path], data: dict, *, strict: bool) -> tuple[list[Finding]
                                f"写盘{hint} {candidate or '<仓库根>'!r} **未被 .gitignore 忽略**"
                                f"——新脚本产物须落 `agents/runtime/`、`verify/*.log|png` 等已忽略路径"
                                f"或 %TEMP%（政策 artifact_paths.ignored_roots）"))
-        # **弱证据**：模块级/局部路径常量（不一定是写盘目标，如 `SERVER_LOG = ROOT/"verify"/"x.log"`）
-        # 也说明"这个落点在本仓库里真被用"——只用于"声明根是否死配置"的判定，**不产生违规**。
+        # **弱证据**：模块级/局部路径常量（不一定是写盘目标，
+        # 如 `SERVER_LOG = ROOT/"verify"/"x.log"`）
+        # 也说明"这个落点在本仓库里真被用"——只用于"声明根是否死配置"的判定，
+        # **不产生违规**。
         for exprs in resolver.values.values():
             for expr in exprs:
                 got = resolver.decompose(expr)
@@ -1077,9 +1089,12 @@ def selfcheck(data: dict) -> None:
        porcelain == "", f"porcelain={porcelain!r}（非空 = 产物污染 git status，TG-9 的原始事故形态）")
     ok("⑤ 同一条路径在 `--ignored=matching` 下**可见**（证明④不是「路径不存在」造成的假绿）",
        rel in shown, f"ignored-view={shown!r}")
-    # ⑥ 的**判据与文案必须同宽**（2026-09-25 独立复核 finding 1）：旧实现写的是"无残留未跟踪
-    # 运行态产物"，断言的却只是"没有自己的探针名" —— 于是**任何别的写法**漏进仓库根都带着
-    # rc=0 通过（实测：`logging.basicConfig(filename=…)` + `os.system("… > …")` 写仓库根的新脚本
+    # ⑥ 的**判据与文案必须同宽**（2026-09-25 独立复核 finding 1）：
+    # 旧实现写的是"无残留未跟踪
+    # 运行态产物"，断言的却只是"没有自己的探针名
+    # " —— 于是**任何别的写法**漏进仓库根都带着
+    # rc=0 通过（实测：`logging.basicConfig(filename=…)` + `os.system("… > …")
+    # ` 写仓库根的新脚本
     # 注入后闸门照报 ALL PASS）。现在按文案判：`??` 行必须为空，并**逐条点名**。
     problem = untracked_problem()
     ok("⑥ 未跟踪路径为空：`git status --porcelain -uall` 的 `??` 行一条都没有（有则逐条点名）",
@@ -1116,8 +1131,10 @@ def selfcheck(data: dict) -> None:
 
     # ⑩/⑪ finding 1 的两种实测绕过形态（旧词表**完全看不见**）：
     # `logging.basicConfig(filename=…)`
-    # 与 `os.system`/`subprocess(shell=True)` 命令串里的 `>` 重定向。⑩ 判"写仓库根必红且点名"，
-    # ⑪ 判"同样的写法落 %TEMP% 不红"——只加词表不加反向对照，就会在下一次加词表时又制造假红/假绿。
+    # 与 `os.system`/`subprocess(shell=True)` 命令串里的 `>` 重定向。
+    # ⑩ 判"写仓库根必红且点名"，
+    # ⑪ 判"同样的写法落 %TEMP% 不红"——只加词表不加反向对照，
+    # 就会在下一次加词表时又制造假红/假绿。
     with tempfile.TemporaryDirectory(prefix="tg9-rc-") as td:
         tmp = Path(td)
         evade, evade_ok = tmp / "evade", tmp / "evade-clean"
@@ -1214,7 +1231,8 @@ def main() -> int:
               f"（若是给新脚本预留的落点，把它写进 1-WORKFLOW §6 的约定里；若已废弃则删声明）")
     for item in ratchet_info:
         print(f"INFO: {item}")
-    # 自检的断言失败 = **本次运行不能出具结论**（不是"数据违规"）：`ok()` 里是显式 `raise`
+    # 自检的断言失败 = **本次运行不能出具结论**（不是"数据违规"）：`ok()
+    # ` 里是显式 `raise`
     # （`-O` 删不掉），这里把它收敛成一行点名 + rc=1，
     # 而不是抛一整片 traceback——复核与 CI
     # 只看 rc 与"点名了什么"，traceback 会把点名埋进栈帧里。

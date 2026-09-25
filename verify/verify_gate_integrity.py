@@ -131,6 +131,20 @@ def ratchet_problems(current: dict, previous: dict | None, *, today: str,
         elif str(review_by) < today:
             problems.append(f"[棘轮] {pointer} 的 review_by={review_by} 已过期（今日={today}）"
                             f"→ 必须重评基线，不得静默延期")
+        # `measured_total`（若声明）必须**等于上限之和**：
+        # 否则它就是"自己声明了一个比实测更高的总数"，
+        # 与"cap 记在实测之上"同族（2026-09-25 复核 #3 finding：实测 2833 已过期、
+        # 四类实际合计 2815）。
+        # 要么把它改对，要么删掉这个字段——留着它就是**第二份会漂的声明**。
+        parent = pointer.rsplit(".", 1)[0] if "." in pointer else ""
+        total = dig(current, f"{parent}.measured_total") if parent else None
+        if isinstance(total, int):
+            s = sum(v for v in caps.values() if isinstance(v, int))
+            if total != s:
+                problems.append(
+                    f"[棘轮] {pointer} 的 {parent}.measured_total={total} ≠ 上限之和 {s}"
+                    f"（差 {total - s}）——改对或删掉该字段；留着一个没人读的『实测总数』"
+                    f"就是静默配额的另一种写法")
         if previous is None:
             warnings.append(f"{pointer}: 无 git HEAD 可比基准（新分支/未入库）——本次只判 review_by")
             continue
@@ -233,6 +247,17 @@ def selftest() -> int:
     problems, _ = ratchet_problems(missing, prev, today=today, pointers=pointers)
     ok("反向对照 G 缺 review_by → FAIL（没有到期日的豁免 = 永久豁免）",
        any("没有到期日" in p for p in problems), f"problems={problems[:1]}")
+    # 反向对照 I（2026-09-25 复核 #3 finding）：`measured_total` 与上限之和必须相等——
+    # 实测它曾停在 2833 而四类合计 2815（"没人读的第二份声明"，同族形态）。
+    skewed = {"lint_readability_ratchet": {"caps": {"E501": 10}, "review_by": "2099-01-01",
+                                           "measured_total": 18}}
+    problems, _ = ratchet_problems(skewed, prev, today=today, pointers=pointers)
+    ok("反向对照 I `measured_total` ≠ 上限之和 → FAIL（第二份会漂的声明）",
+       any("measured_total" in p and "上限之和" in p for p in problems), f"problems={problems[:1]}")
+    aligned = {"lint_readability_ratchet": {"caps": {"E501": 10}, "review_by": "2099-01-01",
+                                            "measured_total": 10}}
+    problems, _ = ratchet_problems(aligned, prev, today=today, pointers=pointers)
+    ok("反向对照 I2 二者相等 → PASS（防假红）", problems == [], f"problems={problems[:1]}")
 
     with tempfile.TemporaryDirectory() as td:
         base = Path(td)

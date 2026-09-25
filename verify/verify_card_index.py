@@ -70,7 +70,8 @@ PHASES = ROOT / "docs" / "iteration" / "phases"
 SPRINT_DIR = ROOT / "docs" / "iteration" / "sprint"
 # fixture 落点用**模块级常量**（`Path(tempfile.gettempdir()) / …`）：
 # `verify_artifact_paths.py`
-# 的动态目标棘轮要求"落点可静态判定"——把 fixture 路径挂在函数参数（`base`）下会被判成动态目标
+# 的动态目标棘轮要求"落点可静态判定"——把 fixture 路径挂在函数参数（`base`）
+# 下会被判成动态目标
 # 而顶破它自己的上限（实测 4 > 2）。落点仍是 `%TEMP%`，语义不变。
 FIXTURE_DIR = Path(tempfile.gettempdir()) / "verify_card_index_fixture"
 
@@ -383,7 +384,8 @@ def check_phase(phase_dir: Path, strict: bool, root: Path | None = None,
         # ⚠️ 局部变量**不要叫 `m`**：本模块有模块级常量 `MIN_FINGERPRINT_CHARS`，
         # 首版用 `m = re.search(...)
         # ` 把它就地覆盖成 `re.Match` → 后面比较时抛 `TypeError`，
-        # 而 `run()` 未捕获异常、自检把"没拿到 problems"当成"没问题" ⇒ **反向对照 D 假绿**。
+        # 而 `run()` 未捕获异常、
+        # 自检把"没拿到 problems"当成"没问题" ⇒ **反向对照 D 假绿**。
         card_match = re.search(r"^\s*[-*]?\s*`?card`?\s*[:：]\s*`?([^`\s]+)`?\s*$", text, re.M)
         if not card_match:
             problems.append(f"{rel(path, root)}: 缺 `card:` 字段（卡号↔文件名一致性的判据）")
@@ -406,9 +408,11 @@ def check_phase(phase_dir: Path, strict: bool, root: Path | None = None,
     #    判据**静默放行**（填充规避）。现在改为**整段**参与比对（不再截断成前 N 字）：
     #      * `line in para`：该行整行是卡正文的一段（**≥61 字符填充样本**就是这一形态——
     #        填充只是加了一行，被复制的那一行仍然整行落在卡正文里）；
-    #      * `para in line`：卡正文的**整段**被原样嵌进更长的行（首版"前 N 字子串"的合法收紧版：
+    # * `para in line`：
+    # 卡正文的**整段**被原样嵌进更长的行（首版"前 N 字子串"的合法收紧版：
     #        指纹由 N 字延长到**整段**，填充/插字都会打断包含关系）。
-    #    **合法的计划表行天然仍被放行**：它是表格行（被下面 `startswith("|")` 排除），且首格是卡号。
+    # **合法的计划表行天然仍被放行**：它是表格行（被下面 `startswith("|")` 排除），
+    # 且首格是卡号。
     if strict and files:
         sprint_dir = root / "docs" / "iteration" / "sprint"
         bodies: list[tuple[str, str]] = []
@@ -515,7 +519,8 @@ def _fixture(base: Path | None = None) -> Path:
 
 def selfcheck(check_real: bool = True) -> int:
     with tempfile.TemporaryDirectory() as _td:
-        # `_td` 只是"本次自检期间持有一个临时目录句柄"（落点见 `FIXTURE_DIR`，见其注释）；
+        # `_td` 只是"本次自检期间持有一个临时目录句柄"（落点见 `FIXTURE_DIR`，见其注释）
+        # ；
         # 前缀 `_` 让 F841 不把"未使用"当缺陷。
         base = FIXTURE_DIR
         if base.exists():
@@ -641,7 +646,8 @@ def selfcheck(check_real: bool = True) -> int:
     # 。
     # 原因（finding N7/M-e）：迁移已宣称完成，而套件以**无参**调用本脚本；
     # 首版在这里只 WARN
-    # ⇒ "SUITE PASSED" 并不能证明卡索引一致（实测同一份坏数据：`--check` rc=1 而套件模式 rc=0+WARN）。
+    # ⇒ "SUITE PASSED" 并不能证明卡索引一致（实测同一份坏数据：
+    # `--check` rc=1 而套件模式 rc=0+WARN）。
     # **闸门自己给自己发警告 = 放行**；
     # 且真数据判据**只允许跑一次**（同一事实两处判会分叉）。
     if not check_real:

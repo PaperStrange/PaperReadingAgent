@@ -1140,16 +1140,16 @@ class Attribution:
         for w in self.windows:
             if w.produced_only or self.is_scope_run(w.role):
                 continue
-            if w.anchor in self.order or w.anchor in self.older_anchors:
-                continue
-            problems.append(
-                f"{w.run_id}（role={w.role}）的 coverage_anchor={w.anchor[:12]} 既不在本次计算范围"
-                f"（{self.anchor[:8]}..{self.head[:8]}）内、也**证明不了**它早于文档锚点 "
-                f"⇒ 该窗口贡献 0 覆盖（fail-closed，不乐观推断）。要么它的锚点本就不该在这条历史上"
-                f"（改锚点），要么本次历史不完整（shallow clone？`fetch-depth: 0` 是必需项）。")
-            # 残留缺口（2026-09-25 复核 finding 2b）：**上界**不在序号表内时，
-            # 窗口同样贡献 0 覆盖，
-            # 而旧实现**静默**——同一族缺陷的另一半，一并点名。
+            if w.anchor not in self.order and w.anchor not in self.older_anchors:
+                problems.append(
+                    f"{w.run_id}（role={w.role}）的 coverage_anchor={w.anchor[:12]} 既不在本次计算范围"
+                    f"（{self.anchor[:8]}..{self.head[:8]}）内、也**证明不了**它早于文档锚点 "
+                    f"⇒ 该窗口贡献 0 覆盖（fail-closed，不乐观推断）。要么它的锚点本就不该在这条历史上"
+                    f"（改锚点），要么本次历史不完整（shallow clone？`fetch-depth: 0` 是必需项）。")
+            # **上界**不在序号表内时同样贡献 0 覆盖。判据**必须与锚点判据并列**：
+            # 第一版把它嵌在"锚点也解释不了"分支里（复核 #3 finding：`anchor∈order` +
+            # `covers_through∉order` 这一组合 0 项、仍静默）——两个端点各自独立失效，
+            # 不能互为前提。
             if w.through not in self.order:
                 problems.append(
                     f"{w.run_id}（role={w.role}）的 covers_through={w.through[:12]} 不在本次计算范围"

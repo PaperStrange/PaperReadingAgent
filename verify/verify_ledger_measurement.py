@@ -94,13 +94,15 @@
     `agents/runtime/registry.json` 被 `.gitignore` 忽略（`agents/runtime/*`）
     ⇒ **CI 的全新
     checkout 必然没有它**。旧实现一律 fail-closed ⇒ 本闸门在干净 checkout 上恒红，并把
-    「Offline verify suite」整步拖红。现在**只有"文件不存在"**走显式 SKIP（rc=0，理由上屏：
+    「Offline verify suite」整步拖红。现在**只有"文件不存在"**走显式 SKIP（rc=0，
+    理由上屏：
     `SKIP: 账本不存在（fresh clone；registry.json 被 .gitignore 忽略）`）；
     文件**存在但坏**（JSON 非法 / 缺 `runs` 数组 / 结构非法）
     **照旧 rc=2**——坏账本是真缺陷，
     跳过它等于把"失真的可观测性"放行。判据在 `real_ledger_present()` + `print_ledger_skip()`。
 
-退出码：0=通过（含"账本不存在 → SKIP"）；1=检出违规（逐条点名）；2=政策缺失 / **账本存在但
+退出码：0=通过（含"账本不存在 → SKIP"）；1=检出违规（逐条点名）；
+2=政策缺失 / **账本存在但
 非法**（fail-closed，不静默放行）。
 """
 from __future__ import annotations
@@ -130,7 +132,8 @@ from verify.verify_close_readiness import ledger_close_window  # noqa: E402
 PROJECT_TZ = timezone(timedelta(hours=8))
 PASSED = 0
 
-# 参与棘轮计数上限的缺陷类（其余类一律"任何日期都 FAIL"）。政策 caps 必须与它**逐键相等**
+# 参与棘轮计数上限的缺陷类（其余类一律"任何日期都 FAIL"）。
+# 政策 caps 必须与它**逐键相等**
 # （少一类 = 棘轮被静默关掉；多一类 = 死数据/拼写漂移），见 `check_caps_shape`。
 RATCHET_KINDS = (
     "output_chars_zero",

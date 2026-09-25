@@ -9,16 +9,20 @@
 都可调用。
 
 用法：
-  python scripts/agent-ops.py register --role R --task T --spec "S@v" [--model M] [--start]
+  python scripts/agent-ops.py register --role
+  R --task T --spec "S@v" [--model M] [--start]
       [--input-chars N] [--context-input-tokens N] [--context-max-tokens N]
-      [--scope-source <prefix><run_id> | --scope-source self-chosen --deviation "<理由>"]
+      [--scope-source <prefix><run_id> |
+      --scope-source self-chosen --deviation "<理由>"]
       [--coverage-anchor <sha>]            # TG-15：默认自动记登记时的 HEAD
   python scripts/agent-ops.py update <run_id> --status running
       [--usage-in N --usage-out N --usage-cache-read N --usage-cache-write N]
   python scripts/agent-ops.py finish <run_id> --status succeeded|failed|cancelled
       [--covers-through <sha>]             # TG-15：默认自动记收尾时的 HEAD
-  python scripts/agent-ops.py round <run_id> --note "Round 5：..." --output-chars 12000   # TG-10① 追加轮次（终态也可）
-  python scripts/agent-ops.py interrupt <run_id> --reason "端口争用，让出 8787" --impact "round-3 顺延至 round-4"  # TG-10②
+  python scripts/agent-ops.py round <run_id> --note "Round 5：
+  ..." --output-chars 12000   # TG-10① 追加轮次（终态也可）
+  python scripts/agent-ops.py interrupt <run_id> --reason "端口争用，
+  让出 8787" --impact "round-3 顺延至 round-4"  # TG-10②
       [--output-chars N] [--result-file PATH] [--cost-override X] [--estimate-mode
       chars]
   python scripts/agent-ops.py list [--status S] [--role R] [--limit N]
@@ -165,7 +169,8 @@ def _resolve_sha(value: str) -> str | None:
 
     审核发现 F1/N5：短 sha 会让 `CoverageWindow.covers()
     ` 恒 False（`order` 里只有完整 sha），
-    该 run 的覆盖窗口被**静默丢弃**。因此这里不接受"能存就行"的值：能解析就规范化，不能解析就报错。
+    该 run 的覆盖窗口被**静默丢弃**。因此这里不接受"能存就行"的值：能解析就规范化，
+    不能解析就报错。
     """
     value = (value or "").strip()
     if not value:
@@ -447,7 +452,8 @@ def parse_scope_ref(source: str, prefixes: tuple[str, ...]) -> str | None:
     """从 `--scope-source` 里解析出被引用的 run_id（**纯函数**，供断言直接驱动）。
 
     识别规则取自政策数据 `scope_ref_sources`（如 `"impact-assessment:"`）。刻意**不硬编码**
-    "引用〇查"：C2 不变式要求"任何外部引用必须解析到存在且终态可用的对象，**不认角色名**"——
+    "引用〇查"：C2 不变式要求"任何外部引用必须解析到存在且终态可用的对象，
+    **不认角色名**"——
     因此这里只认前缀契约，被引用对象是什么角色由 `_validate_scope` 查账本后判定。
     """
     for prefix in prefixes:
@@ -926,7 +932,8 @@ def cmd_finish(args: argparse.Namespace) -> None:
         raise SystemExit(f"非法流转 {r['status']} -> {args.status}（finish 仅允许 running -> terminal）")
     r["status"] = args.status
     r["ended_at"] = _now()
-    # TG-15 ③：收尾时记录覆盖上界（= 收尾时的 HEAD）——此前"三查锚点"要人往 Sprint 文档手抄，
+    # TG-15 ③：收尾时记录覆盖上界（= 收尾时的 HEAD）
+    # ——此前"三查锚点"要人往 Sprint 文档手抄，
     # 抄漏/抄错没有任何装置能发现；改为 run 自动记录后，闸门直接读账本，
     # 文档不再是覆盖真源。
     raw_through = (getattr(args, "covers_through", "") or "").strip()
@@ -952,12 +959,14 @@ def cmd_finish(args: argparse.Namespace) -> None:
             dest = RUNS_DIR / r["run_id"] / f"{r['role']}.report.md"
             dest.parent.mkdir(parents=True, exist_ok=True)
             # 审核 N10（2026-09-25）：**按字节复制**，不得改写换行。
-            # 原实现是 `dest.write_text(rel.read_text(encoding="utf-8"), encoding="utf-8")`：
+            # 原实现是 `dest.write_text(rel.read_text(encoding="utf-8"),
+            # encoding="utf-8")`：
             # `read_text` 做 universal-newline 转换（CRLF→LF），`write_text` 又把 `\n` 写回
             # `os.linesep`（Windows = CRLF）——于是**仓库基线 LF 的报告被静默改成 CRLF**
             # （实测 35721 B → 35913 B / 192 行）。
             # 这与 D1 的 EOL 事故同族（`2206f376` 修过
-            # 同一族的另一处，漏了这里），而且是"最不该动字节"的一步：归档动作改变了产物本身。
+            # 同一族的另一处，漏了这里），而且是"最不该动字节"的一步：
+            # 归档动作改变了产物本身。
             # 复制实现按字节，源是 LF 就存 LF、源是 CRLF 就存 CRLF（不反向破坏），
             # BOM 亦原样保留。
             dest.write_bytes(rel.read_bytes())
@@ -983,7 +992,8 @@ def cmd_finish(args: argparse.Namespace) -> None:
 def cmd_round(args: argparse.Namespace) -> None:
     """TG-10①：给同一 run **追加轮次**记录（多轮复核/追加验证），不改首轮语义。
 
-    背景（用户 2026-09-21 疑虑："每个 agent 运行时间相比之前怎么短了很多…让我不太安心"）：
+    背景（用户 2026-09-21 疑虑："每个 agent 运行时间相比之前怎么短了很多…让我不太安心"）
+    ：
     run-053 被追加了 4 个复核轮次（报告 60 KB / 5 轮、实际跨约 4h53m），
     但账本只留**首轮**
     （`ended_at-started_at` = 53 秒、`output_chars` = 12800）
@@ -1153,7 +1163,8 @@ def cmd_close_sync(args: argparse.Namespace) -> None:
     for line in att.report_lines(globs):
         print("  " + line)
 
-    # 2026-09-23 二查 critical：**零提交受检不得报"闭环 ✔"**。锚点 == HEAD 时区间为空集，
+    # 2026-09-23 二查 critical：**零提交受检不得报"闭环 ✔"**。
+    # 锚点 == HEAD 时区间为空集，
     # unowned 必为空——旧实现照样打勾、rc=0，而 §9.1 的占位文案正引导人这么填。
     structural = att.window_problems()
     if structural:
@@ -1247,7 +1258,8 @@ def cmd_fetch_spec(args: argparse.Namespace) -> None:
     if args.offline:
         print(f"WARN: offline/无 url → 回退本地 spec {p.name}")
         return
-    # TG-8②：**离线开关**（政策 `agents/policy.json::offline_switch`）在"确实要外呼"这一刻生效。
+    # TG-8②：**离线开关**（政策 `agents/policy.json::offline_switch`）
+    # 在"确实要外呼"这一刻生效。
     # 顺序理由（可核，不是风格）：
     # 上面两个分支都**不产生外呼**（无 url / 命令自带 `--offline`），
     # 对它们报"离线拒绝"是假红；而一旦要继续走网络，全局开关就必须优先于 `--offline`
