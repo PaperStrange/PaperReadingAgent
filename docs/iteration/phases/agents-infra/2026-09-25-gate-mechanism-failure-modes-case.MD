@@ -117,3 +117,12 @@
 - **反向对照**：Sprint-16/Sprint-18 两条读数对比（域内查 vs 全账本查）；自检内含 M-A 反向对照 ①~④。
 - **复用面**：任何"先按范围过滤、再对过滤后的集合查外部引用"的判据——**过滤范围与解析引用是两个判据，别共用一个集合**。
 
+## 案例 13｜改了**生成物所依赖的元数据**却没重跑生成器 ⇒ CI 在"派生一致性"步骤红
+
+- **现象**：为 `TG-19` M-A 改了 `verify/verify_close_readiness.py` 的 `VERIFY_META.features`（一句话），本地把该跑的闸门都跑了、**套件也全绿**，push 后 CI 的 step 7 仍红：`FAIL: TEST-MATRIX.MD 与脚本元数据不一致（脚本/元数据变更后须重新 derive）`（CI run `36124069452`）。修法 = `python verify/verify_matrix.py derive` 重生成矩阵（`09f0385`）。
+- **证据**：CI run `36124069452` step 7 日志；本地 `verify_matrix.py check` 在改动后才复现同一报错（此前那次"CHECK OK"是在改 `VERIFY_META` **之前**跑的——**我把它当成了"改后也验过"**）。
+- **根因**：把"生成物"当成了普通文件——**改了源（元数据）就必须重跑派生步骤**，而"我跑过闸门了"这句话对派生一致性**不构成证据**。同族形态：手抄派生数字（案例 9）、放宽路径（案例 10）。
+- **机制（已落/待落）**：已落——CI 的 step 7 就是这条判据的执行点（**它抓到了**，说明机制有效，不是机制缺失）；本案例要治的是**我的操作顺序**：把 `verify_matrix.py check` 纳入"改了 VERIFY_META/注释型元数据"后的必跑清单（与 `derived_numbers` / `card-inventory` 同级）。
+- **反向对照**：改 `VERIFY_META` 一句话、不 derive ⇒ `verify_matrix.py check` 必 FAIL（本次实测）；derive 后转 PASS（同时刻实测）。
+- **复用面**：一切"由源生成的产物"（`TEST-MATRIX.MD`、`tg14-baseline.json`、`suite_result.json`、`prices.json` 派生价表…）——**改源就要重生成；本地绿 ≠ 派生一致**。
+

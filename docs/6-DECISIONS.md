@@ -11,10 +11,11 @@
 > 原文（逐字）："我们之间的对话中把所有clarification questions找时间收集整理下，原记录放在D:\All-Downloads\PaperReading\PaperReading-Windows\docs\6-DECISIONS.md中，除了原记录和违背抉择的事故引用外（引用事故记录文档），还要标记生效状态和证据，验证时间戳。把这个新增一张卡吗，每次你问我问题不带上下文的时候我就得翻我们的对话记录，还得提醒你是不是之前做过类似确认/是不是缺少啥内容，我已经厌倦了这么做"
 > 原文（逐字）："注意还原事实，原文必须保留，原文和你自己总结/归类的内容做清晰区分"
 
-- 主代理归纳：新增卡片 [`TG-20`](iteration/phases/testing-governance/cards/TG-20.md)（用户插入卡，占用 G2 插入预留）；本文件为该卡交付物 ①；提问纪律为交付物 ②（条文入 `1-WORKFLOW.MD` §6）。
-- 生效状态：进行中（登记册 v1 已建；机检判据与提问纪律条文待落，见 `TG-20` 证据 ③④⑤）。
+- 主代理归纳：新增卡片 [`TG-20`](iteration/phases/testing-governance/cards/TG-20.md)（用户插入卡，兑现 G2 插入预留 2 点）；本文件为该卡交付物 ①；提问纪律为交付物 ②（条文入 `1-WORKFLOW.MD` §6 第 9 条）。
+- **进展（2026-09-25 D1）**：交付物 ① 已完成到「**全量分层并入**」——§3 本会话裁决 11 条（逐字）＋ §4.0 首批已核 8 条（含证据与时间戳）＋ **§4.1 逐字原话 103 条（全收）** ＋ **§4.3 附录索引 282 条**（未判定效力）；交付物 ② 已落条文；**③ 机检判据 / ④ 反向对照 / ⑤ 实战复算 待 D6**；§4.2（二手转述中判定为「仍生效」者）按批次回填（用户裁定 R1）。
+- 生效状态：进行中（③④⑤ 未完成；§4.1 各条的 `生效状态` / `证据` / `验证时间戳` 仍为待回填 ⇒ **回填前不得引用为已核生效裁决**）。
 - 证据：本文件；`iteration/phases/testing-governance/cards/TG-20.md`。
-- 验证时间戳：2026-09-25（本文件首版提交时的网络时间 UTC+8）。
+- 验证时间戳：2026-09-25（本文件 §4 分层并入当日，网络时间 UTC+8）。
 
 ## 1. 字段定义（每条目必填）
 
@@ -160,8 +161,15 @@
 - 证据：[`TG-20`](iteration/phases/testing-governance/cards/TG-20.md)；本文件；计划书 §3/§4 的插入记录
 - 验证时间戳：未验证（待补——机检判据落地后回填）
 - 违背事故：无
+## 4. 历史裁决（征集稿全量分层：逐字原话全收／二手转述入附录）
 
-## 4. 历史裁决（Sprint-14 ~ Sprint-17；**原文征集进行中**）
+> **用户裁定（R1，2026-09-25）**：分层并入——**逐字原话全收**；二手转述里只有主代理判定「仍生效」的进 §4.2，其余进 §4.3 附录（**未判定效力，不得引用为裁决**）。
+> **编号体系**：`V-xxx` = 逐字原话（本文件正文）；`A-xxx` = 附录索引；合并稿编号 `H-xxx` 仅作追溯（全量稿是只读征集产物，不入本文件）。
+> **状态纪律**：`主代理归纳` / `生效状态` / `证据` / `验证时间戳` / `违背事故` 一律**待回填**；回填完成前任何人不得把 §4.1 的条目当作「已核生效裁决」引用（依据 D-250925-11）。
+
+### 4.0 首批已核条目（主代理手工登记，含生效状态与证据）
+
+> 本节 8 条是主代理**已核**的首批条目（含 `生效状态` / `证据` / `验证时间戳`）；与 §4.1 / §4.3 **可能有同一句原话的重复**（同一裁决在卡与 Sprint 文档各出现一次）——**重复不等于冲突**，两处编号可交叉引用。
 
 > **本节状态**：三路子代理正在按"逐字 + `path:line`"征集（范围：`iteration/sprint/**`、`iteration/phases/**`（卡/索引/复盘/事故档）、`docs/1..5-*.MD` 与预研档）。**并入前不得把征集稿当原文使用**。本版只登记**已可核**的两类：
 > ① **有仓内逐字记录**的（见下表）；② **只有二手转述**的（必须标 `原文缺失（二手转述）`）。
@@ -176,6 +184,1339 @@
 | D-250921-H6 `A-M11` 只记卡不实现 | 原文（逐字）："这两个方案需要继续调研后再确认怎么做，先记张卡吧" | [`A-M11` 卡 `## 状态`](iteration/phases/agents-infra/cards/A-M11.md) | 已被取代 [已被 D-250925-04 取代（2026-09-25）：本轮实现，且 D-250925-06 要求先跑调研）] |
 | D-250921-H7 Sprint-16 两处口径 ＋ "现在修" | 原文缺失（二手转述）："用户确认 Sprint-16 两处口径（F-AC8 = 14 天 due ＋ 任务计划可选不自动注册；TG-5 = 周频 ＋ ¥10 上限 ＋ fail-closed ＋ 不进 CI）并选择「现在修」" | [`2026-09-12-sprint-16.md` §5](iteration/sprint/2026-09-12-sprint-16.md) | 生效 |
 | D-250921-H8 派单类事故一律入 agents-infra 反例档 | 原文（逐字）："和子代理派单相关的漏洞/问题/事故今后一律作为 agent infra 的反例留档" | [`1-WORKFLOW.MD` §6](1-WORKFLOW.MD)；[`2026-09-25-subagent-dispatch-failure-modes-case.MD`](iteration/phases/agents-infra/2026-09-25-subagent-dispatch-failure-modes-case.MD) | 生效（已扩展至机制缺口，见 D-250925-10） |
+
+## 4.1 逐字原话（用户原话，逐字）
+
+### V-001 Sprint5 用户所见「与 query 无关」
+- 原文（逐字）: "与 query 无关"
+- 出处: docs/iteration/sprint/2026-08-30-sprint-5.md:12
+- 时点: 未标注
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-002 用户指示继续阶段 B
+- 原文（逐字）: "继续阶段 B"
+- 出处: docs/iteration/sprint/2026-08-31-sprint-12.md:3
+- 时点: 2026-08-31
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-003 用户指示继续阶段 C 并全盘验收
+- 原文（逐字）: "继续阶段 C，完成后全盘验收"
+- 出处: docs/iteration/sprint/2026-08-31-sprint-13.md:3
+- 时点: 2026-08-31
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-004 用户拍板底座批次优先
+- 原文（逐字）: "底座批次优先"
+- 原文缺失（二手转述）: "**Q3**：**底座批次优先**（底座批次开工后，验收修复批次紧随）｜｜**验收修复批次（拆 2~3 个插队 sprint，约 24~26 点，Sprint-15 起）**：交互信息类（F-AC1/2/3/4/7/9）→ 数据准确性+成本韧性（F-AC8/10）+ 响应式/复制报错（F-AC5/6）；开工时按依赖与产能定拆分｜｜**底座式更新应提前完成**（如领域治理备忘这类直接影响架构的机制），避免积累技术债——盘点见 §6"
+- 出处: docs/iteration/sprint/2026-08-31-sprint-14.md:3；docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:29；docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:35；docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:36；docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:44；docs/iteration/pre-research/2026-08-31-domain-governance.MD:44
+- 时点: F2 验收 Q3，2026-08-31；未标注（节标题 2026-08-31 已答复）；2026-08-31
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-005 N1 output 完整查看诉求原话不好用
+- 原文（逐字）: "不好用"
+- 出处: docs/iteration/sprint/2026-09-07-sprint-15.md:143
+- 时点: 未标注（节标题 2026-09-10；行内记"四轮"）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-006 指示"继续做 Sprint-16"
+- 原文（逐字）: "继续做 Sprint-16"
+- 出处: docs/iteration/sprint/2026-09-12-sprint-16.md:3
+- 时点: 2026-09-12
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-007 选择"现在修"
+- 原文（逐字）: "现在修｜｜现在修再关闭 Sprint-16"（`｜｜` 为分段符）
+- 出处: docs/iteration/sprint/2026-09-12-sprint-16.md:70；docs/iteration/sprint/2026-09-12-sprint-16.md:287
+- 时点: 2026-09-20
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-008 "没验收前不要提PR"
+- 原文（逐字）: "**没验收前不要提PR**"
+- 出处: docs/iteration/sprint/2026-09-12-sprint-16.md:279；docs/iteration/sprint/2026-09-12-sprint-16.md:67；docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD:67；docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD:25
+- 时点: 2026-09-12
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-009 付费项"先计量后执行"口径
+- 原文（逐字）: "先计量后执行｜｜先计量再跑｜｜先打通计量再跑付费项"（`｜｜` 为分段符）
+- 出处: docs/iteration/sprint/2026-09-12-sprint-16.md:82；docs/iteration/sprint/2026-09-12-sprint-16.md:284；docs/iteration/sprint/2026-09-12-sprint-16.md:286；docs/iteration/sprint/2026-09-12-sprint-16.md:288
+- 时点: 2026-09-20
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+- 异文（待核）: 见上方 `原文（逐字）` 的另一段（同一征集稿单元格内的第二种写法，已逐字保留，未另立条目）
+
+### V-010 决策④ F-AC17 仅记录
+- 原文（逐字）: "允许运行中点击"
+- 出处: docs/iteration/sprint/2026-09-12-sprint-16.md:291；docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD:111
+- 时点: 2026-09-21（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-011 决策⑤ F-AC16/M18 暂不动
+- 原文（逐字）: "待真实数据"
+- 出处: docs/iteration/sprint/2026-09-12-sprint-16.md:291；docs/iteration/sprint/2026-09-12-sprint-16.md:144；docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD:111
+- 时点: 2026-09-21（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-012 批准"账本多轮次记录做掉"
+- 原文（逐字）: "账本多轮次记录做掉"
+- 出处: docs/iteration/sprint/2026-09-12-sprint-16.md:211
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-013 要求"单独开卡复盘"
+- 原文（逐字）: "单独开卡复盘"
+- 出处: docs/iteration/sprint/2026-09-12-sprint-16.md:212
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-014 明确"开卡以后复盘，不是现在就做"
+- 原文（逐字）: "**开卡以后复盘，不是现在就做**"
+- 出处: docs/iteration/sprint/2026-09-12-sprint-16.md:212；docs/iteration/sprint/2026-09-12-sprint-16.md:98；docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD:66
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-015 质疑窄范围定点复核依据
+- 原文（逐字）: "窄范围定点复核的判断依据是啥"
+- 出处: docs/iteration/sprint/2026-09-12-sprint-16.md:200；docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD:24
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-016 要求按紧急度排序卡片
+- 原文（逐字）: "按你的紧急度标准排序给卡片排个序"
+- 出处: docs/iteration/sprint/2026-09-12-sprint-16.md:127
+- 时点: 2026-09-21（快照）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-017 指出架构卡未进排序
+- 原文（逐字）: "一张卡对应一个独立文档的架构卡没在排序里"
+- 出处: docs/iteration/sprint/2026-09-12-sprint-16.md:149
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-018 叫停跨卡接口"写死"
+- 原文（逐字）: "任何涉及写死的操作都需要注意下，**这个需要再研究才能决定**｜｜**任何涉及写死的操作都需要注意下，这个需要再研究才能决定**"（`｜｜` 为分段符）
+- 出处: docs/iteration/sprint/2026-09-12-sprint-16.md:153；docs/iteration/phases/agents-infra/cards/A-M11.md:32
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-019 明确全局视角缺失
+- 原文（逐字）: "没有项目的全局视角我无法给出有效建议"
+- 出处: docs/iteration/sprint/2026-09-12-sprint-16.md:125
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-020 用户要求检查所有按钮行为
+- 原文（逐字）: "检查所有按钮行为"
+- 出处: docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:369
+- 时点: 2026-09-20，UTC+8
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-021 用户选择：先打通 token 计量再跑
+- 原文（逐字）: "**先打通 token 计量再跑**"
+- 出处: docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:384
+- 时点: 2026-09-20
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-022 用户选择：TG-7 现在修
+- 原文（逐字）: "现在修"
+- 出处: docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:442
+- 时点: 2026-09-20
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-023 规模上限"先跑跑看"
+- 原文（逐字）: "先跑跑看"
+- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:25
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-024 依赖工具口径 L1~L6 裁定
+- 原文（逐字）: "L1=a L2=b L3=a L4=c L5=a L6=b"
+- 原文缺失（二手转述）: "**工具口径已由用户 2026-09-21 裁定**（`L1=a L2=b L3=a L4=c L5=a L6=b`，执行清单见报告 §6.2）：**G1 只需 ruff**（Python 112 文件），按｜｜**先查后装**｜｜顺序（`npm install --package-lock-only --ignore-scripts` → `npm audit`；`pip download <pin> --no-deps`）留证后引入"
+- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:98；docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD:111；docs/iteration/pre-research/README.md:15
+- 时点: 2026-09-21；2026-09-21（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-025 TG-17 开卡原话
+- 原文（逐字）: "1+2 合成一张新卡（比如 TG-17「闸门可信化收尾」）排进 G：可以，开进backlog吧"
+- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:135；docs/iteration/phases/testing-governance/cards/TG-17.md:13；docs/iteration/phases/testing-governance/cards/TG-17.md:1；docs/iteration/phases/testing-governance/backlog.MD:31
+- 时点: 2026-09-23（UTC+8 `22:47` 网络核验）；2026-09-23（UTC+8 22:47）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-026 关闭签核原话
+- 原文（逐字）: "**签核通过 + 开 PR，四个判断按你的方案来**｜｜签核通过 + 开 PR，四个判断按你的方案来"（`｜｜` 为分段符）
+- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:181；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:193；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:195
+- 时点: 2026-09-25（UTC+8 `15:52`，网络时间核验）；2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-027 不减点、改扣分条件
+- 原文（逐字）: "**不减点、改扣分条件**"
+- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:87；docs/iteration/sprint/2026-09-21-sprint-17.md:89；docs/iteration/sprint/2026-09-21-sprint-17.md:146；docs/iteration/sprint/2026-09-21-sprint-17.md:155
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-028 P-a 暂存分支方案批准
+- 原文（逐字）: "按优化方案执行｜｜；｜｜按照你的优化方案来执行"（`｜｜` 为分段符）
+- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:252；docs/iteration/sprint/2026-09-21-sprint-17.md:254
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+- 异文（待核）: 见上方 `原文（逐字）` 的另一段（同一征集稿单元格内的第二种写法，已逐字保留，未另立条目）
+
+### V-029 前两点要落实到位
+- 原文（逐字）: "前两点要落实到位"
+- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:267
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-030 合并并备 Plan B
+- 原文（逐字）: "合并，同时做好合并冲突的 Plan B 准备"
+- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:286
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-031 sha 纪律要求
+- 原文（逐字）: "不想再看到 sha 传参/使用出问题"
+- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:298
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-032 日期口径漂移当场指出
+- 原文（逐字）: "今天网络时间是 9.23 了"
+- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:150；docs/iteration/sprint/2026-09-21-sprint-17.md:365；docs/iteration/phases/testing-governance/2026-09-23-tg11-retro.MD:24
+- 时点: 2026-09-23
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-033 未闭环扣率按级别比例
+- 原文（逐字）: "未闭环 critical/major 的扣率：**按级别比例**，然后给个具体口径方案和例子我看看"
+- 出处: docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:34；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:36
+- 时点: 2026-09-25，UTC+8
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-034 红线触碰即死机制
+- 原文（逐字）: "额外增加红线触碰即死机制（硬核红线举例：**文件丢失、卡片内容飘移、测试结果假绿**）"
+- 出处: docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:66
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-035 红线分阶段执行
+- 原文（逐字）: "分阶段执行"
+- 出处: docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:76；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:164
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-036 不接受只写机械规则
+- 原文（逐字）: "只写机械规则"
+- 出处: docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:86
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-037 人类读得懂硬标准
+- 原文（逐字）: "写的代码必须人类读得懂"
+- 出处: docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:90；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:92
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-038 D3 覆盖所有编程语言
+- 原文（逐字）: "C 可以，但是**不仅仅是 python 语言，需要覆盖该项目所用到的所有编程语言**"
+- 出处: docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:93；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:165
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-039 观察期记插入卡额外点/时间
+- 原文（逐字）: "同时观察期间**插入卡造成的额外故事点/开发时间**的情况"
+- 出处: docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:128；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:130
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-040 D6 先跑跑看
+- 原文（逐字）: "先跑跑看，对数字我也没有具体感受"
+- 出处: docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:170
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-041 D7 引入依赖附加前提
+- 原文（逐字）: "**引入前提要查清楚依赖有无已暴露的安全风险、数据隐患**"
+- 出处: docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:171；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:174
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-042 查清楚不接受看起来没问题
+- 原文（逐字）: "查清楚"
+- 出处: docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:187
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-043 B3① 规模上限与每卡一天
+- 原文（逐字）: "哪一天在做它"
+- 出处: docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:199；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:12；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:53；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:76；docs/iteration/sprint/2026-09-25-sprint-18.md:6
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-044 开工理由逐字口径
+- 原文（逐字）: "**我们需要赶上因治理耽误的进度**，按照我的目标这个项目最终应能**对外包装为一个 agent 供使用/调用**，现在来看**远远不达标**。"
+- 出处: docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:19；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:122
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-045 D2 休息日与从今天开工
+- 原文（逐字）: "**25-27 都是休息日**……**从今天开始开工**"
+- 出处: docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:63；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:74；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:122
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-046 回答关闸读数恢复时点
+- 原文（逐字）: "多久后才能重启 sprint17 的关闭判定"
+- 出处: docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:113
+- 时点: 未标注
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-047 D5 TG-10③ 不排期
+- 原文（逐字）: "暂不用管也不需要现在就排G3"
+- 出处: docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:124
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-048 用户追问冲突原因
+- 原文（逐字）: "为什么会有冲突"
+- 出处: docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:130
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-049 A-M11 只记卡不实现
+- 原文（逐字）: "这两个方案需要继续调研后再确认怎么做，先记张卡吧"
+- 出处: docs/iteration/phases/agents-infra/cards/A-M11.md:7；docs/iteration/phases/agents-infra/backlog.MD:44
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-050 A-M11 追加：过程事故与内容丢失防线
+- 原文（逐字）: "过程事故也是 A-M11 卡需要解决的问题之一，防范提前避免，尤其是这种可能会造成内容丢失的情况，和之前遇到的多次文件莫名被删除的情况等等"
+- 出处: docs/iteration/phases/agents-infra/cards/A-M11.md:32
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-051 A-M11 追加：LEARNED…
+- 原文（逐字）: "等当前任务完全结束后，把 LEARNED 文档内容完整过一遍，分门别类地补充下目标，除了我说的目标外肯定还有别的。其他文档内容也可以自主阅读查找类似事件的记录，比如 report agent runtime 下的文档什么的。"
+- 出处: docs/iteration/phases/agents-infra/cards/A-M11.md:32
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-052 子代理派单事故一律入 agent infra…
+- 原文（逐字）: "**和子代理派单相关的漏洞/问题/事故今后一律作为 agent infra 的反例留档**"
+- 出处: docs/iteration/phases/agents-infra/2026-09-25-subagent-dispatch-failure-modes-case.MD:3；docs/iteration/phases/agents-infra/2026-09-25-subagent-dispatch-failure-modes-case.MD:1；docs/iteration/phases/agents-infra/cards/A-M11.md:23；docs/iteration/phases/agents-infra/cards/A-M11.md:26
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-053 机制缺口同样记为 agent infra 反例
+- 原文（逐字）: "**机制缺口同样记录为 agent infra 的反例**"
+- 出处: docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:3；docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:1；docs/iteration/phases/agents-infra/2026-09-25-subagent-dispatch-failure-modes-case.MD:7
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-054 A-M12 编辑边界事故族是否成卡
+- 原文（逐字）: "对于这一类事故问题的治理是否有卡，如果没有同样作为反例加入 agent infra，历史卡片也是做类似移动分类操作"
+- 出处: docs/iteration/phases/agents-infra/cards/A-M12.md:17；docs/iteration/phases/agents-infra/cards/A-M12.md:1；docs/iteration/phases/agents-infra/cards/A-M12.md:7；docs/iteration/phases/agents-infra/backlog.MD:45
+- 时点: 2026-09-23（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-055 TG-6 用户要求先做 backlog 卡记录
+- 原文（逐字）: "做个 backlog 卡记录先"
+- 出处: docs/iteration/phases/testing-governance/cards/TG-6.md:13；docs/iteration/phases/testing-governance/cards/TG-6.md:19
+- 时点: 2026-09-20（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-056 TG-6 反向对照规则（用户称倒过来试试）
+- 原文（逐字）: "倒过来试试"
+- 出处: docs/iteration/phases/testing-governance/cards/TG-6.md:19；docs/iteration/phases/testing-governance/cards/TG-6.md:13；docs/iteration/phases/refactor-analysis/cards/F-AC13.md:13
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-057 TG-10 账本记录失真立案原话
+- 原文（逐字）: "每个 agent 运行时间相比之前怎么短了很多？而且有的是直接中途被停掉了，这些信息让我不太安心"
+- 出处: docs/iteration/phases/testing-governance/cards/TG-10.md:13；docs/iteration/phases/testing-governance/backlog.MD:38
+- 时点: 2026-09-21（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-058 TG-10 同日批准做掉
+- 原文（逐字）: "做掉"
+- 出处: docs/iteration/phases/testing-governance/cards/TG-10.md:13
+- 时点: 2026-09-21（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-059 TG-11 规则绕过立案原话（定性很严重）
+- 原文（逐字）: "这是一个很严重的问题，规则直接被绕过，在 workflow 记再多也没用，需要单独开卡复盘下｜｜**这是一个很严重的问题，规则直接被绕过，在 workflow 记再多也没用，需要单独开卡复盘下**"（`｜｜` 为分段符）
+- 出处: docs/iteration/phases/testing-governance/cards/TG-11.md:18；docs/iteration/phases/testing-governance/cards/TG-11.md:1；docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD:4；docs/iteration/phases/testing-governance/backlog.MD:25
+- 时点: 2026-09-21（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-060 TG-11 用户明确开卡以后复盘不是现在就做
+- 原文（逐字）: "**我说的是开卡以后复盘，不是现在就做**——我担心你现在总结半天，后面出现新情况这个方案又得改。"
+- 出处: docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD:7；docs/iteration/phases/testing-governance/cards/TG-11.md:27
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-061 TG-11 D1 先答"是"
+- 原文（逐字）: "**是**"
+- 出处: docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD:98；docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD:96
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-062 TG-11 D1 修订：方案保留、不做代码改动
+- 原文（逐字）: "**刚刚你建议的方案可以保留，但是不要做任何代码改动**"
+- 出处: docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD:98；docs/iteration/phases/testing-governance/cards/TG-11.md:27
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-063 TG-12 文档内容漂移开卡原话
+- 原文（逐字）: "我想从 sprint17 和以前的开发过程发现的文档内容漂移问题也足够开个卡做复盘了，把类似问题一并加到 backlog 中吧"
+- 出处: docs/iteration/phases/testing-governance/cards/TG-12.md:13；docs/iteration/phases/testing-governance/cards/TG-12.md:1；docs/iteration/phases/testing-governance/cards/TG-12.md:19；docs/iteration/phases/testing-governance/backlog.MD:26
+- 时点: 2026-09-21（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-064 TG-12 N7 一卡一文档原话
+- 原文（逐字）: "`phases` 下的所有文件夹，单个卡片应该对应且唯一对应一个独立文档。现在卡片内容全都记录在 backlog 中，有的卡片内容散落在 sprint 文档中到处都是。一旦卡片内容更新了其他几处万一有的地方漏了就直接造成文档内容漂移｜｜单个卡片应该对应且唯一对应一个独立文档｜｜`phases` 下的所有文件夹，**单个卡片应该对应且唯一对应一个独立文档**。现在卡片内容全都记录在 backlog 中，有的卡片内容散落在 sprint 文档中到处都是。一旦卡片内容更新了其他几处万一有的地方漏了就直接造成文档内容漂移"（`｜｜` 为分段符）
+- 原文缺失（二手转述）: "**✅ 用户 2026-09-21 决定：N7 归入本卡（TG-12）正式执行时一并做**（不在 Sprint-17 之前单独立项）；**术语约定已即时生效**——`台账` 仅指独立文件、单元格内清单一律称"卡内实例清单"，并连同引用纪律写入 `1-WORKFLOW.MD` §3（2026-09-21）。｜｜**⤴ 2026-09-21 用户决定：机制候选 `N7`（一卡一文档 + backlog 瘦索引 + 索引 lint）已提升为独立卡 `TG-14`**——本卡机制清单收窄为 **N1~N6**（派生事实/漂移闸门/生成式状态报告/doc-audit 增补/写作规范/TG-11 合流），N7 的 4 类证据与迁移方案随卡移交 `TG-14`，避免两卡重复拥有同一机制。"
+- 出处: docs/iteration/phases/testing-governance/cards/TG-12.md:22；docs/iteration/phases/testing-governance/cards/TG-14.md:21；docs/iteration/phases/testing-governance/cards/TG-14.md:8；docs/1-WORKFLOW.MD:407；docs/1-WORKFLOW.MD:405
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+- 异文（待核）: 见上方 `原文（逐字）` 的另一段（同一征集稿单元格内的第二种写法，已逐字保留，未另立条目）
+
+### V-065 用户追问实例台账是啥文档
+- 原文（逐字）: "你经常说实例台账我咋没找到是啥文档"
+- 出处: docs/iteration/phases/testing-governance/cards/TG-12.md:22；docs/iteration/phases/testing-governance/cards/TG-14.md:21
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-066 TG-13 账本测量化做成新卡
+- 原文（逐字）: "账本测量化……做成新卡 TG-13"
+- 出处: docs/iteration/phases/testing-governance/cards/TG-13.md:13；docs/iteration/phases/testing-governance/cards/TG-13.md:1；docs/iteration/phases/testing-governance/cards/TG-13.md:19；docs/iteration/phases/testing-governance/backlog.MD:27
+- 时点: 2026-09-21（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-067 TG-13 拍板"开新卡"
+- 原文（逐字）: "开新卡"
+- 出处: docs/iteration/phases/testing-governance/cards/TG-13.md:1；docs/iteration/phases/testing-governance/cards/TG-13.md:19；docs/iteration/phases/testing-governance/backlog.MD:38
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-068 TG-14 N7 是否提升为独立卡
+- 原文（逐字）: "N7 是否提升为独立卡：可以"
+- 出处: docs/iteration/phases/testing-governance/cards/TG-14.md:15；docs/iteration/phases/testing-governance/cards/TG-14.md:8
+- 时点: 2026-09-21（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-069 TG-14 追加交付：报告之间的关系链
+- 原文（逐字）: "注意报告之间的因果关系/相关笔记关系链的梳理，如果有文档结构治理的卡将这一要求补充进去"
+- 出处: docs/iteration/phases/testing-governance/cards/TG-14.md:28；docs/iteration/phases/testing-governance/cards/TG-14.md:26
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-070 TG-15 P1 批准
+- 原文（逐字）: "P1：可以，建议复查下类似场景的硬编码问题"
+- 出处: docs/iteration/phases/testing-governance/cards/TG-15.md:13；docs/iteration/phases/testing-governance/cards/TG-15.md:1；docs/iteration/phases/testing-governance/cards/TG-15.md:19；docs/iteration/phases/testing-governance/backlog.MD:29
+- 时点: 2026-09-23（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-071 TG-15 P2 选型与担心
+- 原文（逐字）: "P2：C3-T，但是有个担心，**是否归属表未及时更新同样导致 C3 闸门失效**"
+- 出处: docs/iteration/phases/testing-governance/cards/TG-15.md:13
+- 时点: 2026-09-23（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-072 TG-15 点数不减、改扣分条件
+- 原文（逐字）: "不减点、改扣分条件"
+- 出处: docs/iteration/phases/testing-governance/cards/TG-15.md:7；docs/iteration/phases/testing-governance/cards/TG-15.md:23；docs/iteration/phases/testing-governance/backlog.MD:29；docs/iteration/phases/testing-governance/2026-09-25-d2d3-independent-review.MD:37；docs/iteration/phases/testing-governance/2026-09-25-d2d3-independent-review.MD:70；docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:179
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-073 TG-16 审查流程过一遍 → HTML 汇报
+- 原文（逐字）: "先这样做吧，我想需要对现有审查流程和具体策略内容找时间整体过一遍 记张卡把这些内容规则流程梳理作为一个backlog，输出图文并茂容易理解的html汇报文件｜｜我想需要对现有审查流程和具体策略内容找时间整体过一遍，记张卡把这些内容规则流程梳理作为一个 backlog，**输出图文并茂容易理解的 html 汇报文件**"（`｜｜` 为分段符）
+- 出处: docs/iteration/phases/testing-governance/cards/TG-16.md:13；docs/iteration/phases/testing-governance/cards/TG-16.md:1；docs/iteration/phases/testing-governance/cards/TG-16.md:19；docs/iteration/phases/testing-governance/backlog.MD:30
+- 时点: 2026-09-23（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-074 TG-20 登记册与提问纪律当场要求（三段）
+- 原文（逐字）: "我们之间的对话中把所有 clarification questions 找时间收集整理下，原记录放在 `docs/6-DECISIONS.md` 中……还要标记生效状态和证据，验证时间戳｜｜；｜｜每次你问我问题不带上下文的时候我就得翻我们的对话记录，还得提醒你是不是之前做过类似确认/是不是缺少啥内容，我已经厌倦了这么做｜｜注意还原事实，原文必须保留，原文和你自己总结/归类的内容做清晰区分"（`｜｜` 为分段符）
+- 出处: docs/iteration/phases/testing-governance/cards/TG-20.md:13；docs/iteration/phases/testing-governance/cards/TG-20.md:1；docs/iteration/phases/testing-governance/cards/TG-20.md:7；docs/iteration/phases/testing-governance/cards/TG-20.md:20
+- 时点: 2026-09-25（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+- 异文（待核）: 见上方 `原文（逐字）` 的另一段（同一征集稿单元格内的第二种写法，已逐字保留，未另立条目）
+- 异文（待核）: 见上方 `原文（逐字）` 的另一段（同一征集稿单元格内的第二种写法，已逐字保留，未另立条目）
+
+### V-075 用户指出另一会话误开 D2/D3 并要求接手
+- 原文（逐字）: "另一个对话（**部署Codex Harness并查最佳实践**）误开启了 Sprint-17 的 D2/D3 任务，交付质量不尽如人意"
+- 出处: docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:4
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-076 用户判定 U1：重复出现的低级错误
+- 原文（逐字）: "**重复出现在我看来不应该犯的低级错误**"
+- 出处: docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:15
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-077 用户判定 U2：延期请求
+- 原文（逐字）: "开发开发着跑出来新增需要修复问题的卡，**按现有工作量判断项目要延期**，**找我要权限证明可以延期**"
+- 出处: docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:16
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-078 用户判定 U3：治理建议浅层
+- 原文（逐字）: "问题超过五次按规则要治理，**给的建议方案是写机械规则就行**"
+- 出处: docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:17
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-079 用户判定 U4：态度敷衍
+- 原文（逐字）: "**态度敷衍**"
+- 出处: docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:18
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-080 用户分工决定：接手该对话下所有工作
+- 原文（逐字）: "全全由你接受这个对话下的所有工作，包括已完成结果、你自己的待办、待我确认的条例等等，**先做 D2、D3 的独立审核**，再和我一起规划下一步。"
+- 出处: docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:20
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-081 需用户转达给另一会话的停止指令
+- 原文（逐字）: "D2/D3 已由主会话收归，请停止对 `windows` 分支的写入"
+- 出处: docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:96；docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:190
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-082 用户退出确认
+- 原文（逐字）: "退出确认，注意还没实现的目标 比如 CI 未实跑的影响，继续吧"
+- 出处: docs/iteration/phases/testing-governance/2026-09-25-governance-exit-evidence.MD:114；docs/iteration/phases/testing-governance/2026-09-25-governance-exit-evidence.MD:112；docs/iteration/phases/testing-governance/2026-09-25-governance-exit-evidence.MD:117；docs/iteration/phases/testing-governance/2026-09-25-open-items-check.MD:3
+- 时点: 2026-09-25（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-083 用户点名未实现目标必须带到 E 步
+- 原文（逐字）: "未实现目标"
+- 出处: docs/iteration/phases/testing-governance/2026-09-25-governance-exit-evidence.MD:117
+- 时点: 2026-09-25
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-084 F-AC13 用户要求影响范围评估
+- 原文（逐字）: "影响范围评估下再交给我看看"
+- 出处: docs/iteration/phases/refactor-analysis/cards/F-AC13.md:13；docs/iteration/phases/refactor-analysis/2026-09-21-fac13-14-impact.MD:4
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-085 F-AC13 拍板插入 S17 + 接受拖动限制
+- 原文（逐字）: "不能从按钮行拖动节点"
+- 出处: docs/iteration/phases/refactor-analysis/cards/F-AC13.md:13；docs/iteration/phases/refactor-analysis/cards/F-AC13.md:7；docs/iteration/phases/refactor-analysis/backlog.MD:34
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-086 F-AC14 用户要求检查所有按钮行为
+- 原文（逐字）: "检查所有按钮行为"
+- 出处: docs/iteration/phases/refactor-analysis/cards/F-AC14.md:13
+- 时点: 2026-09-20（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-087 F-AC15 要求列出 9 个 env +…
+- 原文（逐字）: "9 个 env + spec 阈值具体有哪些"
+- 出处: docs/iteration/phases/refactor-analysis/cards/F-AC15.md:13；docs/iteration/phases/refactor-analysis/2026-09-21-config-surface-inventory.MD:4
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-088 存疑 B-15：深度阈值为何是命令传参
+- 原文（逐字）: "深度阈值怎么是命令传参？不应该是前端显式配置吗？类似的还有哪些"
+- 出处: docs/iteration/phases/refactor-analysis/2026-09-21-config-surface-inventory.MD:4
+- 时点: 2026-09-20
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-089 F-AC16 要求 v1 达原型验证可靠程度
+- 原文（逐字）: "第一版实现达到 Sprint-17 可做原型验证的可靠程度"
+- 出处: docs/iteration/phases/refactor-analysis/cards/F-AC16.md:13
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-090 F-AC17 用户口径：允许用户在运行中点击
+- 原文（逐字）: "**允许用户在运行中点击**"
+- 出处: docs/iteration/phases/refactor-analysis/cards/F-AC17.md:19；docs/iteration/phases/refactor-analysis/cards/F-AC17.md:1；docs/iteration/phases/refactor-analysis/cards/F-AC13.md:22；docs/iteration/phases/refactor-analysis/backlog.MD:63
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-091 MM-6 用户走查提出思维模型阶段尝试
+- 原文（逐字）: "这也是思维模型阶段我们要做的尝试"
+- 出处: docs/iteration/phases/mental-models/cards/MM-6.md:13
+- 时点: 2026-09-20（UTC+8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-092 MM-1 Q1 独立阶段；Q2 补全草案接受
+- 原文（逐字）: "可当成另一个工程项目"
+- 原文缺失（二手转述）: "用户 2026-09-07（Q1 独立阶段；Q2 补全草案接受）｜｜用户（2026-09-07）：新增知识沉淀卡「**思维模型管理**」——把工程开发中总结的经验文档（3-LEARNED 等）转化成**更抽象的模型架构**。｜｜**已拍板：独立阶段（工程项目）**｜｜**已拍板：接受**｜｜**已拍板（Q1 独立阶段/Q2 种子接受/Q3 半自动+robust+flexible），阶段已建**……经验文档→思维模型架构；成功判据=生成可执行 agent workflow；种子=思维实验"
+- 出处: docs/iteration/phases/mental-models/cards/MM-1.md:13；docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:8；docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:38；docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:56；docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:65；docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:57；docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:66；docs/iteration/pre-research/README.md:14
+- 时点: 2026-09-07；未标注
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-093 TG-11 用户定性的复述（工作流记规则无用）
+- 原文（逐字）: "规则直接被绕过，在 workflow 记再多也没用"
+- 出处: docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-runs.MD:379；docs/iteration/phases/testing-governance/cards/TG-11.md:24
+- 时点: 未标注
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-094 A-M11 运行时间变短立案 TG-10（复述）
+- 原文（逐字）: "运行时间怎么短了很多"
+- 出处: docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-runs.MD:373
+- 时点: 未标注
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-095 窄范围复核判断依据质疑
+- 原文（逐字）: "窄范围复核的判断依据是啥"
+- 出处: docs/1-WORKFLOW.MD:109
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-096 交互类检查反向对照（倒过来试试）
+- 原文（逐字）: "倒过来试试"
+- 出处: docs/1-WORKFLOW.MD:427；docs/1-WORKFLOW.MD:385
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-097 子代理中断/接管必须留痕
+- 原文（逐字）: "运行时间变短/中途被停"
+- 出处: docs/1-WORKFLOW.MD:429；docs/1-WORKFLOW.MD:430
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-098 检索质量先立评测基线
+- 原文（逐字）: "top5 与 query 无关"
+- 出处: docs/3-LEARNED.MD:128
+- 时点: 未标注（标题含 Sprint-6）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-099 清账要求：清完无遗漏
+- 原文（逐字）: "清完无遗漏"
+- 出处: docs/3-LEARNED.MD:144
+- 时点: 未标注（标题含 Sprint-7）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-100 评审代理按职能而非按分支
+- 原文（逐字）: "按分支划分"
+- 出处: docs/3-LEARNED.MD:154；docs/3-LEARNED.MD:155
+- 时点: 未标注（标题含 Sprint-8）
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-101 走查追问 CK-1 与 M16-5
+- 原文（逐字）: "前端能看到载入的 checkpoint 文件吗｜｜；｜｜模型信息更新后会影响更新前的报告吗"（`｜｜` 为分段符）
+- 出处: docs/4-ALGORITHM.MD:653
+- 时点: 2026-09-20
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+- 异文（待核）: 见上方 `原文（逐字）` 的另一段（同一征集稿单元格内的第二种写法，已逐字保留，未另立条目）
+
+### V-102 v1 须达原型验证可靠程度
+- 原文（逐字）: "第一版实现能够达到在 Sprint-17 做原型验证的可靠程度"
+- 出处: docs/4-ALGORITHM.MD:654
+- 时点: 2026-09-21
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+### V-103 暂不创建 product/marketing…
+- 原文（逐字）: "现在不需要立即创建这些 subagent"
+- 出处: docs/iteration/pre-research/2026-08-31-domain-governance.MD:3
+- 时点: 2026-08-31
+- 主代理归纳: 待回填
+- 生效状态: 待回填
+- 证据: 待回填
+- 验证时间戳: 待回填
+- 违背事故: 待回填
+
+## 4.2 二手转述中判定为"仍生效"者（待主代理逐条判定后移入）
+
+> 本节由主代理按批次回填：从 §4.3 附录里挑出"仍生效"的条目，补齐 生效状态/证据/验证时间戳 后移入本节。**回填前本节的条目数为 0**。
+
+## 4.3 附录：其余二手转述（仅索引；**未判定效力，不得引用为裁决**）
+
+| 编号 | 主题（≤40 字，取合并稿短标题） | 出处 | 时点 |
+|---|---|---|---|
+| A-001 | Sprint2 范围：同步 main、跳过 MAC | docs/iteration/sprint/2026-08-29-sprint-2.md:4 | 未标注 |
+| A-002 | Sprint3 范围：双分支评审 | docs/iteration/sprint/2026-08-29-sprint-3.md:4 | 未标注 |
+| A-003 | Sprint3 之后 Sprint 全部 hold | docs/iteration/sprint/2026-08-29-sprint-3.md:16 | 2026-08-29 |
+| A-004 | Sprint3 需求方要求代码评审 | docs/iteration/sprint/2026-08-29-sprint-3.md:113 | 未标注 |
+| A-005 | Sprint4 输入：用户实测反馈 5 项 | docs/iteration/sprint/2026-08-30-sprint-4.md:3 | 未标注 |
+| A-006 | Sprint4 原规划顺延保持 hold | docs/iteration/sprint/2026-08-30-sprint-4.md:4 | 未标注 |
+| A-007 | Sprint4 范围与 MAC 验证跳过 | docs/iteration/sprint/2026-08-30-sprint-4.md:5 | 未标注 |
+| A-008 | Sprint5 输入：用户实战截图与 5 项问题 | docs/iteration/sprint/2026-08-30-sprint-5.md:3 | 未标注 |
+| A-009 | Sprint5 roadmap C/E3 继续 hold | docs/iteration/sprint/2026-08-30-sprint-5.md:3 | 未标注 |
+| A-010 | 用户选定 F1 方向 | docs/iteration/sprint/2026-08-30-sprint-6.md:3 | 未标注 |
+| A-011 | 用户批准 M1~M6 维护批 | docs/iteration/sprint/2026-08-30-sprint-7.md:3；docs/iteration/sprint/2026-08-30-sprint-7.md:55 | 2026-08-30 |
+| A-012 | 用户指示 M3 保持未完成 | docs/iteration/sprint/2026-08-30-sprint-7.md:5；docs/iteration/sprint/2026-08-30-sprint-7.md:23；docs/iteration/sprint/2026-08-30-sprint-7.md:55；docs/iteration/sprint/2026-08-30-sprint-7.md:107 | 2026-08-30 |
+| A-013 | 用户指示关闭前追加全量 code review | docs/iteration/sprint/2026-08-30-sprint-7.md:5 | 2026-08-30 |
+| A-014 | AgentOps 三阶段批准并按 Sprint 管理 | docs/iteration/sprint/2026-08-30-sprint-8.md:3 | 未标注 |
+| A-015 | 用户三条修改意见修订阶段 1 | docs/iteration/sprint/2026-08-30-sprint-8.md:8；docs/iteration/sprint/2026-08-30-sprint-8.md:82 | 未标注 |
+| A-016 | A-PM1~A-PM4 按用户指示留 backlog | docs/iteration/sprint/2026-08-30-sprint-8.md:23 | 未标注 |
+| A-017 | 问题①增 impact-assessment 职能 | docs/iteration/sprint/2026-08-30-sprint-8.md:59；docs/iteration/sprint/2026-08-30-sprint-8.md:65；docs/iteration/sprint/2026-08-30-sprint-8.md:83；docs/iteration/sprint/2026-08-30-sprint-8.md:86；docs/iteration/sprint/2026-08-30-sprint-8.md:107；docs/iteration/sprint/2026-08-30-sprint-8.md:121 | 2026-08-30 |
+| A-018 | 用户问题② 留证文件出库 | docs/iteration/sprint/2026-08-30-sprint-8.md:65；docs/iteration/sprint/2026-08-30-sprint-8.md:86；docs/iteration/sprint/2026-08-30-sprint-8.md:119；docs/iteration/sprint/2026-08-30-sprint-8.md:121 | 2026-08-30 |
+| A-019 | 复合指标细化 A+B 8:2 / X=50 | docs/iteration/sprint/2026-08-30-sprint-8.md:65；docs/iteration/sprint/2026-08-30-sprint-8.md:121 | 2026-08-30 |
+| A-020 | 用户确认进入阶段 3 | docs/iteration/sprint/2026-08-30-sprint-9.md:3 | 未标注 |
+| A-021 | 超时砍范围需与用户确认 | docs/iteration/sprint/2026-08-30-sprint-9.md:10 | 未标注 |
+| A-022 | 用户样式决策 UI 切 Ant Design | docs/iteration/sprint/2026-08-30-sprint-9.md:23；docs/iteration/sprint/2026-08-30-sprint-9.md:51；docs/iteration/sprint/2026-08-30-sprint-9.md:93；docs/iteration/sprint/2026-08-30-sprint-9.md:98 | 未标注 |
+| A-023 | 用户校准 2026-08-30 | docs/iteration/sprint/2026-08-30-sprint-9.md:126 | 2026-08-30 |
+| A-024 | 确认 Sprint-9 结束并进入下阶段 | docs/iteration/sprint/2026-08-31-sprint-10.md:3 | 2026-08-31 选择确认 |
+| A-025 | 拍板方向＝收口+跨平台债+FANOUT | docs/iteration/sprint/2026-08-31-sprint-10.md:3；docs/iteration/sprint/2026-08-31-sprint-10.md:64 | 2026-08-31 选择确认；2026-08-31 06:47（网络时间 UTC+8） |
+| A-026 | 拍板下一阶段方向＝F2 | docs/iteration/sprint/2026-08-31-sprint-11.md:3 | 2026-08-31 |
+| A-027 | 要求分阶段分 Sprint 执行 | docs/iteration/sprint/2026-08-31-sprint-11.md:3 | 2026-08-31 |
+| A-028 | 用户决策：统一 PR 节奏 | docs/iteration/sprint/2026-08-31-sprint-14.md:48 | 2026-08-31 |
+| A-029 | 拍板排期选选项 1 | docs/iteration/sprint/2026-09-07-sprint-15.md:3；docs/iteration/sprint/2026-09-07-sprint-15.md:65 | 2026-09-07 |
+| A-030 | 走查第1项字体统一 PASS | docs/iteration/sprint/2026-09-07-sprint-15.md:134 | 未标注（节标题 2026-09-10） |
+| A-031 | 走查第2项标题聚合+hints 返工后修复 | docs/iteration/sprint/2026-09-07-sprint-15.md:135 | 未标注（节标题 2026-09-10） |
+| A-032 | 走查第3项 local 路径+条件隐藏 PASS | docs/iteration/sprint/2026-09-07-sprint-15.md:136 | 未标注（节标题 2026-09-10） |
+| A-033 | 走查第4项完成后收起 PASS | docs/iteration/sprint/2026-09-07-sprint-15.md:137 | 未标注（节标题 2026-09-10） |
+| A-034 | 走查第5项响应式 PASS | docs/iteration/sprint/2026-09-07-sprint-15.md:138 | 未标注（节标题 2026-09-10） |
+| A-035 | 走查第6项复制+报错详情追加需求 | docs/iteration/sprint/2026-09-07-sprint-15.md:139 | 未标注（节标题 2026-09-10） |
+| A-036 | 走查第7项状态作用域语义修正 | docs/iteration/sprint/2026-09-07-sprint-15.md:140；docs/iteration/sprint/2026-09-07-sprint-15.md:41；docs/iteration/sprint/2026-09-07-sprint-15.md:96 | 2026-09-10 |
+| A-037 | 走查第8项反向联动返工后修复 | docs/iteration/sprint/2026-09-07-sprint-15.md:141；docs/iteration/sprint/2026-09-07-sprint-15.md:98 | 未标注（节标题 2026-09-10） |
+| A-038 | 走查第9项 ATDD case 先行补充已落盘 | docs/iteration/sprint/2026-09-07-sprint-15.md:142；docs/iteration/sprint/2026-09-07-sprint-15.md:31 | 2026-09-10 |
+| A-039 | N2 论文截图清晰度新需求 | docs/iteration/sprint/2026-09-07-sprint-15.md:144 | 未标注（节标题 2026-09-10） |
+| A-040 | 三轮新逻辑与新问题全部已做 | docs/iteration/sprint/2026-09-07-sprint-15.md:145 | 2026-09-10 |
+| A-041 | 四轮反馈全部已做 | docs/iteration/sprint/2026-09-07-sprint-15.md:146 | 2026-09-10 |
+| A-042 | 五轮反馈多报错卡定位返工 | docs/iteration/sprint/2026-09-07-sprint-15.md:147；docs/iteration/sprint/2026-09-07-sprint-15.md:99 | 2026-09-10 |
+| A-043 | 六轮反馈文档时间记录准确性返工 | docs/iteration/sprint/2026-09-07-sprint-15.md:148；docs/iteration/sprint/2026-09-07-sprint-15.md:74 | 2026-09-10 |
+| A-044 | 七轮反馈报错卡重叠定位返工 | docs/iteration/sprint/2026-09-07-sprint-15.md:149；docs/iteration/sprint/2026-09-07-sprint-15.md:75；docs/iteration/sprint/2026-09-07-sprint-15.md:99 | 2026-09-10 |
+| A-045 | 八轮反馈定位下一处报错未居中返工 | docs/iteration/sprint/2026-09-07-sprint-15.md:150；docs/iteration/sprint/2026-09-07-sprint-15.md:76；docs/iteration/sprint/2026-09-07-sprint-15.md:99 | 2026-09-10 |
+| A-046 | 九轮用户宣布 Sprint-15 验收通过 | docs/iteration/sprint/2026-09-07-sprint-15.md:151 | 2026-09-10 |
+| A-047 | 用户口径 09-10 开始走查 | docs/iteration/sprint/2026-09-07-sprint-15.md:130 | 2026-09-10 |
+| A-048 | 用户复验一次通过（五~九轮） | docs/iteration/sprint/2026-09-07-sprint-15.md:104 | 未标注 |
+| A-049 | Q1 一 provider 一文件 + 每两周更新 | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:27；docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:19；docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:37 | 未标注（节标题 2026-08-31 已答复） |
+| A-050 | Q2 文献级 checkpoint | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:28；docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:21 | 未标注（节标题 2026-08-31 已答复） |
+| A-051 | Q4 完成后全部收起仅留 output_snapshot | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:30；docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:16；docs/iteration/sprint/2026-09-07-sprint-15.md:20 | 未标注（节标题 2026-08-31 已答复） |
+| A-052 | Q5 主画布报错摘要加可展开堆栈 | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:31；docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:18；docs/iteration/sprint/2026-09-07-sprint-15.md:22；docs/iteration/sprint/2026-09-07-sprint-15.md:73 | 未标注（节标题 2026-08-31 已答复） |
+| A-053 | 用户完成 F2 验收提交 8 项问题 | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:43 | 2026-08-31 |
+| A-054 | Q1~Q5 答复与排期登记 | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:44 | 2026-08-31 |
+| A-055 | 验收反馈问题 1.1 标题字号偏大 | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:10 | 未标注（文档标题 2026-08-31 用户验收反馈） |
+| A-056 | 验收 1.3b local 未隐藏无关参数 | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:11 | 未标注（文档标题 2026-08-31 用户验收反馈） |
+| A-057 | 验收反馈问题 1.3a local 无路径入口 | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:12 | 未标注（文档标题 2026-08-31 用户验收反馈） |
+| A-058 | 验收问题 3 subcanvas 卡片显示不全 | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:13 | 未标注（文档标题 2026-08-31 用户验收反馈） |
+| A-059 | 验收反馈问题 1.2a 提示行过多卡片被拉长 | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:14 | 未标注（文档标题 2026-08-31 用户验收反馈） |
+| A-060 | 验收反馈问题 1.2b 影响内容未上浮到标题 | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:15 | 未标注（文档标题 2026-08-31 用户验收反馈） |
+| A-061 | 验收问题 2 完成后仅留 output_snapshot | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:16 | 未标注（文档标题 2026-08-31 用户验收反馈） |
+| A-062 | 验收反馈问题 5 状态信息残留 | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:17 | 未标注（文档标题 2026-08-31 用户验收反馈） |
+| A-063 | 验收反馈问题 4 失败无法复制报错 | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:18 | 未标注（文档标题 2026-08-31 用户验收反馈） |
+| A-064 | 验收问题 6 provider 数据非官网最新 | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:19 | 未标注（文档标题 2026-08-31 用户验收反馈） |
+| A-065 | 验收反馈问题 7 主画布不联动 | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:20 | 未标注（文档标题 2026-08-31 用户验收反馈） |
+| A-066 | 验收 8 embedding 额度失败断点续跑 | docs/iteration/sprint/2026-08-31-f2-acceptance-findings.MD:21 | 未标注（文档标题 2026-08-31 用户验收反馈） |
+| A-067 | mental-models 阶段暂缓指示 | docs/iteration/sprint/2026-09-12-sprint-16.md:3；docs/iteration/sprint/2026-09-12-sprint-16.md:58 | 2026-09-12 |
+| A-068 | 2026-09-07 排期拍板 | docs/iteration/sprint/2026-09-12-sprint-16.md:3 | 2026-09-07 |
+| A-069 | Sprint-15 验收通过并关闭 | docs/iteration/sprint/2026-09-12-sprint-16.md:3 | 2026-09-10 |
+| A-070 | 拍板 dashscope 默认模型 | docs/iteration/sprint/2026-09-12-sprint-16.md:69；docs/iteration/sprint/2026-09-12-sprint-16.md:91；docs/iteration/sprint/2026-09-12-sprint-16.md:162 | 2026-09-12 |
+| A-071 | 确认 Sprint-16 两处口径 | docs/iteration/sprint/2026-09-12-sprint-16.md:70；docs/iteration/sprint/2026-09-12-sprint-16.md:292 | 2026-09-20（UTC+8，网络时间校准） |
+| A-072 | 走查完成未通过 0 项 | docs/iteration/sprint/2026-09-12-sprint-16.md:80；docs/iteration/sprint/2026-09-12-sprint-16.md:284；docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD:11；docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD:41 | 2026-09-20（UTC+8） |
+| A-073 | 走查提出新增问题 2 项 | docs/iteration/sprint/2026-09-12-sprint-16.md:284；docs/iteration/sprint/2026-09-12-sprint-16.md:80 | 2026-09-20（UTC+8） |
+| A-074 | 走查存疑 6 项 | docs/iteration/sprint/2026-09-12-sprint-16.md:284 | 2026-09-20（UTC+8） |
+| A-075 | Sprint-16 HOLD 决定 | docs/iteration/sprint/2026-09-12-sprint-16.md:291；docs/iteration/sprint/2026-09-12-sprint-16.md:275；docs/iteration/sprint/2026-09-12-sprint-16.md:196；docs/iteration/sprint/2026-09-12-sprint-16.md:210；docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD:43；docs/iteration/ROADMAP.MD:13 | 2026-09-21（UTC+8）；2026-09-21 |
+| A-076 | HOLD 解除 | docs/iteration/sprint/2026-09-12-sprint-16.md:83 | 2026-09-21 |
+| A-077 | 批准执行关闭手续 | docs/iteration/sprint/2026-09-12-sprint-16.md:249；docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD:90 | 2026-09-21 |
+| A-078 | 批准关闭 Sprint-16 | docs/iteration/sprint/2026-09-12-sprint-16.md:274；docs/iteration/sprint/2026-09-12-sprint-16.md:84；docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD:11 | 2026-09-21 |
+| A-079 | 决策② F-AC13/14 进 S17 | docs/iteration/sprint/2026-09-12-sprint-16.md:291；docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD:106 | 2026-09-21（UTC+8） |
+| A-080 | 决策③ F-AC15 进 Sprint-17 | docs/iteration/sprint/2026-09-12-sprint-16.md:291；docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD:106 | 2026-09-21（UTC+8） |
+| A-081 | 决策⑥ Retro②④进 Sprint-17 | docs/iteration/sprint/2026-09-12-sprint-16.md:291；docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD:106 | 2026-09-21（UTC+8） |
+| A-082 | 决策⑦ est 安全系数可配置 | docs/iteration/sprint/2026-09-12-sprint-16.md:291 | 2026-09-21（UTC+8） |
+| A-083 | 决策⑧ 反向对照规则固化 | docs/iteration/sprint/2026-09-12-sprint-16.md:291 | 2026-09-21（UTC+8） |
+| A-084 | 决策⑨ 自查修复路径穿越口 | docs/iteration/sprint/2026-09-12-sprint-16.md:291 | 2026-09-21（UTC+8） |
+| A-085 | 提出子代理中断疑虑 | docs/iteration/sprint/2026-09-12-sprint-16.md:199 | 2026-09-21 |
+| A-086 | 插入 A-M11 记卡 | docs/iteration/sprint/2026-09-12-sprint-16.md:259 | 2026-09-21 |
+| A-087 | 已定 A-M11 目标穷举先做 | docs/iteration/sprint/2026-09-12-sprint-16.md:133 | 2026-09-21（快照） |
+| A-088 | 拍板 TG-14 提升独立卡 | docs/iteration/sprint/2026-09-12-sprint-16.md:140；docs/iteration/sprint/2026-09-12-sprint-16.md:151 | 2026-09-21 |
+| A-089 | 拍板开新卡 TG-13 | docs/iteration/sprint/2026-09-12-sprint-16.md:141；docs/iteration/sprint/2026-09-12-sprint-16.md:152 | 2026-09-21 |
+| A-090 | "待立卡项"处置拍板 | docs/iteration/sprint/2026-09-12-sprint-16.md:152 | 2026-09-21 |
+| A-091 | 要求记全收尾补充 | docs/iteration/sprint/2026-09-12-sprint-16.md:97 | 2026-09-21 |
+| A-092 | 采纳四条度量约束 | docs/iteration/sprint/2026-09-12-sprint-16.md:123 | 2026-09-21 |
+| A-093 | 插卡 TG-12 文档漂移复盘 | docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD:106 | 2026-09-21 |
+| A-094 | 待你拍板：hint 文案去向（仍未决策） | docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:17；docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:301 | 未标注 |
+| A-095 | 拍板口径①：定期刷新=14 天 | docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:32；docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:36 | 未标注 |
+| A-096 | 拍板口径②：夜间套件周频¥10上限 | docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:32；docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:37 | 未标注 |
+| A-097 | 拍板 dashscope 模型 qwen3.5-omni-plus | docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:202；docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:268 | 未标注 |
+| A-098 | 暂缓 mental-models（MM-1~5） | docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:305 | 未标注 |
+| A-099 | 用户走查结论：未通过 = 暂未发现 | docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:328；docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:362 | 2026-09-20，UTC+8 |
+| A-100 | 新增问题 1：节点按钮需点 2~3 次 | docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:368 | 2026-09-20，UTC+8 |
+| A-101 | 新增问题 2：复制答案与复制 output 联动 | docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:369 | 2026-09-20，UTC+8 |
+| A-102 | 存疑 M16-5：旧报告是否受模型更新影响 | docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:375 | 2026-09-20，UTC+8 |
+| A-103 | 存疑 CK-1 前端能否看 checkpoint | docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:376 | 2026-09-20，UTC+8 |
+| A-104 | 存疑 TG-1~TG-5：脚本校验项跳过 | docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:377 | 2026-09-20，UTC+8 |
+| A-105 | 存疑 B-9：预算超限场景跳过 | docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:378 | 2026-09-20，UTC+8 |
+| A-106 | 存疑 B-10：到期指代不明 | docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:379 | 2026-09-20，UTC+8 |
+| A-107 | 存疑 B-15：深度阈值为何是命令传参 | docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:380 | 2026-09-20，UTC+8 |
+| A-108 | 付费项口径：先执行须先报花费并获批 | docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:382；docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD:384 | 2026-09-20 |
+| A-109 | 审定治理批计划 D1~D8 | docs/iteration/sprint/2026-09-21-sprint-17.md:4 | 2026-09-21 |
+| A-110 | 批准插入 TG-15（2.5 点） | docs/iteration/sprint/2026-09-21-sprint-17.md:24；docs/iteration/sprint/2026-09-21-sprint-17.md:85；docs/iteration/sprint/2026-09-21-sprint-17.md:147 | 2026-09-23 |
+| A-111 | 批准开卡 TG-17 | docs/iteration/sprint/2026-09-21-sprint-17.md:5；docs/iteration/sprint/2026-09-21-sprint-17.md:105 | 2026-09-23 |
+| A-112 | TG-15⑥ 顺延（用户授权处置） | docs/iteration/sprint/2026-09-21-sprint-17.md:73；docs/iteration/sprint/2026-09-21-sprint-17.md:103；docs/iteration/sprint/2026-09-21-sprint-17.md:128 | 2026-09-23 |
+| A-113 | 执行会话单一负责 / 工作收归本会话 | docs/iteration/sprint/2026-09-21-sprint-17.md:8；docs/iteration/sprint/2026-09-21-sprint-17.md:361 | 2026-09-25 |
+| A-114 | 并行会话交付质量判定（U1~U4） | docs/iteration/sprint/2026-09-21-sprint-17.md:361 | 2026-09-25 |
+| A-115 | 15 个提交先不推待独立审核 | docs/iteration/sprint/2026-09-21-sprint-17.md:361；docs/iteration/sprint/2026-09-21-sprint-17.md:8 | 2026-09-25 |
+| A-116 | A1 关闭冻结与勘误许可 | docs/iteration/sprint/2026-09-21-sprint-17.md:182；docs/iteration/sprint/2026-09-21-sprint-17.md:331 | 未标注（所在签核节首行标 2026-09-25（UTC+8 `15:52`，网络时间核验）） |
+| A-117 | A2 同步 PR 授权 | docs/iteration/sprint/2026-09-21-sprint-17.md:183；docs/iteration/sprint/2026-09-21-sprint-17.md:275 | 未标注（所在签核节首行标 2026-09-25（UTC+8 `15:52`，网络时间核验）） |
+| A-118 | A3 复核强度维持 | docs/iteration/sprint/2026-09-21-sprint-17.md:184；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:203 | 未标注（所在签核节首行标 2026-09-25（UTC+8 `15:52`，网络时间核验））；2026-09-25 |
+| A-119 | B1① 关闭税升为 G2 头号指标 | docs/iteration/sprint/2026-09-21-sprint-17.md:174；docs/iteration/sprint/2026-09-21-sprint-17.md:185 | 未标注（所在签核节首行标 2026-09-25（UTC+8 `15:52`，网络时间核验）） |
+| A-120 | B2① 扣分口径确认 | docs/iteration/sprint/2026-09-21-sprint-17.md:173；docs/iteration/sprint/2026-09-21-sprint-17.md:186；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:205 | 未标注（所在签核节首行标 2026-09-25（UTC+8 `15:52`，网络时间核验））；2026-09-25 |
+| A-121 | B3① G2 上限 ≤14 点 | docs/iteration/sprint/2026-09-21-sprint-17.md:175；docs/iteration/sprint/2026-09-21-sprint-17.md:187 | 未标注（所在签核节首行标 2026-09-25（UTC+8 `15:52`，网络时间核验）） |
+| A-122 | B4② TG-18 与机制缺口排进 G2 | docs/iteration/sprint/2026-09-21-sprint-17.md:176；docs/iteration/sprint/2026-09-21-sprint-17.md:188 | 未标注（所在签核节首行标 2026-09-25（UTC+8 `15:52`，网络时间核验）） |
+| A-123 | P-d=4 冻结搭车项 | docs/iteration/sprint/2026-09-21-sprint-17.md:71；docs/iteration/sprint/2026-09-21-sprint-17.md:72；docs/iteration/sprint/2026-09-21-sprint-17.md:89；docs/iteration/sprint/2026-09-21-sprint-17.md:133；docs/iteration/sprint/2026-09-21-sprint-17.md:134 | 2026-09-25 |
+| A-124 | TG-17 前移为关闭阻塞项 | docs/iteration/sprint/2026-09-21-sprint-17.md:74；docs/iteration/sprint/2026-09-21-sprint-17.md:89；docs/iteration/sprint/2026-09-21-sprint-17.md:147；docs/iteration/sprint/2026-09-21-sprint-17.md:323 | 2026-09-25 |
+| A-125 | 双盲抽查用户裁定 | docs/iteration/sprint/2026-09-21-sprint-17.md:212 | 未标注 |
+| A-126 | 三查锚点必填（用户可否决） | docs/iteration/sprint/2026-09-21-sprint-17.md:121 | 未标注 |
+| A-127 | B4② 立项依据（TG-19） | docs/iteration/sprint/2026-09-25-sprint-18.md:26；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:204；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:47 | 2026-09-25 |
+| A-128 | TG-17 前移裁定 | docs/iteration/sprint/2026-09-25-sprint-18.md:29；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:50 | 2026-09-25 |
+| A-129 | A-M12 成卡（编辑边界） | docs/iteration/sprint/2026-09-25-sprint-18.md:30；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:51 | 2026-09-23 |
+| A-130 | A-M11 成卡（工作流治理） | docs/iteration/sprint/2026-09-25-sprint-18.md:31；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:52 | 2026-09-21 |
+| A-131 | 用户插入 TG-20 | docs/iteration/sprint/2026-09-25-sprint-18.md:32；docs/iteration/sprint/2026-09-25-sprint-18.md:50；docs/iteration/sprint/2026-09-25-sprint-18.md:61；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:53；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:54；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:72 | 2026-09-25 |
+| A-132 | 用户审定 D1~D8 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:3 | 2026-09-21 |
+| A-133 | 三指标＋红线即死拍板 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:22 | 2026-09-21 |
+| A-134 | 观察期长度待用户确认 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:32 | 2026-09-21 |
+| A-135 | 已采纳 v0（数值不写死） | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:61 | 2026-09-25 |
+| A-136 | 恢复须用户二次确认 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:74；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:86 | 2026-09-21 |
+| A-137 | §2.3 工具口径裁定 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:110 | 2026-09-21 |
+| A-138 | G1 搭车项批准（D4） | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:118；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:166 | 2026-09-21 |
+| A-139 | D5 MM 与 G2 并行 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:120；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:167 | 2026-09-21 |
+| A-140 | 产品侧插入项待权衡 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:126 | 未标注 |
+| A-141 | U2 变更/延期协议 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:145 | 2026-09-25 |
+| A-142 | 抽查按双盲 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:147 | 2026-09-21 |
+| A-143 | D1 接受三指标阈值 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:163 | 2026-09-21 |
+| A-144 | D8 时间盒 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:172 | 2026-09-21 |
+| A-145 | B1① M1 升为头号复测指标 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:200；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:22 | 2026-09-25 |
+| A-146 | M1+M2+M3 组合不变 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:201 | 2026-09-25 |
+| A-147 | F-AC13/14 继续冻结 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:202；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:13；docs/iteration/sprint/2026-09-25-sprint-18.md:37 | 2026-09-25 |
+| A-148 | 派单纪律一律留档 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:206 | 2026-09-25 |
+| A-149 | 五项待用户裁定 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:208；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:6 | 2026-09-25 |
+| A-150 | §3 G2 行仍待裁定 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:209 | 2026-09-25 |
+| A-151 | D4 裁定 §6 优先 | docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:100；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:101；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:102；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:103；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:104；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:105；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:119；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:39；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:128；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:130；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:131；docs/iteration/sprint/2026-09-25-sprint-18.md:11 | 2026-09-25 |
+| A-152 | 口径真源 B1①~A3 | docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:4 | 2026-09-25 |
+| A-153 | 机制缺口同样留档定规 | docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:20；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:126 | 2026-09-25 |
+| A-154 | D3 先跑 tech-research | docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:52；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:123；docs/iteration/sprint/2026-09-25-sprint-18.md:31 | 2026-09-25 |
+| A-155 | 点数口径已裁定 | docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:57 | 2026-09-25 |
+| A-156 | D1 裁定 12 点含 A-M11 | docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:121 | 2026-09-25 |
+| A-157 | D6 已被 D2 吸收 | docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:125 | 2026-09-25 |
+| A-158 | MM 是否启动由用户另定 | docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:13 | 2026-09-25 |
+| A-159 | 用户要求卡片来源前缀 + UTC+8 口径 | docs/iteration/phases/testing-governance/backlog.MD:7；docs/iteration/phases/refactor-analysis/backlog.MD:6；docs/iteration/phases/mental-models/backlog.MD:7；docs/iteration/phases/testing-governance/2026-09-25-governance-exit-evidence.MD:16 | 2026-09-20 |
+| A-160 | TG-7 走查演示发现（BOM 事故立案） | docs/iteration/phases/testing-governance/cards/TG-7.md:13 | 2026-09-20（UTC+8） |
+| A-161 | 用户确认 TG-8 进 Sprint-17 | docs/iteration/phases/testing-governance/cards/TG-8.md:13；docs/iteration/phases/testing-governance/cards/TG-8.md:8；docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-learned.MD:103；docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-learned.MD:160 | 2026-09-21 |
+| A-162 | 用户确认 TG-9 进 Sprint-17 | docs/iteration/phases/testing-governance/cards/TG-9.md:13 | 2026-09-21 |
+| A-163 | TG-11 D2 用户答：两者结合 | docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD:99；docs/iteration/phases/testing-governance/2026-09-23-tg11-retro.MD:49 | 2026-09-21 |
+| A-164 | TG-11 D3 定稿：三查锚点写入 DoD 必填 | docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD:100 | 2026-09-23 |
+| A-165 | TG-17 前移为 Sprint-17 关闭阻塞 | docs/iteration/phases/testing-governance/cards/TG-17.md:7；docs/iteration/phases/testing-governance/cards/TG-17.md:26；docs/iteration/phases/testing-governance/backlog.MD:31 | 2026-09-25 |
+| A-166 | TG-17 G2 追加条目（B4②） | docs/iteration/phases/testing-governance/cards/TG-17.md:71 | 2026-09-25 |
+| A-167 | TG-18 棘轮破例须交用户裁决 | docs/iteration/phases/testing-governance/cards/TG-18.md:25 | 未标注 |
+| A-168 | TG-19 用户 09-25 裁定 B4② | docs/iteration/phases/testing-governance/cards/TG-19.md:13；docs/iteration/phases/testing-governance/cards/TG-19.md:7；docs/iteration/phases/testing-governance/backlog.MD:33；docs/iteration/phases/agents-infra/cards/A-M13.md:7；docs/iteration/phases/agents-infra/backlog.MD:46 | 2026-09-25 |
+| A-169 | TG-20 登记册条目字段要求（判定单位写死） | docs/iteration/phases/testing-governance/cards/TG-20.md:22 | 未标注 |
+| A-170 | TG-20 验收判据②：原文缺失必须标二手转述 | docs/iteration/phases/testing-governance/cards/TG-20.md:32 | 未标注 |
+| A-171 | 用户 2026-09-25 三项决定 | docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:179 | 2026-09-25 |
+| A-172 | 用户裁定决策包 A9（P-a~P-d） | docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:189；docs/iteration/phases/testing-governance/2026-09-25-d2d3-independent-review.MD:89；docs/iteration/phases/testing-governance/2026-09-25-d2d3-independent-review.MD:87 | 2026-09-25 |
+| A-173 | 用户约束：不跑 run_suite | docs/iteration/phases/testing-governance/2026-09-25-open-items-check.MD:34；docs/iteration/phases/testing-governance/2026-09-25-open-items-check.MD:149 | 2026-09-25 |
+| A-174 | TG-15⑥ 状态口径需用户裁定 | docs/iteration/phases/testing-governance/2026-09-25-open-items-check.MD:131 | 2026-09-25 |
+| A-175 | F-AC14 拍板 Sprint-17 插入 | docs/iteration/phases/refactor-analysis/cards/F-AC14.md:13；docs/iteration/phases/refactor-analysis/cards/F-AC14.md:7；docs/iteration/phases/refactor-analysis/backlog.MD:35 | 2026-09-21 |
+| A-176 | F-AC15 拍板 v1 范围分区 + 备 use-case | docs/iteration/phases/refactor-analysis/cards/F-AC15.md:13；docs/iteration/phases/refactor-analysis/cards/F-AC15.md:7；docs/iteration/phases/refactor-analysis/backlog.MD:36 | 2026-09-21 |
+| A-177 | F-AC16 用户 2026-09-21 暂不动 | docs/iteration/phases/refactor-analysis/cards/F-AC16.md:22 | 2026-09-21 |
+| A-178 | F-AC17 用户插入时间戳 | docs/iteration/phases/refactor-analysis/cards/F-AC17.md:13 | 2026-09-21（UTC+8） |
+| A-179 | M18 用户要求 v1 可靠到可做原型验证 | docs/iteration/phases/refactor-analysis/cards/M18.md:13 | 2026-09-21 |
+| A-180 | M18 用户 2026-09-21 暂不动 | docs/iteration/phases/refactor-analysis/cards/M18.md:22 | 2026-09-21 |
+| A-181 | 走查 CK-1 存疑（F-AC16） | docs/iteration/phases/refactor-analysis/cards/F-AC16.md:13 | 2026-09-20（UTC+8） |
+| A-182 | 走查 B-15 存疑（F-AC15） | docs/iteration/phases/refactor-analysis/cards/F-AC15.md:13 | 2026-09-20（UTC+8） |
+| A-183 | F-AC13 走查新增问题① | docs/iteration/phases/refactor-analysis/cards/F-AC13.md:13 | 2026-09-20（UTC+8） |
+| A-184 | F-AC14 走查新增问题② | docs/iteration/phases/refactor-analysis/cards/F-AC14.md:13 | 2026-09-20（UTC+8） |
+| A-185 | F-AC8 终态：dashscope model 用户拍板 | docs/iteration/phases/refactor-analysis/cards/F-AC8.md:7；docs/iteration/phases/refactor-analysis/backlog.MD:29；docs/iteration/pre-research/2026-08-31-domain-governance.MD:72 | 未标注；2026-08-31 |
+| A-186 | F-AC11 tooltip 按用户要求移除 | docs/iteration/phases/refactor-analysis/cards/F-AC11.md:7；docs/iteration/phases/refactor-analysis/backlog.MD:32 | 未标注 |
+| A-187 | F-AC6 用户复验通过 | docs/iteration/phases/refactor-analysis/cards/F-AC6.md:7；docs/iteration/phases/refactor-analysis/backlog.MD:27 | 未标注 |
+| A-188 | R-C / E3 v1 需用户 review（Q3 闸门） | docs/iteration/phases/refactor-analysis/refactor-analysis.MD:53；docs/iteration/phases/refactor-analysis/roadmap.MD:19；docs/iteration/phases/refactor-analysis/roadmap.MD:36；docs/iteration/phases/refactor-analysis/cards/R-C.md:13；docs/iteration/phases/refactor-analysis/cards/R-E3.md:13；docs/iteration/phases/refactor-analysis/backlog.MD:67；docs/5-VERSIONS.MD:41；docs/iteration/ROADMAP.MD:26 | 未标注 |
+| A-189 | M3 用户指示未处理 | docs/iteration/phases/refactor-analysis/cards/M3.md:7；docs/iteration/phases/refactor-analysis/backlog.MD:47；docs/iteration/phases/refactor-analysis/roadmap.MD:28；docs/iteration/ROADMAP.MD:17 | 未标注 |
+| A-190 | MM-2 Q3：robust & flexibility 硬约束 | docs/iteration/phases/mental-models/cards/MM-2.md:13；docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:58；docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:67 | 2026-09-07 |
+| A-191 | MM-3 用户 2026-09-07（来源） | docs/iteration/phases/mental-models/cards/MM-3.md:13 | 2026-09-07 |
+| A-192 | MM-4 用户 2026-09-07（来源③） | docs/iteration/phases/mental-models/cards/MM-4.md:13 | 2026-09-07 |
+| A-193 | MM-5 种子模型使用时机（2026-09-07） | docs/iteration/phases/mental-models/cards/MM-5.md:13；docs/iteration/phases/mental-models/backlog.MD:19 | 2026-09-07 |
+| A-194 | 走查结论：未通过 = 暂未发现 | docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-runs.MD:141 | 2026-09-20（UTC+8） |
+| A-195 | 走查反馈：验收偏代码层、未覆盖交互面 | docs/iteration/phases/refactor-analysis/2026-09-21-fac13-14-impact.MD:107 | 2026-09-20 |
+| A-196 | 用户中途追加硬约束：禁跑自举/真实 API | docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-runs.MD:95 | 2026-09-20 |
+| A-197 | 用户禁止调用真实 API（成本敏感） | docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-runs.MD:100 | 2026-09-20 |
+| A-198 | TG-11 关键判断：交付必须含可执行闸门 | docs/iteration/phases/testing-governance/cards/TG-11.md:24 | 2026-09-21 |
+| A-199 | A-M11 口径：按持久化修复动作类型划域 | docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-learned.MD:13 | 未标注 |
+| A-200 | 用户决定 1.24 归 TG-12 执行 | docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-learned.MD:152 | 2026-09-21 |
+| A-201 | agents-infra 阶段 2 陈旧注记被指出 | docs/iteration/phases/agents-infra/backlog.MD:48 | 2026-09-21 |
+| A-202 | 子代理越界改写历史 Sprint 文档的处置 | docs/iteration/phases/agents-infra/2026-09-23-subagent-scope-breach-case.MD:3 | 未标注 |
+| A-203 | 同步节奏定稿（push/PR 两层） | docs/1-WORKFLOW.MD:48 | 2026-08-31 |
+| A-204 | 走查验收通过前不得建 PR | docs/1-WORKFLOW.MD:52 | 2026-09-12 |
+| A-205 | 调研前置：先跑深度调研 | docs/1-WORKFLOW.MD:63 | 2026-08-30 |
+| A-206 | 时间盒与过程监管制度化 | docs/1-WORKFLOW.MD:65 | 2026-08-30 |
+| A-207 | 自主开卡制 | docs/1-WORKFLOW.MD:68 | 2026-08-30 |
+| A-208 | Sprint 度量与规模约束四条 | docs/1-WORKFLOW.MD:73 | 2026-09-21 |
+| A-209 | 经验教训总结关闭前置 | docs/1-WORKFLOW.MD:83 | 2026-08-30 |
+| A-210 | fan-out 顺序与条件可调 | docs/1-WORKFLOW.MD:85 | 未标注 |
+| A-211 | 卡片来源类型前缀与时间口径 | docs/1-WORKFLOW.MD:391；docs/1-WORKFLOW.MD:401 | 2026-09-20 |
+| A-212 | 日期必须每轮核验 | docs/1-WORKFLOW.MD:403 | 2026-09-23 |
+| A-213 | 术语：台账只指独立文件 | docs/1-WORKFLOW.MD:409 | 2026-09-21 |
+| A-214 | 子代理派单纪律留档 | docs/1-WORKFLOW.MD:417 | 2026-09-25 |
+| A-215 | 机制缺口同样留档 | docs/1-WORKFLOW.MD:425 | 2026-09-25 |
+| A-216 | 执行点声明：中断留痕半机制化 | docs/1-WORKFLOW.MD:429 | 2026-09-25 |
+| A-217 | 执行点声明：structure-guard prose-only | docs/1-WORKFLOW.MD:415 | 2026-09-25 |
+| A-218 | 预研上下文传递制度化 | docs/1-WORKFLOW.MD:432；docs/1-WORKFLOW.MD:434 | 2026-08-31 |
+| A-219 | 调研分级 P1~P3 拍板 | docs/1-WORKFLOW.MD:439 | 2026-09-07 |
+| A-220 | 用户批准打包插队 Sprint-7 | docs/3-LEARNED.MD:145 | 未标注（标题含 Sprint-7） |
+| A-221 | 审查范围不得默认收窄 | docs/3-LEARNED.MD:157；docs/3-LEARNED.MD:158；docs/3-LEARNED.MD:160 | 未标注（标题含 Sprint-8 收尾） |
+| A-222 | 中间态文件不入库 | docs/3-LEARNED.MD:158；docs/3-LEARNED.MD:160 | 未标注（标题含 Sprint-8 收尾） |
+| A-223 | 双 key 共存走通 openai 全流程 | docs/3-LEARNED.MD:148；docs/3-LEARNED.MD:149 | 未标注（标题含 Sprint-7） |
+| A-224 | M3 按用户指示留待后续 | docs/5-VERSIONS.MD:35 | 未标注 |
+| A-225 | Sprint-15 用户验收通过 | docs/5-VERSIONS.MD:39 | 2026-09-10 |
+| A-226 | Sprint-16 用户确认关闭与走查 | docs/5-VERSIONS.MD:40 | 2026-09-21 |
+| A-227 | A-M11 用户插入 | docs/iteration/ROADMAP.MD:14 | 2026-09-21 |
+| A-228 | 治理批用户四项口径后成稿 | docs/iteration/ROADMAP.MD:18 | 2026-09-21 |
+| A-229 | MM-6 用户插入 | docs/iteration/ROADMAP.MD:27 | 2026-09-20 |
+| A-230 | 走查修复批次待用户确认排期 | docs/iteration/ROADMAP.MD:28 | 2026-09-20 |
+| A-231 | TG-6/7/11/12 用户插入 | docs/iteration/ROADMAP.MD:29 | 2026-09-20；2026-09-21 |
+| A-232 | agents-infra 原规划用户批准冻结 | docs/iteration/phases/agents-infra/roadmap.MD:6 | 2026-08-30 |
+| A-233 | 用户意见①按职能划分评审 | docs/iteration/phases/agents-infra/roadmap.MD:11 | 2026-08-30 |
+| A-234 | 用户意见②用例表 ③Sprint 化 | docs/iteration/phases/agents-infra/roadmap.MD:11；docs/iteration/phases/agents-infra/roadmap.MD:14 | 2026-08-30 |
+| A-235 | SQLite 替代 MongoDB 用户确认 | docs/iteration/phases/agents-infra/roadmap.MD:12；docs/iteration/phases/agents-infra/roadmap.MD:20 | 2026-08-30 |
+| A-236 | 用户评审三条修改意见 | docs/iteration/phases/agents-infra/roadmap.MD:20 | 2026-08-30 |
+| A-237 | 用户转达 main 未保护提示 | docs/iteration/phases/agents-infra/roadmap.MD:26 | 2026-08-30 |
+| A-238 | Sprint-9 验收整改用户发现 2 问题 | docs/iteration/phases/agents-infra/roadmap.MD:27 | 2026-08-30 |
+| A-239 | 要求 tech-research 与 spec 英文化 | docs/iteration/phases/agents-infra/roadmap.MD:28 | 2026-08-30 |
+| A-240 | M3 按用户指示保持未完成 | docs/iteration/phases/refactor-analysis/roadmap.MD:28 | 2026-08-30 |
+| A-241 | 用户建议 e2e 测试同步更新 | docs/iteration/pre-research/tech/2026-08-31-testing-governance.MD:8 | 2026-08-31 |
+| A-242 | P3 需用户拍板 API 成本预算 | docs/iteration/pre-research/tech/2026-08-31-testing-governance.MD:35 | 2026-08-31 |
+| A-243 | 测试治理 D1 范围=A | docs/iteration/pre-research/tech/2026-08-31-testing-governance.MD:54；docs/iteration/pre-research/tech/2026-08-31-testing-governance.MD:78 | 2026-08-31 |
+| A-244 | 测试治理 D2 去漂移另立卡 | docs/iteration/pre-research/tech/2026-08-31-testing-governance.MD:55 | 2026-08-31 |
+| A-245 | 测试治理 D3 参数预决 | docs/iteration/pre-research/tech/2026-08-31-testing-governance.MD:56 | 2026-08-31 |
+| A-246 | 测试治理 D4 现在开卡 | docs/iteration/pre-research/tech/2026-08-31-testing-governance.MD:57 | 2026-08-31 |
+| A-247 | 测试治理采纳范围：继续探讨 | docs/iteration/pre-research/tech/2026-08-31-testing-governance.MD:52 | 2026-08-31 |
+| A-248 | 预研结果必须作规划上下文 | docs/iteration/pre-research/tech/2026-08-31-testing-governance.MD:53 | 2026-08-31 |
+| A-249 | 测试治理决策已拍板汇总 | docs/iteration/pre-research/tech/2026-08-31-testing-governance.MD:78 | 2026-08-31 |
+| A-250 | 矛盾以翻案建议交用户裁决 | docs/iteration/pre-research/tech/2026-08-31-testing-governance.MD:62 | 未标注 |
+| A-251 | 模型扩展须用户确认 | docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:46 | 2026-09-07 |
+| A-252 | 发版排期与参考案例 | docs/iteration/pre-research/tech/2026-09-07-release-practice.MD:8；docs/iteration/pre-research/tech/2026-09-07-release-practice.MD:9 | 2026-09-07 |
+| A-253 | 发版 D1 版本号保留现状 | docs/iteration/pre-research/tech/2026-09-07-release-practice.MD:32；docs/iteration/pre-research/tech/2026-09-07-release-practice.MD:54 | 2026-09-07 |
+| A-254 | 发版 D2 源码包+免安装包 | docs/iteration/pre-research/tech/2026-09-07-release-practice.MD:36；docs/iteration/pre-research/tech/2026-09-07-release-practice.MD:54 | 2026-09-07 |
+| A-255 | 发版 D3 中文五组 notes | docs/iteration/pre-research/tech/2026-09-07-release-practice.MD:39；docs/iteration/pre-research/tech/2026-09-07-release-practice.MD:54 | 2026-09-07 |
+| A-256 | 发版 D4 rc 起步 | docs/iteration/pre-research/tech/2026-09-07-release-practice.MD:42；docs/iteration/pre-research/tech/2026-09-07-release-practice.MD:54 | 2026-09-07 |
+| A-257 | 发版 D5 tag 与自动化 | docs/iteration/pre-research/tech/2026-09-07-release-practice.MD:45；docs/iteration/pre-research/tech/2026-09-07-release-practice.MD:54 | 2026-09-07 |
+| A-258 | 发版决策记录三行 | docs/iteration/pre-research/tech/2026-09-07-release-practice.MD:52；docs/iteration/pre-research/tech/2026-09-07-release-practice.MD:53；docs/iteration/pre-research/tech/2026-09-07-release-practice.MD:54 | 2026-09-07 |
+| A-259 | 调研工作流三目标提出 | docs/iteration/pre-research/tech/2026-09-07-research-workflow.MD:8；docs/iteration/pre-research/tech/2026-09-07-research-workflow.MD:9；docs/iteration/pre-research/tech/2026-09-07-research-workflow.MD:10；docs/iteration/pre-research/tech/2026-09-07-research-workflow.MD:11 | 2026-09-07 |
+| A-260 | 调研级别用户可覆盖 | docs/iteration/pre-research/tech/2026-09-07-research-workflow.MD:23 | 2026-09-07 |
+| A-261 | 调研工作流 P1 放 Sprint-16 | docs/iteration/pre-research/tech/2026-09-07-research-workflow.MD:58 | 2026-09-07 |
+| A-262 | 调研工作流 P2 主代理直执行 | docs/iteration/pre-research/tech/2026-09-07-research-workflow.MD:59 | 2026-09-07 |
+| A-263 | 调研工作流 P3 阈值可调 | docs/iteration/pre-research/tech/2026-09-07-research-workflow.MD:60 | 2026-09-07 |
+| A-264 | lint 依赖须用户裁定取舍 | docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD:3 | 2026-09-23（UTC+8）（第 4 行逐字：收集于 **2026-09-23（UTC+8）**） |
+| A-265 | 裁定后执行清单六项 | docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD:140；docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD:115；docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD:116；docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD:117；docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD:118；docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD:119；docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD:120 | 2026-09-21 |
+| A-266 | L6 许可证口径由用户接受 | docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD:149 | 2026-09-21 |
+| A-267 | lint 各包处置需用户确认 | docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD:86；docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD:63；docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD:105 | 未标注 |
+| A-268 | 草案中用户 D7 附加前提 | docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.search-only-draft.MD:5 | 2026-09-21 |
+| A-269 | 草案最终解释权归用户 | docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.search-only-draft.MD:142 | 未标注 |
+| A-270 | 草案列六项需用户决策 | docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.search-only-draft.MD:178；docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.search-only-draft.MD:179；docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.search-only-draft.MD:180；docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.search-only-draft.MD:181；docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.search-only-draft.MD:182；docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.search-only-draft.MD:183 | 未标注 |
+| A-271 | 多领域方案讨论线提出 | docs/iteration/pre-research/2026-08-31-domain-governance.MD:8 | 2026-08-31 |
+| A-272 | 要求①各领域同流程 | docs/iteration/pre-research/2026-08-31-domain-governance.MD:9；docs/iteration/pre-research/2026-08-31-domain-governance.MD:41 | 2026-08-31 |
+| A-273 | 要求②各域独立 subagent | docs/iteration/pre-research/2026-08-31-domain-governance.MD:10；docs/iteration/pre-research/2026-08-31-domain-governance.MD:42 | 2026-08-31 |
+| A-274 | 要求③主动完善协作方式 | docs/iteration/pre-research/2026-08-31-domain-governance.MD:11；docs/iteration/pre-research/2026-08-31-domain-governance.MD:43 | 2026-08-31 |
+| A-275 | 领域路由须用户批准实施 | docs/iteration/pre-research/2026-08-31-domain-governance.MD:24；docs/iteration/pre-research/2026-08-31-domain-governance.MD:30 | 未标注 |
+| A-276 | 领域归属争议由用户裁决 | docs/iteration/pre-research/2026-08-31-domain-governance.MD:25 | 未标注 |
+| A-277 | 协作改进提案交用户裁决 | docs/iteration/pre-research/2026-08-31-domain-governance.MD:46；docs/iteration/pre-research/2026-08-31-domain-governance.MD:49 | 2026-08-31 |
+| A-278 | 用户拍板底座提前批次 | docs/iteration/pre-research/2026-08-31-domain-governance.MD:70 | 2026-08-31 |
+| A-279 | 预研索引：测试治理已拍板 | docs/iteration/pre-research/README.md:11 | 未标注 |
+| A-280 | 预研索引：发版实践已拍板 | docs/iteration/pre-research/README.md:12 | 未标注 |
+| A-281 | 预研索引：调研工作流 P1~P3 | docs/iteration/pre-research/README.md:13 | 未标注 |
+| A-282 | 领域壳启用时机由用户启动 | docs/iteration/pre-research/product/README.md:4；docs/iteration/pre-research/marketing/README.md:4 | 未标注 |
 
 ## 5. 违反裁决的事故索引（引用事故档，不在此复制事实）
 
