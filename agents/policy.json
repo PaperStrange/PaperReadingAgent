@@ -255,20 +255,21 @@
     "_comment": "棘轮（ratchet）基线：这些**历史 Sprint/验收文档**里的表格结构缺陷是既存的（2026-09-23 扩覆盖时首次被扫到，共 15 处：内容里的管道未转义 / 表头与数据行列数不符）。避免为了让闸门变绿而改写已关闭 Sprint 的历史记录（2026-09-23 实测过一次越界改写，已 revert）。A2 修法（finding M-a/N2/R3，2026-09-25）：**按文件设上限**——`files` 由路径列表改为 `{路径: 缺陷数上限}`，闸门对基线文件也判 `len(found) > cap → FAIL`（棘轮只许变紧：上限只减不增，且**不许用「修好一处、新增一处」把总量顶回上限**——上限值本身只能在重评基线时下调）。上限来源＝各文件实测缺陷数。**新文件/新改动一律判失败**；清这批历史债需另开卡逐处人工修（每处需人判：补表头列 / 转义内容管道 / 合并单元格）。",
     "review_by": "2026-10-31",
     "files": {
-      "docs/iteration/sprint/2026-08-30-sprint-6.md": 1,
-      "docs/iteration/sprint/2026-09-07-sprint-15.md": 12,
-      "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD": 1,
-      "docs/iteration/sprint/2026-09-12-sprint-16.md": 1
+      "docs/iteration/sprint/2026-08-30-sprint-6.md": 0,
+      "docs/iteration/sprint/2026-09-07-sprint-15.md": 0,
+      "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD": 0,
+      "docs/iteration/sprint/2026-09-12-sprint-16.md": 0
     },
     "measured_at": "2026-09-25",
     "measured_value": {
-      "docs/iteration/sprint/2026-08-30-sprint-6.md": 1,
-      "docs/iteration/sprint/2026-09-07-sprint-15.md": 12,
-      "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD": 1,
-      "docs/iteration/sprint/2026-09-12-sprint-16.md": 1
+      "docs/iteration/sprint/2026-08-30-sprint-6.md": 0,
+      "docs/iteration/sprint/2026-09-07-sprint-15.md": 0,
+      "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD": 0,
+      "docs/iteration/sprint/2026-09-12-sprint-16.md": 0
     },
-    "_measured_value_why": "M-C：上限来源＝各文件实测缺陷数（本表即 2026-09-25 实测），故 `measured_value` 与 `files` 逐键相等（零余量）。改任一侧都必须带 `rebased_at` + `rebased_reason`（见 verify_gate_integrity.py 的棘轮完整性判据）。",
-    "_tg18_note": "TG-18（D3）：这 15 处历史缺陷逐处修掉后，本键整体删除（棘轮归零不需要上限表）——删键本身也要带 `rebased_at` + 理由。"
+    "rebased_at": "2026-09-25",
+    "rebased_reason": "TG-18：15 处历史表格缺陷逐处清零后，把四个文件的上限由 1/12/1/1 置 0（等价于删表——任何**新增**缺陷即 FAIL，不留静默配额）；依据 verify_md_tables.py 现跑「4 个文件 / 问题 0」。保留本键而非删表：删键会一并丢掉它的 review_by 与 measured_value 判据（M-C 的快照/到期两条），效果反而更松。",
+    "_measured_value_why": "M-C：上限来源＝各文件实测缺陷数。**2026-09-25 之后本表全 0**（TG-18 清零），因此它现在的语义是『这四个文件不得再出现表格缺陷』，与 `artifact_paths.dynamic_ratchet` 的『上限 0 且确无目标』同构。"
   },
   "deduction_rates": {
     "_comment": "§2.1.1（用户 2026-09-25 采纳 v0）：**未闭环 critical/major 的扣率**。这是**政策数据**——不是文档举例、不是脚本常量；闸门与将来的结算调用一律从这里读（政策数据化，见 docs/1-WORKFLOW.MD §6）。守门闸门 = verify/verify_deduction_rates.py；条文见 docs/iteration/sprint/2026-09-21-governance-batch-plan.MD §2.1.1 与 cards/TG-15.md（两处**只引用本键，不复制数值**）。计分口径：以**被判级的卡**为对象，`扣分 = 卡点数 × Σ(未闭环发现的比例)`；比例只按**级别**取，不按条数线性累加。",
