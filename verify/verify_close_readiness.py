@@ -69,7 +69,7 @@ Sprint 身份推不出、该 Sprint 在账本里没有作用域 run、或窗口�
 """
 
 from __future__ import annotations
-VERIFY_META = {'features': 'TG-15 关闭前置闸门：C1 声明完备 / C2 指涉可核 / C3 覆盖闭环（锚点→域右端每提交有归属），需求全来自 fanout.json + spec frontmatter；含变异用例自 fanout 自动生成的反向对照；M-A（TG-19）：判定域必须由**被判定物**派生（Sprint 身份 + 该 Sprint 的作用域 run + 该 Sprint 的最后一条覆盖 run 作右端），域不可派生时退出码 4（domain-unavailable）且不产出结论', 'tier': 'offline', 'providers': [], 'est_seconds': 15, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
+VERIFY_META = {'features': 'TG-15 关闭前置闸门：C1 声明完备 / C2 指涉可核（含 A-M13 的"全账本 role 必有 spec"封闭世界）/ C3 覆盖闭环（锚点→域右端每提交有归属），需求全来自 fanout.json + spec frontmatter；含变异用例自 fanout 自动生成的反向对照；M-A（TG-19）：判定域必须由**被判定物**派生（Sprint 身份 + 该 Sprint 的作用域 run + 该 Sprint 的最后一条覆盖 run 作右端），域不可派生时退出码 4（domain-unavailable）且不产出结论；A-M13④：§9 在飞宽限内只提示不判（口径同 ledger_measurement.in_flight）', 'tier': 'offline', 'providers': [], 'est_seconds': 15, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
 
 import json
 import os
@@ -314,7 +314,32 @@ def domain_runs(runs: list[dict], sprint_id: str | None) -> tuple[list[dict], in
     return kept, unknown
 
 
-def domain_right_boundary(runs: list[dict]) -> tuple[str | None, str | None]:
+def _contributes_coverage(policy: AgentPolicy | None, run: dict) -> bool:
+    """该 run 是否**承担内容覆盖**——只有承担者才有资格界定域右端（M-A）。
+
+    实测事故（2026-09-25，`A-M13` 的 `implementation` 首跑）：`coverage_window: none` 的 run
+    在 `finish` 时会自动记下 `covers_through = 登记时 HEAD` ⇒ 那是一个**空窗口**，却因为
+    "域内最新一条"把 G2 的域右端拉到它自己那一刻。**空窗口不是覆盖声明，不能当边界用**。
+
+    三类排除（都是数据驱动）：
+      * `produced_only: true`（已如实标注为"不承担内容覆盖"）；
+      * spec 声明 `coverage_window: none`（实现类等）；
+      * **作用域类 role**（`close_gate.scope_ref_step` 那一步的 role）：按 B3 语义它只在
+        T0 界定本次关闭覆盖哪些变更，本身不承担内容覆盖。
+    """
+    if run.get("produced_only") is True:
+        return False
+    if policy is None:
+        return True
+    role = str(run.get("role") or "")
+    if str(_spec_of(policy, role).get("coverage_window") or "").strip() == "none":
+        return False
+    _step, _order, scope_roles, _later = close_step_order(policy)
+    return role not in scope_roles
+
+
+def domain_right_boundary(runs: list[dict], *,
+                          policy: AgentPolicy | None = None) -> tuple[str | None, str | None]:
     """域的**右端** = `(sha, 定义它的 run_id)`：
     域内**最新一条**声明了合法 `covers_through`
     的 run 所覆盖到的提交。
@@ -332,6 +357,8 @@ def domain_right_boundary(runs: list[dict]) -> tuple[str | None, str | None]:
     best_sha: str | None = None
     best_rid: str | None = None
     for r in runs:
+        if not _contributes_coverage(policy, r):
+            continue
         sha = str(r.get("covers_through") or "").strip()
         if not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
             continue
@@ -710,11 +737,31 @@ def check_c2(policy: AgentPolicy, runs: list[dict], *,
         else:
             problems.append(f"[C2] {r.get('run_id')} 的 scope_source={source!r} 不匹配任何已知引用前缀"
                             f"{list(policy.scope_ref_sources)}（既非引用也非 self-chosen）")
-    unresolved = policy.unresolved_roles(str(r.get("role") or "") for r in runs)
+    # 封闭世界（A-M13 ②）：**账本里出现过的每个 role 都必须有 spec**。
+    # 与 C1/C3 不同，这条判据**按全账本**判定（`ledger`）：判定域可以按 Sprint 收窄，
+    # 但"这个角色名有没有 spec"是关于**整个账本**的事实——只看域内会把域外的野角色漏掉。
+    unresolved = policy.unresolved_roles(
+        str(r.get("role") or "") for r in (ledger if ledger is not None else runs))
     for role in unresolved:
         problems.append(f"[C2] 账本出现无 spec 的 role={role!r}（新增角色必须建 "
                         f"{policy.spec_dir.name}/<role>.md 并声明 scope_required）")
     return problems
+
+
+def _in_flight_grace_minutes(policy: AgentPolicy) -> float | None:
+    """§9 登记的**在飞宽限**（分钟）——`A-M13` ④：口径与 `ledger_measurement.in_flight`
+    的 `terminal_writeback_grace_minutes` **同一取值来源**（不得各写一个数）。
+
+    为什么需要：主代理是**边跑边登记** §9 的，于是"账本有 run、§9 还没写"在任何一次
+    复核 run 刚登记时**必然出现**——把它当缺陷就是与工作流互斥的结构性假红（同
+    `terminal_not_written_back` 的成因）。宽限内只提示（`INFO`，不计缺陷），超期照旧逐条 FAIL。
+    """
+    try:
+        lm = policy._data("ledger_measurement") or {}
+        value = (lm.get("in_flight") or {}).get("terminal_writeback_grace_minutes")
+        return float(value) if value is not None else None
+    except (AttributeError, TypeError, ValueError):
+        return None
 
 
 def check_linkage(policy: AgentPolicy, sprint: dict, runs: list[dict],
@@ -750,9 +797,22 @@ def check_linkage(policy: AgentPolicy, sprint: dict, runs: list[dict],
 
     for rid in sorted(table_ids - set(by_id)):
         problems.append(f"[linkage] §9 写了 run 但账本无记录：{rid}")
+    grace = _in_flight_grace_minutes(policy)
+    now_epoch = datetime.now(timezone.utc).timestamp()
     for r in scoped:
-        if r.get("run_id") not in table_ids:
-            problems.append(f"[linkage] 账本有 run 但 §9 run 表未登记：{r.get('run_id')}")
+        if r.get("run_id") in table_ids:
+            continue
+        rid = r.get("run_id")
+        started = _ts(str(r.get("started_at") or ""))
+        age_min = (now_epoch - started.timestamp()) / 60 if started else None
+        if grace is not None and age_min is not None and age_min < grace:
+            # A-M13 ④：在飞宽限内只提示（不计缺陷）——"刚登记、§9 还没写"是工作流的常态，
+            # 不是缺口；超期仍逐条 FAIL（宽限不是豁免）。
+            print(f"INFO[linkage-in-flight] {rid} 登记 {age_min:.0f} 分钟前、"
+                  f"§9 run 表尚未登记 ⇒ 宽限 {grace:.0f} 分钟内只提示不判"
+                  f"（口径同 ledger_measurement.in_flight）")
+            continue
+        problems.append(f"[linkage] 账本有 run 但 §9 run 表未登记：{rid}")
 
     # 区间比对（窗口**不得取自被校验文档自身**）：§9 最早一行晚于账本窗口起点 = 有人在用
     # "少写几行"缩小窗口。逐条点名在上面，这里给出窗口级结论（便于一眼看出是区间问题）。
@@ -869,6 +929,9 @@ FIXTURE_POLICY = {
         "transitions": {"queued": ["running"], "running": ["succeeded", "failed", "cancelled"]},
         "non_credible": ["failed", "cancelled"],
     },
+    # A-M13 ④（§9 在飞宽限）：与真政策同键同名——宽限判据必须能被自检打到，
+    # 否则"宽限内只提示"这条在 fixture 里永远走不到（假绿）。
+    "ledger_measurement": {"in_flight": {"terminal_writeback_grace_minutes": 120}},
     "close_gate": {
         "scope_ref_step": "scope",
         "coverage": {"exceptions_file": "coverage-exceptions.json",
@@ -1138,7 +1201,7 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
     right_end: str | None = None
     if check_coverage:
         anchor = sprint.get("anchor") or ""
-        right_end, right_run = domain_right_boundary(domain)
+        right_end, right_run = domain_right_boundary(domain, policy=policy)
         head = right_end or head_sha(ROOT)
         print(f"[domain] 右端 = {head[:12]}…"
               + (f"（由域内最新覆盖 run {right_run} 的 covers_through 界定；"
@@ -1797,6 +1860,56 @@ def _selfcheck() -> int:
        domain_right_boundary(tweaked)[0] == SHA_C)
     ok("M-A 域右端 c：域内没有任何合法覆盖窗口 → None（调用方退回仓库 HEAD）",
        domain_right_boundary([{"run_id": "x", "covers_through": ""}])[0] is None)
+    # 域右端 d/e（2026-09-25 实测事故后补）：**不承担覆盖的 run 不得界定右端**——
+    # `produced_only` 与 `coverage_window: none` 两类各一条反向对照。
+    prod = {**s16[4], "run_id": "run-x-prod", "covers_through": SHA_E,
+            "started_at": "2099-01-01T00:00:00+00:00", "produced_only": True}
+    ok("M-A 域右端 d：`produced_only` run 不得界定域右端（它不是覆盖声明）",
+       domain_right_boundary([*s16, prod])[0] == SHA_D)
+    real_pol_r = load_policy()
+    impl = {"run_id": "run-x-impl", "role": "implementation", "covers_through": SHA_E,
+            "started_at": "2099-01-01T00:00:00+00:00"}
+    ok("M-A 域右端 e：`coverage_window: none` 的 role（实现类）不得界定域右端"
+       "——它 finish 时会自动记下**空窗口**，却会因'最新一条'把域右端拉到它那一刻",
+       domain_right_boundary([*s16, impl], policy=real_pol_r)[0] == SHA_D)
+
+    # ---- A-M13（实现类 role 落地后的三条判据）------------------------------------
+    # ① 封闭世界**按全账本**（域可以收窄，"这个角色名有没有 spec"不能收窄）
+    p = check_c2(policy, [], ledger=[{"run_id": "run-x-1", "role": "no-such-role"}])
+    ok("A-M13② C2 封闭世界：账本里出现无 spec 的 role ⇒ FAIL（即使它只在域外出现）",
+       any("no-such-role" in x for x in p), f"problems={p[:1]}")
+    # ② §9 在飞宽限：刚登记 ⇒ 只提示；超期 ⇒ 照旧 FAIL（宽限不是豁免）
+    fresh_iso = datetime.now(timezone.utc).isoformat()
+    fresh = [*s16[:1],
+             _run("run-c-109", "code-review", "branch:windows", fresh_iso,
+                  "impact-assessment:run-k-101")]
+    p = check_linkage(policy, parse_sprint(_doc(_rows(s16[:1]), SHA_A)), fresh,
+                      "2026-09-20T01:00:00+00:00")
+    ok("A-M13④ §9 在飞宽限：刚登记的 run 未写 §9 ⇒ 只提示不判"
+       "（口径同 ledger_measurement.in_flight）",
+       not any("未登记" in x for x in p), f"problems={p[:1]}")
+    old = [*s16[:1],
+           _run("run-c-110", "code-review", "branch:windows",
+                "2026-09-20T02:00:00+00:00",
+                "impact-assessment:run-k-101")]
+    p = check_linkage(policy, parse_sprint(_doc(_rows(s16[:1]), SHA_A)), old,
+                      "2026-09-20T01:00:00+00:00")
+    ok("A-M13④ 反向对照：超过宽限仍未登记 ⇒ 照旧 FAIL（宽限不是豁免）",
+       any("run-c-110" in x and "未登记" in x for x in p), f"problems={p[:1]}")
+
+    # ---- A-M13①（真政策，不是 fixture）：implementation spec 必须**被闸门消费** ----
+    real_pol = load_policy()
+    ok("A-M13① `implementation` spec 被政策装载（不是只写文件）",
+       "implementation" in real_pol.specs, f"specs={len(real_pol.specs)}")
+    ok("A-M13① `implementation` 不是评审类 ⇒ C1 不再向它要 scope 声明",
+       "implementation" not in real_pol.review_roles,
+       "（这条假红正是本卡要消掉的）" + f"review_roles={sorted(real_pol.review_roles)}")
+    real_reg = registry_path()
+    if real_reg.exists():
+        unknowns = sorted(real_pol.unresolved_roles(
+            str(r.get("role") or "") for r in load_runs(real_reg)))
+        ok("A-M13② 真数据封闭世界：账本里出现的每个 role 都有 spec",
+           not unknowns, f"无 spec 的 role={unknowns}")
 
     p = evaluate(policy, good, runs, att=_att(runs, unowned_extra=False),
                  check_coverage=False)
