@@ -98,6 +98,25 @@ BASELINE_REL: str = str(_CARD_INDEX["baseline_file"])
 BASELINE_CMD: str = str(_CARD_INDEX["baseline_command"])
 BASELINE_SUMMARY_RE: str = str(_CARD_INDEX["baseline_summary_regex"])
 PASSED = 0
+# M-B（TG-19 反空转不变式）：真数据判据"没执行"的具名原因。
+# 空列表 = 判据真的跑过；非空 = 本环境不适用（例：`main` 分支没有 `docs/iteration/**`）。
+# **它决定最终判决行的措辞**：有 SKIP 时不得打印 PASS 横幅，也不得打印机读 EVIDENCE 行
+# ——"跳过"冒充"通过"正是 run-080 F1 抓到的形态（`TG-17` 条目 6）。
+SKIPPED: list[str] = []
+
+
+def verdict_line(problems: list[str], skipped: list[str]) -> str:
+    """最终判决行（**单一真源**：SKIP 优先于 PASS，二者互斥）。
+
+    为什么把它抽成函数：判决行的措辞必须能**被自检断言**，
+    否则下次改文案又会悄悄改回"SKIP 之后照样 PASS"。
+    """
+    if problems:
+        return f"CARD-INDEX FAIL（{len(problems)} 项）"
+    if skipped:
+        return (f"CARD-INDEX SKIP（{'；'.join(skipped)}）"
+                f"——真数据判据未执行，只有 fixture 反向对照跑了（**不是通过**）")
+    return "CARD-INDEX PASS：索引↔卡文件一一对应（含必备节 / 正文分离 / 状态三处一致 / 卡库存基线一致）"
 
 
 def ok(name: str, cond: bool, detail: str = "") -> None:
@@ -478,8 +497,11 @@ def run(strict: bool = True, root: Path | None = None) -> list[str]:
     if root == ROOT:
         phases_root = root / "docs" / "iteration" / "phases"
         if not phases_root.is_dir():
+            reason = (f"no-iteration-docs：{phases_root} 不存在"
+                      f"（`docs/iteration/**` 为 windows-only，本分支没有该目录）")
+            SKIPPED.append(reason)
             print(f"SKIP[no-iteration-docs] 判据 ①~⑦ 不适用：{phases_root} 不存在"
-                  f"（`docs/iteration/**` 为 windows-only，本分支没有该目录）——**本行不是 PASS**")
+                  f"（`docs/iteration/**` 为 windows-only，本分支没有该目录）——**不是通过**")
         else:
             try:
                 problems += baseline_problems(root)
@@ -673,6 +695,14 @@ def selfcheck(check_real: bool = True) -> int:
     # `--check` rc=1 而套件模式 rc=0+WARN）。
     # **闸门自己给自己发警告 = 放行**；
     # 且真数据判据**只允许跑一次**（同一事实两处判会分叉）。
+    # M-B（`TG-19` 反空转不变式）：**判决行单一真源**——SKIP 不得冒充通过（run-080 F1）。
+    ok("M-B 判决行：SKIP 档**不含** PASS 字样（跳过不得冒充通过）",
+       "PASS" not in verdict_line([], ["no-iteration-docs：docs/iteration/phases 不存在"])
+       and verdict_line([], ["x"]).startswith("CARD-INDEX SKIP"))
+    ok("M-B 判决行：无问题且无 SKIP 时才是 PASS 横幅",
+       verdict_line([], []).startswith("CARD-INDEX PASS："))
+    ok("M-B 判决行：有问题时优先报 FAIL（与 SKIP 互斥，问题不被跳过掩盖）",
+       verdict_line(["boom"], ["x"]).startswith("CARD-INDEX FAIL"))
     if not check_real:
         ok("真数据判据由 main() 以默认档执行", True, "（本函数只跑 fixture 自检）")
         print(f"\nALL PASS ({PASSED} assertions)")
@@ -710,17 +740,17 @@ def main() -> int:
             print(f"EVIDENCE: verify_card_index.py assertions={PASSED} rc=0 selftest=fixture-only")
         return rc
     problems = run(strict="--strict" in sys.argv or "--check" not in sys.argv)
+    print(verdict_line(problems, SKIPPED))
     if problems:
-        print(f"CARD-INDEX FAIL（{len(problems)} 项）：")
         for p in problems[:40]:
             print(f"  - {p}")
         if len(problems) > 40:
             print(f"  … 另有 {len(problems) - 40} 项")
         return 1
-    print("CARD-INDEX PASS：索引↔卡文件一一对应（含必备节 / 正文分离 / 状态三处一致 / 卡库存基线一致）")
     # 真数据过了 → 再跑 fixture 反向对照（断言自检与真数据判据**同源**，不是两套口径）
     rc = selfcheck(check_real=False)
-    if rc == 0:
+    if rc == 0 and not SKIPPED:
+        # TG-6：机读证据行**只在成功路径**打印——SKIP 不是成功（`TG-19` M-B）
         print(f"EVIDENCE: verify_card_index.py assertions={PASSED} rc=0 "
               f"criteria=1..7 ratchet_baseline={BASELINE_REL}")
     return rc

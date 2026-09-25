@@ -121,6 +121,9 @@ CRITERIA_EXECUTED = 0
 # 它必须与"检出违规(1)"和"无法判定(2)"区分开：前者问"本期有几项不合格"，
 # 本码的含义是"**本轮没有产生任何判定**"。
 DOMAIN_UNAVAILABLE_EXIT = 4
+# M-B（`TG-19` 反空转不变式）：本轮**是否走了 SKIP 档**。SKIP 不是成功 ⇒
+# 不打印机读证据行（`EVIDENCE:` 只属于"判据真的跑过且通过"），见 `main()`。
+_RUN_STATE: dict[str, bool] = {"skipped": False}
 
 
 def ok(name: str, cond: bool, detail: str = "") -> None:
@@ -1068,6 +1071,7 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
     ledger_path = registry_path()
     ledger_missing = not ledger_path.is_file()
     if ledger_missing:
+        _RUN_STATE["skipped"] = True
         print(f"SKIP[ledger-absent] 账本不存在：{ledger_path}")
         print("  → C1/需求、linkage、C3 覆盖归属**本环境无从判定**（它们的数据源就是账本；"
               "`registry.json` 被 .gitignore 忽略 ⇒ 全新 checkout 没有它是正常状态）。")
@@ -1081,7 +1085,8 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
             print("CLOSE-READINESS FAIL（1 项）：")
             print(f"  - [linkage] §9 表行结构非法（第 {row['line']} 行）：{row['text'][:60]}")
             return 1
-        print(f"CLOSE-READINESS SKIP-PASS（账本缺失档）：{path.name}（run 表 {len(sprint['rows'])} 行，"
+        print(f"CLOSE-READINESS SKIP（账本缺失档，**不是通过**）：{path.name}"
+              f"（run 表 {len(sprint['rows'])} 行，"
               f"锚点 {str(sprint.get('anchor'))[:8]}；账本相关判据未执行）")
         return 0
 
@@ -1805,6 +1810,22 @@ def _selfcheck() -> int:
        probe.returncode == 2 and "CLOSE-READINESS-ERROR" in (probe.stdout + probe.stderr),
        f"rc={probe.returncode} out={(probe.stdout + probe.stderr).strip()[:60]}")
 
+    # M-B（`TG-19` 反空转不变式）反向对照：**账本缺失档**——CI 全新 checkout 的真实形态。
+    # 用**真子进程**打真入口（`AGENT_OPS_DIR` 指向空目录 ⇒ `registry.json` 不存在）。
+    # 判据三条：输出含 `SKIP[ledger-absent]`、**不含** `EVIDENCE:`（机读证据行不得由"跳过"产生）、
+    # 且不得出现 `CLOSE-READINESS PASS`。
+    empty_ops = Path(tempfile.mkdtemp(prefix="verify_close_readiness_noop_"))
+    probe2 = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve()), "--sprint",
+         "docs/iteration/sprint/2026-09-21-sprint-17.md"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env={**os.environ, "AGENT_OPS_DIR": str(empty_ops)})
+    blob = probe2.stdout + probe2.stderr
+    ok("M-B 反向对照：账本缺失 ⇒ 输出 SKIP 且**不打印** EVIDENCE 行（跳过不得冒充通过）",
+       probe2.returncode == 0 and "SKIP[ledger-absent]" in blob
+       and "EVIDENCE:" not in blob and "CLOSE-READINESS PASS" not in blob,
+       f"rc={probe2.returncode} out={blob.strip()[:120]}")
+
     real = registry_path()
     if real.exists():
         warn("真数据模式未在自检中执行（需 `--sprint <当前 Sprint 文档>`）",
@@ -1817,10 +1838,10 @@ def main() -> int:
     if "--sprint" in sys.argv:
         path = Path(sys.argv[sys.argv.index("--sprint") + 1])
         rc = run_real_data(path, check_coverage="--no-coverage" not in sys.argv)
-        if rc == 0:
+        if rc == 0 and not _RUN_STATE["skipped"]:
             # TG-6：**只在成功路径**打印机读证据行。real-data 模式的 assertions =
             # **实际执行过的判据条数**（该模式不跑 ok() 自检断言，
-            # 逐条判据各自 `_criterion()` 登记）。
+            # 逐条判据各自 `_criterion()` 登记）。SKIP 档不打印（`TG-19` M-B）。
             print(f"EVIDENCE: verify_close_readiness.py assertions={CRITERIA_EXECUTED} rc=0 "
                   f"mode=real-data criteria={CRITERIA_EXECUTED}")
         return rc
