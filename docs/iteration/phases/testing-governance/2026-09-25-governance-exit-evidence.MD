@@ -104,3 +104,19 @@ git -C . log --oneline -1 ; git rev-list --count origin/windows..HEAD
 ## 请你确认
 
 回复 **`退出确认`** 即视为认可上述四条判据达成；随后我按序执行：**D** 关闭三查 + §9 结构化 run 表与三查锚点 + Retro（含 `run-2026-09-25-code-review-068` 这类补登记行）→ **E** 推 `windows`（CI 当真实关口）并回收 `park/sprint-17-pre-governance-2026-09-25` → **F** `TG-15` 点数结算。若你认为哪条证据不足，指出即可，我不会自行结案。
+
+---
+
+## ✅ 用户退出确认（2026-09-25，UTC+8）
+
+**用户原话**："退出确认，注意还没实现的目标 比如 CI 未实跑的影响，继续吧"
+
+**据此生效**：治理模式**退出**（Sprint-17 解除"停功能推进"冻结，剩余治理卡照常推进；`F-AC13/14` 仍按 P-d=4 冻结、不承诺挪期）。
+**用户同时点名的"未实现目标"（必须一直带到 E 步，不得淡出）**：
+1. **CI 从未实跑** → 本批 39 个提交的"断言在 CI 同款环境跑过"这半条**仍未满足**；E 步推送时 CI **必须当真实关口**：红即修、**不得以"本机绿"替代**，CI 结论与 head sha 需回填 §9 与 §9.2 回收行。
+2. `close_readiness` **真数据模式**仍 FAIL（三查锚点属关闭期动作，D 步填写后才首次真正受检）。
+3. `A-M12` 判据④（下 Sprint 同族事故 ≤1 次）只能 Sprint-18 测。
+4. **实现类子代理无账本 role** → 机制批无 run id 是结构性缺口（归 `TG-17`），不是漏记。
+5. `TG-15` 2.5 点的**扣分条件**结算在 F 步给出算式（棘轮已闭环 → 不扣该项）。
+
+**E 步推送前的预检清单（CI 等价物，全部本机先跑一遍）**：`requirements-windows.txt` 含 `ruff==0.14.4`（CI 自动获得）→ `verify/run_suite.py --tier offline`（21 脚本）→ `verify/verify_matrix.py check`（52）→ CI 显式档四条（`verify_card_index.py --check --strict`、`verify_md_tables.py`、`verify_no_policy_hardcode.py`、`verify_lint.py`）→ `scripts/structure-guard.py --replay`（64）+ close-readiness 的"仅对声明真锚点的 Sprint 文档"分支（Sprint-17 填锚点后首次受检）→ 两个前端 `npm ci` + build（本批未触前端源码，预期不受影响）。
