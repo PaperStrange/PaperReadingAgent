@@ -119,7 +119,8 @@ def main() -> int:
     # 旧实现：UC-15/UC-16 直接把探针 spec 写在 `agents/functions/`（真实仓库目录），
     # 靠 `finally` 删。
     # 实测后果：① 两个并行实例共享同一个可变文件 → 互相 clobber（两边都 rc=1）；
-    # ② 运行期间工作区被污染（`git status` 非空）。修法不是"换个文件名"，而是**换掉 spec 根**：
+    # ② 运行期间工作区被污染（`git status` 非空）。修法不是"换个文件名"，
+    # 而是**换掉 spec 根**：
     # 政策装载的 spec_dir 由 `agents/policy.json::spec_dir` 决定，而政策文件本身可用
     # `PAPERQA_AGENT_POLICY` 重定向（TG-15 的既有能力）。故：
     # ① 复制真实 spec 到 %TEMP%（角色集合必须与真实仓库一致，
@@ -516,7 +517,8 @@ def main() -> int:
         finally:
             extra_spec.unlink(missing_ok=True)
 
-        # UC-16（TG-15）：数据源**缺声明**不是"不需要"，而是 fail-closed 报错（删声明绕不过闸门）
+        # UC-16（TG-15）：数据源**缺声明**不是"不需要"，
+        # 而是 fail-closed 报错（删声明绕不过闸门）
         # **F1：同样写在 `specs_dir`（%TEMP%）**——旧实现把它写进仓库，
         # 是并行的第二个 clobber 源。
         probe_spec = specs_dir / PROBE_SPECS[1]
@@ -648,7 +650,8 @@ def main() -> int:
 
         # UC-18（审核 N10）：`finish
         # --result-file` **不得改写报告换行**（LF → CRLF 静默改写）
-        # 原实现 `dest.write_text(rel.read_text(encoding="utf-8"), encoding="utf-8")`：读侧做
+        # 原实现 `dest.write_text(rel.read_text(encoding="utf-8"), encoding="utf-8")`：
+        # 读侧做
         # universal-newline 转换、写侧把 `\n` 落成 `os.linesep`（Windows=CRLF）→ 仓库基线的 LF
         # 报告被静默改成 CRLF（实测 35721 B → 35913 B / 192 行）。
         # 归档步骤最不该动产物字节。
@@ -680,31 +683,49 @@ def main() -> int:
         # 。
         # 历史例外写在数据文件（agents/policy/run-dir-exceptions.json）
         # 并**必须注明理由**。
-        real_ledger = json.loads((ROOT / "agents" / "runtime" / "registry.json")
-                                 .read_text(encoding="utf-8"))
-        ledger_ids = {str(r.get("run_id") or "") for r in real_ledger.get("runs", [])}
-        exc_file = ROOT / "agents" / "policy" / "run-dir-exceptions.json"
-        exc = json.loads(exc_file.read_text(encoding="utf-8")) if exc_file.is_file() else {}
-        exc_items = exc.get("exceptions") or []
-        no_reason = [str(e.get("dir")) for e in exc_items if not str(e.get("reason") or "").strip()]
-        ok("M-g 例外白名单每一条都写了理由（白名单不是静音开关）", not no_reason,
-           f"缺理由：{no_reason[:3]}")
-        exc_dirs = {str(e.get("dir")) for e in exc_items}
-        real_dirs = {p.name for p in (ROOT / "agents" / "runs").iterdir() if p.is_dir()}
-        orphan_dirs = sorted(real_dirs - ledger_ids - exc_dirs)
-        ok("M-g 账本 id ↔ 目录名一致：agents/runs/* 目录名都能在账本里找到同名 run（例外已在数据文件登记）",
-           not orphan_dirs, f"对不上账本且无例外登记的目录：{orphan_dirs[:5]}")
-        stale_exc = sorted(exc_dirs & ledger_ids)
-        ok("M-g 例外白名单只减不增：登记过的例外若已在账本里有同名 run → 必须删除该例外",
-           not stale_exc, f"已不再需要的例外：{stale_exc[:5]}")
+        # **账本不存在 ≠ 账本有问题**（C5，2026-09-25 CI run #207 实测）：
+        # `agents/runtime/registry.json` 被
+        # `.gitignore` 忽略 ⇒ **CI 的全新 checkout 必然没有它**，
+        # 连 `agents/runs/` 也不存在。
+        # 旧实现直接 `read_text` ⇒ `FileNotFoundError` ⇒ 整个 offline 套件
+        # 在 CI 恒红（实测 run #207 第 7 步：`SUITE FAILED (1/24): verify_agentops.py`）
+        # 。
+        # 现按 `verify_ledger_measurement.py` / `verify_close_readiness.py` 的同一口径：
+        # **缺账本 → 显式 SKIP（理由上屏，且不打印 PASS——"跳过"不得冒充"通过"）**；
+        # **存在但坏 → 照旧 fail-closed**（下面读文件/解析失败会真抛）。
+        real_registry = ROOT / "agents" / "runtime" / "registry.json"
+        if not real_registry.is_file():
+            print(f"SKIP[ledger-absent] M-g 账本 run_id ↔ agents/runs/* 目录名一致性："
+                  f"{real_registry} 不存在（fresh clone；registry.json 被 .gitignore 忽略）"
+                  f"→ 该判据只在本机/有账本的环境执行。**本行不是 PASS**。")
+        else:
+            real_ledger = json.loads(real_registry.read_text(encoding="utf-8"))
+            ledger_ids = {str(r.get("run_id") or "") for r in real_ledger.get("runs", [])}
+            exc_file = ROOT / "agents" / "policy" / "run-dir-exceptions.json"
+            exc = json.loads(exc_file.read_text(encoding="utf-8")) if exc_file.is_file() else {}
+            exc_items = exc.get("exceptions") or []
+            no_reason = [str(e.get("dir")) for e in exc_items if not str(e.get("reason") or "").strip()]
+            ok("M-g 例外白名单每一条都写了理由（白名单不是静音开关）", not no_reason,
+               f"缺理由：{no_reason[:3]}")
+            exc_dirs = {str(e.get("dir")) for e in exc_items}
+            runs_root = ROOT / "agents" / "runs"
+            real_dirs = {p.name for p in runs_root.iterdir() if p.is_dir()} if runs_root.is_dir() else set()
+            orphan_dirs = sorted(real_dirs - ledger_ids - exc_dirs)
+            ok("M-g 账本 id ↔ 目录名一致：agents/runs/* 目录名都能在账本里找到同名 run（例外已在数据文件登记）",
+               not orphan_dirs, f"对不上账本且无例外登记的目录：{orphan_dirs[:5]}")
+            stale_exc = sorted(exc_dirs & ledger_ids)
+            ok("M-g 例外白名单只减不增：登记过的例外若已在账本里有同名 run → 必须删除该例外",
+               not stale_exc, f"已不再需要的例外：{stale_exc[:5]}")
 
         # UC-19（TG-8②）：**离线开关**——一个开关关掉全部外呼，
         # 且在**发起请求之前**拒绝并点名。
         # 判据（卡文）：开关开启 →
         # 每个被禁止的外呼入口 rc≠0 且点名原因（不是靠网络超时）；
         #              开关关闭 → 允许（或按设计）。
-        # 反向对照（§6"倒过来试试"）：以下每条的对照分支都断言"**没有**出现 OFFLINE-REFUSED"，
-        # 即不能只证明"开关开着会拒绝"，还要证明"关着不会无故拒绝"（否则闸门可能是恒拒绝）。
+        # 反向对照（§6"倒过来试试"）：
+        # 以下每条的对照分支都断言"**没有**出现 OFFLINE-REFUSED"，
+        # 即不能只证明"开关开着会拒绝"，
+        # 还要证明"关着不会无故拒绝"（否则闸门可能是恒拒绝）。
         offline_mod = importlib.util.spec_from_file_location(
             "offline_guard", ROOT / "verify" / "outbound_guard.py")
         og = importlib.util.module_from_spec(offline_mod)
@@ -763,7 +784,8 @@ def main() -> int:
            r_bad.returncode != 0 and "合法开关取值" in out_bad,
            f"rc={r_bad.returncode} out={out_bad.strip().splitlines()[-1][:110]}")
 
-        # ②配置面：政策 `enabled=true`（env 未设）同样生效——证明"开关可配置"不只 env 一条路
+        # ②配置面：政策 `enabled=true`（env 未设）
+        # 同样生效——证明"开关可配置"不只 env 一条路
         temp_policy_off = tmp / "policy-offline.json"
         temp_policy_off.write_text(json.dumps(
             {**_POLICY.policy_file,
@@ -1010,7 +1032,8 @@ def main() -> int:
 
         # F1 收尾断言：整轮跑完，
         # 仓库的 spec 目录**一个探针文件都没有**（且内容与运行前逐字节相同）。
-        # 判据取"文件系统事实"，不是"我记得 unlink 过"——旧实现正是靠这句记忆，而它在并行下不成立。
+        # 判据取"文件系统事实"，不是"我记得 unlink 过"——旧实现正是靠这句记忆，
+        # 而它在并行下不成立。
         repo_probes = [name for name in PROBE_SPECS if (FUNCTIONS / name).exists()]
         ok("F1 全程零仓库污染：agents/functions/ 下没有任何探针 spec（并行安全的前提）",
            not repo_probes, f"残留={repo_probes}")
