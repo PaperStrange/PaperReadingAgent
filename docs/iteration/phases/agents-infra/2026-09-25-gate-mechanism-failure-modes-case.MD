@@ -98,3 +98,22 @@
 - **机制（待落）**：`TG-17` 条目 7——用 `git ls-tree HEAD -- <dir>` 区分"分支本就没有"，或把放宽限定在 `docs/iteration/**`。
 - **反向对照**：在不存在目录下新增基线键 ⇒ 必须 FAIL；整目录删除 ⇒ 必须具名（两者都要真跑）。
 - **复用面**：所有"分支差异/环境差异"型放宽——**放宽必须用直接证据，且列出它排除在外的形态**。
+
+## 案例 11｜本期要求被**更早 Sprint 的同 role run** 借位满足 ⇒ 跨期假绿
+
+- **现象**：`check_requirements()`（关闭闸门的需求侧判据）原先在**全账本**里找"某步骤跑过没有"，于是 `fanout.json` 声明的 `target='working-tree'` 是由**更早 Sprint** 的 run 满足的——Sprint-17 自己的 doc-audit run（`task_id='Sprint-17 close'`）**从来不符合**该 target，判据却一直绿。M-A 把判定域收到"本期"之后，这一项当场暴露（Sprint-17 的读数：99 项 → **1 项**，且这 1 项就是它）。
+- **证据**：`verify/verify_close_readiness.py::check_requirements()`（新增 `window_start` 过滤）；实测输出：`[C1/需求] 步骤 2:doc-audit 缺 target='working-tree' 的 run（已有 task_id：['Sprint-17 close']）`；`agents/fanout.json::sprint_close_pipeline[1]`（`target: "working-tree"`）；跑法：`.venv\Scripts\python.exe verify\verify_close_readiness.py --sprint docs\iteration\sprint\2026-09-21-sprint-17.md`。
+- **根因**：判据问的是"**有没有**这样的 run"，而不是"**本期**有没有"——域名不参与判定，等于把跨期证据当成当期证据。**"存在性"层面的判据最容易被历史数据喂饱**。
+- **机制（已落）**：`check_requirements(..., window_start=...)` 只认本期窗口内的 run；域本身由 `sprint_identity_of_doc()` + `run_sprint_identity()` 派生（`TG-19` M-A）。
+- **反向对照**：本期流水线未跑 ⇒ 逐条点名"缺 run"（自检内置，断言数以现跑末行为准）；**原始事故复现**：追加下一个 Sprint 的作用域 run ⇒ 上一个 Sprint 的窗口与问题清单**一字不变**。
+- **复用面**：一切"有没有做过 X"的判据（评审跑过没有 / 闸门跑过没有 / 卡开过没有）——**必须问"本期内"**，否则历史会替当期作答。
+
+## 案例 12｜收窄判定域时**顺手收窄了"存在性"判据** ⇒ 合法的跨期引用被判成假红
+
+- **现象**：M-A 把 `check_c2`（指涉可核）的 run 名单换成"本期域"后，Sprint-16 与 Sprint-18 的读数里各多出 1 条 `[C2] … 的 scope 来源指向不存在的对象`——被引用的 `run-…-069` 属于**上一个 Sprint**，在域外但**在账本里确实存在**。
+- **证据**：`verify/verify_close_readiness.py::check_c2(..., ledger=...)`（新增参数）；实测：改前 Sprint-18 读 6 项（含该假红）、改后 5 项且**全部真实**。
+- **根因**：把两件事混成一个名单——"**本期该谁被要求**"（域）与"**这个名字在账本里有没有**"（全账本）。前者该收窄，后者**不该**。
+- **机制（已落）**：`check_c2` 的存在性查找走 `ledger=`（全账本），而"谁被检查"仍走域内名单。
+- **反向对照**：Sprint-16/Sprint-18 两条读数对比（域内查 vs 全账本查）；自检内含 M-A 反向对照 ①~④。
+- **复用面**：任何"先按范围过滤、再对过滤后的集合查外部引用"的判据——**过滤范围与解析引用是两个判据，别共用一个集合**。
+

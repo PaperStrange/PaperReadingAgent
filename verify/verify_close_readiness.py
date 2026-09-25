@@ -61,11 +61,15 @@ linkage 的判定域，**定义判定域的东西必须自己受判**——否�
 real-data 模式 N = 实际执行过的判据条数，由各判据自身登记）。
 
 **退出码**：0=通过；1=检出违规/自检断言未通过（逐条点名）；2=fail-closed 无法判定
-（Sprint 文档不存在、政策/覆盖例外表非法，或**断言被 `-O`/`PYTHONOPTIMIZE=1` 剥离**）。
+（Sprint 文档不存在、政策/覆盖例外表非法，或**断言被 `-O`/`PYTHONOPTIMIZE=1` 剥离**）；
+**4=domain-unavailable**（M-A，`TG-19`）：**判定域无法由被判定物派生**——
+Sprint 身份推不出、该 Sprint 在账本里没有作用域 run、或窗口被次序判据弃用。
+退出码 4 时**不产出判定结论**：findings 即使上屏也只作**诊断**
+（前面有 `[domain-fallback]` 标记），不得被当成"本期有几项不合格"。
 """
 
 from __future__ import annotations
-VERIFY_META = {'features': 'TG-15 关闭前置闸门：C1 声明完备 / C2 指涉可核 / C3 覆盖闭环（锚点→HEAD 每提交有归属），需求全来自 fanout.json + spec frontmatter；含变异用例自 fanout 自动生成的反向对照', 'tier': 'offline', 'providers': [], 'est_seconds': 15, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
+VERIFY_META = {'features': 'TG-15 关闭前置闸门：C1 声明完备 / C2 指涉可核 / C3 覆盖闭环（锚点→域右端每提交有归属），需求全来自 fanout.json + spec frontmatter；含变异用例自 fanout 自动生成的反向对照；M-A（TG-19）：判定域必须由**被判定物**派生（Sprint 身份 + 该 Sprint 的作用域 run + 该 Sprint 的最后一条覆盖 run 作右端），域不可派生时退出码 4（domain-unavailable）且不产出结论', 'tier': 'offline', 'providers': [], 'est_seconds': 15, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
 
 import json
 import os
@@ -113,6 +117,10 @@ if hasattr(sys.stdout, "reconfigure"):
 
 PASSED = 0
 CRITERIA_EXECUTED = 0
+# M-A（TG-19）：判定域无法由被判定物派生时的**专属退出码**——
+# 它必须与"检出违规(1)"和"无法判定(2)"区分开：前者问"本期有几项不合格"，
+# 本码的含义是"**本轮没有产生任何判定**"。
+DOMAIN_UNAVAILABLE_EXIT = 4
 
 
 def ok(name: str, cond: bool, detail: str = "") -> None:
@@ -244,8 +252,102 @@ def close_step_order(policy: AgentPolicy) -> tuple[str, int, set[str], set[str]]
     return wanted, order, scope_roles, later_roles
 
 
-def scope_step_runs(policy: AgentPolicy, runs: list[dict]) -> list[dict]:
-    """作用域步骤的**全部候选 run**（role + target 过滤，target 口径同 N3：精确匹配）。"""
+SPRINT_ID_RE = re.compile(r"[Ss]print[-\s]?0*(\d+)")
+
+
+def _norm_sprint(value: object) -> str | None:
+    """把 Sprint 标识归一成**纯编号字符串**。
+
+    例：`"Sprint-18"` / `"18"` / `"018"` → `"18"`。
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+    m = SPRINT_ID_RE.search(text)
+    if m is None:
+        m = re.fullmatch(r"0*(\d+)", text)
+    return m.group(1) if m else None
+
+
+def sprint_identity_of_doc(path: Path | str) -> str | None:
+    """**被判定物**（Sprint 文档）自带的 Sprint 身份（M-A：域必须由被判定物派生）。
+
+    取文件名里的 `sprint-<N>`（本仓一律如此命名，如 `2026-09-21-sprint-17.md`）；
+    文件名给不出身份 → `None`（调用方 fail-closed 报 `domain-unavailable`，**不猜**）。
+    """
+    return _norm_sprint(Path(path).stem)
+
+
+def run_sprint_identity(run: dict) -> str | None:
+    """账本 run 的 Sprint 身份：优先**显式字段** `sprint`（`register --sprint` 写入），
+    否则从 `task_id` 派生（legacy 兼容：本仓历史关闭 run 的 `task_id`
+    一律含 `Sprint-<N>`）。
+
+    派生不出 → `None`。这类 run **不得被当成"别的 Sprint"排除**（那等于静默丢数据），
+    调用方按 fail-closed **保留**它们，并把条数上屏。
+    """
+    explicit = _norm_sprint(run.get("sprint"))
+    return explicit if explicit else _norm_sprint(run.get("task_id"))
+
+
+def domain_runs(runs: list[dict], sprint_id: str | None) -> tuple[list[dict], int]:
+    """本次判定的**域** = `(域内 run, 身份不可派生的 run 条数)`。
+
+    `sprint_id is None` ⇒ 返回全部（调用方在此之前已按 `domain-unavailable` 收口，
+    这里只做防御性返回）。身份不可派生的 run **保留**（fail-closed：宁多勿少），
+    但**计数上屏**，避免把"收窄"做成静默动作。
+    """
+    if sprint_id is None:
+        return list(runs), 0
+    kept: list[dict] = []
+    unknown = 0
+    for r in runs:
+        ident = run_sprint_identity(r)
+        if ident is None:
+            unknown += 1
+            kept.append(r)
+        elif ident == sprint_id:
+            kept.append(r)
+    return kept, unknown
+
+
+def domain_right_boundary(runs: list[dict]) -> tuple[str | None, str | None]:
+    """域的**右端** = `(sha, 定义它的 run_id)`：
+    域内**最新一条**声明了合法 `covers_through`
+    的 run 所覆盖到的提交。
+
+    为什么右端也必须取自域内（M-A 的第二半，2026-09-25 实测）：
+    C3 的判据是"锚点→HEAD 每个提交有归属"，而 `HEAD` 是**移动靶** ⇒ 下一个 Sprint 的提交
+    会掉进本 Sprint 的判据里（G2 开工当天的提交就会被算成 Sprint-17 的"未归属提交"）。
+    域既然由被判定物派生，右端就必须由**该 Sprint 自己的记录**界定。
+
+    取"最新一条 run 的 `covers_through`"而不是"全部 sha 的字典序最大"：sha 的字典序
+    ≠ 提交序（后者要问 git），而覆盖率随 run 时间单调增长在本仓是**陈述过的前提**
+    （`attribution()` 会另行校验锚点与右端的祖先关系，不成立时报具名问题）。
+    """
+    best_started: str | None = None
+    best_sha: str | None = None
+    best_rid: str | None = None
+    for r in runs:
+        sha = str(r.get("covers_through") or "").strip()
+        if not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
+            continue
+        started = str(r.get("started_at") or "")
+        if best_started is None or started >= best_started:
+            best_started, best_sha, best_rid = started, sha, str(r.get("run_id") or "?")
+    if best_sha is None:
+        return None, None
+    return best_sha, best_rid
+
+
+def scope_step_runs(policy: AgentPolicy, runs: list[dict], *,
+                    sprint_id: str | None = None) -> list[dict]:
+    """作用域步骤的**全部候选 run**（role + target 过滤，target 口径同 N3：精确匹配）。
+
+    `sprint_id` 非空时**再按 Sprint 身份过滤**（M-A）：作用域 run 必须属于**被判定物**
+    那个 Sprint——这是"跨 Sprint 窗口翻转"（G2 kickoff 〇查一登记就把 Sprint-17 的窗口
+    顶掉）的根治点。身份不可派生的 run **保留**（fail-closed）。
+    """
     wanted_step = str(policy.close_gate.get("scope_ref_step") or "").strip()
     if not wanted_step:
         return []
@@ -258,10 +360,21 @@ def scope_step_runs(policy: AgentPolicy, runs: list[dict]) -> list[dict]:
             wanted_targets = set(step.targets)
             bucket = [r for r in bucket if exact_target(r) in wanted_targets]
         candidates += bucket
+    if sprint_id is not None:
+        # 显式身份**优先于**无身份：有"本 Sprint"的候选时，绝不把无身份的 run 混进来
+        # （否则一条 task_id 为空的历史 run 会冒充本期作用域 run——实测：run-…-065
+        # 的 `task_id` 为空，曾把 Sprint-16 的窗口判成不可用）。只有当**一个带身份的
+        # 候选都没有**时，才回退到无身份候选（fail-closed：宁可算进来，也不要"因为
+        # 没写身份就当作本期没跑过"）。
+        identified = [r for r in candidates if run_sprint_identity(r) == sprint_id]
+        if identified:
+            return identified
+        return [r for r in candidates if run_sprint_identity(r) is None]
     return candidates
 
 
-def scope_window_problems(policy: AgentPolicy, runs: list[dict], candidate: dict) -> list[str]:
+def scope_window_problems(policy: AgentPolicy, runs: list[dict], candidate: dict, *,
+                          sprint_id: str | None = None) -> list[str]:
     """候选作用域 run 能否当"本次关闭的起点"——**次序/时序**判据，违反即返回**具名问题**。
 
     为什么必须有上界（2026-09-25 独立复核 finding 2，major）：
@@ -309,6 +422,15 @@ def scope_window_problems(policy: AgentPolicy, runs: list[dict], candidate: dict
             f"（未来时间戳会把全部当期 run 挤出窗口 = 静默放行）")
     _step, _order, _scope_roles, later_roles = close_step_order(policy)
     later = [r for r in runs if str(r.get("role") or "") in later_roles]
+    if sprint_id is not None:
+        # M-A：次序判据只在**同一 Sprint** 内比较。两类 run 的处理**故意不对称**：
+        #   * 候选作用域 run：身份不可派生的**保留**（fail-closed——它可能就是本期的，
+        #     排除它等于"换个 task_id 就能让窗口消失"）；
+        #   * 比较用的后续步骤 run：身份不可派生的**排除**（它无法被归属到本期的流水线，
+        #     留着它会让**每个新 Sprint 的 kickoff 〇查**都被判"晚于整条流水线"——
+        #     实测：Sprint-18 的 081 登记后，账本里 34 条历史后续步骤 run 全在它之前，
+        #     于是域被判不可用；这不是事故，是新 Sprint 的正常开局）。
+        later = [r for r in later if run_sprint_identity(r) == sprint_id]
     earlier = [r for r in later if _before(str(r.get("started_at") or ""), started)]
     after = [r for r in later if _before(started, str(r.get("started_at") or ""))]
     if earlier and not after:
@@ -331,7 +453,8 @@ def scope_window_problems(policy: AgentPolicy, runs: list[dict], candidate: dict
     return problems
 
 
-def scope_step_run(policy: AgentPolicy, runs: list[dict]) -> dict | None:
+def scope_step_run(policy: AgentPolicy, runs: list[dict], *,
+                   sprint_id: str | None = None) -> dict | None:
     """本次关闭的**作用域 run** = 作用域步骤
     （`close_gate.scope_ref_step`，本仓 = `scope`）在账本里**最新的**那条 run
     ——**只做筛选，不做次序判定**（次序判定见 `scope_window_problems`）。
@@ -340,29 +463,39 @@ def scope_step_run(policy: AgentPolicy, runs: list[dict]) -> dict | None:
     属于上一个 Sprint 的关闭（本仓实测：`lessons-learned` 的 058 是 **Sprint-16**
     关闭补跑的那条），不应被本 Sprint 的 §9 要求，也不应定义本 Sprint 的窗口。
 
+    **M-A（`TG-19`，2026-09-25）**：`sprint_id` 非空时，"最新"只在**同一 Sprint** 的
+    候选里取——原口径是"全账本最新一条"，于是**下一个 Sprint 的 kickoff 〇查一登记，
+    上一个 Sprint 的窗口就被顶掉**（实测：Sprint-17 的关闭读数由 1 项变 99 项，其中
+    98 项假红）。域由**被判定物**派生，而不是由"账本里最后发生了什么"派生。
+
     `step.targets` 非空时按 target **精确匹配**过滤（口径同 N3；本仓 `scope` 步无
     targets，故实际不过滤——但判据不能建立在"当前数据刚好没有 targets"上）。
     没有 run、或最新 run 没有 `started_at` → 返回 None（调用方 fail-closed）。
     """
-    candidates = scope_step_runs(policy, runs)
+    candidates = scope_step_runs(policy, runs, sprint_id=sprint_id)
     if not candidates:
         return None
     latest = max(candidates, key=lambda r: str(r.get("started_at") or ""))
     return latest if str(latest.get("started_at") or "") else None
 
 
-def derive_close_window(policy: AgentPolicy, runs: list[dict]) -> tuple[str | None, list[str]]:
+def derive_close_window(policy: AgentPolicy, runs: list[dict], *,
+                        sprint_id: str | None = None) -> tuple[str | None, list[str]]:
     """窗口起点 + **弃用原因**（`(started_at | None, problems)`）。
 
     问题非空 ⇒ 起点为 `None`（判定域退回全域，fail-closed）；
     作用域 run 缺席同样返回 `None`
     且**不报问题**（"缺 run"由 `check_requirements` 按 `fanout.json` 逐条点名，两处不重复报）。
+
+    `sprint_id` 非空 ⇒ 候选作用域 run 只在**同一 Sprint** 内挑（M-A），次序判据也只在
+    同一 Sprint 内比较；"该 Sprint 根本没有作用域 run"由调用方（`run_real_data`）按
+    `domain-unavailable` 收口，本函数仍只负责起点推导。
     """
     _criterion()
-    candidate = scope_step_run(policy, runs)
+    candidate = scope_step_run(policy, runs, sprint_id=sprint_id)
     if candidate is None:
         return None, []
-    problems = scope_window_problems(policy, runs, candidate)
+    problems = scope_window_problems(policy, runs, candidate, sprint_id=sprint_id)
     if problems:
         return None, problems
     return str(candidate.get("started_at")), []
@@ -421,14 +554,22 @@ def ledger_close_window(policy: AgentPolicy, runs: list[dict]) -> str | None:
 
 # --------------------------------------------------------------------- 判据
 
-def check_requirements(policy: AgentPolicy, runs: list[dict]) -> list[str]:
+def check_requirements(policy: AgentPolicy, runs: list[dict], *,
+                       window_start: str | None = None) -> list[str]:
     """需求侧（数据驱动）：关闭流水线的必填步骤 / role / target 是否都真的跑过。
 
     原先这些判据是 `if role == "code-review": 必须有 windows 和 main` 这样的代码；
     现在**从 `fanout.json` 推导**——加减步骤/分支只改数据。
+
+    `window_start` 非空 ⇒ 只认**窗口内**的 run（M-A）：域是按 Sprint 收窄的，若这里仍
+    认全域，一个**身份不可派生的历史 run**（例如多年前的同 role run）就能冒充"本期步骤
+    跑过了"——那是把"收窄"做成了"放行"。默认 `None` 保持历史调用口径（自检 fixture 用）。
     """
     _criterion()
     problems: list[str] = []
+    if window_start is not None:
+        runs = [r for r in runs
+                if str(r.get("started_at") or "") >= window_start]
     by_role: dict[str, list[dict]] = {}
     for r in runs:
         by_role.setdefault(str(r.get("role") or ""), []).append(r)
@@ -530,11 +671,21 @@ def check_c1(policy: AgentPolicy, runs: list[dict],
     return problems
 
 
-def check_c2(policy: AgentPolicy, runs: list[dict]) -> list[str]:
-    """C2 指涉可核：外部引用解析到"存在且可用"的对象；运行数据 role 必须能落到 spec（不认角色名）。"""
+def check_c2(policy: AgentPolicy, runs: list[dict], *,
+             ledger: list[dict] | None = None) -> list[str]:
+    """C2 指涉可核：外部引用解析到"存在且可用"的对象；
+    运行数据 role 必须能落到 spec（不认角色名）。
+
+    `ledger` 非空 ⇒ "引用对象**是否存在**"按**全账本**判定（M-A）：
+    判定域是按 Sprint 收窄的，而被引用的对象天然可能属于上一个 Sprint
+    （本期 〇查完全可以沿用上一期的 scope 承担者）。
+    拿域内名单查存在性，会把**合法的跨期引用**判成"指向不存在的对象"——实测：Sprint-16 与
+    Sprint-18 的域里都因此各多出 1 条假红（072/081 引用 069）。**收窄判定域不等于收窄
+    "存在性"的判据范围**：前者问"本期该谁被要求"，后者问"这个名字在账本里有没有"。
+    """
     _criterion()
     problems: list[str] = []
-    by_id = {r.get("run_id"): r for r in runs}
+    by_id = {r.get("run_id"): r for r in (ledger if ledger is not None else runs)}
     for r in runs:
         source = str(r.get("scope_source") or "").strip()
         if not source or source == "self-chosen":
@@ -612,7 +763,8 @@ def check_linkage(policy: AgentPolicy, sprint: dict, runs: list[dict],
     return problems
 
 
-def check_c3(policy: AgentPolicy, sprint: dict, runs: list[dict], att: Attribution) -> list[str]:
+def check_c3(policy: AgentPolicy, sprint: dict, runs: list[dict], att: Attribution,
+             right_end: str | None = None) -> list[str]:
     """C3 覆盖闭环：锚点存在、每个提交有归属、且与 §9 声明的覆盖口径一致。"""
     _criterion()
     problems: list[str] = []
@@ -635,9 +787,13 @@ def check_c3(policy: AgentPolicy, sprint: dict, runs: list[dict], att: Attributi
     unowned = att.unowned(globs)
     if unowned:
         # 失效方向反转（用户 P2 关切）：表没跟上 → 默认 FAIL 并**逐条点名**
+        # 右端标签（M-A）：`right_end` 非空时判据的上界来自**域内**最后一条覆盖 run，
+        # 不是仓库 HEAD——消息里必须说清是哪一个，否则读者会以为"HEAD 之后也检了"。
+        right_label = f"{right_end[:8]}（域右端）" if right_end else "HEAD"
         problems.append(
-            f"[C3] 锚点 {sprint['anchor'][:8]}→HEAD 有 {len(unowned)} 个提交无归属（run 窗口/例外表/"
-            f"doc-only 都不覆盖）：" + ", ".join(s[:10] for s in unowned[:8])
+            f"[C3] 锚点 {sprint['anchor'][:8]}→{right_label} 有 "
+            f"{len(unowned)} 个提交无归属（run 窗口/例外表/doc-only 都不覆盖）："
+            + ", ".join(s[:10] for s in unowned[:8])
             + (" …" if len(unowned) > 8 else ""))
 
     # §9 行声明的覆盖范围必须与账本一致（防"文档写了覆盖、账本没有窗口"）。
@@ -662,7 +818,9 @@ def check_c3(policy: AgentPolicy, sprint: dict, runs: list[dict], att: Attributi
 
 
 def evaluate(policy: AgentPolicy, sprint: dict, runs: list[dict], *,
-             att: Attribution | None = None, check_coverage: bool = True) -> list[str]:
+             att: Attribution | None = None, check_coverage: bool = True,
+             sprint_id: str | None = None, right_end: str | None = None,
+             ledger: list[dict] | None = None) -> list[str]:
     """返回失败原因列表（空 = 通过）。三条不变式 + 需求（全部数据驱动）。
 
     **关闭窗口只推导一次**：C1 的判定域（D1）与 §9↔账本的区间比对（N6）
@@ -674,17 +832,18 @@ def evaluate(policy: AgentPolicy, sprint: dict, runs: list[dict], *,
     既报出问题、又不静默收窄。
     """
     problems: list[str] = []
-    window_start, window_problems = derive_close_window(policy, runs)
+    window_start, window_problems = derive_close_window(
+        policy, runs, sprint_id=sprint_id)
     problems += window_problems
-    problems += check_requirements(policy, runs)
+    problems += check_requirements(policy, runs, window_start=window_start)
     problems += check_c1(policy, runs, window_start)
-    problems += check_c2(policy, runs)
+    problems += check_c2(policy, runs, ledger=ledger)
     problems += check_linkage(policy, sprint, runs, window_start)
     if check_coverage:
         if att is None:
             problems.append("[C3] 覆盖检查已启用但未提供归属计算结果（内部错误）")
         else:
-            problems += check_c3(policy, sprint, runs, att)
+            problems += check_c3(policy, sprint, runs, att, right_end=right_end)
     return problems
 
 
@@ -926,10 +1085,60 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
               f"锚点 {str(sprint.get('anchor'))[:8]}；账本相关判据未执行）")
         return 0
 
+    # ---- M-A（`TG-19`）：**判定域必须由被判定物派生** ------------------------------
+    # 原口径：作用域 run 取"全账本最新一条"，于是下一个 Sprint 的 kickoff 〇查一登记，
+    # 上一个 Sprint 的窗口就被顶掉（2026-09-25 实测：
+    # Sprint-17 的关闭读数由 1 项变 99 项，
+    # 其中 98 项是假红）。现在：域 = **本文档所属 Sprint** 的 run。
+    sprint_id = sprint_identity_of_doc(path)
+    if sprint_id is None:
+        print(f"DOMAIN-UNAVAILABLE：无法从被判定物派生 Sprint 身份"
+              f"（文件名 {path.name!r} 里没有 `sprint-<N>`）"
+              f"⇒ 不产出判定结论（退出码 {DOMAIN_UNAVAILABLE_EXIT}）。")
+        print("  → 域必须由被判定物派生；派生不出时 fail-closed，"
+              "**不得**退回全域，也不得把全域 findings 当成结论。")
+        return DOMAIN_UNAVAILABLE_EXIT
+    domain, unknown_ident = domain_runs(runs, sprint_id)
+    candidate = scope_step_run(policy, domain, sprint_id=sprint_id)
+    if candidate is None:
+        print(f"DOMAIN-UNAVAILABLE：账本里找不到 **Sprint-{sprint_id}** 的作用域 run"
+              f"（step={str(policy.close_gate.get('scope_ref_step'))!r}）"
+              f"⇒ 不产出判定结论（退出码 {DOMAIN_UNAVAILABLE_EXIT}）。")
+        print("  → 语义：本 Sprint 的关闭流水线**还没开始**"
+              "（或作用域 run 的 `task_id` 里没有 `Sprint-<N>`、"
+              "也未写显式 `sprint` 字段）。")
+        return DOMAIN_UNAVAILABLE_EXIT
+    window_start, window_problems = derive_close_window(
+        policy, domain, sprint_id=sprint_id)
+    # 无身份的 run 只在**该 Sprint 的窗口内**才算本期（M-A 的第二道过滤）：
+    # 身份过滤解决"别的 Sprint 的 run 混进来"，
+    # 窗口过滤解决"身份不可派生的陈旧 run 混进来"
+    # ——后者实测会让 Sprint-18 的域里出现 Sprint-17 的 code-review（其 scope_source 指向
+    # 不在域内的 069 ⇒ C2 报"指向不存在的对象"，纯属跨期串味）。
+    if window_start is not None:
+        domain = [r for r in domain
+                  if run_sprint_identity(r) is not None
+                  or str(r.get("started_at") or "") >= window_start]
+    print(f"[domain] Sprint-{sprint_id}；域内 run {len(domain)} 条"
+          f"（身份不可派生、按 fail-closed 保留 {unknown_ident} 条）"
+          f"；作用域 run = {candidate.get('run_id')}；窗口起点 = {window_start}")
+    if window_problems:
+        print(f"DOMAIN-UNAVAILABLE：Sprint-{sprint_id} 的窗口被次序/时序判据弃用"
+              f"⇒ 不产出判定结论（退出码 {DOMAIN_UNAVAILABLE_EXIT}）：")
+        for p in window_problems:
+            print(f"  - {p}")
+        return DOMAIN_UNAVAILABLE_EXIT
+
     att = None
+    right_end: str | None = None
     if check_coverage:
         anchor = sprint.get("anchor") or ""
-        head = head_sha(ROOT)
+        right_end, right_run = domain_right_boundary(domain)
+        head = right_end or head_sha(ROOT)
+        print(f"[domain] 右端 = {head[:12]}…"
+              + (f"（由域内最新覆盖 run {right_run} 的 covers_through 界定；"
+                 f"其后提交属下一个 Sprint，不进入本期 C3）" if right_end else
+                 "（域内没有任何覆盖窗口 ⇒ 退回仓库 HEAD）"))
         exceptions: list[dict] = []
         cov = (policy.close_gate.get("coverage") or {})
         exc_file = cov.get("exceptions_file")
@@ -939,9 +1148,10 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
             except PolicyError as exc:
                 print(f"CLOSE-READINESS-ERROR: {exc}")
                 return 2
-        att = attribution(ROOT, anchor, head, runs, exceptions, policy=policy)
+        att = attribution(ROOT, anchor, head, domain, exceptions, policy=policy)
 
-    problems = evaluate(policy, sprint, runs, att=att, check_coverage=check_coverage)
+    problems = evaluate(policy, sprint, domain, att=att, check_coverage=check_coverage,
+                        sprint_id=sprint_id, right_end=right_end, ledger=runs)
     # D0-3(a)：已标注的"产出型 run"**逐条打印**——它让一条判据对该 run 失效，
     # 若只存在于账本 JSON 里，关闭报告就会"看着全绿"而无人知道有豁免在生效。
     notes = att.produced_only_notes() if att is not None else []
@@ -1519,6 +1729,69 @@ def _selfcheck() -> int:
         p = evaluate(policy, parse_sprint(_doc(rows, SHA_A)), runs, att=_att(runs))
         ok(f"N6 反向对照 b：§9 第 3 行 {field} 写错（{bad!r}）→ FAIL（role/target 一并比对）",
            any(f"{field}={bad!r} 与账本" in x for x in p), f"problems={p[:1]}")
+
+    # ---- M-A（`TG-19`）：判定域必须由**被判定物**派生 -----------------------------
+    ok("M-A 身份解析 a：`2026-09-21-sprint-17.md` → '17'",
+       sprint_identity_of_doc("docs/iteration/sprint/2026-09-21-sprint-17.md") == "17")
+    ok("M-A 身份解析 b：文件名给不出身份 → None（不猜，由调用方报 domain-unavailable）",
+       sprint_identity_of_doc("docs/iteration/sprint/notes.md") is None)
+    ok("M-A 身份解析 c：run 的显式 `sprint` 字段**优先于** task_id",
+       run_sprint_identity({"sprint": "018", "task_id": "Sprint-7 close"}) == "18")
+    ok("M-A 身份解析 d：无显式字段时从 task_id 派生（legacy 兼容；派生不出 → None）",
+       run_sprint_identity({"task_id": "sprint-9-close"}) == "9"
+       and run_sprint_identity({"task_id": "cleanup"}) is None)
+
+    # **原始事故复现**（2026-09-25：G2 的 kickoff 〇查一登记，Sprint-17 的关闭读数
+    # 由 1 项变 99 项，其中 98 项假红）——注入形态 = "在流水线之后追加一条**下一个
+    # Sprint** 的作用域 run"。M-A 之后：上一个 Sprint 的窗口与问题清单**一字不变**。
+    s16 = [
+        _run("run-k-101", "impact-assessment", "Sprint-16 close scope",
+             "2026-09-20T01:00:00+00:00"),
+        _run("run-d-102", "doc-audit", "working-tree", "2026-09-20T02:00:00+00:00",
+             "impact-assessment:run-k-101"),
+        _run("run-c-103", "code-review", "branch:windows", "2026-09-20T02:10:00+00:00",
+             "impact-assessment:run-k-101"),
+        _run("run-c-104", "code-review", "branch:main", "2026-09-20T02:20:00+00:00",
+             "impact-assessment:run-k-101"),
+        _run("run-l-105", "lessons-learned", "sprint", "2026-09-20T03:00:00+00:00"),
+    ]
+    before_w = derive_close_window(policy, s16, sprint_id="16")
+    injected = s16 + [_run("run-k-106", "impact-assessment", "Sprint-17 close scope",
+                           "2026-09-20T04:00:00+00:00")]
+    after_w = derive_close_window(policy, injected, sprint_id="16")
+    ok("M-A 反向对照①（**原始事故复现**）：追加下一个 Sprint 的 kickoff 〇查 → "
+       "上一个 Sprint 的窗口一字不变",
+       before_w == after_w and before_w[0] == "2026-09-20T01:00:00+00:00",
+       f"before={before_w} after={after_w}")
+    ok("M-A 反向对照①b：同一条注入在**它自己的** Sprint 上仍是合法起点",
+       derive_close_window(policy, injected, sprint_id="17")[0]
+       == "2026-09-20T04:00:00+00:00")
+
+    p = evaluate(policy, parse_sprint(_doc(_rows(s16[:1]), SHA_A)), s16[:1], att=None,
+                 check_coverage=False, sprint_id="16")
+    ok("M-A 反向对照②：本期流水线未跑 → 逐条点名缺 run（**不是** PASS）",
+       sum("缺 run" in x for x in p) >= 3, f"problems={p[:3]}")
+    ok("M-A 反向对照③：该 Sprint 根本没有作用域 run → 起点 None"
+       "（fail-closed，不退化成全域）",
+       derive_close_window(policy, s16, sprint_id="99")[0] is None)
+
+    mixed = s16 + [_run("run-k-107", "impact-assessment", "cleanup",
+                        "2026-09-20T05:00:00+00:00")]
+    ok("M-A 反向对照④：无身份的**更晚**作用域 run 不得顶掉本期",
+       derive_close_window(policy, mixed, sprint_id="16")[0]
+       == "2026-09-20T01:00:00+00:00")
+    ok("M-A 反向对照④b：一个带身份的候选都没有时，才回退到无身份候选",
+       derive_close_window(policy, [_run("run-k-108", "impact-assessment", "cleanup",
+                                         "2026-09-20T06:00:00+00:00")],
+                           sprint_id="16")[0] == "2026-09-20T06:00:00+00:00")
+    right, right_run = domain_right_boundary(s16)
+    ok("M-A 域右端 a：取域内**最新**覆盖 run 的 covers_through",
+       right == SHA_D and right_run == "run-l-105", f"right={right} run={right_run}")
+    tweaked = [*s16[:4], {**s16[4], "covers_through": SHA_C}]
+    ok("M-A 域右端 b：按 run 时序取，而不是 sha 的字典序最大",
+       domain_right_boundary(tweaked)[0] == SHA_C)
+    ok("M-A 域右端 c：域内没有任何合法覆盖窗口 → None（调用方退回仓库 HEAD）",
+       domain_right_boundary([{"run_id": "x", "covers_through": ""}])[0] is None)
 
     p = evaluate(policy, good, runs, att=_att(runs, unowned_extra=False),
                  check_coverage=False)
