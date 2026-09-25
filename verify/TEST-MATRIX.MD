@@ -32,18 +32,20 @@
 | `verify_agentops.py` | AgentOps 账本 CLI 用例断言 UC-1~UC-19（离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库，UC-19=TG-8 离线开关：三入口拒绝+反向对照+配置面+两侧一致） | offline | — | 20s | ¥0 | — | none |
 | `verify_archive.py` | M16 调研归档完整性校验：report/context/reasoning/evidence 契约 + 证据索引表双向交叉引用（限定 §7 索引表区间、大小写不敏感；fail-closed） | offline | — | 5s | ¥0 | — |  |
 | `verify_artifact_paths.py` | TG-9 产物目录约定闸门：脚本源码的写盘目标必须落在已忽略目录或 %TEMP%（政策 artifact_paths 驱动）+ 忽略根双向差集（须真被 .gitignore 忽略、确有其行、确有代码在用）+ 动态目标棘轮（新文件必须可静态判定）+ 反向对照（注入写仓库根 → rc=1 点名；默认落点实测 git status 干净） | offline | — | 10s | ¥0 | — | git |
-| `verify_card_index.py` | TG-14④ 卡索引 lint：索引↔卡文件一一对应 / 卡号↔文件名一致 / 必备节 / Sprint 不得复制卡正文 / 表格结构；含 5 条反向对照自检 | offline | — | 5s | ¥0 | — | none |
+| `verify_card_index.py` | TG-14④ 卡索引 lint：索引↔卡文件一一对应 / 卡号↔文件名一致 / 必备节 / Sprint 不得复制卡正文 / 表格结构 / 状态三处一致（卡↔索引↔Sprint 看板）/ 卡库存基线 totals 与 card-inventory 实测一致；含 8 条反向对照自检 | offline | — | 6s | ¥0 | — | none |
 | `verify_checkpoint.py` | F-AC10 文献级 checkpoint：逐篇落盘 + 零成本复用 + 文件变更/载荷损坏/模型不匹配/切块口径/同内容去重五重边界 fail-closed（est = 近次实测 ¥0.016965 × 1.3 ≈ 0.03，2026-09-20 校准） | network | deepseek | 240s | ¥0.03 | /api/new_session, /api/run_step | keys, network, self-boots-backend |
 | `verify_checkpoint_index.py` | F-AC16 v1 checkpoint 只读索引：扫描/排序/逐篇载荷路径与存在性/坏件 fail-soft/detail 与 resolve_payload/字段白名单（离线合成 fixture） | offline | — | 5s | ¥0 | /api/checkpoints | none |
 | `verify_close_readiness.py` | TG-15 关闭前置闸门：C1 声明完备 / C2 指涉可核 / C3 覆盖闭环（锚点→HEAD 每提交有归属），需求全来自 fanout.json + spec frontmatter；含变异用例自 fanout 自动生成的反向对照 | offline | — | 15s | ¥0 | — | none |
 | `verify_config_schema.py` | 配置 SSOT 一致性 + M7 前端零硬编码 + Settings 升级基线护栏（114 断言，离线） | offline | — | 5s | ¥0 | /api/config_schema, /api/config/validate | none |
 | `verify_deduction_rates.py` | §2.1.1 扣率数据闸门：deduction_rates 读取器 fail-closed（缺键/超界/负值/全0/步长非法/判据缺证据/无到期日约束/折算级别越界）+ 纯函数 deduction_for 正反例（合并开关与比例均来自数据、封顶优先于取整） | offline | — | 5s | ¥0 | — | none |
+| `verify_derived_numbers.py` | 派生数字不得手抄：按文件棘轮约束"现测/实测 <数字>"式当期主张（断言数/卡数/文件数/脚本数/字节/C 级条数/棘轮计数）；生成物豁免、上限只减不增、review_by 到期即 FAIL；含 6 条反向对照自检 | offline | — | 4s | ¥0 | — | none |
 | `verify_e2e.py` | deepseek 全链路 6 步（LLM+vision + 本地 st- 向量） | network | deepseek | 120s | ¥0.3 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
 | `verify_e2e_dashscope.py` | dashscope 全链路 6 步 + 同进程 deepseek 切换隔离回归（est = 近次实测 ¥1.013377 × 1.3 ≈ 1.4，2026-09-20 校准，留余量防预检误拒） | network | dashscope, deepseek | 150s | ¥1.4 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
 | `verify_e2e_openai.py` | OpenAI provider+embedding 全流程 + 同进程 deepseek→openai 切换隔离回归 | network | openai, deepseek | 150s | ¥1 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network, balance |
 | `verify_embed_load.py` | parse_chunk_embed 三种模式：run/load 同会话/load 新会话（embed 缓存） | network | deepseek | 90s | ¥0.3 | /api/run_step | keys, network |
 | `verify_f12_preview_res.py` | F-AC12 预览清晰度实证：1.0 缩放渲染，PNG 宽度 ≥500px（旧 0.45 为 ~268px） | offline | — | 10s | ¥0 | — | none |
 | `verify_freshness.py` | M18 v1 报告时效检测：fresh/stale/suspect 三态规则 + CLI 契约（--check/--only/重定向）+ 偏移时间解析 + 容错（离线合成 fixture） | offline | — | 8s | ¥0 | — | none |
+| `verify_gate_integrity.py` | 闸门可信度：-O/PYTHONOPTIMIZE 守卫行在位（含真实 -O 探针必须红）+ 棘轮上限与 git HEAD 逐项比较（只许下调、上调即 FAIL）+ review_by 必填未过期 + 未覆盖闸门逐条 WARN；含 7 条反向对照自检 | offline | — | 6s | ¥0 | — | none |
 | `verify_index_health.py` | 索引一致性三重探针 + 损坏自愈（合成六形态，离线） | offline | — | 20s | ¥0 | — | none |
 | `verify_ledger_measurement.py` | TG-13 账本测量化闸门：口径可核（dur/rounds/unknown 来自 policy）+ 账本↔agents/runs 双向一致（白名单须有 reason 且只减不增）+ 时间戳退化（相同/0.00/整十分钟/负值/缺失）+ rounds vs 报告轮次 + 终态已写回 + measurement_source/dur_minutes 契约 + 历史棘轮（计数上限 + review_by）+ CLI 写入侧自检（finish/round 标注退化、list 显示 unknown） | offline | — | 14s | ¥0 | — | none |
 | `verify_ledger_rounds.py` | TG-10 账本多轮次记录：round 追加（终态可用）/首轮快照保留/产出累加/累计时长/中断事件（round --interrupted 与 interrupt）/list 展示/非法 run 拒绝（离线） | offline | — | 8s | ¥0 | — | none |
@@ -59,4 +61,4 @@
 | `verify_smoke.py` | 冒烟 8 项：paperqa 导入/后端 12 路由加载/runtime_trace 目标/PDF 解析等（离线） | offline | — | 10s | ¥0 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session, /api/health, /api/providers, /api/config_schema, /api/config/validate, /api/translate_preview, /api/usage, /api/checkpoints | none |
 | `verify_usage.py` | Retro③ token 用量采集与成本换算：解析/累计/增量/价表查找/缺价不臆测/换算式/回调防裁剪（离线） | offline | — | 5s | ¥0 | — | none |
 
-共 53 个脚本：offline 22 / network 10 / gui 21。
+共 55 个脚本：offline 24 / network 10 / gui 21。

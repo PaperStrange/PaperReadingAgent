@@ -19,14 +19,14 @@
 | TG-5 | P3 分层 runner + cron 夜间全量联网套件（fail-closed）。**参数已预决（D3）**：每周一次 | ✅ **完成（Sprint-16）** | Sprint-16 | [cards/TG-5.md](cards/TG-5.md) |
 | TG-6 | **验收方式改进（DoD 补"人机交互验收面" + 过程可见证据 + 规范执行可核查）**：① DoD 现偏代码执行层， | ✅ 已交付（2026-09-25：C 级棘轮 + 四件套证据规范 + `TG-14`/`TG-7` 补证） | Sprint-17（治理批 G1 = 规则落地） | [cards/TG-6.md](cards/TG-6.md) |
 | TG-7 | **预算闸门 fail-open**：`scripts/scheduled-tasks.py` 的 `load_stat | ✅ 完成（2026-09-20 当日闭环） | Sprint-16（走查修复） | [cards/TG-7.md](cards/TG-7.md) |
-| TG-8 | **自举后端前端口自检 + 离线开关统一注入**（Retro 行动项 ② 升级为必修）：`verify/e2e_comm | **计划中（Sprint-17，用户 2026-09-21 确认）** | Sprint-17（治理批 G1） | [cards/TG-8.md](cards/TG-8.md) |
-| TG-9 | **新脚本产物目录约定**（Retro 行动项 ④）：新脚本产物默认写**已忽略目录**（运行态 JSON → `age | **计划中（Sprint-17，用户 2026-09-21 确认）** | Sprint-17（治理批 G1） | [cards/TG-9.md](cards/TG-9.md) |
+| TG-8 | **自举后端前端口自检 + 离线开关统一注入**（Retro 行动项 ② 升级为必修）：`verify/e2e_comm | **✅ 完成（2026-09-25，Sprint-17）**：端口自检 + 离线开关（发请求前拒绝）+ 套件 flaky 根因修复；状态与 `cards/TG-8.md` 同步 | Sprint-17（治理批 G1） | [cards/TG-8.md](cards/TG-8.md) |
+| TG-9 | **新脚本产物目录约定**（Retro 行动项 ④）：新脚本产物默认写**已忽略目录**（运行态 JSON → `age | **✅ 完成（2026-09-25，Sprint-17 D2）**：`verify/verify_artifact_paths.py` + `policy.json::artifact_paths`；状态与 `cards/TG-9.md` 同步 | Sprint-17（治理批 G1） | [cards/TG-9.md](cards/TG-9.md) |
 | TG-10 | **多轮次 agent 的账本记录失真（可观测性缺口）**：同一 run 被追加多轮复核（run-053 共 5 轮）时 | **v1 ✅ 完成（2026-09-21）**；③ 看板 UI 展示待排期 | Sprint-16（v1 已交付）／③ 看板 UI → Sprint-18（G2） | [cards/TG-10.md](cards/TG-10.md) |
-| TG-11 | **规则绕过复盘 + 可执行闸门（用户 2026-09-21 定性为"很严重"）**：2026-09-20/21 我以" | **进行中（Sprint-17）**：③(a) **CLI 闸门已落地**（`register --scope-source impact-assessment:<run_id>` / 自选须 `--deviation "<≥10 字符>"`，账本落库 `scope_source`/`scope_deviation`；`verify_agentops.py` **UC-14 八条断言** + **反向对照实测**：旧实现放行无 scope 的评审 run（rc=0）且不认 `--scope-source`）；复盘与 ④ 关闭闸门待做 | Sprint-17（治理批 G1） | [cards/TG-11.md](cards/TG-11.md) |
+| TG-11 | **规则绕过复盘 + 可执行闸门（用户 2026-09-21 定性为"很严重"）**：2026-09-20/21 我以" | **✅ 完成（Sprint-17；状态与 Sprint 看板及 `cards/TG-11.md` 同步，2026-09-25）**：③a/③b/③c 全交付 + 复盘定稿 | Sprint-17（治理批 G1） | [cards/TG-11.md](cards/TG-11.md) |
 | TG-12 | **文档内容漂移复盘 + 派生事实机制（用户 2026-09-21："sprint17 和以前的开发过程发现的文档内容漂 | **候选（用户 2026-09-21 要求开卡复盘；同类问题已足够成卡）** | Sprint-18（治理批 G2） | [cards/TG-12.md](cards/TG-12.md) |
-| TG-13 | **账本"测量化"：时长/轮次/账本↔产物一致性**（用户 2026-09-21 拍板"开新卡"，而非并入 TG-10） | **候选（用户 2026-09-21 拍板开卡）** | Sprint-17（治理批 G1） | [cards/TG-13.md](cards/TG-13.md) |
+| TG-13 | **账本"测量化"：时长/轮次/账本↔产物一致性**（用户 2026-09-21 拍板"开新卡"，而非并入 TG-10） | **✅ 完成（2026-09-25，Sprint-17 D3）**：`verify/verify_ledger_measurement.py` + `policy.json::ledger_measurement`；状态与 `cards/TG-13.md` 同步 | Sprint-17（治理批 G1） | [cards/TG-13.md](cards/TG-13.md) |
 | TG-14 | **一卡一文档：卡片正文独立成文 + backlog 瘦索引 + 索引 lint**（**由 `TG-12` 机制候选  | **✅ 完成（2026-09-23，D3）** | Sprint-17（治理批 G1） | [cards/TG-14.md](cards/TG-14.md) |
-| TG-15 | **闸门泛化：三不变式 + 数据驱动（替换"逐场景加条件"式硬编码）**（用户 2026-09-23 批准 P1="可以 | **候选（用户 2026-09-23 批准开工；Sprint-17 内实现）** | Sprint-17（治理批 G1） | [cards/TG-15.md](cards/TG-15.md) |
+| TG-15 | **闸门泛化：三不变式 + 数据驱动（替换"逐场景加条件"式硬编码）**（用户 2026-09-23 批准 P1="可以 | **✅ 实质完成（Sprint-17 D2；状态与 Sprint 看板及 `cards/TG-15.md` 同步，2026-09-25）**：①~⑤+⑦⑧ 落地；**⑥ 已裁定顺延**（非完成、非待办）；**2.5 点不减**（改扣分条件） | Sprint-17（治理批 G1） | [cards/TG-15.md](cards/TG-15.md) |
 | TG-16 | **审查流程与策略内容"整体过一遍" → 图文并茂 HTML 汇报**（用户 2026-09-23："我想需要对现有审查 | **候选（用户 2026-09-23 要求开卡）** | 待排期（建议：素材可在 G1 期间并行收集，**HTML 定稿放 G1 关闭后**——届时的流程图/闸门矩阵才包含 G1 全部落地物；若用户要先看"现状版"，可提前单独出一版并在文件头标注快照日期） | [cards/TG-16.md](cards/TG-16.md) |
 | TG-17 | **闸门可信化收尾：覆盖窗口语义 + C1 判定域**（来源＝`TG-15` 独立复核批的两条 finding，用户 2 | **进行中（关闭阻塞项 B1~B4 已修，2026-09-25；用户裁定由 Sprint-18 前移为 Sprint-17 关闭阻塞）** | Sprint-17（治理批 G1，**前移**；原排期 Sprint-18 治理批 G2） | [cards/TG-17.md](cards/TG-17.md) |
 | TG-18 | **闸门债：15 处历史表格缺陷逐处清理**（棘轮基线 4 个文件／15 处；review_by=2026-10-31） | **候选** | 待排期（**Sprint-18 候选**） | [cards/TG-18.md](cards/TG-18.md) |

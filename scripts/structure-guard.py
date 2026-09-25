@@ -2,52 +2,67 @@
 """A-M12：Markdown **结构守卫**（`snapshot` / `verify` / `--replay`）——把 R1 族事故从"事后自检"变成"前置拦截"。
 
 **背景（可核）**：Sprint-17 内实测 **5 次**同型事故（R1-1~R1-5，逐条证据见
-`docs/iteration/phases/agents-infra/2026-09-23-edit-boundary-incidents-case.MD`）：`edit`-style 文本替换的
+`docs/iteration/phases/agents-infra/2026-09-23-edit-boundary-incidents-case.MD`）：
+`edit`-style 文本替换的
 `old_string` 跨到"我以为是边界、其实是内容"的位置，**静默吃掉**标题行 / 下一节标题 / 表格单元格边界。
-5/5 全部由**事后**自检抓到——缺的不是注意力，而是**前置/通用**的结构守卫。本脚本就是那个守卫：
+5/5 全部由**事后**自检抓到——缺的不是注意力，而是**前置/通用**的结构守卫。
+本脚本就是那个守卫：
 
     snapshot → 编辑 → verify
 
-`snapshot` 把**政策派生**的文档集合的结构清单落盘（默认 `agents/runtime/doc-structure.json`）；
-`verify` 只对**丢失/变形**报错：新增标题 / 新增表格 / **表格新增行** / 新增文件一律 OK 并打印，
+`snapshot` 把**政策派生**的文档集合的结构清单落盘（默认
+`agents/runtime/doc-structure.json`）；
+`verify` 只对**丢失/变形**报错：
+新增标题 / 新增表格 / **表格新增行** / 新增文件一律 OK 并打印，
 **同一行就地改写**（数量不变、文本变了——标题行 / 锚点行，或表格的表头·单元格）报 `[修改]` 也 OK，
 因此它可以在**任何** Markdown 结构编辑前后无条件各跑一次，而不因"我刚加了内容 / 我刚改了一行"误报。
 
 ## 判据（verify，逐条对应 R1 的真实形态；**丢失 = 数量减少**）
-  ① 标题**数量减少** → FAIL 点名 `文件:行 标题`（R1-1 `## 2. 启动条件`、R1-5 `## 7. 我接手的工作面`）
+  ① 标题**数量减少** → FAIL 点名 `文件:行 标题`（R1-1 `## 2. 启动条件`、
+  R1-5 `## 7. 我接手的工作面`）
   ② 标题级别变化 → FAIL
-  ③ 表格块消失 / 列数变化 / 行数减少 → FAIL（R1-3 数据行被顶掉一格、R1-4 整表被压成 1 格）；
+  ③ 表格块消失 / 列数变化 / 行数减少 → FAIL（R1-3 数据行被顶掉一格、
+  R1-4 整表被压成 1 格）；
      **表块数量·行数·列数都不变**、只有表头或单元格文本就地改写 → `[修改]`（rc=0，同 ⑤ 口径）
   ④ 文件消失 → FAIL
-  ⑤ **同一行就地改写**（标题行 / 行首粗体锚点行 / 表格的表头·单元格：数量不变、文本变了）→
+  ⑤ **同一行就地改写**（标题行 / 行首粗体锚点行 / 表格的表头·单元格：数量不变、
+  文本变了）→
      **不是丢失**：报 `[修改]`，rc=0
   退出码：rc=1 有任何丢失/变形；rc=0 否则。
 
 **① 的边界（H1，2026-09-25 实测修正）**：旧实现按**文本集合**判标题与锚点行——基线里的那一行文本在
-新文本里找不到 ⇒ 报「标题被删 / 锚点行被删」，同一行又被报成「新增」。于是**就地改一行**（补一个小节
+新文本里找不到 ⇒ 报「标题被删 / 锚点行被删」，同一行又被报成「新增」。
+于是**就地改一行**（补一个小节
 号、retarget 一处 `§` 引用——batch G 实测 **5 份文档**的行首粗体锚点行）会同时拿到"被删"与"新增"两条
 **相反**结论、rc=1：一次纯文本修改被误判为丢失，守卫从此变成噪音源。现改为**计数口径**：
 **数量减少 = 丢失 → FAIL**；**数量不变而文本变了 = `[修改]` → rc=0**。
-`--replay` 的 H1-a/H1-b/H1-c 三条对照把该契约钉成可执行断言（就地改写 rc=0 且输出**不得**含「被删」；
+`--replay` 的 H1-a/H1-b/H1-c
+三条对照把该契约钉成可执行断言（就地改写 rc=0 且输出**不得**含「被删」；
 删标题 / 改级别必须仍 rc=1）。5 类 R1 事故全是"数量减少 / 表格变形"，计数口径**一条都没放过**。
 
 **③ 的边界（F2，2026-09-25 实测修正）**：判据只对**丢失/变形**报错——表格**行数增加**（追加一行）
 与新增表格块都是**新增**，rc=0 并打印 `[新增]`。旧实现把"追加一行"报成「表格列数变化」
-（`row_columns` 两个列表长度不同 ⇒ 不等 ⇒ 命中列数分支），与本节契约相反；现逐行口径只对齐到
+（`row_columns` 两个列表长度不同 ⇒ 不等 ⇒ 命中列数分支），与本节契约相反；
+现逐行口径只对齐到
 基线已有的那些行。`--replay` 的 F2-a~F2-d 四条对照把该契约钉成可执行断言。
 
 **③ 的边界（I1，2026-09-25 实测修正）**：旧实现按**表头原文**精确配对表格——把某个表格的**表头
 单元格就地改写**（列数与行数都不变）时配对不上，于是同一张表在一条输出里被同时报成
-「表格块消失」（FAIL）与「新增表格」，rc=1：与 H1 同型的假阳性（同一处文本修改拿到两条相反结论）。
+「表格块消失」（FAIL）与「新增表格」，rc=1：
+与 H1 同型的假阳性（同一处文本修改拿到两条相反结论）。
 现改为与标题/锚点**同一条配对口径**：逐行原文逐字相同的表先一一对上，残项按相似度配对——
 **表块数量减少 = 表格块消失 → FAIL**；配成对之后**行数减少 / 列数签名变化（含表头列数）= 变形
-→ FAIL**（列数是硬判据）；**行数增加 = 新增 → 放行**；**结构不变而逐行原文变了 = `[修改]` → rc=0**。
-`--replay` 的 T1-a~T1-c 三条对照把该契约钉成可执行断言（表头 / 数据单元格就地改写必须放行且
+→ FAIL**（列数是硬判据）；**行数增加 = 新增 → 放行**；
+**结构不变而逐行原文变了 = `[修改]` → rc=0**。
+`--replay` 的 T1-a~T1-c
+三条对照把该契约钉成可执行断言（表头 / 数据单元格就地改写必须放行且
 **不得**出现「表格块消失」「新增表格」；删掉整张表必须仍 rc=1）。
 
 **合法结构变更**（有意加列 / 改标题**级别** / 删行重排表格）会同样报 FAIL——这是**刻意的**：`verify`
-不猜意图，编辑前后各跑一次时任何结构差分都必须由人确认，确认后**重做 `snapshot`** 即为新基线。
-有意**改标题/锚点行的文字**只报 `[修改]`（rc=0），不需要人工确认——它不改变结构，只是内容更新。
+不猜意图，编辑前后各跑一次时任何结构差分都必须由人确认，
+确认后**重做 `snapshot`** 即为新基线。
+有意**改标题/锚点行的文字**只报 `[修改]`（rc=0），不需要人工确认——它不改变结构，
+只是内容更新。
 
 ## 文档集来自政策（**不写第二份路径清单**）
 `agents/policy.json::md_table_docs` + `md_table_globs` 展开，与 `verify/verify_md_tables.py` 的"实扫集"
@@ -62,11 +77,15 @@
       * `row_columns` 是**逐行**单元格数：某数据行被顶掉一格时**表头列数不变**，只有逐行口径
         看得见 R1-3（spec 的"列数/行数"是它的汇总，两者都记）。
       * `row_text` 是**逐行原文**（I1 起）：判"表头/单元格就地改写"的唯一真源——只记 `header`
-        只能发现表头被改，数据行单元格被改时表头逐字不变（`--replay` 的 T1-b 钉的就是它）。
-        旧快照（无该字段）退回表头比对：**结构判据一条不少**（行数/列数签名照旧逐行对齐），
-        只有数据行的 `[修改]` 看不见——`verify` 会打印提示，提示重做 `snapshot` 立新基线。
+        只能发现表头被改，数据行单元格被改时表头逐字不变（
+        `--replay` 的 T1-b 钉的就是它）。
+        旧快照（无该字段）退回表头比对：
+        **结构判据一条不少**（行数/列数签名照旧逐行对齐），
+        只有数据行的 `[修改]` 看不见——`verify` 会打印提示，
+        提示重做 `snapshot` 立新基线。
       * `anchors` 除 `^#+ ` 标题行外**还收"行首粗体行"**（`**…**：…`）：R1-2 的真实输入被吃掉的是
-        `**卡片来源与时间口径…**` 这行**粗体标题**，只认 `^#+` 会漏（`--replay` 的 R1-2 就是它）。
+        `**卡片来源与时间口径…**` 这行**粗体标题**，
+        只认 `^#+` 会漏（`--replay` 的 R1-2 就是它）。
       * `headings` 在 spec 的"级别|文本"上加**行号**——① 要求点名 `文件:行 标题`，而标题被删后
         行号只存在于基线里（事后扫描无法复原它原本在哪一行）。
 
@@ -76,10 +95,19 @@
     .venv\\Scripts\\python.exe scripts\\structure-guard.py --replay
 退出码：0=通过；1=有丢失/变形（verify）或自检断言失败（--replay）；2=政策/用法错误。
 
-`--replay` = **5 类真实 R1 输入**（必须全部被拦下）+ **4 类 F2 反向对照**（追加行必须放行、
-删行/改列数/删标题必须被拦下）+ **3 类 H1 就地改写对照**（同数量原地改标题行/锚点行必须放行并报
-`[修改]`、改标题级别必须被拦下）+ **3 类 T1 表格对照**（表头/数据单元格原地改写必须放行并报
-`[修改]`、删整表必须被拦下），全部在 `%TEMP%` 副本上跑，真文件只读。
+`--replay` = **5 类真实 R1 输入**（必须全部被拦下）
++ **4 类 F2 反向对照**（追加行必须放行、
+删行/改列数/删标题必须被拦下）
++ **3 类 H1 就地改写对照**（同数量原地改标题行/锚点行必须放行并报
+`[修改]`、改标题级别必须被拦下）
++ **3 类 T1 表格对照**（表头/数据单元格原地改写必须放行并报
+`[修改]`、删整表必须被拦下），损坏只发生在 `%TEMP%` 的副本上，真文件只读。
+
+**`--replay` 与分支内容无关（C1，2026-09-25 code-review-072）**：夹具文档（标题行 /
+锚点行 / 表格）由脚本**当场合成**，不再把 R1 的真实输入硬编码在 windows-only 的
+`docs/iteration/**` 上——旧实现在 main（无 `docs/iteration/`）上必
+`FileNotFoundError` ⇒ 新增的 CI 步骤恒红。
+现在：被点名的 7 份**只**用合成内容，故在"没有 `docs/` 的树"里同样 ALL PASS。
 
 `--root` 只改变"**文档树在哪**"（replay 的临时镜像用），**不改变"政策是什么"**：政策数据只有一个真源
 `agents/policy.json`，不为副本再造第二份政策（否则"两处政策各说一套"就是下一类漂移）。
@@ -131,7 +159,8 @@ def policy():
     return _POLICY
 
 
-# --------------------------------------------------------------------------- 文档集（政策派生）
+# ------------------------------------------
+# --------------------------------- 文档集（政策派生）
 
 def doc_set(root: Path) -> list[str]:
     """政策派生的文档集 = `md_table_docs`（显式，保序）∪ `md_table_globs` 展开（在 `root` 下解析）。
@@ -159,11 +188,13 @@ def doc_set(root: Path) -> list[str]:
 def coverage_report(root: Path) -> list[str]:
     """真仓库模式下核对"应扫/实扫"双向差集——**复用 `verify_md_tables` 的判据**（不重写）。
 
-    `verify_md_tables.coverage_problems()` 返回 `(应扫, 实扫, problems)` 三元组，这里只取 problems
+    `verify_md_tables.coverage_problems()` 返回 `(应扫, 实扫, problems)` 三元组，
+    这里只取 problems
     （首版实测踩过：把整个三元组当 problems 迭代，于是把"应扫集"这份 160 条清单当成 3 条错误打印出来
     ——复用别人判据时**先看清返回契约**）。
 
-    `--root`（临时镜像）模式不调用它：那份判据的路径按 `verify_md_tables.ROOT`（真仓库）解析，
+    `--root`（临时镜像）模式不调用它：那份判据的路径按 `verify_md_tables.ROOT`（真仓库）
+    解析，
     在镜像上跑会得到"检查了另一棵树"的假结论——**宁可明说跳过，也不给一个看起来成立的绿**。
     """
     if root.resolve() != ROOT.resolve():
@@ -215,6 +246,7 @@ def scan_file(path: Path) -> dict:
 
 
 def scan_docs(root: Path, rels: list[str]) -> tuple[dict[str, dict], list[str]]:
+    """扫描给定文档集合的结构清单（标题序列 / 表格块 / 行数），返回 (文件→清单, 缺失文件)。"""
     files: dict[str, dict] = {}
     missing: list[str] = []
     for rel in rels:
@@ -226,7 +258,8 @@ def scan_docs(root: Path, rels: list[str]) -> tuple[dict[str, dict], list[str]]:
     return files, missing
 
 
-# --------------------------------------------------------------------------- 比对（只报丢失/变形）
+# ---------------------------------------------------------------------------
+# 比对（只报丢失/变形）
 
 def _plain_anchors(entries: list[str]) -> list[tuple[int, str]]:
     out = []
@@ -285,7 +318,8 @@ def _pair_leftovers(base_texts: list[str], cur_texts: list[str]) -> tuple[list[t
 def _heading_diff(rel: str, base: list[str], cur: list[str]) -> tuple[list[str], list[str], list[str]]:
     """标题比对（H1 起为**计数口径**）：返回 `(failed, modified, added)`。
 
-    ① 原文（含级别）逐字相同的标题先一一对上——对上而**级别变了** ⇒ FAIL（级别是结构，不是文本）；
+    ① 原文（含级别）逐字相同的标题先一一对上——对上而**级别变了** ⇒ FAIL（级别是结构，
+    不是文本）；
     ② 对不上的残项交给 `_pair_leftovers`：配成对 = `[修改]`（数量不变即 rc=0），
        落单的基线 = **数量减少** ⇒ FAIL『标题被删』，落单的现有 = 新增。
     """
@@ -328,10 +362,12 @@ def _heading_diff(rel: str, base: list[str], cur: list[str]) -> tuple[list[str],
 
 def _anchor_diff(rel: str, base: list[str], cur: list[str]) -> tuple[list[str], list[str], list[str]]:
     """锚点行比对（H1 起为**计数口径**）。`^#+ ` 标题锚点已由 `_heading_diff` 判（含级别与行号），
-    这里只判**行首粗体行**——R1-2 被吃掉的那行正是粗体标题（`**卡片来源与时间口径…**`），只认 `^#+`
+    这里只判**行首粗体行**——R1-2 被吃掉的那行正是粗体标题（`**卡片来源与时间口径…**`），
+    只认 `^#+`
     会漏；反过来，若不跳过 `#` 行，同一个标题会被两条判据各报一遍。
 
-    判据与标题同构（见 `_pair_leftovers`）：**数量减少 = 丢失（FAIL）；数量不变 = `[修改]`（rc=0）**。
+    判据与标题同构（见 `_pair_leftovers`）：**数量减少 = 丢失（FAIL）；
+    数量不变 = `[修改]`（rc=0）**。
     锚点行没有"级别"，故配对残项一律算 `[修改]`，不存在级别分支。
     """
     failures: list[str] = []
@@ -365,7 +401,8 @@ def _anchor_diff(rel: str, base: list[str], cur: list[str]) -> tuple[list[str], 
 def _row_diff_detail(rel: str, btable: dict, ctable: dict) -> str:
     """点名**第一处**列数不同的行。
 
-    F2 起只对**基线已有的那些行**（`row_columns[:len(基线)]`）逐位对齐——行数增加时多出来的
+    F2 起只对**基线已有的那些行**（`row_columns[:len(基线)]`）
+    逐位对齐——行数增加时多出来的
     行不再进入对齐（它们是"新增"，不是"变形"），所以下标 `j` 仍与基线行一一对应，
     `ctable['start_line'] + j` 依旧是该行的真实行号。
     """
@@ -386,7 +423,8 @@ def _table_text(table: dict, legacy: bool = False) -> str:
     `_table_verdict` 对精确配对的表照样跑一遍结构判据。方向的取舍是刻意的：宁可少报一类
     `[修改]`（fail-open 到"没提"），也绝不把一次文本修改报成"丢失"（fail-closed 到错误结论）。
 
-    `legacy` **必须对配对双方取同一个值**（由基线那一侧决定）：现状是刚扫的、永远带 `row_text`，
+    `legacy` **必须对配对双方取同一个值**（由基线那一侧决定）：现状是刚扫的、
+    永远带 `row_text`，
     拿它跟旧基线的表头比会**每一张表都不等** ⇒ 把整份文档报成"表格被修改"。判据两侧同口径，
     否则差异来自 schema 而不是来自内容。
     """
@@ -416,7 +454,8 @@ def _table_shape_failure(rel: str, btable: dict, ctable: dict) -> str:
 
     判据顺序是**语义**问题（首版把两者的顺序写反，于是"删掉一整行"被报成"列数变化：
     表头 3 列 → 3 列"——行数少了却说列数变了）：先判**行数减少**（整行被吞），
-    再判**列数签名**（行列不对齐 = 单元格被顶出，R1-3；表头列数变化也落在这一支，列数是硬判据）。
+    再判**列数签名**（行列不对齐 = 单元格被顶出，R1-3；表头列数变化也落在这一支，
+    列数是硬判据）。
     两者都 FAIL，但点名必须对得上事实。
     """
     brow, crow = btable["row_columns"], ctable["row_columns"]
@@ -461,8 +500,10 @@ def _table_diff(rel: str, base: list[dict], cur: list[dict],
       ⇒ 全部配成对，于是"就地改写"只报 `[修改]`；**数量减少**（m > n）⇒ 落单的基线表 =
       **表格块消失**（FAIL），落单的现有表 = `[新增] 表格`。
 
-    I1（2026-09-25 实测修正）：旧实现按 `header` **精确**配对——把某个表格的表头单元格就地改写
-    （列数与行数都不变）时配对不上，同一张表被同时报成『表格块消失』（FAIL）与『新增表格』，rc=1。
+    I1（2026-09-25 实测修正）：
+    旧实现按 `header` **精确**配对——把某个表格的表头单元格就地改写
+    （列数与行数都不变）时配对不上，同一张表被同时报成『表格块消失』（FAIL）
+    与『新增表格』，rc=1。
     """
     failures: list[str] = []
     modifications: list[str] = []
@@ -544,6 +585,7 @@ def _resolve_json(raw: str) -> Path:
 
 
 def cmd_snapshot(root: Path, out: Path) -> int:
+    """`snapshot` 子命令：把政策派生文档集的结构清单落盘为基线（编辑前跑）。"""
     pre = coverage_report(root)
     print(f"structure-guard snapshot：root={root} → {out}")
     if pre:
@@ -583,6 +625,7 @@ def cmd_snapshot(root: Path, out: Path) -> int:
 
 
 def cmd_verify(root: Path, baseline_path: Path) -> int:
+    """`verify` 子命令：与基线比对，**只对丢失/变形报错**（新增标题/表格/行一律放行）。"""
     if not baseline_path.is_file():
         print(f"STRUCTURE ERROR：基线不存在 {baseline_path}——先跑 "
               f"`structure-guard.py snapshot`（守卫必须有一份『编辑前』的结构清单才有意义）")
@@ -630,13 +673,15 @@ def cmd_verify(root: Path, baseline_path: Path) -> int:
     return 0
 
 
-# --------------------------------------------------------------------------- --replay（5 类真实输入）
+# ---------------------------------------------------------------------------
+# --replay（5 类真实输入）
 
 def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace").replace("\r\n", "\n")
 
 
 def _write_text(path: Path, text: str) -> None:
+    """写盘（LF 行尾）——`--replay` 的**唯一**写盘点（fixture 与政策骨架都经它落盘）。"""
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
@@ -809,7 +854,8 @@ REPLAY_CASES = (
      _damage_r1_5),
 )
 
-# F2（2026-09-25）：把模块头「新增一律放行，只对丢失/变形报错」的契约钉成**可执行**的四条对照。
+# F2（2026-09-25）：把模块头「新增一律放行，只对丢失/变形报错」
+# 的契约钉成**可执行**的四条对照。
 # 旧实现实测：`ctable["row_columns"] != btable["row_columns"]` 在行数不同时必然成立 ⇒
 # 「追加一行」（19→20 行、5 列不变）被判「表格列数变化」，rc=1，与契约相反。
 # `want_rc` 是**期望**退出码：新增 = 0（放行），丢失/变形 = 1（拦下）。
@@ -852,14 +898,16 @@ def _damage_h1_heading(mirror: Path) -> list[str]:
     line, old, new = _rewrite_line(mirror / rel, "## 3. 项目管理（分支与远程）",
                                    lambda s: s.replace("（分支与远程）", "（分支与远程／提交纪律）", 1),
                                    "H1-a")
-    # `[修改]` 行把级别与标题文本分开印（`标题被修改（##）：3. …`），故点名用去掉 `## ` 的文本。
+    # `[修改]` 行把级别与标题文本分开印（`标题被修改（##）：3. …`），
+    # 故点名用去掉 `## ` 的文本。
     return [f"{rel}:{line}", "标题被修改", old[3:], new[3:]]
 
 
 def _damage_h1_anchor(mirror: Path) -> list[str]:
     """H1-b：**行首粗体锚点行就地改写**（数量不变）——必须**放行**（rc=0）并报『锚点行被修改』。
 
-    这是 batch G 真实踩到的输入：就地给锚点行补一处 `§` 引用（`**…**：` 行仍以 `**` 开头、
+    这是 batch G 真实踩到的输入：就地给锚点行补一处 `§` 引用（`**…**：
+    ` 行仍以 `**` 开头、
     整行只有一行，数量不变）。R1-2 打的是同一行——**删掉它必须 FAIL，改写它必须放行**。
     """
     rel = "docs/1-WORKFLOW.MD"
@@ -945,8 +993,10 @@ def _damage_t1_header(mirror: Path) -> list[str]:
 def _damage_t1_cell(mirror: Path) -> list[str]:
     """T1-b：**数据行单元格就地改写**（表头逐字不变、列数与行数都不变）→ 必须放行（rc=0）并报 `[修改]`。
 
-    与 T1-a 的差别是**判据的真源**：表头一个字都没动，只有数据行原文变了——旧快照 schema 里
-    没有逐行原文（只有 `header` + 逐行**列数**），所以这条钉的是 I1 新增的 `row_text` 是否真的
+    与 T1-a 的差别是**判据的真源**：表头一个字都没动，
+    只有数据行原文变了——旧快照 schema 里
+    没有逐行原文（只有 `header` + 逐行**列数**），
+    所以这条钉的是 I1 新增的 `row_text` 是否真的
     在判，而不是"表头恰好也在变"顺带判出来的。
     """
     rel = "docs/5-VERSIONS.MD"
@@ -976,7 +1026,8 @@ def _damage_t1_drop_table(mirror: Path) -> list[str]:
 
 # T1（2026-09-25，I1）：把「表格的就地改写也只报 `[修改]`」钉成可执行对照。
 # 旧实现实测：把某个表格的**表头单元格就地改写**（列数与行数都不变）⇒ 同一张表被同时报成
-# 「表格块消失」（FAIL）与「新增表格」，rc=1——与 H1 同型：一次纯文本修改拿到两条相反结论。
+# 「表格块消失」（FAIL）与「新增表格」，rc=1——与 H1 同型：
+# 一次纯文本修改拿到两条相反结论。
 # `want_rc` = **期望**退出码；`must_not` = **禁止出现**的子串（就地改写不得留任何"消失/新增"字样）。
 T1_CASES = (
     ("T1-a", "表格**表头单元格就地改写**（列数与行数都不变）→ **必须放行**（rc=0）并报『表格被修改』，"
@@ -994,26 +1045,290 @@ PASSED = 0
 
 
 def ok(name: str, cond: bool, detail: str = "") -> None:
+    """自检断言助手：失败即计入失败数并抛错（`--replay` 的反向对照用它）。"""
     global PASSED
     assert cond, f"{name} FAIL: {detail}"
     PASSED += 1
     print(f"  PASS: {name} {detail}")
 
 
-def _digest(root: Path, rels: list[str]) -> str:
+def _put(mirror: Path, rel: str, lines: list[str]) -> None:
+    """把 fixture 行写成 `<mirror>/<rel>`（LF 行尾 + 末尾换行；父目录按需建）。
+
+    写盘落点必须**可静态判定**（`verify/verify_artifact_paths.py` 的动态目标棘轮）：
+    文件正文一律经既有的 `_write_text` 落盘，本函数只有一个**目录**落点，
+    不再新增第二个。
+    """
+    path = mirror / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_text(path, "\n".join(lines) + "\n")
+
+
+# `--replay` 的 fixture **内容**（2026-09-25，C1）：全部在脚本里**合成**，不复制仓库文档
+# ——故与"跑命令时所在分支的内容"无关（main 上无 `docs/iteration/`、无 `docs/` 也照跑）。
+# "一份仓库文档都不读"是**可断言的不变式**（`_setup_fixture_tree` 返回的
+# `repo_records` 恒为空），不是"我记得没读"。
+#
+# **路径**沿用真仓库的相对路径：损坏函数与断言点名的就是那些路径（如 `backlog.MD`），
+# 换了路径这两处要跟着改，而"点名到这份文档"正是要保住的取证形态。
+# **文本**是合成文本：只有**断言串点名的那几行**（标题 `## 2. 启动条件`、粗体锚点行、
+# 表头里的 `处置`/`状态（2026-09-12）` 等）必须逐字相同，其余是占位内容。
+# 这 7 份在两类 checkout 上表现**完全一致**：windows 侧它们存在，但内容一律换成合成；
+# main 侧它们不存在，整份内容由这里提供。
+#
+# ⚠️ fixture 表格行**不得**带行内代码：`_damage_r1_4` 的 `_escape_row` 会把整表**每行**
+# 的裸管道转义（`| 处置 | a | b |` → `\| 处置 \| a \| b \|`），反引号会把 `\|` 包进
+# 行内代码，而 `scan_file` 的口径下代码段内的管道**照样算分隔符** ⇒ 证据不可解释。
+# ⚠️ fixture 里**不得**出现 `内容摘要` 等只在某张表里出现一次的词：T1-a 用
+# `str.replace(..., 1)` 就地改写，词出现两处就会改到两行（"只改一行"的前提被破坏）。
+def _fixture_backbone() -> list[str]:
+    """F2 骨干表（5 列 × 5 行：表头 + 分隔行 + 3 数据行）：F2-a~F2-d 打**最长**那表。"""
+    return [
+        "## 1. 功能卡",
+        "",
+        "| ID | 卡 | 状态 | 触发 | 备注 |",
+        "| --- | --- | --- | --- | --- |",
+        "| F2-1 | 追加一行应放行 | 已验 | 表格新增行 | fixture |",
+        "| F2-2 | 删一行应拦下 | 已验 | 表格行数减少 | fixture |",
+        "| F2-3 | 少一格应拦下 | 已验 | 表格列数变化 | fixture |",
+        "",
+        "## 2. 启动条件",
+        "",
+        "| ID | 条件 | 证据 |",
+        "| --- | --- | --- |",
+        "| S-1 | 结构守卫可跑 | rc=0 |",
+        "",
+    ]
+
+
+def _fixture_sprint_risk() -> list[str]:
+    """R1-3：§5 风险表（表头须含 `处置` 列；末行会被顶掉一格）。"""
+    return [
+        "## 5. 风险与处置",
+        "",
+        "| 风险 | 影响 | 处置 | 状态 |",
+        "| --- | --- | --- | --- |",
+        "| 夹具漂移 | 假红 | 当场合成 | 已闭环 |",
+        "| 路径耦合 | main 必红 | 参数化 | 已闭环 |",
+        "",
+    ]
+
+
+def _fixture_sprint_old() -> list[str]:
+    """R1-4：整表被自写转义脚本压成 1 格（历史 Sprint 文档形态）。"""
+    return [
+        "## 2. 验收",
+        "",
+        "| US | 验收标准 | 证据 | 状态 |",
+        "| --- | --- | --- | --- |",
+        "| US-1 | fixture 可跑 | rc=0 | ✅ |",
+        "| US-2 | 路径无耦合 | main 亦绿 | ✅ |",
+        "",
+    ]
+
+
+def _fixture_analysis() -> list[str]:
+    """R1-5：分析类文档形态（某个整行标题被吞）。"""
+    return [
+        "## 7. 其它工作面",
+        "",
+        "本轮只做结构守卫自检。",
+        "",
+        "## 8. 我接手的工作面",
+        "",
+        "夹具化。",
+        "",
+    ]
+
+
+def _fixture_workflow() -> list[str]:
+    """`docs/1-WORKFLOW.MD` 形态：R1-2（删锚点行）与 H1-a/H1-b/H1-c（改写）都打这两行。
+
+    `**卡片来源与时间口径**：` 必须是**一行**以 `**` 开头、`**：` 相邻的粗体锚点行
+    （H1-b 的 `str.replace("**：", …)` 靠它；行内不得再出现第二个 `**：`）。
+    """
+    return [
+        "# 1. 工作流（fixture）",
+        "",
+        "## 3. 项目管理（分支与远程）",
+        "",
+        "本节为结构守卫自检的合成文本。",
+        "",
+        "**卡片来源与时间口径**：夹具当场合成，不读仓库文档。",
+        "",
+    ]
+
+
+def _fixture_versions() -> list[str]:
+    """`docs/5-VERSIONS.MD` 形态：T1-a~T1-c 打 head 表与 `状态（2026-09-12）` 表。
+
+    ⚠️ 两张表**形状不同**：head 表头里不得出现 `状态（2026-09-12）`（T1-a 之后 T1-c 靠它
+    定位），且 `状态（2026-09-12）` 表的**第 4 行**（0 = 表头）必须是 `| 分层地基 | … |`
+    ——T1-b 打的就是它。
+    """
+    return [
+        "# 5. 版本（fixture）",
+        "",
+        "## 5.1 版本摘要",
+        "",
+        "| 版本 | 日期 | 内容摘要 | 对应 Sprint / PR | 分支 |",
+        "| --- | --- | --- | --- | --- |",
+        "| v0 | 2026-09-25 | fixture | #1 | windows |",
+        "",
+        "## 5.2 分层地基",
+        "",
+        "| 主题 | 内容 | 状态（2026-09-12） |",
+        "| --- | --- | --- |",
+        "| A 配置模型 SSOT | 策展 schema + validate_config | ✅ Sprint-2 完成 |",
+        "| 分层地基 | 编排/引擎适配/事件模型/SessionStore（行为不变） | "
+        "✅ Sprint-2 完成 |",
+        "| 表格判据 | 逐行原文 | ✅ |",
+        "| 删整表 | 仍须拦下 | ✅ |",
+        "",
+    ]
+
+
+# 合成文档集的路径：长的抽成常量（`rel` 是**数据**，不是政策清单——政策真源仍是
+# `agents/policy.json`；这里只是把断言要用的那 7 条路径写成**可静态判定**的常量）。
+FIXTURE_ROOT = "docs/iteration/phases/testing-governance"
+FIXTURE_BACKLOG = f"{FIXTURE_ROOT}/backlog.MD"
+FIXTURE_ANALYSIS = (
+    f"{FIXTURE_ROOT}/2026-09-25-d2d3-parallel-session-quality-analysis.MD"
+)
+FIXTURE_SPRINT_17 = "docs/iteration/sprint/2026-09-21-sprint-17.md"
+FIXTURE_SPRINT_15 = "docs/iteration/sprint/2026-09-07-sprint-15.md"
+FIXTURE_SPRINT_16 = "docs/iteration/sprint/2026-09-12-sprint-16.md"
+FIXTURE_WORKFLOW = "docs/1-WORKFLOW.MD"
+FIXTURE_VERSIONS = "docs/5-VERSIONS.MD"
+
+
+# 合成文档集：`rel → 行`。除这些之外的政策文档一律写成**最小占位行**（只为让"政策集逐条
+# 落地"成立；占位行不含任何表格/锚点，不参与任何断言）。这 7 份**只**用合成内容。
+FIXTURE_DOCS: dict[str, list[str]] = {
+    FIXTURE_WORKFLOW: _fixture_workflow(),
+    FIXTURE_VERSIONS: _fixture_versions(),
+    FIXTURE_BACKLOG: _fixture_backbone(),
+    FIXTURE_ANALYSIS: _fixture_analysis(),
+    FIXTURE_SPRINT_17: _fixture_sprint_risk(),
+    FIXTURE_SPRINT_15: _fixture_sprint_old(),
+    FIXTURE_SPRINT_16: _fixture_sprint_old(),
+}
+
+# 各 fixture 被损坏函数点名的结构（数量断言用；改 fixture 必须同步改这里，否则自检变红）
+FIXTURE_HEADINGS: dict[str, int] = {
+    FIXTURE_WORKFLOW: 2, FIXTURE_VERSIONS: 3, FIXTURE_BACKLOG: 2, FIXTURE_ANALYSIS: 2,
+    FIXTURE_SPRINT_17: 1, FIXTURE_SPRINT_15: 1, FIXTURE_SPRINT_16: 1,
+}
+FIXTURE_TABLES: dict[str, int] = {
+    FIXTURE_WORKFLOW: 0, FIXTURE_VERSIONS: 2, FIXTURE_BACKLOG: 2, FIXTURE_ANALYSIS: 0,
+    FIXTURE_SPRINT_17: 1, FIXTURE_SPRINT_15: 1, FIXTURE_SPRINT_16: 1,
+}
+
+
+def _select_repo_docs(root: Path, rels: list[str], fixture_rels: set[str]) -> list[str]:
+    """政策集里**会被 fixture 覆盖**、且这份 checkout 真有的那些路径。
+
+    用途只有一处：`cmd_replay` 用它算"若照旧复制仓库文档，会有几份来自仓库"
+    （= 可疑面），再断言"实际读过 0 份"。全部命中 fixture 路径或一个都不存在时返回空表。
+    """
+    return [rel for rel in rels if rel in fixture_rels and (root / rel).is_file()]
+
+
+def _digest_items(items: list[tuple[str, Path]]) -> str:
+    """一组"具名文件"的联合摘要（跑前 == 跑后 ⇒ 零改动；缺文件编码为 `<missing>`）。"""
     digest = hashlib.sha256()
-    for rel in sorted(rels):
-        path = root / rel
-        digest.update(rel.encode("utf-8"))
+    for label, path in sorted(items, key=lambda item: item[0]):
+        digest.update(label.encode("utf-8"))
         digest.update(path.read_bytes() if path.is_file() else b"<missing>")
     return digest.hexdigest()
 
 
-def _mirror_copy(src_root: Path, mirror: Path, rels: list[str]) -> None:
+def _mirror_digest(root: Path, rels: list[str]) -> str:
+    return _digest_items([(rel, root / rel) for rel in rels])
+
+
+def _policy_roots(data: dict) -> list[str]:
+    """政策声明的顶层文档根（`md_table_coverage.roots`）——只用于台账/自检展示。"""
+    out: list[str] = []
+    for raw in ((data.get("md_table_coverage") or {}).get("roots") or []):
+        rel = str(raw).replace("\\", "/").strip("/")
+        if rel and rel not in out:
+            out.append(rel)
+    return out
+
+
+def _seed_policy_tree(root: Path, data: dict) -> None:
+    """先按政策铺骨架：`md_table_docs` 点名的文件写占位（`_put` 顺带建出各层目录）。
+
+    这样 `doc_set(root)` 能把政策 glob 完整展开（含 `docs/iteration/**` 这类"某分支
+    没有"的目录），"政策集逐条落地"这条断言在两类树上都成立。
+    目录不单独 `mkdir`（`_put` 的 `parents=True` 已经建齐）——少一个动态写盘落点。
+    """
+    for raw in (data.get("md_table_docs") or []):
+        rel = str(raw).replace("\\", "/")
+        _put(root, rel, [f"# fixture placeholder（政策兜底）：{rel}", ""])
+
+
+def _prune_extra_docs(mirror: Path, rels: list[str], templates: list[str]) -> list[str]:
+    """删掉**政策没点名、却在合成树里落地**的文档（返回被删的相对路径）。
+
+    为什么会多出来：政策 glob 里有 `agents/README.md` 这种"按文件名收"的条目，凡路径以
+    `README.md` 收尾的都会命中——合成树里 `agents/policy/`、`agents/functions/` 一带
+    资料（政策/角色 spec，是**别处**判据要看的数据）就跟着被收进文档集，"副本集 ==
+    政策集"于是不成立（`_seed_policy_tree` 管"不少"，这里管"不多"）。删掉它们，镜像
+    就严格等于政策集，与仓库里除了政策文档之外还有什么无关。
+    """
+    pruned: list[str] = []
+    for path in sorted(mirror.rglob("*"), reverse=True):
+        if not path.is_file() or path.suffix.lower() != ".md":
+            continue
+        rel = path.relative_to(mirror).as_posix()
+        if rel in rels or rel in templates:
+            continue
+        path.unlink()
+        pruned.append(rel)
+        try:
+            path.parent.rmdir()          # 只删空目录（非空抛 OSError，忽略）
+        except OSError:
+            pass
+    return pruned
+
+
+def _setup_fixture_tree(mirror: Path, rels: list[str]) -> tuple[list[str], list[str]]:
+    """合成整棵 fixture 文档树（政策骨架 → 点名 fixture 覆盖）。
+
+    返回 `(点名路径, 读过的仓库文档)`。`rels` 是**镜像自己的**政策集
+    （`doc_set(mirror)`）：用镜像而不是仓库根来取，既保住"政策集逐条落地"这条断言的
+    原义（副本集 == 政策集），又让 main 侧的短清单照样成立。
+
+    第二个返回值**恒为空表**——本函数一份仓库文档都不读（内容全部来自 `FIXTURE_DOCS`
+    与政策兜底占位），它的意义是把"与仓库内容无关"变成 `cmd_replay` 里**可断言**的数字。
+    """
+    if mirror.exists():
+        shutil.rmtree(mirror)
+    _seed_policy_tree(mirror, policy().policy_file)
+    pruned = _prune_extra_docs(mirror, rels, list(FIXTURE_DOCS))
+    if pruned:
+        print(f"  [夹具] 清掉 {len(pruned)} 份政策没点名的合成树文档"
+              f"（副本集须严格等于政策集）：{pruned[:5]}")
     for rel in rels:
-        dst = mirror / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src_root / rel, dst)
+        if rel not in FIXTURE_DOCS:
+            _put(mirror, rel, [f"# fixture placeholder: {rel}", ""])
+    for rel, lines in FIXTURE_DOCS.items():
+        _put(mirror, rel, lines)
+    named = [rel for rel in rels if rel in FIXTURE_DOCS]
+    missing_fixture = [rel for rel in FIXTURE_DOCS if not (mirror / rel).is_file()]
+    if missing_fixture:            # 政策集里没有的 fixture 路径也要落地（保险，不静默）
+        for rel in missing_fixture:
+            _put(mirror, rel, FIXTURE_DOCS[rel])
+        named += missing_fixture
+    return named, []
+
+
+def _restore_fixture(mirror: Path, rels: list[str]) -> None:
+    """把点名文件的 fixture 内容重写回镜像（= 原实现的 `_mirror_copy(ROOT, …)`）。"""
+    for rel in rels:
+        _put(mirror, rel, FIXTURE_DOCS[rel])
 
 
 def _run_cli(*args: str) -> subprocess.CompletedProcess:
@@ -1046,33 +1361,67 @@ def cmd_replay() -> int:
       ——直接钉住「丢失看数量，不看文本」这句契约（H1，2026-09-25 实测修正）；
     * **3 类 T1 对照**（表格表头单元格就地改写 / 表格数据行单元格就地改写 / 删掉整张表格）→ 前两类
       必须**放行并报 `[修改]`**（输出里**不得**出现"表格块消失"或"新增表格"——旧实现正是在这里
-      误报），第三类必须被拦下——同一句契约在**表格**判据上的版本（I1，2026-09-25 实测修正）。
+      误报），第三类必须被拦下——同一句契约在**表格**判据上的版本（I1，
+      2026-09-25 实测修正）。
 
     四组都夹着一条"复原该文件后 rc=0"的收尾断言，证明判决来自损坏本身而不是副本漂移。
 
-    **绝不动真文件**：所有损坏只发生在镜像里；收尾用"真实文件摘要（跑前 == 跑后）"作为断言，
-    而不是靠"我记得没写"（判据取可核的值）。
+    **与仓库内容无关（C1，2026-09-25 code-review-072）**：模型输入（标题行 / 锚点行 /
+    表格）全部由 `_setup_fixture_tree` 在 `%TEMP%` 里**合成**，不再把 R1 的真实输入
+    硬编码在 windows-only 文档上 ⇒ 在 main（无 `docs/iteration/`、无 `docs/`）上照样
+    通过。这条改动是被实测逼出来的：旧实现 19 处夹具路径写死 `docs/iteration/**`，
+    在 main 快照上 `FileNotFoundError` ⇒ 新增的 CI 步骤在 main 上恒红。
+
+    **绝不动真文件**：所有损坏只发生在镜像里；判据是**可核的数字**——本次自检读过的
+    仓库文档**必须为 0 份**（`_setup_fixture_tree` 的第二个返回值）。
+    （旧实现把仓库文档复制进镜像再校验"跑前 == 跑后"：那份摘要会被**任何**并发写仓库
+    的会话打红——自检不该对"此刻还有谁在写仓库"敏感，故改成"读 0 份"这条更强的判据。）
     """
-    print("structure-guard --replay：5 类真实 R1 输入 + 4 类 F2 反向对照 + 3 类 H1 就地改写对照"
-          " + 3 类 T1 表格对照，全在 %TEMP% 副本上复跑（真文件只读）")
+    print("structure-guard --replay：5 类真实 R1 输入 + 4 类 F2 反向对照 + 3 类 H1 "
+          "就地改写对照 + 3 类 T1 表格对照，全在 %TEMP% 的**合成**副本上复跑"
+          "（不读仓库文档；真文件只读）")
     rels = doc_set(ROOT)
-    digest_before = _digest(ROOT, rels)
+    fixture_rels = set(FIXTURE_DOCS)
+    would_copy = _select_repo_docs(ROOT, rels, fixture_rels)
     tmp = Path(tempfile.mkdtemp(prefix="structure-guard-replay-"))
     mirror = tmp / "repo-mirror"
     baseline = tmp / "doc-structure.json"
     try:
-        _mirror_copy(ROOT, mirror, rels)
+        named, repo_records = _setup_fixture_tree(mirror, rels)
+        fixture_digest_before = _mirror_digest(mirror, rels)
         temp_root = Path(tempfile.gettempdir()).resolve()
         ok("临时副本位于 %TEMP% 且不在仓库内（绝不动真文件）",
            mirror.resolve() != ROOT.resolve() and temp_root in mirror.resolve().parents,
            f"mirror={mirror}")
-        mirrored = doc_set(mirror)
-        ok(f"镜像完整：政策文档 {len(rels)} 份全部复制（副本集 == 政策集）",
-           set(mirrored) == set(rels), f"副本 {len(mirrored)} / 政策 {len(rels)}")
+        mirror_set = set(doc_set(mirror))
+        ok("夹具当场合成：政策集逐条落地、多出来的每一份都是有声明的 fixture",
+           set(rels) <= mirror_set and (mirror_set - set(rels)) <= fixture_rels,
+           f"副本 {len(mirror_set)} / 政策 {len(rels)}；多出 "
+           f"{sorted(mirror_set - set(rels))[:3]}（该分支没有的文档＝合成 fixture）")
+        missing = [rel for rel in rels if not (mirror / rel).is_file()]
+        ok("夹具内容到位：每条政策路径都在副本里有文件（既无少扫、也不靠仓库文档）",
+           not missing, f"缺 {len(missing)} 条{missing[:3]}")
 
         snap = _run_cli("snapshot", "--root", str(mirror), "--out", str(baseline))
         ok("snapshot → rc=0（编辑前结构清单已落盘）", snap.returncode == 0,
            f"rc={snap.returncode}；{snap.stdout.strip().splitlines()[-1][:80]}")
+
+        baseline_doc = json.loads(baseline.read_text(encoding="utf-8"))
+        baseline_files = baseline_doc.get("files") or {}
+        bad_fixture = []
+        for rel in named:
+            entry = baseline_files.get(rel)
+            headings = len(entry["headings"]) if entry else 0
+            tables = len(entry["tables"]) if entry else 0
+            want_h, want_t = FIXTURE_HEADINGS[rel], FIXTURE_TABLES[rel]
+            if entry is None or headings != want_h or tables != want_t:
+                got = f"标题{headings}/{want_h} 表{tables}/{want_t}"
+                bad_fixture.append(f"{rel}: {got}")
+        ok(f"夹具结构到位：{len(named)} 份被点名文档的标题/表格块数与声明一致"
+           f"（用例输入没漂）",
+           not bad_fixture, "；".join(bad_fixture[:3]) if bad_fixture else
+           "、".join(f"{rel.split('/')[-1]} 标题{FIXTURE_HEADINGS[rel]}"
+                     f"/表{FIXTURE_TABLES[rel]}" for rel in named))
 
         clean = _run_cli("verify", "--root", str(mirror), "--baseline", str(baseline))
         ok("干净副本 verify → rc=0（防假红：未损坏的镜像不得报 FAIL）", clean.returncode == 0,
@@ -1088,13 +1437,14 @@ def cmd_replay() -> int:
             ok(f"{case_id} 点名到位（{'、'.join(markers)}）", all(m in text for m in markers),
                _evidence(text, markers))
             summary.append(f"{case_id} -> {_evidence(text, markers)}")
-            _mirror_copy(ROOT, mirror, files)
+            _restore_fixture(mirror, files)
             back = _run_cli("verify", "--root", str(mirror), "--baseline", str(baseline))
             ok(f"{case_id} 复原该文件后 verify → rc=0（证明 FAIL 来自损坏本身，不是副本漂移）",
                back.returncode == 0, f"rc={back.returncode}")
 
-        ok(f"真文件零改动：{len(rels)} 份文档摘要 跑前 == 跑后", _digest(ROOT, rels) == digest_before,
-           f"sha256={digest_before[:16]}…")
+        ok(f"真文件零改动：读过的仓库文档 {len(repo_records)} 份（须为 0——夹具全合成；"
+           f"若照旧复制仓库文档则会是 {len(would_copy)} 份）",
+           repo_records == [], f"读过的仓库文档 {repo_records}")
         print("\n5 类 R1 复跑结果（旧实现：事后才发现；本机制：编辑后一跑即拦）：")
         for line in summary:
             print(f"  {line}")
@@ -1111,7 +1461,7 @@ def cmd_replay() -> int:
             ok(f"{case_id} 点名到位（{'、'.join(markers)}）", all(m in text for m in markers),
                _evidence(text, markers))
             summary.append(f"{case_id} -> {_evidence(text, markers)}")
-            _mirror_copy(ROOT, mirror, files)
+            _restore_fixture(mirror, files)
             back = _run_cli("verify", "--root", str(mirror), "--baseline", str(baseline))
             ok(f"{case_id} 复原该文件后 verify → rc=0（证明判决来自损坏本身，不是副本漂移）",
                back.returncode == 0, f"rc={back.returncode}")
@@ -1123,8 +1473,8 @@ def cmd_replay() -> int:
         ok(f"F2-a 的裁决行确实带『新增』标注（放行必须可核，不是静默 rc=0）",
            "表格新增行" in (summary[-len(F2_CASES)].split(" -> ", 1)[-1]),
            summary[-len(F2_CASES)].split(" -> ", 1)[-1])
-        ok(f"真文件零改动（F2 对照后复检）：{len(rels)} 份文档摘要 跑前 == 跑后",
-           _digest(ROOT, rels) == digest_before, f"sha256={digest_before[:16]}…")
+        ok(f"真文件零改动（F2 后复检）：读过仓库文档 {len(repo_records)} 份（须 0）",
+           repo_records == [], f"读过的仓库文档 {repo_records}")
 
         # ---- H1 就地改写对照（2026-09-25）：标题/锚点的"计数口径"契约 ------------------------
         print("\nH1 就地改写对照（数量不变 = `[修改]`，不是丢失；3 类）：")
@@ -1143,7 +1493,7 @@ def cmd_replay() -> int:
                    all(m not in text for m in must_not),
                    "未出现：" + "/".join(must_not))
             summary.append(f"{case_id} -> {_evidence(text, markers)}")
-            _mirror_copy(ROOT, mirror, files)
+            _restore_fixture(mirror, files)
             back = _run_cli("verify", "--root", str(mirror), "--baseline", str(baseline))
             back_text = back.stdout + back.stderr
             ok(f"{case_id} 复原该文件后 verify → rc=0（证明判决来自改写本身，不是副本漂移）",
@@ -1160,8 +1510,8 @@ def cmd_replay() -> int:
         ok("H1-a/H1-b 的裁决行确实带『修改』标注（放行必须可核，不是静默 rc=0）",
            all("修改" in line.split(" -> ", 1)[-1] for line in summary[h1_start:h1_start + 2]),
            summary[h1_start].split(" -> ", 1)[-1])
-        ok(f"真文件零改动（H1 对照后复检）：{len(rels)} 份文档摘要 跑前 == 跑后",
-           _digest(ROOT, rels) == digest_before, f"sha256={digest_before[:16]}…")
+        ok(f"真文件零改动（H1 后复检）：读过仓库文档 {len(repo_records)} 份（须 0）",
+           repo_records == [], f"读过的仓库文档 {repo_records}")
 
         # ---- T1 表格就地改写对照（2026-09-25，I1）：表格的"计数口径"契约 ----------------------
         print("\nT1 表格就地改写对照（表块数量不变 = `[修改]`，不是『表格块消失』；3 类）：")
@@ -1180,7 +1530,7 @@ def cmd_replay() -> int:
                    f"『表格块消失 + 新增表格』）", all(m not in text for m in must_not),
                    "未出现：" + "/".join(must_not))
             summary.append(f"{case_id} -> {_evidence(text, markers)}")
-            _mirror_copy(ROOT, mirror, files)
+            _restore_fixture(mirror, files)
             back = _run_cli("verify", "--root", str(mirror), "--baseline", str(baseline))
             back_text = back.stdout + back.stderr
             ok(f"{case_id} 复原该文件后 verify → rc=0（证明判决来自改写本身，不是副本漂移）",
@@ -1195,8 +1545,17 @@ def cmd_replay() -> int:
         ok("T1-a/T1-b 的裁决行确实带『修改』标注（放行必须可核，不是静默 rc=0）",
            all("修改" in line.split(" -> ", 1)[-1] for line in summary[t1_start:t1_start + 2]),
            summary[t1_start].split(" -> ", 1)[-1])
-        ok(f"真文件零改动（T1 对照后复检）：{len(rels)} 份文档摘要 跑前 == 跑后",
-           _digest(ROOT, rels) == digest_before, f"sha256={digest_before[:16]}…")
+        ok(f"真文件零改动（T1 后复检）：读过仓库文档 {len(repo_records)} 份（须 0）",
+           repo_records == [], f"读过的仓库文档 {repo_records}")
+
+        ok(f"夹具零改动：合成树 {len(rels)} 份摘要 跑前 == 跑后（收尾复原逐字节）",
+           _mirror_digest(mirror, rels) == fixture_digest_before,
+           f"sha256={fixture_digest_before[:16]}…")
+        ok(f"仓库内容无关：{len(named)} 份 fixture 都是合成文档，与『本 checkout 真有的"
+           f"同名文档』无关（main 侧同名文档更少或为 0）",
+           all(rel in fixture_rels for rel in named) and repo_records == [],
+           f"fixture {len(named)} 份 / 本 checkout 真有同名文档 {len(would_copy)} 份"
+           f"（main 侧更少；两份数字都不参与判决）")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print(f"\nALL PASS ({PASSED} assertions)")
@@ -1204,6 +1563,7 @@ def cmd_replay() -> int:
 
 
 def main() -> int:
+    """CLI 入口：解析 `snapshot` / `verify` / `--replay` 并分派。"""
     parser = argparse.ArgumentParser(
         description="A-M12 Markdown 结构守卫（snapshot / verify / --replay）",
         epilog="rc: 0=通过 / 1=有丢失或变形 / 2=政策与用法错误")

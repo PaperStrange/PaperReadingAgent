@@ -4,6 +4,7 @@
 > 触发：用户 2026-09-25 指出"另一个对话（**部署Codex Harness并查最佳实践**）误开启了 Sprint-17 的 D2/D3 任务，交付质量不尽如人意"，并要求本会话**接手全部工作**。
 > **证据边界（须如实理解）**：本会话**读不到那个对话的记录**。以下事实全部来自**仓库一手痕迹**（git 提交、`agents/runtime/registry.json`、工作树、闸门脚本）；对"为什么"的判断属**分析**，标注为假设者不当作结论。
 > 定位：**复盘输入**（不是结论定稿）。定稿在 Sprint-17 §8 与相关卡（TG-15/TG-17/A-M12/TG-16）执行时完成。
+> ⚠️ **时点记录（2026-09-25 一查 `run-2026-09-25-doc-audit-070` finding 1/2 后补标注）**：本文所有"实测"数字（卡数、字节、断言数、脚本数、C 级条数）都是**取证时点的读数**——它们会随仓库推进漂移，本 Sprint 的实测教训正是"手抄派生数字即制造漂移"。引用时**一律现跑对应命令**（`scripts/card-inventory.py`、`verify_lint.py` 的 `[report-only C 级]`/`EVIDENCE:` 行、套件末行、`verify_matrix.py check`），**不得把本文数字当现值**。
 
 ---
 
@@ -123,7 +124,7 @@
 |---|---|---|
 | `HEAD = 2514472`，`dirty = 0` | 实测本地 HEAD = **`9ffc108`**（其父为 `2514472`，即对方交接后本会话又提交了分析文档），`git status --porcelain` 为空 | ✅（差异已解释） |
 | 未推送 **14** 个提交 | 实测 `git rev-list --count origin/windows..HEAD` = **16** | ⚠️ **数字更正**：14 是对方交接前快照；现为 16（对方 15 + 本会话 1） |
-| 闸门全绿：表格 131 文件 / 卡索引双档 / 硬编码 13 / lint 6 / 矩阵 50 / 卡库存 96 张 | 独立复跑：`verify_md_tables` **131 文件 PASS**、`verify_card_index` **8 断言 PASS**、`verify_no_policy_hardcode` **13 断言 PASS**、`verify_lint` **6 断言 PASS**、`verify_matrix check` **50 脚本 CHECK OK**、`card-inventory.py` 可跑且**复现 `agents-infra:55` 的 `—` 非卡行** | ✅（套件 19/19 由本会话独立重跑中，结果回填 §8） |
+| 闸门全绿：表格 131 文件 / 卡索引双档 / 硬编码 13 / lint 6 / 矩阵 50 / 卡库存 96 张（**本列是对方"声称值"，全是时点读数**） | 独立复跑（**断言数/脚本数一律现跑为准，本列原读数已过期**）：`verify_md_tables` PASS、`verify_card_index` PASS、`verify_no_policy_hardcode` PASS、`verify_lint` PASS、`verify_matrix check` CHECK OK、`card-inventory.py` 可跑且**复现 `agents-infra:55` 的 `—` 非卡行** | ✅（套件由本会话独立重跑中，结果回填 §8） |
 | 迁移逐字段守恒（102/117/36/231） | 本会话**独立复算**（不看其核对器）：96 行卡 / **453 单元格**〔**该值不可复现**：见 §11.2-2 与 §11.3，**以二查 476 命中为准**〕，归一化子串守恒**仅 1 处命中 = 非卡的 `—` 行** → 守恒成立 | ✅ |
 | `agents/runtime/tg14-baseline.json` 语义已改为"卡库存当前真值" | 实测该文件结构 = `{phases, totals}`（字典） | ✅（**卡数变动必须同步刷新**，已列入我方常驻检查） |
 

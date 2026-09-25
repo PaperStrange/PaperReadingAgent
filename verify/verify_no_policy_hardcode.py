@@ -1,25 +1,35 @@
 """TG-15⑦：**硬编码政策探测器**（offline）——"政策必须在数据文件，不许写进代码"的可执行闸门。
 
 背景（`TG-15` 卡）：闸门原先靠"遇到一个场景加一条判据"成长，于是同一个政策在**多处**各存一份：
-`scripts/agent-ops.py` 的角色集合与偏离长度、`verify/verify_close_readiness.py` 的关闭角色与
-按角色判据、`verify/verify_lint.py` 的覆盖路径、`scripts/report-freshness.py` 的归档前缀、
+`scripts/agent-ops.py` 的角色集合与偏离长度、
+`verify/verify_close_readiness.py` 的关闭角色与
+按角色判据、`verify/verify_lint.py` 的覆盖路径、
+`scripts/report-freshness.py` 的归档前缀、
 `verify/verify_agentops.py` 又一份角色集合。**加角色/换分支/调阈值都要改代码**。
 TG-15 起政策统一落在三处数据：`agents/fanout.json`（步骤/target）、各 spec frontmatter
 （角色属性）、`agents/policy.json`（阈值与开关）；本脚本守住"不许再退回代码里"。
 
 扫描对象（A6 / 审核 R1，2026-09-25 起**政策驱动**）：由
-`agents/policy.json::hardcode_scan_coverage` 声明——`roots`（必扫树，每条必须存在）与 `globs`
-（实际展开，每条必须 ≥1 命中）两侧必须**相等**，闸门打印『应扫 N / 实扫 M』，不一致即 FAIL 并
-逐条点名；`exclude_dirs` 显式排除 vendored（`paper-qa/`）、环境（`.venv`/`node_modules`）、缓存
-与**运行产物**（`agents/runs/`、`.agents/`）。**封闭世界**：仓库里任何含 `.py` 的树必须落在
+`agents/policy.json::hardcode_scan_coverage` 声明——`roots`（必扫树，每条必须存在）
+与 `globs`
+（实际展开，每条必须 ≥1 命中）两侧必须**相等**，闸门打印『应扫 N / 实扫 M』，
+不一致即 FAIL 并
+逐条点名；`exclude_dirs` 显式排除 vendored（`paper-qa/`）、
+环境（`.venv`/`node_modules`）、缓存
+与**运行产物**（`agents/runs/`、`.agents/`）。**封闭世界**：
+仓库里任何含 `.py` 的树必须落在
 roots 或 exclude_dirs 内，出现未纳管的新树即 FAIL。
 
-  为什么必须政策驱动 + 双向差集（实测事故）：旧实现把 `('scripts','verify')` **写死在脚本里**，
-  实测只覆盖 39/182 个 `.py`，而闸门照旧打印 `ALL PASS … clean`——『漏扫』比『漏报』更危险，
-  它让 PASS 从『查过且没问题』退化成『没查』。真正的守门范围必须**可核**，不能靠读代码去猜。
+  为什么必须政策驱动 + 双向差集（实测事故）：旧实现把 `('scripts','verify')
+  ` **写死在脚本里**，
+  实测只覆盖 39/182 个 `.py`，而闸门照旧打印 `ALL PASS … clean`——『漏扫』比『漏报』
+  更危险，
+  它让 PASS 从『查过且没问题』退化成『没查』。真正的守门范围必须**可核**，
+  不能靠读代码去猜。
 
 判据（全部基于 AST，不是正则猜）：
-  R1 政策变量赋值 —— `ROLE(S)/REVIEW_ROLES/CLOSE_ROLES/SCOPE_*/MIN_*/THRESHOLD/PATHS/ALLOWED_*/
+  R1 政策变量赋值 —— `ROLE(S)
+  /REVIEW_ROLES/CLOSE_ROLES/SCOPE_*/MIN_*/THRESHOLD/PATHS/ALLOWED_*/
      WHITELIST/`…`GLOBS` 之类名字，值是"角色名字符串集合/列表"或数字常量；
   R2 **成员判定字面量** —— `x in {"code-review", ...}` / `x not in ("doc-audit",)`：
      这是"临时写死一个角色集合"的最常见形态（换行也逃不掉 AST）；
@@ -53,7 +63,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 EXEMPTIONS_PATH = Path(__file__).resolve().parent / "policy-hardcode-exemptions.json"
-# A6（R1）：扫描集**不再写死在这里**，改由 agents/policy.json::hardcode_scan_coverage 声明。
+# A6（R1）：扫描集**不再写死在这里**，改由 agents/policy.json::
+# hardcode_scan_coverage 声明。
 # 旧实现 `SCAN_DIRS = ("scripts", "verify")` 实测只覆盖 39/182 个 .py（审核 R1 判 major）。
 SCAN_DIRS = ("scripts", "verify")  # 仅保留作"旧实现对照"（反向对照⑨ 用它证明覆盖面确实变宽了）
 SELF_NAME = "verify_no_policy_hardcode.py"
@@ -67,7 +78,8 @@ if hasattr(sys.stdout, "reconfigure"):
 
 PASSED = 0
 
-# 说明（2026-09-23 doc-audit finding 1）：本脚本的断言语义数**不要抄进文档**——它会随新增判据变化
+# 说明（2026-09-23 doc-audit finding 1）：
+# 本脚本的断言语义数**不要抄进文档**——它会随新增判据变化
 # （9 → 21 → 23 → …）。文档一律写"以脚本输出的 ALL PASS (N assertions) 为准"，或在证据行里
 # 附**当时实测**的 N 与日期。手抄导致的漂移本轮已实测三次。
 
@@ -79,13 +91,18 @@ def ok(name: str, cond: bool, detail: str = "") -> None:
     print(f"PASS: {name} {detail}")
 
 
-# 角色名形态：小写词 + 连字符分段（code-review / doc-audit / impact-assessment / lessons-learned）
+# 角色名形态：小写词 + 连字符分段（code-review /
+# doc-audit / impact-assessment / lessons-learned）
 def role_like(word: str, *, allow_single_segment_pair: bool = False) -> bool:
     """像"agent 角色名"。
 
-    2026-09-23 二查后收紧（实测误报 18 条）：单连字符词里混着大量**非角色**的合法字面量——
-    `self-chosen`（scope 来源值）、`doc-only`（覆盖归类）、`idx-demo`/`st-demo`（fixture 命名）。
-    因此默认要求 **≥2 个连字符**（`impact-assessment`/`lessons-learned`/`tech-research`/`agent-onboarding-review`），
+    2026-09-23 二查后收紧（实测误报 18 条）：
+    单连字符词里混着大量**非角色**的合法字面量——
+    `self-chosen`（scope 来源值）、`doc-only`（覆盖归类）、
+    `idx-demo`/`st-demo`（fixture 命名）。
+    因此默认要求 **≥2
+    个连字符**（`impact-assessment`/`lessons-learned`
+    /`tech-research`/`agent-onboarding-review`），
     这样单连字符的 `code-review`/`doc-audit` 只在**上下文明确指向角色**时才判
     （`allow_single_segment_pair=True`，由调用方按变量名/比较对象名给出）。
 
@@ -132,7 +149,8 @@ POLICY_NAME_HINTS = (
 )
 PATH_NAME_HINTS = ("PATH", "DIR", "ROOT", "TARGET", "GLOB")
 
-# 本探测器自身的内置兜底（跨平台 venv 目录名）——见 policy-hardcode-exemptions.json 的说明
+# 本探测器自身的内置兜底（跨平台 venv 目录名）
+# ——见 policy-hardcode-exemptions.json 的说明
 VENV_PARTS = {"Scripts", "bin"}
 
 # 探测器的**词表**（不是政策本身）：用来识别"有人在代码里抄账本状态白名单"。
@@ -171,7 +189,8 @@ class Detector(ast.NodeVisitor):
     def __init__(self, known_roles: set[str] | None = None) -> None:
         self.findings: list[dict] = []
         # **角色名词表 = 仓库里实际存在的 spec 文件名**（`agents/functions/*.md`）。
-        # 二查后收紧（实测误报：`definitely-not-a-real-model`、`run-empty-ev`、`idx-demo` 都被当角色名）：
+        # 二查后收紧（实测误报：`definitely-not-a-real-model`、`run-empty-ev`、
+        # `idx-demo` 都被当角色名）：
         # 光看"像小写连字符词"太宽；而"像角色"的真判据是**它在仓库里有对应对象**。
         # 注意这不会造成"删 spec 即消音"：删掉 spec 会让封闭世界检查与 C2 立刻报错（见 agent_policy）。
         self.known_roles = known_roles or set()
@@ -193,7 +212,8 @@ class Detector(ast.NodeVisitor):
         names = [t.id for t in node.targets if isinstance(t, ast.Name)]
         for name in names:
             upper = name.upper()
-            # 变量名本身指向角色（`_ROLES`/`REVIEW_ROLES`/…）时，允许把单连字符词也算角色名——
+            # 变量名本身指向角色（`_ROLES`/`REVIEW_ROLES`/…）时，
+            # 允许把单连字符词也算角色名——
             # 否则 `_ROLES = {"code-review"}`（最经典的写死形态）会被"≥2 连字符"规则漏掉。
             role_ctx = "ROLE" in upper or "AGENT" in upper
             strings = [s for s in _iter_str(node.value)]
@@ -205,7 +225,8 @@ class Detector(ast.NodeVisitor):
             paths = [s for s in strings if len(s) > 1 and path_like(s)]
             if len(paths) >= 2 and any(h in upper for h in PATH_NAME_HINTS):
                 self._add("R3", node, f"{name} = 路径清单{paths}（覆盖路径须来自 agents/policy.json::lint_paths）")
-            # 状态白名单（二查 finding：`_ALLOWED_STATES=[...]` 是 TG-15 明列须数据化的形态之一）
+            # 状态白名单（二查 finding：
+            # `_ALLOWED_STATES=[...]` 是 TG-15 明列须数据化的形态之一）
             states = sorted({s for s in strings if s in LEDGER_STATUS_VALUES})
             if len(states) >= 2:
                 self._add("S1", node,
@@ -254,7 +275,8 @@ def exemption_rules() -> dict:
 def load_exemptions(path: Path | None = None) -> dict:
     """读**并校验**豁免台账（A11 / 审核 N4）。
 
-    为什么必须校验（二查实测的绕过路径）：原实现只要求每条有 category/reason 两个**非空字符串**，
+    为什么必须校验（二查实测的绕过路径）：
+    原实现只要求每条有 category/reason 两个**非空字符串**，
     于是往台账里加一条 `{"file": "verify/verify_close_readiness.py", "category": "policy",
     "reason": "…", "categories": ["policy"]}` 就 rc 0、同一屏打印"无政策硬编码 clean"——
     **一条数据编辑把整份文件静音**，而这与台账自述"绝不整文件豁免"直接冲突，
@@ -266,7 +288,8 @@ def load_exemptions(path: Path | None = None) -> dict:
       ③ **作用域最小化**：`names`/`functions`/`categories` 不得全空——没有作用域的条目
          在 `scan_file` 里等价于"豁免该文件的一切发现"，即整文件豁免 → 拒；
       ④ 类别级豁免（`categories`）是唯一能覆盖整份文件内某一类发现的形态，
-         因此只允许出现在 `category_wide_files`（工具自身的词表），取值限 `category_wide_categories`。
+         因此只允许出现在 `category_wide_files`（工具自身的词表），
+         取值限 `category_wide_categories`。
     """
     rules = exemption_rules()
     allowed = {str(c) for c in rules["categories"]}
@@ -359,7 +382,8 @@ def scan_file(path: Path, exemptions: dict, roles: set[str]) -> list[dict]:
 
     kept: list[dict] = []
     for finding in detector.findings:
-        # **先盖 file 键再判豁免**：`file` 是 findings 的契约字段，任何消费方（`--dir` 分支、
+        # **先盖 file 键再判豁免**：`file` 是 findings 的契约字段，
+        # 任何消费方（`--dir` 分支、
         # 未来的 JSON 输出、CI 解析）都按它定位。2026-09-23 doc-audit finding 5 实测：
         # `--dir` 分支在 `f['file']` 上 KeyError 崩溃（不是它猜的"恒 return 0"）——
         # 根因正是这里先判豁免、只对"存活项"盖键。
@@ -370,7 +394,8 @@ def scan_file(path: Path, exemptions: dict, roles: set[str]) -> list[dict]:
             continue
         # 名字豁免：以 detail 的**首个词元**（`<NAME> ...`）精确匹配台账里列出的常量名。
         # 旧实现用 `f"'{name}'" in detail or f"={name} " in detail` 反查，对
-        # `FIXTURE_FANOUT 内含多个角色名…`（无引号、无 `=`）这种文案直接漏掉 → 已改为正向取值。
+        # `FIXTURE_FANOUT 内含多个角色名…`（无引号、无 `=`）
+        # 这种文案直接漏掉 → 已改为正向取值。
         head_token = finding["detail"].split(" ", 1)[0]
         if head_token in allowed_names:
             continue
@@ -402,7 +427,8 @@ def _rel(path: Path) -> str:
 def _excluded(rel: str, exclusions: list[str]) -> bool:
     """`rel`（仓库相对 posix 路径）是否落在 `exclude_dirs` 里。
 
-    裸名（`paper-qa`/`.venv`/`node_modules`/`__pycache__`/…）按**路径任意段**匹配（能抓嵌套
+    裸名（`paper-qa`/`.venv`/`node_modules`/`__pycache__`/…）
+    按**路径任意段**匹配（能抓嵌套
     的 `node_modules`）；含 `/` 的（`agents/runs`）按前缀匹配。
     """
     parts = rel.split("/")
@@ -447,7 +473,8 @@ def scan_coverage() -> tuple[list[str], list[str], list[str], list[str]]:
       这样"新加一棵代码树但没人把它纳入闸门"不会静默通过。
     * 本脚本自身从两侧同时剔除，故 `N == M` 可直接比较（自跳数单独打印）。
 
-    为什么 roots 必须**独立声明**（而不是从 globs 反推）见 `verify_md_tables.coverage_problems()`：
+    为什么 roots 必须**独立声明**（而不是从 globs 反推）
+    见 `verify_md_tables.coverage_problems()`：
     从 glob 反推是恒真式，删掉一条 glob 会连带缩小它声明的范围，"少扫一棵树"永远看不出来。
     """
     data = load_policy().policy_file.get("hardcode_scan_coverage")
@@ -511,8 +538,10 @@ def scan(dirs: list[Path], roles: set[str] | None = None) -> list[dict]:
     findings: list[dict] = []
     for base in dirs:
         # 2026-09-25 修复：以前直接用调用方给的（可能是**相对**）路径 → `scan_file` 里的
-        # `path.relative_to(ROOT)` 失败、回落成 `path.name`，于是**所有按文件作用域的豁免
-        # 静默失效**（实测 `--dir verify` 因此报出 6 条本应豁免的发现）。统一 resolve 成绝对路径。
+        # `path.relative_to(ROOT)` 失败、回落成 `path.name`，
+        # 于是**所有按文件作用域的豁免
+        # 静默失效**（实测 `--dir verify` 因此报出 6 条本应豁免的发现）。
+        # 统一 resolve 成绝对路径。
         base = base.resolve()
         if not base.is_dir():
             continue
@@ -605,7 +634,8 @@ def selfcheck() -> int:
     ok("反向对照⑤ `_exempted_local` 就地豁免放行，但同文件真硬编码仍被抓",
        len(findings) == 1 and "_REAL_POLICY_PATHS" in findings[0]["detail"], f"findings={findings}")
 
-    # ---- A6（R1）扫描集：政策驱动 + 双向差集 + 封闭世界 + 覆盖面确实变宽的对照 ---------------
+    # ---- A6（R1）扫描集：
+    # 政策驱动 + 双向差集 + 封闭世界 + 覆盖面确实变宽的对照 ---------------
     expected, actual, cov_problems, exclusions = scan_coverage()
     ok("A6 扫描集双向差集（政策 roots ↔ globs）：应扫 N / 实扫 M 一致",
        not cov_problems and len(expected) == len(actual),
@@ -639,7 +669,8 @@ def selfcheck() -> int:
        "clean" if not real else f"{len(real)} 条：" + "; ".join(
            f"{f['file']}:{f['line']} {f['rule']} {f['detail'][:60]}" for f in real[:5]))
 
-    # ---- N4 反向对照：豁免台账**必须被校验**（一条数据编辑不得静音整份文件）------------
+    # ---- N4 反向对照：豁免台账**必须被校验**（一条数据编辑不得静音整份文件）
+    # ------------
     # 二查实测：往台账加一条 `{"file": "verify/verify_close_readiness.py", "category": "policy",
     # "categories": ["policy"], "reason": "…"}` → rc 0，且同一屏打印"无政策硬编码 clean"。
     bad_ledgers = {
@@ -683,7 +714,8 @@ def selfcheck() -> int:
 
     # ---- 退出码断言：**用真实入口跑**，不是"读代码判断它会不会 fail-closed" ----
     # 2026-09-23 doc-audit finding 5：`--dir` 分支被指"恒 return 0"。实测真相是它在
-    # `f['file']` 上 KeyError 崩溃（已修：scan_file 先盖 file 键）。无论哪种，**判据都必须是
+    # `f['file']` 上 KeyError 崩溃（已修：scan_file 先盖 file 键）。无论哪种，
+    # **判据都必须是
     # 子进程的真实退出码**——本轮之前只看了 return 语句，所以这个洞活着。
     import subprocess
 
@@ -738,7 +770,13 @@ def main() -> int:
 
     selfcheck()
     print(f"\nALL PASS ({PASSED} assertions)")
+    # TG-6：**只在成功路径**打印机读证据行（失败/SKIP 不打印——"跳过"不得冒充"通过"）
+    print(f"EVIDENCE: verify_no_policy_hardcode.py assertions={PASSED} rc=0 scanned={len(actual)}")
     return 0
+
+
+if not __debug__:  # noqa: SIM108 —— -O/PYTHONOPTIMIZE 会剥离 assert；守卫必须是普通语句，不能是 assert
+    raise SystemExit("本闸门不得在 -O/PYTHONOPTIMIZE 下运行（`__debug__` 为 False ⇒ 判据会被整体剥离）——见 3-LEARNED 1.65")
 
 
 if __name__ == "__main__":

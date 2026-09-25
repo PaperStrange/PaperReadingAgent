@@ -728,6 +728,11 @@ class Policy:
             # 守门闸门 = verify/verify_deduction_rates.py（首次实际结算时再加 CLI，见
             # §2.1.1）
             "deduction_rates",
+            # 2026-09-25 关闭期：派生数字棘轮（verify_derived_numbers.py 消费）
+            "derived_numbers",
+            # 2026-09-25 关闭期：闸门可信度（-O 守卫 + 棘轮单调性，
+            # verify_gate_integrity.py 消费）
+            "gate_integrity",
         }
         for key in self.policy_file:
             if key not in consumed:

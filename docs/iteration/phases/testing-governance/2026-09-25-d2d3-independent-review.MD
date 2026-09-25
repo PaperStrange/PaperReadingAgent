@@ -3,6 +3,7 @@
 > 生成：**2026-09-25（UTC+8）**｜主代理（本会话）｜依据：〇查 `run-2026-09-25-impact-assessment-065`、一查 `run-2026-09-24-doc-audit-066`（✅ 终报）、二查 `run-2026-09-25-code-review-067`（🔄 中期已给 F1/F2）、主代理独立复算 M1~M6。
 > **结论绑定 sha**：被审对象 = `092a2f78..9ffc108d`（30 提交 / 137 文件 / +6231−325）。审计期间 HEAD 漂移（`7e188eb`→`9bf2db1`→`639decf`→`ac42f7b`→`08a0bd1`，均为本会话 docs(pm) 提交，**在被审范围之外**）→ 各条发现以**取得证据时的 sha** 为准。
 > **本文件不复制 run 报告全文**：细节在 `agents/runs/<run_id>/*.report.md`；本文件只做**合成、定性、点数更正与行动链**。
+> ⚠️ **时点记录（2026-09-25 一查 `run-2026-09-25-doc-audit-070` finding 1/2 后补标注）**：本文所有"实测"数字（卡数 `96`、字节、断言数、脚本数、C 级条数）都是**取证时点的读数**，会随仓库推进漂移（同窗口内卡数即由 96 → 97）。引用时**一律现跑对应命令**（`scripts/card-inventory.py` / `verify_lint.py` 的 `[report-only C 级]`、`EVIDENCE:` 行 / 套件末行），**不得把本文数字当现值**——本文自己的 M-c 就是这条教训的实例。
 
 ---
 
@@ -21,7 +22,7 @@
 | 工作树 | 干净（审计全程未污染） | `git status --porcelain` |
 | 离线套件 | **SUITE PASSED（19 scripts）**，187.6s，¥0 | `.venv\Scripts\python.exe verify\run_suite.py --tier offline` |
 | 矩阵 | **50 脚本 CHECK OK**（offline 19 / gui 21 / network 10） | `verify/verify_matrix.py check` |
-| 卡库存 | **96 卡 / 4 阶段**，与 `agents/runtime/tg14-baseline.json` 一致 | `scripts/card-inventory.py` |
+| 卡库存 | 时点读数 **96 卡 / 4 阶段**，与 `agents/runtime/tg14-baseline.json` 一致（**现值现跑**；同窗口内已漂到 97，见本文顶部时点标注） | `scripts/card-inventory.py` |
 | 账本 | **67** 条 run；`closure_problems()` 为空 | `agent_policy.closure_problems()` |
 | CI | 上一批已推批次的 CI #206 = success（head `f2d37ab`）；**21 个未推提交从未跑过 CI** | GitHub Actions |
 
@@ -41,7 +42,7 @@
 |---|---|---|---|
 | **M-a** | `verify_md_tables.py` 棘轮**对新增缺陷失明**（不只"缺到期日"）：只做路径比较，基线文件内**任何数量**的缺陷全被吸收 | 一查临时副本：12 处 → rc=0；**+1 处全新缺陷 → 13 处仍 rc=0 "MD-TABLE PASS"**；二查独立注入 **200 处**仍 PASS；对照：向非基线文件注入 → rc=1。与 `policy.json:56`"新改动一律判失败"矛盾 | `md_table_legacy_files.files` 由路径列表改 **`{路径: 缺陷上限}`**（实测 15 = sprint-15 12 + sprint-16 1 + acceptance 1 + sprint-6 1，可复现）→ `len(found) > cap` 即 FAIL；加 `review_by` 过期即 FAIL（约 13 行） |
 | **M-b** | **短 sha 锚点被静默丢弃**：`CoverageWindow.covers()` 要求 40 位完整 sha；短 sha → `covers()` 恒 False → 该 run **贡献 0 覆盖** | 二查实测：真账本 `window_problems()` 点名 `run-2026-09-24-code-review-065 的 coverage_anchor='092a2f78' 不是完整 40 位 sha → 静默丢弃`；本次两个审计 run（066/067）都因此 `cov` 无效；收尾后 C3 需为 `092a2f78..HEAD`（33 提交）找归属，实测现 `unowned` **15** 条（含迁移提交 `8d759512`）→ C3 必红。**归因：主代理在 prompt 里给了短 sha** | `register` 侧 `git rev-parse --verify <anchor>^{commit}` **规范化** + 解析失败 **fail-closed**；为 `finish`/新子命令开**受控回填口**（`update`/`finish` 现均无 `--coverage-anchor`，账本有完整性哈希禁手改）；反向对照＝短 sha / 不存在 sha 必须被拒。完整 sha：`092a2f784c9749126dc0f7483fe78ba721f424d0` |
-| **M-c** | **手抄派生事实已漂移**：卡数 `95`（§3/§7/§8 三处）vs 实测 **96 卡 / 105580 B**；lint C 级"现行实测 **1858**" vs 实测 **1998**（D103 181→191、E501 1624→1754）；"SUITE PASSED（**17** scripts）" vs 实测 **19** | 一查：`card-inventory.py` → 96/4/1 == `tg14-baseline.json` = 96；同处政策还写着"文档不写死数字" | 三处数字改为**引用工具输出**（`card-inventory.py` / `verify_lint.py` 报告行 / 套件输出），不再手抄；并入 TG-12（派生事实 SSOT） |
+| **M-c** | **手抄派生事实已漂移**：卡数 `95`（§3/§7/§8 三处）vs 实测 **96 卡 / 105580 B**；lint C 级"现行实测 **1858**" vs 实测 **1998**（D103 181→191、E501 1624→1754；**两个数都是本审核时点读数**，现值以 `verify_lint.py` 报告行现跑为准）；"SUITE PASSED（**17** scripts）" vs 实测 **19** | 一查：`card-inventory.py` → 96/4/1 == `tg14-baseline.json` = 96；同处政策还写着"文档不写死数字" | 三处数字改为**引用工具输出**（`card-inventory.py` / `verify_lint.py` 报告行 / 套件输出），不再手抄；并入 TG-12（派生事实 SSOT） |
 | **M-d** | `verify_card_index.py --body-threshold` 是**死旋钮**（贯穿 run/check_phase 但从未被读取；实际用 policy 的 `BODY_PREFIX_CHARS`/`MIN_FINGERPRINT_CHARS`） | 一查代码核对 | 删除参数与文档行，或真正接线（二选一，且加"每个参数都有消费点"的断言，防再犯） |
 | **M-e** | **strict 判据从未在 CI 执行**：`verify_card_index.py` 默认宽松档（只跑 ①②⑤），`--strict` 才跑 ③④；offline 套件以**无参**调用 | 主代理实测 M3 + 一查 D 项（`--check --strict` 在真实数据上 **PASS**） | 迁移已宣称完成 → 默认档翻 strict（或 CI 显式 `--strict`）；并把 `md_tables`/`no_policy_hardcode`/`card_index`/`lint` 在 CI 中**显式**调用（现仅 `close_readiness` 显式） |
 | **M-f** | **CI 只显式接了一个闸门**：`ci.yml` 仅调用 `verify_close_readiness.py`；其余四个新闸门只经套件**默认参数**间接运行 | 主代理 M4 | 同上；并在 CI 里打印各闸门**实际参数**（可核"跑的是哪一档"） |
@@ -55,7 +56,7 @@
 ### 2.4 经独立复核**成立**的正面项（同样重要）
 
 1. **迁移守恒**：主代理独立复算（不碰对方核对器）96 行卡 / **453 单元格**归一化子串守恒，唯一命中是非卡 `—` 行；一查另行复核"迁移时点字节与卡数"（`git ls-tree -r -l 7eead16` → 95 卡 / 99700 B；backlog 6878/3039/7155/11720）**在声称时点成立**（漂移发生在之后）。
-2. **闸门真实且反向对照有效**：`verify_close_readiness.py` 23 断言（含 7 条**从 `fanout.json` 自动生成**的变异）、`verify_card_index.py` 8 条（A~E 变异全 FAIL、合法计划表行 PASS）、`verify_no_policy_hardcode.py` 13 条；**卡-文档拓扑干净**（96 文件 ↔ 96 索引行）。
+2. **闸门真实且反向对照有效**：`verify_close_readiness.py`（含 7 条**从 `fanout.json` 自动生成**的变异）、`verify_card_index.py`（A~E 变异全 FAIL、合法计划表行 PASS）、`verify_no_policy_hardcode.py` 三者**各自现跑末行 `ALL PASS (<N> assertions)`**（**本文不写断言数**：此处原有 23 / 8 / 13 三个读数，2026-09-25 一查 finding 2 实测均已过期）；**卡-文档拓扑干净**（卡文件 ↔ 索引行一一对应，文件数现跑为准）。
 3. **TG-15 数据化确实落地**：`UC-15`（新增角色只改 spec 数据即生效）、`UC-16`（缺 `scope_required` → CLI fail-closed）、C3-T 例外表三条规则（短 sha/通配/缺理由 → FAIL）。
 4. **本机全序列套件 19/19**、矩阵 50 一致、`closure_problems()` 为空。
 5. **064 的 critical 确实已修**（二查确认）。
@@ -119,7 +120,7 @@
 
 | 项 | 结论 |
 |---|---|
-| **R1 覆盖枚举** | `policy.json` glob 展开 vs 文件系统**双向差集 + 逐文件实跑**：**131 = 128 docs + 3**；相关集 **160**，**漏 29**，其中 **7 处真缺陷**；96/96 卡覆盖；`card_index` 阶段动态枚举覆盖 **4/4**；`no_policy_hardcode` 只扫 **39/182** 个 `.py` |
+| **R1 覆盖枚举** | `policy.json` glob 展开 vs 文件系统**双向差集 + 逐文件实跑**：**131 = 128 docs + 3**；相关集 **160**，**漏 29**，其中 **7 处真缺陷**；卡覆盖 = **全部卡（卡数按当时读数，现值现跑 `card-inventory.py`）**；`card_index` 阶段动态枚举覆盖 **4/4**；`no_policy_hardcode` 只扫 **39/182** 个 `.py` |
 | **R2 迁移守恒** | 二查自建 git 解析器（blob sha1 复核）：**守恒成立** —— **476/476** 非空非卡号单元格**字节级精确命中**、**0 丢失**、**反向 0 自造**、无删/改名、0 BOM/0 CRLF/0 乱码。但 **主代理的 `453` 不可复现**（现测得 454），逐阶段计数口径互不一致；P3 字节 `6962` 实为 **`7155`**（一查亦报此） |
 | **R3 棘轮** | 判 **major**：注入 200 处仍 rc=0 → **补到期日也不解决**；最小修法 = `{path: 缺陷上限}` + `review_by` |
 | **R4 账本↔产物** | 062/063/064 目录与 `<role>.report.md` 命名一致，但 `result_files=[]`（**无机器可验链接**）；`cov=` 窗口**全不覆盖自称区间**（0/6、0/9、0/9；065 为 0/30 空区间）。正面：064 那条 critical（空区间静默通过）**已修好且真数据会红** |

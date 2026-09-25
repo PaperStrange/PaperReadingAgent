@@ -59,17 +59,19 @@ MD-TABLE PASS（161 个文件解析通过；其中 4 个历史文件走棘轮基
 
 ## 判据 ④ 反向对照全绿（含"断言在目标环境为真"）
 
-| 闸门 | 实测输出 |
+> **读表约定（2026-09-25 一查 `run-2026-09-25-doc-audit-070` finding 2 后改）**：断言数**不是**本表的证据——它是**必然漂移的派生数字**（同一批闸门在同日 4 份文档里并存 3~4 个读数，无一与工具一致）。本表的证据 = **命令可跑 + 判据存在 + 反向对照有牙**；`<N>` 处一律**现跑该命令、以末行 `ALL PASS (N assertions)` 或 `EVIDENCE:` 行为准**。写成具体数字的地方只是**该时点读数**，不构成现值主张。
+
+| 闸门 | 实测输出（`<N>` = 现跑为准） |
 |---|---|
-| `verify_close_readiness.py` | `ALL PASS (30 assertions)` |
-| `verify_no_policy_hardcode.py` | `ALL PASS (22 assertions)`（扫描覆盖 40 → **64** 个 `.py`） |
-| `verify_ledger_measurement.py` | `ALL PASS (30 assertions)`（TG-13 新闸门：双向目录/时间戳退化/rounds 对报告/终态写回 + 4 类反向对照） |
-| `verify_artifact_paths.py` | `ALL PASS (10 assertions)`｜动态目标 107 处（34 文件全在棘轮表内） |
-| `verify_agentops.py` | `ALL PASS (84 assertions)` |
-| `verify_lint.py` | `ALL PASS (6 assertions)` |
-| `verify_card_index.py --check --strict` | `ALL PASS (9 assertions)` |
-| **整档套件** | **`SUITE PASSED (21 scripts)`**（`status=ok`，零失败） |
-| 矩阵 SSOT | `CHECK OK: 52 脚本与 TEST-MATRIX.MD 一致` |
+| `verify_close_readiness.py` | `ALL PASS (<N> assertions)`（自检档；该档随判据增加而增，**本表不写现值**） |
+| `verify_no_policy_hardcode.py` | `ALL PASS (<N> assertions)`（另打印扫描覆盖的 `.py` 个数；**应扫=实扫**必须一致，否则它就是死配置） |
+| `verify_ledger_measurement.py` | `ALL PASS (<N> assertions)`（TG-13 新闸门：双向目录/时间戳退化/rounds 对报告/终态写回 + 4 类反向对照） |
+| `verify_artifact_paths.py` | `ALL PASS (<N> assertions)` + 动态目标分布行（按文件设上限，`review_by` 到期重评） |
+| `verify_agentops.py` | `ALL PASS (<N> assertions)` |
+| `verify_lint.py` | `ALL PASS (<N> assertions)` + `EVIDENCE:` 行（含四类 C 级棘轮现值/上限） |
+| `verify_card_index.py --check --strict` | `ALL PASS (<N> assertions)`（含状态三处一致 + 卡库存基线一致两条新判据） |
+| **整档套件** | **`SUITE PASSED (<N> scripts)`**（`status=ok`，零失败；脚本数现跑为准） |
+| 矩阵 SSOT | `CHECK OK: <N> 脚本与 TEST-MATRIX.MD 一致`（现跑为准） |
 
 **其中"环境无关"这一条有实证**：`verify_local_dir.py` 在**没有** `PYTHONUTF8=1` 的本机 shell 里曾 `SUITE FAILED (1/21)`——根因是子进程经管道以 GBK 写、父进程按 UTF-8 解码 → 中文提示变 mojibake + `U+FFFD` 触发 `UnicodeEncodeError`（**断言只在特定环境为真** = 审计 R3 类）。修法：父进程 stdout 显式 UTF-8+容错、子进程注入 `PYTHONUTF8=1`/`PYTHONIOENCODING=utf-8`；修后 `verify_local_dir` 7 断言 PASS、套件 21/21 PASSED（本机默认环境）。
 
@@ -82,10 +84,10 @@ MD-TABLE PASS（161 个文件解析通过；其中 4 个历史文件走棘轮基
 ```powershell
 $py = "D:\All-Downloads\PaperReading\PaperReading-Windows\.venv\Scripts\python.exe"
 cd D:\All-Downloads\PaperReading\PaperReading-Windows
-& $py scripts\structure-guard.py --replay          # 判据①：64 断言，5 类 R1 逐条 FAIL
-& $py verify\verify_md_tables.py                   # 判据②③：棘轮上限 + 应扫=实扫 161
-& $py verify\run_suite.py --tier offline           # 判据④：SUITE PASSED (21 scripts)
-& $py verify\verify_matrix.py check                # 52 脚本一致
+& $py scripts\structure-guard.py --replay          # 判据①：5 类 R1 逐条 FAIL（断言数以末行为准）
+& $py verify\verify_md_tables.py                   # 判据②③：棘轮上限 + 应扫=实扫（文件数现跑为准）
+& $py verify\run_suite.py --tier offline           # 判据④：SUITE PASSED (N scripts)
+& $py verify\verify_matrix.py check                # N 脚本一致
 git -C . log --oneline -1 ; git rev-list --count origin/windows..HEAD
 ```
 
@@ -94,7 +96,7 @@ git -C . log --oneline -1 ; git rev-list --count origin/windows..HEAD
 ## 限制与未闭环（不影响判据，但你应当知道）
 
 1. **CI 从未实跑**：本批 38 个提交**全部未推**（按你 P-a 的暂存分支方案）；因此"断言在 CI 同款环境跑过"这半条**仍未满足** → `§9.2` 已写死：退出后推 `windows` 触发的 CI **必须当真实关口**（红即修，不得以"本机绿"替代）。
-2. `close_readiness` 的**真数据模式**今日仍 `FAIL`（Sprint-17 的三查锚点尚未声明，属关闭期动作）；其"绿"= 30 条自检断言 + 0 份文档受检。
+2. `close_readiness` 的**真数据模式**今日仍 `FAIL`（Sprint-17 的三查锚点尚未声明，属关闭期动作）；其"绿"= 自检档 `ALL PASS (<N>)` + 0 份文档受检。**注（2026-09-25 稍后）**：同日晚些的 B1~B4 + D0 批已把真数据项从 13 降到 1（剩 `[C3]` 未归属提交），本条的"仍 FAIL"结论不变、**条数已变**——现值现跑 `verify\verify_close_readiness.py --sprint docs\iteration\sprint\2026-09-21-sprint-17.md`。
 3. `A-M12` 判据④（下 Sprint 同族事故 ≤1 次）是**度量项**，只能 Sprint-18 测。
 4. `TG-15` 的 2.5 点**扣分条件**：棘轮已闭环 → 不扣；待 C 批（`TG-6` 可读性棘轮）完成后我给出最终算式。
 5. 实现类子代理**没有账本 role**（登记会污染 C1 判定域）→ 归 `TG-17` 输入；这也是本证据包里的机制批**没有 run id** 的原因（不是漏记）。

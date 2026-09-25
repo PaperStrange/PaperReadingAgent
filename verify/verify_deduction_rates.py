@@ -153,7 +153,8 @@ def selfcheck() -> int:
     ):
         _expect_error(label, mutate, policy)
 
-    # -------------------------------------------------- 纯函数：口径正例（期望值由政策算）
+    # -------------------------------------------------- 纯函数：
+    # 口径正例（期望值由政策算）
     r_crit, r_major = ratios["critical"], ratios["major"]
     card = 2.5
 
@@ -294,6 +295,10 @@ def main() -> int:
     if "--show" in sys.argv:
         return show()
     return selfcheck()
+
+
+if not __debug__:  # noqa: SIM108 —— -O/PYTHONOPTIMIZE 会剥离 assert；守卫必须是普通语句，不能是 assert
+    raise SystemExit("本闸门不得在 -O/PYTHONOPTIMIZE 下运行（`__debug__` 为 False ⇒ 判据会被整体剥离）——见 3-LEARNED 1.65")
 
 
 if __name__ == "__main__":

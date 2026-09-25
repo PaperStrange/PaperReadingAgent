@@ -1,7 +1,8 @@
 """TG-15：关闭前置闸门（offline）——**三条不变式 + 数据驱动**，替换原先的按角色硬编码判据。
 
 历史（为什么改）：TG-11 ③b 版本把判据写成"按角色名逐条判断"——`CLOSE_ROLES` 写死 4 个角色、
-二查必须含 `windows`/`main`、〇查必须早于二查……**每加一个步骤/角色/分支都要改这个文件**，
+二查必须含 `windows`/`main`、
+〇查必须早于二查……**每加一个步骤/角色/分支都要改这个文件**，
 而"改代码"本身没有任何闸门在守（`TG-15` 卡的起因）。TG-15 之后：
 
     C1 声明完备：**本次关闭窗口内**凡产出评审结论的 run 必须有 scope 声明
@@ -14,9 +15,12 @@
 
 需求来源（**只有两个**，本文件不再有角色名单）：
 
-    agents/fanout.json :: sprint_close_pipeline   → 哪些关闭步骤/role/target 必填（`close_ledger`/`close_targets`）
-    agents/functions/<role>.md frontmatter        → `scope_required`（谁必须声明 scope）、`coverage_window`
-    agents/policy.json                            → 阈值与开关（偏离理由长度、覆盖例外表路径、doc-only 规则）
+    agents/fanout.json :: sprint_close_pipeline   →
+    哪些关闭步骤/role/target 必填（`close_ledger`/`close_targets`）
+    agents/functions/<role>.md frontmatter        → `scope_required`（谁必须声明 scope）
+    、`coverage_window`
+    agents/policy.json                            → 阈值与开关（偏离理由长度、
+    覆盖例外表路径、doc-only 规则）
 
 C3-T 例外表（用户 2026-09-23 选型 + 对"表过期"的担心）：覆盖**默认由 run 数据计算**
 （run 自动记录的 `coverage_anchor`/`covers_through`），例外表**只登记例外**、sha 钉死；
@@ -26,13 +30,34 @@ C3-T 例外表（用户 2026-09-23 选型 + 对"表过期"的担心）：覆盖*
     .venv\\Scripts\\python.exe verify\\verify_close_readiness.py                    # 自检（合成 fixture，含反向对照）
     .venv\\Scripts\\python.exe verify\\verify_close_readiness.py --sprint <文件>     # 真数据（关闭时）
     .venv\\Scripts\\python.exe verify\\verify_close_readiness.py --sprint <文件> --no-coverage
-                                                                                  # 覆盖检查需 git 历史，CI 可关
+                                                                                  # 覆盖
+                                                                                  # 检查
+                                                                                  需 git
+                                                                                  历史，
+                                                                                  CI
+                                                                                  可关
 
 **为什么默认只跑自检**：Sprint 未关闭时真数据模式必然 FAIL（正确的 fail-closed 语义），
-但会让 offline 套件长期变红。故套件跑自检；关闭时由主代理跑 `--sprint` 并把输出写进 Sprint §9。
+但会让 offline 套件长期变红。故套件跑自检；
+关闭时由主代理跑 `--sprint` 并把输出写进 Sprint §9。
 
 §9 结构化 run 表格式（供本脚本解析，`1-WORKFLOW.MD` §4.2）：
     | run_id | role | target | scope_source | coverage | deviation |
+
+**窗口起点必须有上界**（2026-09-25 独立复核 finding 2，major）：窗口起点 = 作用域步骤
+（`close_gate.scope_ref_step`）最新 run 的 `started_at`，但"最新"**不再无条件成立**——
+未来时间戳、晚于整条流水线、被更早的 run 引用，三条任一成立即**具名报问题并弃用该起点**
+（判定域退回全域 = 宁可多报，不静默收窄）。见 `scope_window_problems`：窗口是 C1 与 §9
+linkage 的判定域，**定义判定域的东西必须自己受判**——否则"追加一条更晚的作用域 run"就能
+把当期缺口挤出检查范围。
+
+**机读证据行**（TG-6：只在**成功路径**打印，失败/SKIP 不打印）：
+`EVIDENCE: verify_close_readiness.py assertions=N rc=0`（自检模式 N = 实跑的 `ok()
+` 断言数；
+real-data 模式 N = 实际执行过的判据条数，由各判据自身登记）。
+
+**退出码**：0=通过；1=检出违规/自检断言未通过（逐条点名）；2=fail-closed 无法判定
+（Sprint 文档不存在、政策/覆盖例外表非法，或**断言被 `-O`/`PYTHONOPTIMIZE=1` 剥离**）。
 """
 
 from __future__ import annotations
@@ -43,6 +68,7 @@ import os
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -61,6 +87,16 @@ from verify.agent_policy import (  # noqa: E402
 )
 from verify.agent_policy import Policy as AgentPolicy  # noqa: E402  （类型注解用；避免与下方局部名冲突）
 
+# `-O` / `PYTHONOPTIMIZE=1` 下 `assert` 被**整条剥离**：判据不会执行，而输出仍然像"跑过了"。
+# 两道防线：① 这一层直接拒绝在断言被剥离时给出结论（fail-closed，退出码 2）；② `ok()
+# ` 内部
+# 不再用裸 `assert`。① 保证没人能拿"静默空转"的运行当证据，② 保证单条判据即使被别处调用也咬得住。
+if not __debug__:  # pragma: no cover —— 只在 -O/PYTHONOPTIMIZE 下触发
+    print("CLOSE-READINESS-ERROR: 断言被剥离（python -O / PYTHONOPTIMIZE=1）⇒ 本闸门的判据不会执行，"
+          "拒绝输出任何结论（fail-closed，退出码 2）。请用不带 -O 的解释器运行："
+          ".venv\\Scripts\\python.exe verify\\verify_close_readiness.py", file=sys.stderr)
+    raise SystemExit(2)
+
 ROW_SPLIT = re.compile(r"(?<!\\)\|")
 ANCHOR_RE = re.compile(r"\**三查锚点\**\s*[:：]\s*`?([0-9a-fA-F]{7,40})`?")
 TABLE_HEADER = "| run_id | role | target | scope_source | coverage | deviation |"
@@ -69,13 +105,28 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 PASSED = 0
+CRITERIA_EXECUTED = 0
 
 
 def ok(name: str, cond: bool, detail: str = "") -> None:
+    """断言一条判据。**不用裸 `assert`**（`-O` 会把裸 assert 整条删掉，判据静默消失）。"""
     global PASSED
-    assert cond, f"{name} FAIL: {detail}"
+    if not cond:
+        raise AssertionError(f"{name} FAIL: {detail}")
     PASSED += 1
     print(f"PASS: {name} {detail}")
+
+
+def _criterion() -> None:
+    """登记"这条判据真的执行过"。
+
+    real-data 模式不做 `ok()` 自检断言（它把问题列成清单逐条打印），故 `EVIDENCE:` 行的
+    `assertions=` 只能由判据自身登记——手写常量会随判据增删漂移，而"漂移的读数"正是本仓
+    反复出现的教训。判据函数每次被调用即登记一次（自检里会被调用很多次，故自检模式用的是
+    `PASSED`，两种模式各自如实）。
+    """
+    global CRITERIA_EXECUTED
+    CRITERIA_EXECUTED += 1
 
 
 def warn(name: str, detail: str = "") -> None:
@@ -144,21 +195,53 @@ def exact_target(run: dict) -> str:
     return str(run.get("task_id") or "").strip()
 
 
-def scope_step_run(policy: AgentPolicy, runs: list[dict]) -> dict | None:
-    """本次关闭的**作用域 run** = 作用域步骤
-    （`close_gate.scope_ref_step`，本仓 = `scope`）在本账本里最新的那一条 run。
+def _ts(value: object) -> datetime | None:
+    """账本时间戳 → **带时区**的 `datetime`（解析不了 → `None`，不猜）。
 
-    为什么"最新"：关闭流水线的每一步一个 Sprint 只跑一次；同 role 更早的 run
-    属于上一个 Sprint 的关闭（本仓实测：`lessons-learned` 的 058 是 **Sprint-16**
-    关闭补跑的那条），不应被本 Sprint 的 §9 要求，也不应定义本 Sprint 的窗口。
-
-    `step.targets` 非空时按 target **精确匹配**过滤（口径同 N3；本仓 `scope` 步无
-    targets，故实际不过滤——但判据不能建立在"当前数据刚好没有 targets"上）。
-    没有 run、或最新 run 没有 `started_at` → 返回 None（调用方 fail-closed）。
+    为什么不用纯字典序（本模块其他地方的既有口径）：字典序只在"全部带同一个 `+00:00` 偏移"
+    时才等于时间序，而"未来时间戳"这条判据要拿它跟 `now()` 比——混入别的偏移就会比错方向。
     """
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _before(earlier: str, later: str) -> bool:
+    """`earlier` 是否严格早于 `later`（能解析就按时刻比，解析不了退回字典序）。"""
+    left, right = _ts(earlier), _ts(later)
+    if left is not None and right is not None:
+        return left < right
+    return earlier < later
+
+
+def close_step_order(policy: AgentPolicy) -> tuple[str, int, set[str], set[str]]:
+    """从**数据**取关闭步骤的次序：`(作用域步骤名, 它的 order, 它的 role 集, 后续步骤的 role 集)`。
+
+    真源 = `policy.close_ledger_steps`（由 `fanout.json::
+    sprint_close_pipeline` 的 `order` 排序而来）
+    ——本文件里**没有**角色名单、没有步骤名常量。作用域步骤缺席（政策拼错）时由
+    `Policy.close_gate` 在装载期就 fail-closed，这里只做防御性返回。
+    """
+    wanted = str(policy.close_gate.get("scope_ref_step") or "").strip()
+    scope_steps = [s for s in policy.close_ledger_steps if s.step == wanted]
+    if not scope_steps:
+        return wanted, -1, set(), set()
+    order = min(s.order for s in scope_steps)
+    scope_roles = {s.role for s in scope_steps}
+    later_roles = {s.role for s in policy.close_ledger_steps if s.order > order} - scope_roles
+    return wanted, order, scope_roles, later_roles
+
+
+def scope_step_runs(policy: AgentPolicy, runs: list[dict]) -> list[dict]:
+    """作用域步骤的**全部候选 run**（role + target 过滤，target 口径同 N3：精确匹配）。"""
     wanted_step = str(policy.close_gate.get("scope_ref_step") or "").strip()
     if not wanted_step:
-        return None
+        return []
     candidates: list[dict] = []
     for step in policy.close_ledger_steps:
         if step.step != wanted_step:
@@ -168,10 +251,111 @@ def scope_step_run(policy: AgentPolicy, runs: list[dict]) -> dict | None:
             wanted_targets = set(step.targets)
             bucket = [r for r in bucket if exact_target(r) in wanted_targets]
         candidates += bucket
+    return candidates
+
+
+def scope_window_problems(policy: AgentPolicy, runs: list[dict], candidate: dict) -> list[str]:
+    """候选作用域 run 能否当"本次关闭的起点"——**次序/时序**判据，违反即返回**具名问题**。
+
+    为什么必须有上界（2026-09-25 独立复核 finding 2，major）：原实现取"作用域步骤**最新**的
+    那条 run"且**没有上界**，于是往账本里追加一条更晚的作用域 run，窗口起点就被抬到它那一刻
+    ⇒ 本次关闭的全部流水线 run 落到窗口之外 ⇒ C1 与 §9 linkage **静默失明**（实测：
+    追加一条
+    `2026-09-25T04:30` 的 run 后，同一份"漏登记最早一行"的 §9 从 FAIL 2 项变成 PASS 0 项；
+    `2099-01-01` 也被照单全收）。**判定域被谁定义，就必须由谁守。**
+
+    三条判据（全部 **fail-closed**：报问题 + **弃用该窗口**，退回家域 = 宁可多报）：
+
+      ① **不得在未来**：`started_at > now()` 的时间戳把全部当期 run 挤出窗口，
+      等价静默放行；
+      ② **不得晚于整条流水线**：候选晚于**全部**后续步骤 run（且这些 run 确实存在）
+      ⇒ 它不可能
+         是"本次关闭的起点"——它之前流水线已经跑完，之后一条都没有。次序由数据给（步骤
+         `order` + role），不是写死的角色名；
+      ③ **引用它的 run 不得比它更早**：`scope_source` 引用了候选 run 的后续步骤 run，其
+         `started_at` 早于被引用者 ⇒ 引用不可能成立（数据被改过），窗口不可采信。
+
+    ②的口径说明（**与复核建议的字面口径有一处有意分歧，已标注**）：字面上"晚于任何后续步骤
+    的**最早** run 即违规"在本仓数据上**恒真**——窗口的全部意义就是把**上一个 Sprint** 的
+    后续步骤 run 排除在外（真数据里它们在窗口起点之前有几十条），故那条字面判据会把正常
+    收窄判成违规、并让窗口退回全域（C1 立刻多出 34 条历史噪音，正是 D1 要治的失效）。
+    本实现取"**不得晚于整条流水线**"：它精确命中复核的注入形态（追加一条更晚的 run 后，
+    后续步骤 run 全部落在它之前、之后一条没有），
+    而在真数据上零误报（当期 run 都在它之后）。
+    """
+    problems: list[str] = []
+    rid = str(candidate.get("run_id") or "?")
+    started = str(candidate.get("started_at") or "")
+    started_dt = _ts(started)
+    if started_dt is None:
+        problems.append(f"[窗口] 作用域 run {rid} 的 started_at={started!r} 无法解析成时间戳 ⇒ "
+                        f"起点不可推导（不猜；判定域退回全域，宁可多报也不静默收窄）")
+        return problems
+    now = datetime.now(timezone.utc)
+    if started_dt > now:
+        problems.append(
+            f"[窗口/未来] 作用域 run {rid} 的 started_at={started} **晚于现在**"
+            f"（{now.isoformat(timespec='seconds')}）⇒ 不得作为本次关闭的起点"
+            f"（未来时间戳会把全部当期 run 挤出窗口 = 静默放行）")
+    _step, _order, _scope_roles, later_roles = close_step_order(policy)
+    later = [r for r in runs if str(r.get("role") or "") in later_roles]
+    earlier = [r for r in later if _before(str(r.get("started_at") or ""), started)]
+    after = [r for r in later if _before(started, str(r.get("started_at") or ""))]
+    if earlier and not after:
+        oldest = min((str(r.get("started_at") or "") for r in earlier))
+        problems.append(
+            f"[窗口/次序] 作用域步骤 run {rid}（started_at={started}）**晚于后续步骤的全部 run**："
+            f"后续步骤 role={sorted(later_roles)} 共 {len(earlier)} 条 run 全在它之前（最早 {oldest}），"
+            f"之后一条都没有 ⇒ 它不可能是本次关闭的起点，以它为窗口起点会把整条流水线挤出判定域"
+            f"（C1/§9 linkage 静默失明）。窗口弃用 ⇒ 判定域退回全域（宁可多报，不静默收窄）")
+    for run in later:
+        source = str(run.get("scope_source") or "").strip()
+        cited = next((p for p in policy.scope_ref_sources if source.startswith(p)), None)
+        if cited is None or source[len(cited):].strip() != rid:
+            continue
+        if _before(str(run.get("started_at") or ""), started):
+            problems.append(
+                f"[窗口/次序] {run.get('run_id')} 的 scope_source 引用了作用域 run {rid}，"
+                f"但它的 started_at={run.get('started_at')} **早于**被引用者（{started}）⇒ "
+                f"引用不可能成立（数据被改过），窗口起点不可采信")
+    return problems
+
+
+def scope_step_run(policy: AgentPolicy, runs: list[dict]) -> dict | None:
+    """本次关闭的**作用域 run** = 作用域步骤
+    （`close_gate.scope_ref_step`，本仓 = `scope`）在账本里**最新的**那条 run
+    ——**只做筛选，不做次序判定**（次序判定见 `scope_window_problems`）。
+
+    为什么"最新"：关闭流水线的每一步一个 Sprint 只跑一次；同 role 更早的 run
+    属于上一个 Sprint 的关闭（本仓实测：`lessons-learned` 的 058 是 **Sprint-16**
+    关闭补跑的那条），不应被本 Sprint 的 §9 要求，也不应定义本 Sprint 的窗口。
+
+    `step.targets` 非空时按 target **精确匹配**过滤（口径同 N3；本仓 `scope` 步无
+    targets，故实际不过滤——但判据不能建立在"当前数据刚好没有 targets"上）。
+    没有 run、或最新 run 没有 `started_at` → 返回 None（调用方 fail-closed）。
+    """
+    candidates = scope_step_runs(policy, runs)
     if not candidates:
         return None
     latest = max(candidates, key=lambda r: str(r.get("started_at") or ""))
     return latest if str(latest.get("started_at") or "") else None
+
+
+def derive_close_window(policy: AgentPolicy, runs: list[dict]) -> tuple[str | None, list[str]]:
+    """窗口起点 + **弃用原因**（`(started_at | None, problems)`）。
+
+    问题非空 ⇒ 起点为 `None`（判定域退回全域，fail-closed）；
+    作用域 run 缺席同样返回 `None`
+    且**不报问题**（"缺 run"由 `check_requirements` 按 `fanout.json` 逐条点名，两处不重复报）。
+    """
+    _criterion()
+    candidate = scope_step_run(policy, runs)
+    if candidate is None:
+        return None, []
+    problems = scope_window_problems(policy, runs, candidate)
+    if problems:
+        return None, problems
+    return str(candidate.get("started_at")), []
 
 
 def ledger_close_window(policy: AgentPolicy, runs: list[dict]) -> str | None:
@@ -179,7 +363,8 @@ def ledger_close_window(policy: AgentPolicy, runs: list[dict]) -> str | None:
     = **本次关闭的作用域 run 的 `started_at`**（B1）。
 
     为什么不能取自 §9 自己（二查实测的绕过路径）：原实现是
-    `window_start = min(§9 各行的 started_at)`，于是**删掉 §9 里最早的几行**就把窗口整体抬高，
+    `window_start = min(§9 各行的 started_at)`，
+    于是**删掉 §9 里最早的几行**就把窗口整体抬高，
     落在窗口之前、账本里真实存在的 run 全部退出 `scoped` → "账本有 run 但 §9 未登记"一条都不报
     → 闸门 PASS。**被校验的文档不得定义自己的校验窗口。**
 
@@ -215,9 +400,13 @@ def ledger_close_window(policy: AgentPolicy, runs: list[dict]) -> str | None:
     账本写入的时间戳统一带 `+00:00` 偏移时字典序 = 时间序；该前提由账本自身
     保证（`agent-ops register` 用 UTC ISO 串），混入别的偏移会让本函数失去
     意义——故这里不做时区归一化，而是明确记录口径。
+
+    **上界（2026-09-25 独立复核 finding 2）**：本函数只取 `derive_close_window` 的起点；
+    候选 run 若违反次序/时序判据（未来时间戳、晚于整条流水线、被更早的 run 引用），
+    `derive_close_window` 会**弃用**该起点并返回具名问题（见 `scope_window_problems`），
+    本函数随之返回 `None` ⇒ 调用方不过滤（全域）。"取最新一条"**不再是无条件的**。
     """
-    run = scope_step_run(policy, runs)
-    return str(run.get("started_at")) if run else None
+    return derive_close_window(policy, runs)[0]
 
 
 # --------------------------------------------------------------------- 判据
@@ -228,6 +417,7 @@ def check_requirements(policy: AgentPolicy, runs: list[dict]) -> list[str]:
     原先这些判据是 `if role == "code-review": 必须有 windows 和 main` 这样的代码；
     现在**从 `fanout.json` 推导**——加减步骤/分支只改数据。
     """
+    _criterion()
     problems: list[str] = []
     by_role: dict[str, list[dict]] = {}
     for r in runs:
@@ -245,7 +435,8 @@ def check_requirements(policy: AgentPolicy, runs: list[dict]) -> list[str]:
                     f"（target 判据为**精确匹配**，子串不算；已有 task_id："
                     f"{[str(r.get('task_id')) for r in bucket][:3]}）")
 
-    # 〇查必须先于二查：顺序来自数据（scope_ref_step 指向的第一步 vs 其余步骤），不是写死的角色名
+    # 〇查必须先于二查：顺序来自数据（scope_ref_step 指向的第一步 vs 其余步骤），
+    # 不是写死的角色名
     ref_step_name = str(policy.close_gate.get("scope_ref_step") or "")
     ref_steps = [s for s in policy.close_ledger_steps if s.step == ref_step_name]
     if ref_steps:
@@ -331,6 +522,7 @@ def check_c1(policy: AgentPolicy, runs: list[dict],
 
 def check_c2(policy: AgentPolicy, runs: list[dict]) -> list[str]:
     """C2 指涉可核：外部引用解析到"存在且可用"的对象；运行数据 role 必须能落到 spec（不认角色名）。"""
+    _criterion()
     problems: list[str] = []
     by_id = {r.get("run_id"): r for r in runs}
     for r in runs:
@@ -374,6 +566,7 @@ def check_linkage(policy: AgentPolicy, sprint: dict, runs: list[dict],
     `sprint["malformed"]`（首列 `run-…` 但列数 <5 的行）逐条点名：这些行**等于没登记**，
     静默丢掉它们会让"登记了"与"闸门认了"两件事悄悄分叉（N8 一族）。
     """
+    _criterion()
     problems: list[str] = []
     by_id = {r.get("run_id"): r for r in runs}
     ledger_roles = {s.role for s in policy.close_ledger_steps} | policy.review_roles
@@ -410,12 +603,14 @@ def check_linkage(policy: AgentPolicy, sprint: dict, runs: list[dict],
 
 def check_c3(policy: AgentPolicy, sprint: dict, runs: list[dict], att: Attribution) -> list[str]:
     """C3 覆盖闭环：锚点存在、每个提交有归属、且与 §9 声明的覆盖口径一致。"""
+    _criterion()
     problems: list[str] = []
     if not sprint.get("anchor"):
         problems.append("[C3] 未声明三查锚点（`三查锚点: <sha>`）→ 无法判定三查是否失效")
         return problems
 
-    # **空区间 ≠ 通过**（2026-09-23 二查 critical 实测）：锚点 == HEAD 时 `rev_list` 为空集，
+    # **空区间 ≠ 通过**（2026-09-23 二查 critical 实测）：
+    # 锚点 == HEAD 时 `rev_list` 为空集，
     # 于是 unowned 必为空、闸门打出"覆盖闭环 ✔"——而事实是一个提交都没受检。
     if att.empty_interval():
         problems.append(
@@ -435,7 +630,8 @@ def check_c3(policy: AgentPolicy, sprint: dict, runs: list[dict], att: Attributi
             + (" …" if len(unowned) > 8 else ""))
 
     # §9 行声明的覆盖范围必须与账本一致（防"文档写了覆盖、账本没有窗口"）。
-    # N6（2026-09-25 二查）：原先**只比对 `scope_source`** → §9 把 role/target 写错也 PASS。
+    # N6（2026-09-25 二查）：
+    # 原先**只比对 `scope_source`** → §9 把 role/target 写错也 PASS。
     # role/target 是 §9 表的定位字段：写错整行的指向就错了（gate 会去查另一个 run），
     # 因此三者一并比对（"-"/空 = 该格未填，不比对）。
     by_id = {r.get("run_id"): r for r in runs}
@@ -461,9 +657,14 @@ def evaluate(policy: AgentPolicy, sprint: dict, runs: list[dict], *,
     **关闭窗口只推导一次**：C1 的判定域（D1）与 §9↔账本的区间比对（N6）
     必须用**同一个**窗口，两处各推一次＝两套口径，而口径分叉正是本卡要治的
     形态（"工具一个口径、闸门另一个口径"）。
+
+    **窗口的上界问题（finding 2）也在这里收口**：`derive_close_window` 一并返回"起点被弃用"
+    的具名问题（未来时间戳 / 晚于整条流水线 / 被更早的 run 引用）——**判定域退回全域**，
+    既报出问题、又不静默收窄。
     """
     problems: list[str] = []
-    window_start = ledger_close_window(policy, runs)
+    window_start, window_problems = derive_close_window(policy, runs)
+    problems += window_problems
     problems += check_requirements(policy, runs)
     problems += check_c1(policy, runs, window_start)
     problems += check_c2(policy, runs)
@@ -476,7 +677,8 @@ def evaluate(policy: AgentPolicy, sprint: dict, runs: list[dict], *,
     return problems
 
 
-# ------------------------------------------------------- 自检 fixture（合成政策 + 合成历史）
+# ---------------------------------------
+# ---------------- 自检 fixture（合成政策 + 合成历史）
 
 FIXTURE_POLICY = {
     "version": 1,
@@ -628,7 +830,8 @@ def _fixture_attribution(runs: list[dict], *, exceptions: list[dict] | None = No
                          unowned_extra: bool = False, policy: AgentPolicy | None = None) -> Attribution:
     """合成历史：锚点 = SHA_A（最旧），HEAD = SHA_D（最新），中间 SHA_B/SHA_C（新→旧 D,C,B,A）。
 
-    覆盖窗口 (SHA_A, SHA_D] 覆盖 B、C、D 三个提交。`unowned_extra=True` 时改写 run 的窗口
+    覆盖窗口 (SHA_A, SHA_D] 覆盖 B、C、D 三个提交。
+    `unowned_extra=True` 时改写 run 的窗口
     使它们只覆盖到 SHA_C —— 于是 SHA_D（HEAD 本身）无归属，模拟"覆盖表/窗口落后于 HEAD"。
     """
     shas = [SHA_B, SHA_C, SHA_D]
@@ -750,7 +953,8 @@ def _selfcheck() -> int:
 
     for role, targets in policy.role_targets().items():
         for target in targets:
-            # 关键：**该 role 仍有别的 run**（这里造一个其它 target 的诱饵 run），否则报的是
+            # 关键：**该 role 仍有别的 run**（这里造一个其它 target 的诱饵 run），
+            # 否则报的是
             # "缺 run（role）"而不是 target 级判据——两种失效形态必须能被测试分别命中。
             decoy = _run(f"run-decoy-{role}", role, "decoy-scan", "2026-09-21T01:30:00+00:00",
                          "impact-assessment:run-k-001")
@@ -819,6 +1023,72 @@ def _selfcheck() -> int:
        "（不取最小值）",
        ledger_close_window(policy, draggy) == "2026-09-21T01:00:00+00:00",
        f"window={ledger_close_window(policy, draggy)}")
+
+    # ---- B4（2026-09-25 独立复核 finding 2）：窗口起点必须有**上界** ------------
+    # 复核实测：往账本追加**一条**更晚的作用域 run，窗口起点就从 2026-09-21T01:00 抬到
+    # 2026-09-25T04:30，
+    # 本次关闭的 5 条流水线 run 全部落到窗口外 ⇒ C1/linkage **静默失明**
+    # （同一份"漏登记最早一行"的 §9：注入前 FAIL 2 项 → 注入后 PASS 0 项）；`2099-01-01` 也照收。
+    # 判据 = ①不得在未来 ②不得晚于整条流水线 ③引用它的 run 不得比它更早；
+    # 违反即**弃用起点**
+    # 并具名报问题（判定域退回全域 = 宁可多报，不静默收窄）。
+    late_scope = _run("run-k-late", scope_role, "planned", "2026-09-25T04:30:00+00:00")
+    injected = [*runs, late_scope]
+    window_inj, window_problems_inj = derive_close_window(policy, injected)
+    rows_missing = [row for row in good["rows"] if row["run_id"] != "run-k-001"]
+    doc_missing = parse_sprint(_doc(rows_missing, SHA_A))
+    p_blind_before = evaluate(policy, doc_missing, runs, att=_att(runs))
+    p_blind_after = evaluate(policy, doc_missing, injected, att=_att(injected))
+    ok("B4 反向对照 a（复核的注入形态）：追加一条更晚的作用域 run（2026-09-25T04:30）"
+       "→ 起点被**弃用**（None，不过滤）并具名报问题，**不静默抬高窗口**",
+       window_inj is None
+       and any("窗口/次序" in x and "run-k-late" in x for x in window_problems_inj)
+       and ledger_close_window(policy, injected) is None,
+       f"window={window_inj} problems={window_problems_inj[:1]}")
+    ok("B4 反向对照 a′：同一注入**不得**让「漏登记最早一行」的 §9 由 FAIL 变 PASS"
+       "（失明方向必须被堵死：注入前 FAIL → 注入后仍 FAIL）",
+       p_blind_before != [] and p_blind_after != []
+       and any("run-k-001" in x for x in p_blind_after),
+       f"注入前 {len(p_blind_before)} 项 → 注入后 {len(p_blind_after)} 项"
+       f"（旧实现：2 项 → 0 项；注入后仍点名 run-k-001="
+       f"{any('run-k-001' in x for x in p_blind_after)}）")
+
+    far_scope = _run("run-k-2099", scope_role, "planned", "2099-01-01T00:00:00+00:00")
+    window_far, window_problems_far = derive_close_window(policy, [*runs, far_scope])
+    ok("B4 反向对照 b：未来时间戳（2099-01-01）的作用域 run → 具名 FAIL 且起点被弃用",
+       window_far is None and any("窗口/未来" in x and "run-k-2099" in x for x in window_problems_far),
+       f"window={window_far} problems={window_problems_far[:1]}")
+
+    # ③ 引用它的 run 不得比它更早：把一条后续步骤 run 的 started_at 改到被引用者之前
+    # （引用不可能成立于"被引用者还没登记"的时刻）→ 起点不可采信。
+    # 用**合规候选**（run-k-001）+ 只改引用者时间，隔离出 ③ 单独命中（② 不参与）。
+    cited_early = [dict(r, started_at="2026-09-21T00:30:00+00:00",
+                        scope_source="impact-assessment:run-k-001") if r["run_id"] == "run-d-002" else r
+                   for r in runs]
+    window_cited, window_problems_cited = derive_close_window(policy, cited_early)
+    ok("B4 反向对照 c：后续步骤 run 引用作用域 run 却比它更早（引用不可能成立）→ 具名 FAIL",
+       window_cited is None and len(window_problems_cited) == 1
+       and any("早于" in x and "run-d-002" in x for x in window_problems_cited),
+       f"window={window_cited} problems={window_problems_cited}")
+
+    # 正向：合规 fixture（作用域 run 在最前、其余步骤在它之后）→ 同一实现**零误报**、
+    # 窗口不变。
+    ok("B4 正向对照：合规 fixture（作用域 run 在前、其余步骤在它之后）→ 无问题、窗口与 B1 一致"
+       "（上界不制造假红）",
+       derive_close_window(policy, runs) == ("2026-09-21T01:00:00+00:00", [])
+       and evaluate(policy, good, runs, att=_att(runs)) == [],
+       f"derive={derive_close_window(policy, runs)}")
+
+    # 正向：作用域 run 之后**还没跑**任何后续步骤（关闭刚开工）时，不得因为"之后一条都没有"
+    # 而误判——此时"整条流水线"并不存在，判定域不该被弃用。
+    fresh = [_run("run-k-fresh", scope_role, "planned", "2026-09-21T01:00:00+00:00")]
+    fresh_doc = parse_sprint(_doc(_rows(fresh), SHA_A))
+    ok("B4 正向对照 b：账本里只有作用域 run、后续步骤一条都没跑（关闭刚开工）"
+       "→ 窗口仍可推导（不把「还没跑」误判成「流水线在它之前」）",
+       derive_close_window(policy, fresh)[0] == "2026-09-21T01:00:00+00:00",
+       f"derive={derive_close_window(policy, fresh)} "
+       f"｜（该状态下「缺后续步骤 run」由 check_requirements 另行点名："
+       f"{len(evaluate(policy, fresh_doc, fresh, att=None, check_coverage=False))} 项）")
 
     # 反向对照 c：非作用域步骤的 run **再早**也不得定义窗口（旧口径正是被这条拖走的）
     earliest_other = min(str(r["started_at"]) for r in runs
@@ -1111,7 +1381,8 @@ def _selfcheck() -> int:
     ok("linkage 反向对照：§9 写了 run 但账本无记录 → FAIL",
        any("账本无记录" in x for x in p), f"problems={p[:1]}")
 
-    # ---- N3 反向对照：target 判据必须是**精确匹配**（子串匹配 = 改名即可冒充）---------
+    # ---- N3 反向对照：target 判据必须是**精确匹配**（子串匹配 = 改名即可冒充）
+    # ---------
     for tampered, expected_target in (("branch:windows-backup", "branch:windows"),
                                       ("branch:mainline", "branch:main"),
                                       ("OLD-working-tree-JUNK", "working-tree")):
@@ -1132,7 +1403,8 @@ def _selfcheck() -> int:
     p = evaluate(policy, parse_sprint(_doc(good["rows"], SHA_A)), runs, att=_att(runs))
     ok("N6 正向对照：§9 行齐全时窗口比对不误报（好输入 rc=0）", p == [], f"problems={p[:1]}")
 
-    # ---- N6b 反向对照：§9 的 role / target 写错 → FAIL（原先只比对 scope_source）------
+    # ---- N6b 反向对照：§9 的 role / target 写错 → FAIL（原先只比对 scope_source）
+    # ------
     for field, bad in (("role", "doc-audit"), ("target", "branch:production")):
         rows = [dict(r) for r in good["rows"]]
         rows[2] = {**rows[2], field: bad}
@@ -1163,8 +1435,28 @@ def _selfcheck() -> int:
 def main() -> int:
     if "--sprint" in sys.argv:
         path = Path(sys.argv[sys.argv.index("--sprint") + 1])
-        return run_real_data(path, check_coverage="--no-coverage" not in sys.argv)
-    return _selfcheck()
+        rc = run_real_data(path, check_coverage="--no-coverage" not in sys.argv)
+        if rc == 0:
+            # TG-6：**只在成功路径**打印机读证据行。real-data 模式的 assertions =
+            # **实际执行过的判据条数**（该模式不跑 ok() 自检断言，
+            # 逐条判据各自 `_criterion()` 登记）。
+            print(f"EVIDENCE: verify_close_readiness.py assertions={CRITERIA_EXECUTED} rc=0 "
+                  f"mode=real-data criteria={CRITERIA_EXECUTED}")
+        return rc
+    try:
+        rc = _selfcheck()
+    except AssertionError as exc:
+        # 自检断言失败 = 本次运行不能出具结论（不是"数据违规"）：`ok()` 里是显式 `raise`
+        # （`-O` 删不掉），这里收敛成一行点名 + rc=1，把点名从栈帧里提到台面上。
+        print(f"CLOSE-READINESS FAIL（自检断言未通过）：{exc}")
+        return 1
+    if rc == 0:
+        print(f"EVIDENCE: verify_close_readiness.py assertions={PASSED} rc=0 mode=selfcheck")
+    return rc
+
+
+if not __debug__:  # noqa: SIM108 —— -O/PYTHONOPTIMIZE 会剥离 assert；守卫必须是普通语句，不能是 assert
+    raise SystemExit("本闸门不得在 -O/PYTHONOPTIMIZE 下运行（`__debug__` 为 False ⇒ 判据会被整体剥离）——见 3-LEARNED 1.65")
 
 
 if __name__ == "__main__":

@@ -6,6 +6,14 @@
 > HEAD 在核查期间被并发批推进：起点 `107a7ab`（未推 **40**）→ 终点 `c632274`（未推 **41**，`git rev-list --count origin/windows..HEAD`）。
 > **重要前提**：核查时工作树**脏**——`agents/policy.json`、`verify/agent_policy.py` 有未提交改动（并发批 TG-6，mtime 12:35:32/12:35:38，sha256 前缀 `C48CBF0046DC7096` / `B6BE4BDDDC68A1EA`），收尾时 `verify/verify_lint.py` 亦被同一并发批改动。故本报告的本机结论 = **工作树等价**，不等于 HEAD `c632274` 等价；CI 检的是提交态。
 
+> ⚠️ **本文是时点快照，且部分结论已被同窗口后续提交取代——引用前先读本节**（2026-09-25 一查 `run-2026-09-25-doc-audit-070` finding 6 要求补此标注）。
+> - **快照时点**：2026-09-25（UTC+8），工作树等价于 HEAD `c632274`（本文末节第 9 条自陈"工作树脏"）。
+> - **已被取代**：下方 O2 的结论"真数据 **rc=1 / 46 项**（C1 34 + linkage 11 + C3 1）…**34 项 C1 历史域清不掉**"**已不成立**——同日晚些的 close-blocker 批（`TG-17` B1~B4）把 C1 的判定域收窄为**账本推导的关闭窗口**，历史域不再计入。**现值请现跑**（本文不写现值）：
+>   `.venv\Scripts\python.exe verify\verify_close_readiness.py --sprint docs\iteration\sprint\2026-09-21-sprint-17.md`
+> - **仍成立**：O1（CI 未在本批提交上实跑；锚点未声明前关闭前置块选择器命中 0 份 ⇒ 该步空跑）、O3（`A-M12` 判据④无度量口径）、O4（实现类子代理无账本 role）、O5（`TG-15` 2.5 点、open majors = 0）。
+> - **本文所有数字都只是"时点读数"**，仅在上述时点成立；**现值一律以文中给出的命令现跑输出为准**。本 Sprint 最实的教训正是"手抄派生数字即制造漂移"（同一批闸门在同日文档里并存 3~4 个读数，见 `run-2026-09-25-doc-audit-070` finding 1/2）。
+> - 取代标注的写法参照本仓既有正例：`docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.search-only-draft.MD:3`。
+
 **一句结论**：O1 的"CI 从未实跑"**依然成立**（且比记录更严重：关闭前置块当前命中 **0** 份 Sprint 文档，推上去也不执行该闸门）；O2 真数据 **rc=1 / 46 项**（C1 34 + linkage 11 + C3 1），填 §9 只能清 **12** 项、**34 项 C1 历史域清不掉**；O3 判据④**已写但无度量方法**；O4 "实现类子代理无账本 role" **成立且 TG-17 卡内并未收录该输入**；O5 审计 7 条 major **逐条可核为已闭环（open majors = 0）**，但 `N9` 两个子项仍开。
 
 ---
@@ -24,7 +32,7 @@
 | 4 | `choco install graphviz -y` | 否 | `Get-Command dot` **无输出** ⇒ 本机无 dot |
 | 5 | `actions/setup-node@v4` node 22 | 否 | node **v26.8.2** / npm **12.0.2**（大版本不同） |
 | 6 | `python verify/run_suite.py --tier offline` | 否 | **按用户约束未跑**；以第 9 行 6 条独立闸门替代 |
-| 7 | `python verify/verify_matrix.py check` | 否 | rc=0 → `CHECK OK: 52 脚本与 TEST-MATRIX.MD 一致` |
+| 7 | `python verify/verify_matrix.py check` | 否 | rc=0 → `CHECK OK: <N> 脚本与 TEST-MATRIX.MD 一致`（**N 是时点读数，现值现跑该命令**） |
 | 8 | 关闭前置块（只对声明真锚点的 Sprint 文档） | 否 | 选择器实跑：**`checked 0 sprint doc(s) declaring a real anchor`**（`Get-ChildItem docs/iteration/sprint/*sprint-*.md` + 同一正则） |
 | 9 | 显式档四闸门 + `structure-guard.py --replay` | 否 | 5 条全 rc=0，见下表 |
 | 10 | `npm ci` + `npm run build`（reactflow frontend） | 否 | `npm ci` rc=**0**；`npm run build` rc=**0**；产物 `dist` **3 文件 / 356,981 B**（index.html 412 + css 21,293 + js 335,276） |
@@ -37,7 +45,7 @@
 | `verify_card_index.py --check --strict` | `ALL PASS (9 assertions)` |
 | `verify_md_tables.py` | `MD-TABLE PASS（162 个文件解析通过；其中 4 个历史文件走棘轮基线）`；`应扫 162 / 实扫 162 → 一致`（本报告落盘后复跑同命令为 **163**——集合是政策驱动的动态枚举，新增文档自动纳入） |
 | `verify_no_policy_hardcode.py` | `ALL PASS (22 assertions)` |
-| `verify_lint.py` | `ALL PASS (6 assertions)`；`[tool] ruff 0.14.4`；A/B 级全仓 0 条，C 级 2910 条只报 |
+| `verify_lint.py` | 末行 `ALL PASS (N assertions)` + `EVIDENCE:` 行（**N 与时点 C 级计数只是时点读数，现值现跑**）；`[tool] ruff 0.14.4`；A/B 级全仓 0 条，C 级只报基线 |
 | `scripts/structure-guard.py --replay` | `ALL PASS (64 assertions)`；`真文件零改动…162 份文档 sha256=f05d4d37a69e4638…` |
 
 **verdict**：**CI 面仍未闭环，且有两个新发现的收紧点**：① 第 8 步在本 Sprint 填锚点前**恒为空跑**（命中 0 份）——"CI 已接关闭闸门"目前是**未生效接线**；② `actions/checkout@v4` 默认 `fetch-depth: 1`，而关闭闸门 C3 依赖 `git rev-list <锚点>..HEAD`（`verify/agent_policy.py:679` 起，"anchor 非法时抛错，不静默当空"）⇒ 填了真锚点后 CI 首次实跑该分支时，浅克隆下**可能直接报错**（本机无浅克隆，未能实测）。

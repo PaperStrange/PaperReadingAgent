@@ -37,8 +37,16 @@
     "terminal_report_globs": ["*.report.md", "*report*.md", "*final*.md"],
     "run_dir_exceptions_file": "agents/policy/run-dir-exceptions.json",
     "dur_minutes_tolerance": 0.01,
+    "in_flight": {
+      "_comment": "**在飞 run**（status 非终态）不得被当成缺陷（2026-09-25 M2 修）：spec 强制『**先写报告、后 finish**』（`agents/functions/code-review.md`），于是『报告已落盘、终态尚未写回』在写报告到 finish 之间**必然出现**——把它当缺陷是与工作流互斥的结构性假红（旧口径 `terminal_not_written_back` 上限为 0，每个在飞 run 都会踩）。两类分开处理：① `terminal_not_written_back` 只在报告**已经等了超过** `terminal_writeback_grace_minutes` 仍不写回时判（超时 = 停摆，照旧逐条点名、按 cap 计；宽限期内 = 在飞，只打 INFO 不计缺陷）。② 评审类无 `result_files`（`missing_result_files_review`）只对**终态** run 判——非终态 run 尚未产出，同 A 类既有口径『非终态 run 尚未产出，不算缺失』。宽限期用 **epoch 秒**（报告文件 mtime 距现在），与项目时区无关。",
+      "terminal_writeback_grace_minutes": 120
+    },
     "legacy_ratchet": {
-      "_comment": "棘轮基线：**截止日（含）之前**的历史 run 允许存在的缺陷**计数上限**——实测值，2026-09-25（UTC+8）对全量 67 条账本行 + 69 个 agents/runs 目录一次测得。上限只许在重评基线时**下调**，不许为了变绿上调；闸门对超过上限的每一例逐条点名。『截止日之后』的新 run 一律严格判定（无上限、无豁免）。到期日 `review_by` 过后闸门直接 FAIL（没有到期日的豁免就是永久豁免）。**目录类历史债不走计数上限**，走 `agents/policy/run-dir-exceptions.json` 白名单（每条必须写 reason，且只减不增）。注意：截止日 = 本闸门落地日 → 当日新登记的 run 也算历史（但任何新增缺陷都会把该类计数顶过上限，故棘轮仍然咬得住）。",
+      "_comment": "棘轮基线：历史 run 允许存在的缺陷**计数上限**——实测值，2026-09-25（UTC+8）对全量 67 条账本行 + 69 个 agents/runs 目录一次测得。上限只许在重评基线时**下调**，不许为了变绿上调；闸门对超过上限的每一例逐条点名。**判定域**见 `domain`（2026-09-25 修：早于本次关闭窗口起点的存量计入上限，窗口内严格判定——旧口径『截止日 = 上限实测日 = 交付日』会把**当天新建**的 run 判成历史，拿当天更早实测的上限去量它 ⇒ 计数必然顶破上限，闸门在自己的交付日结构性红）。到期日 `review_by` 过后闸门直接 FAIL（没有到期日的豁免就是永久豁免）。**目录类历史债不走计数上限**，走 `agents/policy/run-dir-exceptions.json` 白名单（每条必须写 reason，且只减不增）。",
+      "domain": {
+        "_comment": "棘轮判定域的**规则名**（实现只认这一个取值，改数据不改代码即 fail-closed）：`close_window_start_exclusive` = 早于本次关闭窗口起点（`started_at < 窗口起点`）的 run 计入计数上限；窗口起点由 `verify_close_readiness.ledger_close_window()` 从**账本侧**推导（= `close_gate.scope_ref_step` 作用域 run 的 `started_at`），本闸门**复用同一实现**、同一比较口径（`started_at >= 窗口起点` = 窗口内，与 C1/N6 逐字一致——一个窗口只能有一处推导）。窗口内（含起点那条作用域 run）的 run 一律**严格判定**：无上限、无豁免。窗口不可推导（作用域 run 缺席/无 started_at）→ 退回 `cutoff_local_date` 的日期域并**在输出里点名『回退域』**（回退是放宽方向，必须可见；不得静默把全量账本判红，也不得静默收窄）。",
+        "window": "close_window_start_exclusive"
+      },
       "cutoff_local_date": "2026-09-25",
       "measured_at": "2026-09-25",
       "review_by": "2026-10-31",
@@ -161,16 +169,34 @@
     "caps": {
       "D101": 12,
       "D102": 46,
-      "D103": 207,
-      "E501": 2631
-    }
+      "D103": 205,
+      "E501": 2576
+    },
+    "_remeasure_2026_09_25_close": "关闭期**下调**（只减不增）：D103 207→205（补 10 处 public 函数 docstring）、E501 2631→2576（把本批新增/改写的长 CJK docstring 与注释行按**显示宽度**折行——ruff 的 E501 按显示宽度计、CJK 占 2 列；全仓 2830→2576）。上一版把 cap 记在实测之上（E501 2631 vs 冻结 HEAD 实测 2615）留下的**静默配额**已按 `docs/3-LEARNED.MD` 1.66 收掉：现在 **cap = 当次实测**（零余量）。",
+    "measured_total": 2839
   },
   "archive_role_prefix": "tech-research",
   "card_index": {
     "_comment": "TG-14④ 卡索引 lint 的判据参数（原写在 verify/verify_card_index.py，被 verify_no_policy_hardcode.py 判为 R1 阈值硬编码——闸门又抓住了写闸门的人）。A3（finding N7，2026-09-25）收紧 ④：首版只比「卡正文前 N 字」是否作为子串出现在 Sprint 文档某行——**在副本前填充 ≥61 字符即可规避**（指纹不再连续，判据静默放行）。现改为**全文行级指纹比对**：卡正文段落（整段，非前 N 字）必须整段不被 Sprint 文档的**任何一行**包含。填充/加引号/插字都会打断包含关系 → 规避路径被堵；合法计划表行仍然放行（它天然只含卡正文的**开头句**，不含整段）。",
     "required_sections": ["状态", "规模", "来源", "Sprint"],
     "min_fingerprint_chars": 25,
-    "min_line_chars": 30
+    "min_line_chars": 30,
+    "status_aliases": {
+      "_comment": "⑥ 状态一致性的状态词表：{状态词: [别名…]}。卡文件 `## 状态` 首行、backlog 索引行『状态』列、该卡所属 Sprint 文档看板行，三处必须归一到**同一个状态词**。匹配取**最长别名优先**（`实质完成` 不会被 `完成` 抢走）；归不出状态词即 FAIL（禁止『判不了就当没问题』）。词表是数据：新增状态词只改这里，不改闸门代码。",
+      "完成": ["已完成", "完成", "DONE", "✅"],
+      "实质完成": ["实质完成"],
+      "进行中": ["进行中", "WIP"],
+      "候选": ["候选"],
+      "待办": ["待办"],
+      "计划中": ["计划中"],
+      "待排期": ["待排期"],
+      "已交付": ["已交付"],
+      "冻结": ["冻结"]
+    },
+    "baseline_file": "agents/runtime/tg14-baseline.json",
+    "negation_prefixes": ["未", "不", "非", "尚未", "还没"],
+    "baseline_command": "python scripts/card-inventory.py",
+    "baseline_summary_regex": "合计：(\\d+) 张卡 / (\\d+) 个阶段 / 非卡行 (\\d+)"
   },
   "md_table_docs": [
     "docs/1-WORKFLOW.MD",
@@ -282,5 +308,79 @@
       "_comment": "C3-T：覆盖默认由 run 数据计算（每个 run 的 (coverage_anchor, covers_through]），本表只登记**例外**。例外必须 sha 钉死（full 40 位）；表落后于例外集合之外 → 默认 FAIL 并逐条点名未归属 sha（失效方向反转：不静默变绿）。",
       "scope_run_window": "B3（2026-09-25）覆盖窗口语义：**作用域类 run 不承担内容覆盖**——即 `close_gate.scope_ref_step` 指向那一步的 role（本仓＝impact-assessment），以及 spec 声明 `coverage_window: none` 的 role。它们只在 T0 界定本次关闭覆盖哪些变更，其 (coverage_anchor, covers_through] 因此常为 (X, X] 空区间，**空区间不判问题**。**内容评审类 run 承担内容覆盖**——spec 声明 `coverage_window: self` 的评审 role（本仓＝code-review / doc-audit / agent-onboarding-review）；其空窗口仍判 FAIL，并给出修复指引（`scripts/agent-ops.py set-anchor <run_id> --covers-through <sha> --reason <理由>` 受控回填，或重跑该评审）。判据不按 role 名硬编码：作用域类由 `scope_ref_step` 派生，其余由 spec frontmatter 派生。"
     }
+  },
+  "derived_numbers": {
+    "_comment": "『派生数字不得手抄』（2026-09-25，Sprint-17 关闭期；根因＝一查 run-2026-09-25-doc-audit-070 finding 1/2）：文档里引用**派生数字**（断言数/卡数/文件数/脚本数/字节数/C 级条数/棘轮计数）只有两种合法形态——① **复现命令 + 以该命令输出为准**；② **标明时点的历史读数**（同行带日期或 sha）。写成『现测 <数字>』『实测 <数字>』这类**当期主张**即违规。闸门 = verify/verify_derived_numbers.py（offline）。`baseline` 按文件设违规处数上限：**只减不增**（与 git HEAD 版逐项比较，上调即 FAIL），`review_by` 到期即 FAIL；未列入 baseline 的文件上限 = `default_cap`（新文档一处都不许有）。规则条文 = docs/1-WORKFLOW.MD §6『派生数字不得手抄』。baseline 初值 = 2026-09-25 全仓实测（32 个历史文件 / 111 处，其余文档 0 处）。",
+    "scan_globs": ["docs/**/*.md", "docs/**/*.MD"],
+    "generated_files": ["verify/TEST-MATRIX.MD"],
+    "time_anchor_regex": "(?:20\\d\\d-\\d\\d-\\d\\d|`[0-9a-f]{7,40}`|以现跑为准|以命令输出为准|现跑为准|现值以|以该命令输出为准)",
+    "default_cap": 0,
+    "patterns": [
+      {"id": "claim_count", "regex": "(?:现测|实测|当前|现有)\\s*[:：]?\\s*\\**\\s*\\d+\\s*(?:张卡|卡\\b|个阶段|脚本|个文件|文件|份|条|B\\b)", "hint": "改成『复现命令 + 以该命令输出为准』，或在同一行标注时点（日期/sha）"},
+      {"id": "all_pass", "regex": "ALL\\s*PASS\\s*\\(\\s*\\d+\\s*assertions?", "hint": "断言数以现跑末行为准，不要在文档里固化"},
+      {"id": "assertions_cn", "regex": "\\d+\\s*条?断言", "hint": "同上：改为命令 + 以末行为准，或同行标注时点"},
+      {"id": "evidence_line", "regex": "EVIDENCE:[^\\n]*assertions=\\d+", "hint": "机读证据行由脚本现跑打印，不抄进文档"},
+      {"id": "matrix_check", "regex": "CHECK OK:\\s*\\d+\\s*脚本", "hint": "脚本数以 verify_matrix.py check 现跑为准"},
+      {"id": "suite_scripts", "regex": "SUITE PASSED\\s*\\(\\s*\\d+", "hint": "套件脚本数以现跑为准"},
+      {"id": "ratchet_counts", "regex": "(?:E501|D10[123])\\s*=\\s*\\d+", "hint": "棘轮计数以 EVIDENCE 行现跑为准"},
+      {"id": "c_level_total", "regex": "C\\s*级[^\\n]{0,24}?\\d{3,}\\s*条", "hint": "C 级条数以 verify_lint.py 报告行现跑为准"}
+    ],
+    "baseline": {
+      "docs/3-LEARNED.MD": 8,
+      "docs/4-ALGORITHM.MD": 4,
+      "docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-learned.MD": 3,
+      "docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-runs.MD": 1,
+      "docs/iteration/phases/refactor-analysis/2026-09-21-fac13-14-impact.MD": 1,
+      "docs/iteration/phases/refactor-analysis/backlog.MD": 1,
+      "docs/iteration/phases/refactor-analysis/cards/F-AC10.md": 1,
+      "docs/iteration/phases/testing-governance/2026-09-25-d2d3-independent-review.MD": 1,
+      "docs/iteration/phases/testing-governance/2026-09-25-governance-exit-evidence.MD": 3,
+      "docs/iteration/phases/testing-governance/2026-09-25-open-items-check.MD": 3,
+      "docs/iteration/phases/testing-governance/cards/TG-10.md": 1,
+      "docs/iteration/phases/testing-governance/cards/TG-13.md": 1,
+      "docs/iteration/phases/testing-governance/cards/TG-14.md": 1,
+      "docs/iteration/phases/testing-governance/cards/TG-17.md": 3,
+      "docs/iteration/phases/testing-governance/cards/TG-6.md": 2,
+      "docs/iteration/phases/testing-governance/cards/TG-7.md": 4,
+      "docs/iteration/phases/testing-governance/cards/TG-8.md": 3,
+      "docs/iteration/pre-research/tech/2026-08-31-testing-governance.MD": 1,
+      "docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD": 1,
+      "docs/iteration/sprint/2026-08-30-sprint-8.md": 4,
+      "docs/iteration/sprint/2026-08-30-sprint-9.md": 2,
+      "docs/iteration/sprint/2026-08-31-f2-acceptance-guide.MD": 3,
+      "docs/iteration/sprint/2026-08-31-sprint-10.md": 1,
+      "docs/iteration/sprint/2026-08-31-sprint-11.md": 5,
+      "docs/iteration/sprint/2026-08-31-sprint-12.md": 3,
+      "docs/iteration/sprint/2026-08-31-sprint-13.md": 5,
+      "docs/iteration/sprint/2026-08-31-sprint-14.md": 5,
+      "docs/iteration/sprint/2026-09-07-sprint-15.md": 19,
+      "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD": 5,
+      "docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD": 9,
+      "docs/iteration/sprint/2026-09-12-sprint-16.md": 6,
+      "docs/iteration/sprint/2026-09-21-sprint-17.md": 1
+    },
+    "review_by": "2026-10-31"
+  },
+  "gate_integrity": {
+    "_comment": "闸门可信度（2026-09-25，Sprint-17 关闭期；两条均已实测，见 docs/3-LEARNED.MD 1.65/1.66）：① 裸 `assert` 承担判定 ⇒ `python -O`/`PYTHONOPTIMIZE=1` 下判据被整体剥离却照常打印 `ALL PASS`（同一样本正常档 rc=1、-O 档 rc=0）；套件起子进程不构造 `env=` ⇒ 一个环境变量能让整套闸门变绿。② 棘轮上限是自声明数据，`cap` 记在实测之上 = 给新增违规发**静默配额**，且没有任何机制阻止『调高上限即变绿』。闸门 = verify/verify_gate_integrity.py（offline）：`guard_required` 里的每个闸门必须含 `guard_line`（-O 下 `__debug__` 为 False ⇒ 立即失败退出，不打印成功行）；`probe_gate` 真实跑一次 `-O` 必须非零退出且点名 `__debug__`（静态检查只能证明『写了这行』）；`ratchets` 列出的上限表与 git HEAD 版逐项比较，**任何上调即 FAIL**，且每张表必须带未过期的 `review_by`。存量闸门不回溯改造，未列入 `guard_required` 的逐条 WARN（缺口可见）。",
+    "guard_line": "if not __debug__:",
+    "guard_required": [
+      "verify/verify_lint.py",
+      "verify/verify_deduction_rates.py",
+      "verify/verify_no_policy_hardcode.py",
+      "verify/verify_card_index.py",
+      "verify/verify_derived_numbers.py",
+      "verify/verify_gate_integrity.py",
+      "verify/verify_artifact_paths.py",
+      "verify/verify_close_readiness.py"
+    ],
+    "probe_gate": "verify/verify_gate_integrity.py",
+    "probe_args": ["--selftest"],
+    "ratchets": [
+      {"pointer": "lint_readability_ratchet.caps", "review_by_pointer": "lint_readability_ratchet.review_by"},
+      {"pointer": "md_table_legacy_files.files", "review_by_pointer": "md_table_legacy_files.review_by"},
+      {"pointer": "ledger_measurement.legacy_ratchet.caps", "review_by_pointer": "ledger_measurement.legacy_ratchet.review_by"},
+      {"pointer": "derived_numbers.baseline", "review_by_pointer": "derived_numbers.review_by"}
+    ]
   }
 }

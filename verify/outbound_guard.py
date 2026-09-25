@@ -19,11 +19,19 @@
 `scripts/refresh-providers.py`（provider 配置/官网刷新、远程文档抓取）、
 `scripts/agent-ops.py fetch-spec`（远程 spec 抓取）、`verify/e2e_common.py`（自举后端时的
 HF 离线变量注入）。**后端侧另有一份最小实现**：`paper-qa-script/app/offline_guard.py`
-（模型 API 三处：LLM / vision / API 向量模型）——之所以不共用本模块：`app/**` 是原型运行时，
+（外呼入口四处：LLM / vision / API 向量模型 `app/engine.py`，以及 embedding 推荐器对
+`huggingface.co` 的在线查询 `app/embedding_recommender.py`——2026-09-25 三查 finding
+major-3 修的就是第四处：它原先在 `config` 步骤里早于 `make_settings()` 发出，
+拒绝只是"晚一步"）——之所以不共用本模块：`app/**` 是原型运行时，
 不能把"应用能不能起来"绑到 `agents/functions/*.md`+`fanout.json` 是否齐全（那是闸门数据）。
-两侧读**同一份政策键**，并由 `verify/verify_agentops.py` 的 UC-19 断言"同一 env 取值同结论"。
+两侧读**同一份政策键**，并由 `verify/verify_agentops.py` 的 UC-19 断言"同一 env 取值
+同结论"以及"政策不可读 → 产品侧按离线处理"（M4）。
 **未覆盖**（如实标注）：GitHub API 直调、自定义 provider
-（`PAPERQA_PROVIDERS_JSON`）指向的端点——它们的调用方不在本仓库脚本内。
+（`PAPERQA_PROVIDERS_JSON`）指向的端点——它们的调用方不在本仓库脚本内；
+`app/remote_resolver.py`（远程 PDF 抓取）**未**调闸门，其调用点
+（`app/orchestration.py` 的 `load_index` 步骤）在 `make_settings()` 之后，故有 API 模型
+时会被 `config` 步骤先行拦下——**这是顺序上的巧合，不是入口级保证**，本轮按 finding
+如实登记、未修。
 
 **局限（如实标注，TG-8 卡内要求）**：本开关是**应用层**闸门，不是内核级/防火墙级阻断。
 它能保证"被枚举的入口拒绝得又早又明确"，但**不能**保证"进程内所有 socket 都被拦"；

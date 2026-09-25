@@ -12,9 +12,13 @@
 | [tech/2026-09-07-release-practice.MD](tech/2026-09-07-release-practice.MD) | 技术 | **D1/D2/D4 已拍板，D3/D5 默认采纳**（未开卡） | 发版实践：版本号保留现状、源码包+Windows 免安装包、rc 起步、中文五组 notes | 未来「首次发版 v1.0.0」工作项基线 |
 | [tech/2026-09-07-research-workflow.MD](tech/2026-09-07-research-workflow.MD) | 技术 | **设计草案待确认，已开卡 M16**（P1~P3 已拍板） | 调研分级（工程/专家/学者）+ 决策证据落档 + 段落级溯源 + 思考过程附件 | M16（Sprint-16 与 F-AC8 联跑） |
 | [tech/2026-09-07-mental-models.MD](tech/2026-09-07-mental-models.MD) | 技术 | **已拍板（Q1 独立阶段/Q2 种子接受/Q3 半自动+robust+flexible），阶段已建** | 经验文档→思维模型架构；成功判据=生成可执行 agent workflow；种子=思维实验 | phases/mental-models/（MM-1~MM-5，9 点） |
+| [tech/2026-09-21-lint-deps-security-check.MD](tech/2026-09-21-lint-deps-security-check.MD) | 技术 | **一手已确认（2026-09-21，用户裁定 `L1=a L2=b L3=a L4=c L5=a L6=b`）** | 依赖安检执行清单 + "先查后装"顺序（`npm install --package-lock-only` → `npm audit`；`pip download <pin> --no-deps`）；G1 只引 ruff、prettier 只查改动文件、其余进 G2 | Sprint-17 §2.4 与 §5 风险表第 1 条的**权威一手证据**；`verify/verify_lint.py` + `requirements-windows.txt`（`ruff==0.14.4`） |
+| [tech/2026-09-21-lint-deps-security-check.search-only-draft.MD](tech/2026-09-21-lint-deps-security-check.search-only-draft.MD) | 技术 | **⚠️ 已被取代（2026-09-21 同日）——保留为审计痕迹，其数值一律不得引用** | 同主题的检索-only 草案（结论未定稿版） | 被上一行取代（取代关系**同行标注**，见下方更新规则） |
 | [2026-08-31-domain-governance.MD](2026-08-31-domain-governance.MD) | 跨领域治理 | 设计备忘，未实施 | 一领域=一 agent=一 role=一目录；product/marketing 待讨论启动时创建；协作改进提案 3 条 | 待建：product-research、marketing-research |
 
 ## 更新规则
 
 - 每次预研笔记落盘/状态变更（探讨中 → 初稿待确认 → 已开卡 → 已关闭）时同步更新本表。
 - 笔记关闭（已开卡/已废弃）后从"活跃"区移到"已归档"节，保留决策行备查。
+- **草案与正式件的取代关系必须同行标注**（2026-09-25 一查 `run-2026-09-25-doc-audit-070` finding 7 要求）：被取代者保留在表内（不删行），状态列写 `⚠️ 已被取代（<日期>）`，并在"关联"列写明被谁取代；**被取代件的数值不得引用**。正例 = 本表 `...search-only-draft.MD` 行。
+- **本表是"追溯入口"，新增笔记落盘后同日登记**（`1-WORKFLOW.MD` §4.4 的落盘义务；本轮实测教训：两份 2026-09-21 笔记落盘后本表零命中，属"规则写了没执行"）。

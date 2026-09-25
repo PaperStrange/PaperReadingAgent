@@ -5,7 +5,8 @@
   agents/runtime/prices.json            # 价表（litellm 价表派生 + 人工覆盖段 UC-10）
   agents/runs/<run_id>/<role>.report.md # 报告存档（memory 浏览入口）
 
-约束：纯 Python 标准库（UC-11），不依赖 DSH 或仓库外工具；任何编排方（DSH/CI/IDE）都可调用。
+约束：纯 Python 标准库（UC-11），不依赖 DSH 或仓库外工具；任何编排方（DSH/CI/IDE）
+都可调用。
 
 用法：
   python scripts/agent-ops.py register --role R --task T --spec "S@v" [--model M] [--start]
@@ -18,9 +19,11 @@
       [--covers-through <sha>]             # TG-15：默认自动记收尾时的 HEAD
   python scripts/agent-ops.py round <run_id> --note "Round 5：..." --output-chars 12000   # TG-10① 追加轮次（终态也可）
   python scripts/agent-ops.py interrupt <run_id> --reason "端口争用，让出 8787" --impact "round-3 顺延至 round-4"  # TG-10②
-      [--output-chars N] [--result-file PATH] [--cost-override X] [--estimate-mode chars]
+      [--output-chars N] [--result-file PATH] [--cost-override X] [--estimate-mode
+      chars]
   python scripts/agent-ops.py list [--status S] [--role R] [--limit N]
-  python scripts/agent-ops.py close-sync --sprint <sprint.md> [--write] [--fail-on-unowned]   # TG-15⑤ 覆盖候选生成
+  python scripts/agent-ops.py close-sync --sprint <sprint.md> [--write]
+  [--fail-on-unowned]   # TG-15⑤ 覆盖候选生成
   python scripts/agent-ops.py set-anchor <run_id> [--anchor <sha>] [--covers-through
   <sha>] --reason <理由>
   python scripts/agent-ops.py set-scope <run_id> [--source <src>] [--deviation <理由>]
@@ -37,9 +40,12 @@
              **不是**"首末轮时间差"、**不是**报告自报时长（报告时长不得回填账本）。
   rounds   真源 = **报告轮次**（能数出 `Round N`/`第 N 轮` 时以报告为准并与账本核对）；
              报告不可数时账本声明值只是 `declared` 声明，不得当实测值上报看板。
-  unknown  **缺值必须显式 unknown**：无墙钟读数 → `dur_minutes=null` + `measurement_source=unknown`
-             （`list` 打印 `dur=unknown`）；**禁止**用 `0.00`／整十分钟等退化值冒充实测值。
-  `finish`/`round` 写入时**检测时间戳退化并标注**（`measurement_flags` + 来源降级为 `declared`），
+  unknown  **缺值必须显式 unknown**：
+  无墙钟读数 → `dur_minutes=null` + `measurement_source=unknown`
+             （`list` 打印 `dur=unknown`）；
+             **禁止**用 `0.00`／整十分钟等退化值冒充实测值。
+  `finish`/`round`
+  写入时**检测时间戳退化并标注**（`measurement_flags` + 来源降级为 `declared`），
   不拒绝写入（真实 <1 秒的 run 不该被误杀；缺行比带标记的行更难审计），
   闸门 `verify/verify_ledger_measurement.py` 对截止日之后的新 run 一律 FAIL。
 
@@ -48,7 +54,8 @@
   input_chars/4、output_chars/4 兜底并标 estimated=true；价表缺该模型 → pending_price。
 政策（TG-15）：**角色集合 / 阈值 / 覆盖路径 / 关闭步骤 一律来自数据文件**
   （agents/fanout.json + agents/functions/*.md frontmatter + agents/policy.json），
-  本文件不得再出现政策常量；加载器 verify/agent_policy.py，规则见 docs/1-WORKFLOW.MD §6（政策数据化）。
+  本文件不得再出现政策常量；加载器 verify/agent_policy.py，
+  规则见 docs/1-WORKFLOW.MD §6（政策数据化）。
 """
 from __future__ import annotations
 
@@ -79,14 +86,20 @@ RUNS_DIR = _AGENTS_BASE / "runs"
 
 _CHARS_PER_TOKEN = 4.0  # UC-4 兜底：无 token 上报时 tokens ≈ chars/4
 
-# TG-11（Sprint-17）：评审类 run 的 scope 来源必须可追溯。同一条规则写在 spec / workflow 里
-# 曾被整条绕过（证据：phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD），
-# 所以改成 CLI 层 fail-closed：要么引用〇查（impact-assessment）的 run，要么显式声明偏离理由。
+# TG-11（Sprint-17）：评审类 run 的 scope 来源必须可追溯。
+# 同一条规则写在 spec / workflow 里
+# 曾被整条绕过（证据：phases/testing-governance/2026-
+# 09-21-review-scope-incident-evidence.MD），
+# 所以改成 CLI 层 fail-closed：要么引用〇查（impact-assessment）的 run，
+# 要么显式声明偏离理由。
 #
-# TG-15（Sprint-17 D2）：**角色集合与阈值不再写在这里**——原先的 `_REVIEW_ROLES`/`_MIN_DEVIATION_CHARS`
+# TG-15（Sprint-17 D2）：
+# **角色集合与阈值不再写在这里**——原先的 `_REVIEW_ROLES`/`_MIN_DEVIATION_CHARS`
 # 与本文件外的 3 份副本一起构成"加角色要改代码"的硬编码面。现在全部来自数据：
-#   agents/fanout.json（关闭流水线步骤/targets）+ 各 spec frontmatter 的 scope_required/coverage_window
-#   + agents/policy.json（阈值与开关）。加载器见 verify/agent_policy.py；规则见 1-WORKFLOW.MD §6（政策数据化）。
+# agents/fanout.json（关闭流水线步骤/targets）+ 各 spec frontmatter 的
+# scope_required/coverage_window
+# + agents/policy.json（阈值与开关）。加载器见 verify/agent_policy.py；
+# 规则见 1-WORKFLOW.MD §6（政策数据化）。
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from verify.agent_policy import load_policy, parse_frontmatter  # noqa: E402
@@ -115,7 +128,8 @@ def _scope_ref_prefixes() -> tuple[str, ...]:
 def _ledger_policy() -> dict:
     """账本状态机（政策数据：`agents/policy.json::ledger_status`）。
 
-    2026-09-23 二查 finding：状态白名单原先是本文件的 `_STATUSES/_TERMINAL/_TRANSITIONS` 常量，
+    2026-09-23 二查 finding：
+    状态白名单原先是本文件的 `_STATUSES/_TERMINAL/_TRANSITIONS` 常量，
     而 `1-WORKFLOW.MD` §6（政策数据化）明列"状态白名单须来自数据文件"——属"文档承诺 > 实现"。现由政策提供。
     """
     return policy()._data("ledger_status")
@@ -149,7 +163,8 @@ def _git_head() -> str:
 def _resolve_sha(value: str) -> str | None:
     """把用户给的锚点/区间端点**规范化成完整 40 位 sha**；无法解析返回 None（调用方 fail-closed）。
 
-    审核发现 F1/N5：短 sha 会让 `CoverageWindow.covers()` 恒 False（`order` 里只有完整 sha），
+    审核发现 F1/N5：短 sha 会让 `CoverageWindow.covers()
+    ` 恒 False（`order` 里只有完整 sha），
     该 run 的覆盖窗口被**静默丢弃**。因此这里不接受"能存就行"的值：能解析就规范化，不能解析就报错。
     """
     value = (value or "").strip()
@@ -166,7 +181,8 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-# A5（审核 finding M-g）：**自动 run-id 的日期段用 UTC+8**（项目权威时区），与 run 目录/文档命名同口径。
+# A5（审核 finding M-g）：**自动 run-id 的日期段用 UTC+8**（项目权威时区），
+# 与 run 目录/文档命名同口径。
 # 实测漂移：本地 2026-09-25 00:47 登记的 run 被自动命名成 `run-2026-09-24-doc-audit-066`
 # （`_now()` 是 UTC），而同一次运行的产物目录按 UTC+8 叫 `run-2026-09-25-doc-audit-066`
 # → 账本 id ↔ 目录名对不上（断言见 verify/verify_agentops.py 的「M-g 断言」）。
@@ -188,14 +204,17 @@ def _duration_minutes(start: str, end: str) -> float | None:
         return None
 
 
-# ------------------------------------------------ TG-13：账本『测量化』（来源/退化/unknown）
+# ------------------------------------------------ TG-13：账本『测量化』
+# （来源/退化/unknown）
 
 def _measurement_policy() -> dict:
     """测量口径（政策数据：`agents/policy.json::ledger_measurement`，TG-13）。
 
-    口径此前只存在于讨论与注释里：`list` 打印 `dur=`、看板画时长、评审引用时长各按各的默认，
+    口径此前只存在于讨论与注释里：`list` 打印 `dur=`、看板画时长、
+    评审引用时长各按各的默认，
     于是"写入时刻的巧合"（两端时间戳逐字节相同 → `0.00`；恰好整十分钟）被一路当成测量值。
-    现在 `dur`/`rounds`/`unknown` 三条口径 + 退化判定参数 + 合法来源取值全部来自数据文件。
+    现在 `dur`/`rounds`/`unknown`
+    三条口径 + 退化判定参数 + 合法来源取值全部来自数据文件。
     """
     return policy().ledger_measurement
 
@@ -217,7 +236,8 @@ def measurement_of(started_at: str | None, ended_at: str | None) -> tuple[str, l
       * 其余 → `("wall-clock", [], round(dur, 3))`，即可信的墙钟实测值。
 
     为什么是"标注 + 字段降级"而不是"直接拒绝写入"（卡内要求二选一，这里择优并说明）：
-    `finish` 的 `ended_at` 由 CLI 现取，一个真实耗时 <1 秒的 run 或恰好落在整十秒边界的 run
+    `finish` 的 `ended_at` 由 CLI 现取，
+    一个真实耗时 <1 秒的 run 或恰好落在整十秒边界的 run
     会被 `reject` 误杀（把正确的记账挡在门外），而**账本缺行**比**带标记的行**更难审计；
     退化标记 + `measurement_source=declared` 让"这不是测量值"成为**可查询的事实**，
     闸门（`verify/verify_ledger_measurement.py`）再对截止日之后的新 run 一律 FAIL——
@@ -246,7 +266,8 @@ def _apply_measurement(run: dict) -> None:
     """把 `measurement_source`/`measurement_flags`/`dur_minutes` 刷成当前时间戳的结果。
 
     非终态 run（queued/running）尚无末态时间戳 → 记 `unknown` + 无标记（"还没测"不是缺陷）；
-    终态 run → 走 `measurement_of()`：可测则 `wall-clock` + 实测值，退化则 `declared` + 标记 + `null`。
+    终态 run → 走 `measurement_of()`：可测则 `wall-clock` + 实测值，
+    退化则 `declared` + 标记 + `null`。
     """
     terminal = set(_ledger_policy()["terminal"])
     if run.get("status") not in terminal:
@@ -302,7 +323,8 @@ def _prices_lock():
 def _with_registry_lock(fn):
     """写命令装饰器：整条命令（含异常路径）都在锁内执行，异常自动释放锁。
 
-    `functools.wraps`（2026-09-21 关闭三查·二查 major）：保留 `__wrapped__` 与函数元信息，
+    `functools.wraps`（2026-09-21 关闭三查·二查 major）：
+    保留 `__wrapped__` 与函数元信息，
     使"某子命令是否真的走了加锁路径"可以被回归断言直接自检（`round`/`interrupt` 曾漏加锁）。
     """
 
@@ -339,8 +361,10 @@ def _integrity(data: dict) -> str:
 def _save_registry(data: dict) -> None:
     """**原子**写账本（2026-09-21 关闭三查·二查 major）：先写同目录临时文件再 `os.replace`。
 
-    原实现直接 `write_text`（截断 + 写入），并发写或写入中途被打断会留下**截断的 registry.json**
-    （账本=唯一真相源，截断即数据损坏）。`os.replace` 在同一文件系统内是原子的：读者要么看到旧文件、
+    原实现直接 `write_text`（截断 + 写入），
+    并发写或写入中途被打断会留下**截断的 registry.json**
+    （账本=唯一真相源，截断即数据损坏）。`os.replace` 在同一文件系统内是原子的：
+    读者要么看到旧文件、
     要么看到完整新文件。配合 `_registry_lock` 使用。
     """
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
@@ -375,7 +399,8 @@ def _prices_for(model: str) -> dict | None:
     for prov in p.get("scraped", {}).values():
         if isinstance(prov, dict) and model in prov.get("models", {}):
             # 注（035）：同名模型跨 provider 冲突时取首个命中；当前各 provider 模型名
-            # 带命名空间/前缀（deepseek/deepseek-v4-flash vs deepseek-v4-flash），无实际碰撞。
+            # 带命名空间/前缀（deepseek/deepseek-v4-flash vs deepseek-v4-flash），
+            # 无实际碰撞。
             return prov["models"][model]
     return p.get("auto", {}).get(model)
 
@@ -410,7 +435,9 @@ def _estimate_cost(entry: dict) -> dict:
         cost["output"] = (oc / _CHARS_PER_TOKEN) * (prices.get("output_cost_per_token") or 0)
         estimated = True
     fx = _fx_usd_cny()
-    # review 修正（Sprint-9 三查 P1）：分项同样 ×fx 转 CNY，保证分项之和 = total（此前分项仍为 USD、对象级却标 CNY，口径不一致）
+    # review 修正（Sprint-9 三查 P1）：分项同样 ×fx 转 CNY，
+    # 保证分项之和 = total（此前分项仍为 USD、对象级却标 CNY，
+    # 口径不一致）
     cny = {k: round(v * fx, 8) for k, v in cost.items()}
     return {**cny, "total": round(sum(cny.values()), 8), "currency": "CNY",
             "estimated": estimated, "pending_price": False, "model": model}
@@ -434,15 +461,19 @@ def _validate_scope(args: argparse.Namespace, data: dict) -> tuple[str, str | No
 
     - `--scope-source <prefix><run_id>`：该 run 必须在账本中存在、其 spec 必须声明可作 scope 来源，
       且状态不为 failed/cancelled（否则其 scope 不可采信）；
-    - 自选范围（未给 scope-source，或给了 `self-chosen`）：必须给 `--deviation "<理由>"`
-      （长度下限取自 `agents/policy.json::scope_min_deviation_chars`），理由落库留痕；
-    - 非评审类 role：不强制、不制造假红。
+    - 自选范围（未给 scope-source 且给了 `--deviation`，或显式给了 `self-chosen`）：
+      必须给 `--deviation "<理由>"`（长度下限取自
+      `agents/policy.json::scope_min_deviation_chars`），理由落库留痕；
+    - **非评审类 role**：不强制声明来源（不制造假红），但**给了来源就必须可核**——
+      下面这条"既不是合法引用也不是 `self-chosen` → 拒绝"对两类 role **同一套规则**
+      （2026-09-25 三查 finding：此前非评审类直接 `return`，
+      `set-scope --source totally-bogus-source` 能 rc=0 落库，而 `set-scope --help`
+      声称"校验与 register 逐条同口径"——声明不成立。现只有一处实现）。
     """
     source = (getattr(args, "scope_source", "") or "").strip()
     deviation = (getattr(args, "deviation", "") or "").strip()
     pol = policy()
-    if args.role not in pol.review_roles:
-        return source, (deviation or None)
+    review = args.role in pol.review_roles
     ref = parse_scope_ref(source, pol.scope_ref_sources)
     if ref is not None:
         target = next((r for r in data["runs"] if r["run_id"] == ref), None)
@@ -456,12 +487,27 @@ def _validate_scope(args: argparse.Namespace, data: dict) -> tuple[str, str | No
             raise SystemExit(
                 f"scope 来源 {ref} 状态为 {target.get('status')}，其 scope 不可采信（fail-closed）")
         return source, (deviation or None)
-    if not deviation:
+    if source and source != "self-chosen":
+        # 非评审类也走这一条：来源**给了就必须可核**（一处实现，两处口径一致）
         raise SystemExit(
-            "评审类 run 必须声明 scope 来源：--scope-source "
-            + " 或 ".join(pol.scope_ref_sources)
-            + "<run_id>；确需自选范围时必须给 --deviation \"<理由>\"（TG-11 闸门，fail-closed；"
-              "角色清单与阈值来自 agents/policy.json + spec frontmatter，见 TG-15）")
+            f"--scope-source={source!r} 既不是合法引用（"
+            + " / ".join(pol.scope_ref_sources)
+            + "<run_id>）也不是 self-chosen —— 来源声明必须机器可核（fail-closed）")
+    if not review and not source:
+        # 非评审类：不强制声明来源（与 register 原口径逐字一致：无条件返回空来源）
+        return "", (deviation or None)
+    if not deviation:
+        if review:
+            raise SystemExit(
+                "评审类 run 必须声明 scope 来源：--scope-source "
+                + " 或 ".join(pol.scope_ref_sources)
+                + "<run_id>；确需自选范围时必须给 --deviation \"<理由>\""
+                  "（TG-11 闸门，fail-closed；角色清单与阈值来自 agents/policy.json"
+                  " + spec frontmatter，见 TG-15）")
+        raise SystemExit(
+            f"scope_source=self-chosen 必须同时给 --deviation \"<理由>\""
+            f"（≥{pol.scope_min_deviation_chars} 字符）：自选范围不留理由，"
+            "闸门无法把它与『引用了某次范围评估』区分（fail-closed）")
     if len(deviation) < pol.scope_min_deviation_chars:
         raise SystemExit(
             f"--deviation 理由过短（{len(deviation)} < {pol.scope_min_deviation_chars} 字符）："
@@ -472,17 +518,21 @@ def _validate_scope(args: argparse.Namespace, data: dict) -> tuple[str, str | No
 
 @_with_registry_lock
 def cmd_register(args: argparse.Namespace) -> None:
+    """`register` 子命令：登记一条 run（校验 scope 来源、规范化锚点、初始化测量字段）。"""
     data = _load_registry()
     # review 修正（Sprint-8 三查）：显式 run_id 查重（_find_run 只命中第一条）
     if any(r["run_id"] == args.run_id for r in data["runs"]):
         raise SystemExit(f"run_id {args.run_id} 已存在，请更换")
     run_id = args.run_id or f"run-{_local_date()}-{args.role}-{len(data['runs']) + 1:03d}"
-    # review 修正（Sprint-9 三查 P2）：run-id 将成为 runs/ 下的目录名，限字符集防路径穿越
+    # review 修正（Sprint-9 三查 P2）：run-id 将成为 runs/ 下的目录名，
+    # 限字符集防路径穿越
     if not re.fullmatch(r"[A-Za-z0-9._-]+", run_id):
         raise SystemExit(f"run_id 含非法字符（仅允许字母数字 . _ -）：{run_id!r}")
     scope_source, scope_deviation = _validate_scope(args, data)
-    # TG-15 ③ 锚点自动化：run 登记时自动记覆盖锚点（= 登记时的 HEAD），无需人往 Sprint 文档手抄。
-    # `--coverage-anchor` 可显式覆盖（补录历史 run / fixture）；非 git 环境回落空串（不阻断记账）。
+    # TG-15 ③ 锚点自动化：run 登记时自动记覆盖锚点（= 登记时的 HEAD），
+    # 无需人往 Sprint 文档手抄。
+    # `--coverage-anchor` 可显式覆盖（补录历史 run / fixture）；
+    # 非 git 环境回落空串（不阻断记账）。
     pol = policy()
     spec = pol.specs.get(args.role)
     coverage_window = None
@@ -491,7 +541,8 @@ def cmd_register(args: argparse.Namespace) -> None:
         coverage_window = (fm.get("coverage_window") or "").strip() or None
     raw_anchor = (getattr(args, "coverage_anchor", "") or "").strip()
     if raw_anchor:
-        # 审核 F1/N5：显式锚点必须**规范化**（短 sha → 完整 40 位），解析失败 fail-closed
+        # 审核 F1/N5：显式锚点必须**规范化**（短 sha → 完整 40 位），
+        # 解析失败 fail-closed
         resolved = _resolve_sha(raw_anchor)
         if not resolved:
             raise SystemExit(
@@ -507,7 +558,8 @@ def cmd_register(args: argparse.Namespace) -> None:
         "spec_source": args.spec,
         "scope_source": scope_source,
         "scope_deviation": scope_deviation,
-        # TG-15：覆盖窗口为**自动记录**字段；covered(run) = (coverage_anchor, covers_through]
+        # TG-15：覆盖窗口为**自动记录**字段；covered(run) = (coverage_anchor,
+        # covers_through]
         "coverage_anchor": coverage_anchor,
         "coverage_window": coverage_window,
         "covers_through": None,
@@ -529,7 +581,8 @@ def cmd_register(args: argparse.Namespace) -> None:
         "tags": {},
         "error": None,
     }
-    # TG-13：测量来源（此刻只有 started_at、没有 ended_at → unknown，禁止写 0.00 冒充测量值）
+    # TG-13：测量来源（此刻只有 started_at、没有 ended_at → unknown，
+    # 禁止写 0.00 冒充测量值）
     _apply_measurement(entry)
     data["runs"].append(entry)
     _save_registry(data)
@@ -547,6 +600,7 @@ def _apply_usage(r: dict, args: argparse.Namespace) -> None:
 
 @_with_registry_lock
 def cmd_update(args: argparse.Namespace) -> None:
+    """`update` 子命令：更新 run 的可写字段并重算测量字段（只允许 `running` 态）。"""
     data = _load_registry()
     r = _find_run(data, args.run_id)
     if args.status:
@@ -665,6 +719,13 @@ def cmd_set_scope(args: argparse.Namespace) -> None:
 
     约束（与 `set-anchor` 同构）：
       * 必须给 `--reason`（≥10 字符：为什么回填、依据哪份记录/卡）；
+      * **来源只能被显式改写**（M1，2026-09-25 三查 finding）：调用者没给 `--source`
+        而该 run 原本有来源 → **拒绝**（rc≠0）。原实现是 `(source or "self-chosen")`，
+        于是"只给 `--deviation`"会把既有来源**静默改成 `self-chosen`**（rc=0、无告警）
+        ——而 C2 只看**写进账本之后**的值（`verify_close_readiness.py`），它看到的是
+        合法的 `self-chosen`，追溯链断了却没有任何装置能发现。确要改为自选范围必须显式
+        `--source self-chosen --deviation "<理由>"`；来源**不得被清空**
+        （C1 会判缺声明）；
       * 新声明与库中现值**完全相同** → 无操作（不改库、不追加留痕、报"无变化"）；
       * 每次实际变更追加 `scope_backfills` 记录
         （含 `field`/`from`/`to`/`reason`/`by`）。
@@ -681,7 +742,16 @@ def cmd_set_scope(args: argparse.Namespace) -> None:
     # 既成事实，让人用参数覆盖它 = 又开了一条"换个角色就走另一套判据"的路
     # （例如把评审类说成非评审类）。
     args.role = str(r.get("role") or "")
-    args.scope_source = (args.source or "").strip()
+    raw_source = (args.source or "").strip()
+    old_source = str(r.get("scope_source") or "").strip()
+    if not raw_source and old_source:
+        raise SystemExit(
+            f"set-scope 未给 --source，而 {r['run_id']} 原本有 scope 来源"
+            f"（{old_source!r}）：省略 --source **不等于**改成自选范围"
+            "（来源不得被默认值静默抹掉——那会断开评审 run 与〇查的绑定，"
+            "且 C2 只检查写后值、发现不了）。确要改为自选范围必须显式 "
+            "--source self-chosen --deviation \"<理由>\"")
+    args.scope_source = raw_source
     args.deviation = (args.deviation or "").strip()
     source, deviation = _validate_scope(args, data)
     if not source and not deviation:
@@ -708,6 +778,47 @@ def cmd_set_scope(args: argparse.Namespace) -> None:
 
 
 @_with_registry_lock
+def cmd_set_output_chars(args: argparse.Namespace) -> None:
+    """受控回填：修正**已收尾** run 的 `output_chars`（产出未测量时写 0 会冒充"无产出"）。
+
+    **要解决的是什么**：`verify/verify_ledger_measurement.py` 对**窗口内**的 run 严格判定
+    `[output_chars_zero]`（`succeeded` 却 `output_chars=0`）——语义是"产出未被测量，不得用 0
+    冒充无产出"。而 `output_chars` 只在 `finish` 当时可写，**对已收尾的 run 没有合法修复路径**
+    ⇒ 闸门报的问题不可修 = 永久红（与 `set-anchor` 当初面对的是同一形态）。
+
+    **口径（必须写进 reason，可核）**：本仓对子代理 run 的可得测量 = 归档结果文件的字符数
+    （`result_files` 指向的报告就是该 run 的产出物）。回填值必须来自**可复算的命令**，
+    不得凭印象填。
+
+    约束（与 `set-anchor`/`set-scope` 同构）：
+      * `--chars` 必须 ≥ 0 且为整数；
+      * `--reason` ≥ 10 字符（谁测的、怎么测的、依据哪条审核发现）；
+      * 值有变化才追加 `output_chars_backfills[]{at, by, old, new, reason}`；
+        同值回填不改库、不留痕（假留痕比无留痕更坏）。
+    """
+    data = _load_registry()
+    r = _find_run(data, args.run_id)
+    try:
+        new = int(args.chars)
+    except (TypeError, ValueError):
+        raise SystemExit("SET-OUTPUT-CHARS-ERROR: --chars 必须是整数") from None
+    if new < 0:
+        raise SystemExit("SET-OUTPUT-CHARS-ERROR: --chars 必须 ≥ 0（0 = 未测量，不是无产出）")
+    reason = (args.reason or "").strip()
+    if len(reason) < 10:
+        raise SystemExit("回填必须给 --reason（≥10 字符的理由）：谁测的、怎么测的、依据哪条发现")
+    old = int(r.get("output_chars") or 0)
+    if old == new:
+        print(f"set-output-chars {args.run_id}: output_chars 已是 {new}（无变化，未追加留痕）")
+        return
+    r["output_chars"] = new
+    trail = r.setdefault("output_chars_backfills", [])
+    trail.append({"at": _now(), "by": args.by or "main-agent", "old": old, "new": new,
+                  "reason": reason})
+    _save_registry(data)
+    print(f"output_chars updated {args.run_id}: {old} -> {new} (backfills={len(trail)})")
+
+
 def cmd_mark_produced(args: argparse.Namespace) -> None:
     """受控标注：把某条 run 如实标成**产出型 run**（D0-3(a)，`TG-17` ⑤ 的实例）。
 
@@ -804,17 +915,20 @@ def cmd_mark_produced(args: argparse.Namespace) -> None:
 
 @_with_registry_lock
 def cmd_finish(args: argparse.Namespace) -> None:
+    """`finish` 子命令：写终态、按**字节**保留原 EOL 归档结果文件、记录 `covers_through`。"""
     data = _load_registry()
     r = _find_run(data, args.run_id)
     if args.status not in _terminal():
         raise SystemExit("finish 需要终态：{}".format(sorted(_terminal())))
-    # review 修正（Sprint-8 三查）：finish 仅允许 running -> terminal（queued 先 update running）
+    # review 修正（Sprint-8 三查）：
+    # finish 仅允许 running -> terminal（queued 先 update running）
     if r["status"] != "running":
         raise SystemExit(f"非法流转 {r['status']} -> {args.status}（finish 仅允许 running -> terminal）")
     r["status"] = args.status
     r["ended_at"] = _now()
     # TG-15 ③：收尾时记录覆盖上界（= 收尾时的 HEAD）——此前"三查锚点"要人往 Sprint 文档手抄，
-    # 抄漏/抄错没有任何装置能发现；改为 run 自动记录后，闸门直接读账本，文档不再是覆盖真源。
+    # 抄漏/抄错没有任何装置能发现；改为 run 自动记录后，闸门直接读账本，
+    # 文档不再是覆盖真源。
     raw_through = (getattr(args, "covers_through", "") or "").strip()
     if raw_through:
         resolved_through = _resolve_sha(raw_through)
@@ -841,17 +955,21 @@ def cmd_finish(args: argparse.Namespace) -> None:
             # 原实现是 `dest.write_text(rel.read_text(encoding="utf-8"), encoding="utf-8")`：
             # `read_text` 做 universal-newline 转换（CRLF→LF），`write_text` 又把 `\n` 写回
             # `os.linesep`（Windows = CRLF）——于是**仓库基线 LF 的报告被静默改成 CRLF**
-            # （实测 35721 B → 35913 B / 192 行）。这与 D1 的 EOL 事故同族（`2206f376` 修过
+            # （实测 35721 B → 35913 B / 192 行）。
+            # 这与 D1 的 EOL 事故同族（`2206f376` 修过
             # 同一族的另一处，漏了这里），而且是"最不该动字节"的一步：归档动作改变了产物本身。
-            # 复制实现按字节，源是 LF 就存 LF、源是 CRLF 就存 CRLF（不反向破坏），BOM 亦原样保留。
+            # 复制实现按字节，源是 LF 就存 LF、源是 CRLF 就存 CRLF（不反向破坏），
+            # BOM 亦原样保留。
             dest.write_bytes(rel.read_bytes())
-            # review 修正（Sprint-8 三查）：基准用 _AGENTS_BASE（AGENT_OPS_DIR 重定向时不再崩溃）
+            # review 修正（Sprint-8 三查）：
+            # 基准用 _AGENTS_BASE（AGENT_OPS_DIR 重定向时不再崩溃）
             r["result_files"] = [str(dest.relative_to(_AGENTS_BASE))]
     if args.cost_override is not None:
         r["cost_est"] = {"total": args.cost_override, "currency": "CNY", "estimated": False, "override": True}
     else:
         r["cost_est"] = _estimate_cost(r)
-    # TG-13：终态 → 算测量值（可测 = wall-clock + dur_minutes；退化 = declared + 标记 + null）
+    # TG-13：终态 → 算测量值（可测 = wall-clock + dur_minutes；
+    # 退化 = declared + 标记 + null）
     _apply_measurement(r)
     _save_registry(data)
     flags = ",".join(r.get("measurement_flags") or [])
@@ -866,9 +984,12 @@ def cmd_round(args: argparse.Namespace) -> None:
     """TG-10①：给同一 run **追加轮次**记录（多轮复核/追加验证），不改首轮语义。
 
     背景（用户 2026-09-21 疑虑："每个 agent 运行时间相比之前怎么短了很多…让我不太安心"）：
-    run-053 被追加了 4 个复核轮次（报告 60 KB / 5 轮、实际跨约 4h53m），但账本只留**首轮**
-    （`ended_at-started_at` = 53 秒、`output_chars` = 12800）——因为 `finish` 的状态机拒绝
-    `succeeded→succeeded`，后续轮次无处回写 → 看板显示的时长与产出**严重低估**，且看不出被中断过。
+    run-053 被追加了 4 个复核轮次（报告 60 KB / 5 轮、实际跨约 4h53m），
+    但账本只留**首轮**
+    （`ended_at-started_at` = 53 秒、`output_chars` = 12800）
+    ——因为 `finish` 的状态机拒绝
+    `succeeded→succeeded`，后续轮次无处回写 → 看板显示的时长与产出**严重低估**，
+    且看不出被中断过。
 
     本子命令做**追加式**更新（允许对终态 run 使用）：
     - 首次追加时把当前记录快照为 `rounds[0]`（保留首轮 ended_at/output_chars 作为历史）；
@@ -942,6 +1063,7 @@ def cmd_interrupt(args: argparse.Namespace) -> None:
 
 
 def cmd_list(args: argparse.Namespace) -> None:
+    """`list` 子命令：按状态 / 角色 / 条数上限打印 run 摘要（含 `dur` 与测量来源）。"""
     data = _load_registry()
     rows = data["runs"]
     if args.status:
@@ -965,7 +1087,8 @@ def cmd_list(args: argparse.Namespace) -> None:
         if source:
             dur += f" msrc={source}"
         intr = f" int={r['interruptions_count']}" if r.get("interruptions_count") else ""
-        # TG-11：scope 来源必须一眼可见——自选范围（self-chosen）在 list 里高亮标记，便于审计
+        # TG-11：scope 来源必须一眼可见——自选范围（self-chosen）在 list 里高亮标记，
+        # 便于审计
         src = (r.get("scope_source") or "").strip()
         if src == "self-chosen":
             scope = " scope=self-chosen(!)"
@@ -1000,7 +1123,8 @@ def cmd_close_sync(args: argparse.Namespace) -> None:
     输出（不写盘，除非 `--write`）：
       ① 每个 run 的覆盖窗口（账本自动记录）；
       ② 锚点→HEAD 每个提交的归属（run 窗口 / 例外 / doc-only 自动归类 / **UNOWNED**）；
-      ③ 未归属提交的候选例外 JSON 片段（`doc-only` 已自动归类，其余待人选类别 + 写理由）。
+      ③ 未归属提交的候选例外 JSON 片段（`doc-only` 已自动归类，其余待人选类别 + 写理由）
+      。
 
     `--fail-on-unowned` 时存在未归属提交即退出 1（供 CI/关闭前置使用）。
     """
@@ -1124,13 +1248,16 @@ def cmd_fetch_spec(args: argparse.Namespace) -> None:
         print(f"WARN: offline/无 url → 回退本地 spec {p.name}")
         return
     # TG-8②：**离线开关**（政策 `agents/policy.json::offline_switch`）在"确实要外呼"这一刻生效。
-    # 顺序理由（可核，不是风格）：上面两个分支都**不产生外呼**（无 url / 命令自带 `--offline`），
+    # 顺序理由（可核，不是风格）：
+    # 上面两个分支都**不产生外呼**（无 url / 命令自带 `--offline`），
     # 对它们报"离线拒绝"是假红；而一旦要继续走网络，全局开关就必须优先于 `--offline`
     # ——否则"命令自带的局部离线档"会把全局开关**静默绕过**，而那正是本卡要消灭的形态。
-    # 拒绝还必须在 SSRF 校验**之前**：否则内网 URL 会先撞 SSRF 分支，拒绝原因被替换成 SSRF，
+    # 拒绝还必须在 SSRF 校验**之前**：否则内网 URL 会先撞 SSRF 分支，
+    # 拒绝原因被替换成 SSRF，
     # 排障时会以为"是 URL 的问题"而不是"开关开着"。
     refuse_or_exit(f"fetch-spec {url}")
-    # review 修正（Sprint-8 三查）：SSRF 防护——仅 http/https + 拒绝私网/回环/链路本地/保留地址
+    # review 修正（Sprint-8 三查）：
+    # SSRF 防护——仅 http/https + 拒绝私网/回环/链路本地/保留地址
     from urllib.parse import urlparse
 
     parsed = urlparse(url)
@@ -1167,7 +1294,8 @@ def cmd_fetch_spec(args: argparse.Namespace) -> None:
 def cmd_parse_report(args: argparse.Namespace) -> None:
     """UC-5：解析 spec 输出模板（`- critical <位置>：<问题>` 行）为结构化 JSON。
 
-    review 修正（Sprint-8 三查）：位置以**首个全角冒号**切分（ASCII `:` 保留在 where 内，
+    review 修正（Sprint-8 三查）：位置以**首个全角冒号**切分（ASCII `:
+    ` 保留在 where 内，
     使 `engine.py:202` 这类 file:line 位置不被截断）。
     """
     p = Path(args.report_file)
@@ -1210,7 +1338,9 @@ def _derive_prices(args: argparse.Namespace | None = None) -> None:
 
 
 def main() -> int:
-    # review 修正（Sprint-8 三查）：跨 IDE 承诺——Windows 非 UTF-8 终端打印中文不乱码/不崩
+    """CLI 入口：构建 argparse 子命令表并分派到 `cmd_*`。"""
+    # review 修正（Sprint-8 三查）：
+    # 跨 IDE 承诺——Windows 非 UTF-8 终端打印中文不乱码/不崩
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             try:
@@ -1286,6 +1416,15 @@ def main() -> int:
     p.add_argument("--write", action="store_true", help="把候选例外写到 agents/runtime/coverage-candidates.json")
     p.add_argument("--fail-on-unowned", action="store_true", help="存在未归属提交即退出 1（CI/关闭前置）")
 
+    p = sub.add_parser("set-output-chars",
+                       help="2026-09-25 关闭期：受控回填已收尾 run 的 output_chars"
+                            "（产出未测量 ⇒ 0 会冒充『无产出』；必须给理由与可复算的取值口径）")
+    p.add_argument("run_id")
+    p.add_argument("--chars", required=True, help="该 run 的产出字符数（≥0；必须来自可复算命令）")
+    p.add_argument("--reason", required=True,
+                   help="回填理由（≥10 字符）：谁测的、怎么测的、依据哪条审核发现")
+    p.add_argument("--by", default="main-agent")
+
     p = sub.add_parser("set-anchor",
                        help="审核 N5/F1 + B2：受控回填已登记 run 的覆盖窗口端点 "
                             "coverage_anchor / covers_through（必须给理由）")
@@ -1304,9 +1443,11 @@ def main() -> int:
                             "（校验与 register 逐条同口径；必须给理由）")
     p.add_argument("run_id")
     p.add_argument("--source", default="",
-                   help="新 scope 来源：空 或 self-chosen（空 + 给了 --deviation "
-                        "即落库为 self-chosen）；也接受合法引用前缀"
-                        "（如 impact-assessment:<run_id>），校验与 register 逐条同口径")
+                   help="新 scope 来源：self-chosen（须同时给 --deviation）"
+                        "或合法引用前缀（如 impact-assessment:<run_id>）；校验与 "
+                        "register 逐条同口径（**同一份 `_validate_scope()`**）。"
+                        "省略本参数**不会**把来源改成 self-chosen："
+                        "该 run 原本有来源时拒绝")
     p.add_argument("--deviation", default="",
                    help="自选/偏离范围的理由（self-chosen 路径必填，长度下限取自政策）")
     p.add_argument("--reason", required=True,
@@ -1337,6 +1478,7 @@ def main() -> int:
         "parse-report": cmd_parse_report, "prices-derive": _derive_prices,
         "round": cmd_round, "interrupt": cmd_interrupt, "close-sync": cmd_close_sync,
         "set-anchor": cmd_set_anchor, "set-scope": cmd_set_scope,
+        "set-output-chars": cmd_set_output_chars,
         "mark-produced": cmd_mark_produced,
     }[args.cmd](args)
     return 0

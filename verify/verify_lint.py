@@ -54,7 +54,8 @@ sys.path.insert(0, str(ROOT))
 from verify.agent_policy import load_policy  # noqa: E402
 
 # TG-15：**覆盖路径清单与规则分级都是政策数据**（原先写死在本文件）——换目录/调分级只改
-# `agents/policy.json`，不改代码。加载器 fail-closed：数据缺失即 POLICY-ERROR（退出 2）。
+# `agents/policy.json`，不改代码。加载器 fail-closed：数据缺失即 POLICY-ERROR（退出 2）
+# 。
 # TG-6：**C 级的计数上限与到期日同样是政策数据**（`lint_readability_ratchet`），
 # 理由与"只许下调"的纪律写在该键的 `_comment` 与 policy 属性的 docstring 里，
 # 本文件不另抄一份（政策只有一处真源）。
@@ -339,6 +340,10 @@ def main() -> int:
     print(f"\nALL PASS ({PASSED} assertions)")
     print(f"EVIDENCE: verify_lint.py assertions={PASSED} rc=0 c_ratchet={ratchet_line}")
     return 0
+
+
+if not __debug__:  # noqa: SIM108 —— -O/PYTHONOPTIMIZE 会剥离 assert；守卫必须是普通语句，不能是 assert
+    raise SystemExit("本闸门不得在 -O/PYTHONOPTIMIZE 下运行（`__debug__` 为 False ⇒ 判据会被整体剥离）——见 3-LEARNED 1.65")
 
 
 if __name__ == "__main__":

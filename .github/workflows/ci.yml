@@ -75,16 +75,26 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           # TG-11 ③b/M4：**谁声称已关闭，谁就必须自证**——只校验**真的写了锚点 sha** 的 Sprint 文档
           # （D4：不对历史 Sprint 文档追溯；占位文字如"三查锚点: 待填"不算声明，故用正则而非关键词匹配）。
+          # 2026-09-25（code-review-072 C2）：`docs/iteration/sprint/` 是 **windows-only** 目录，
+          # main 上没有它——`Get-ChildItem <不存在的目录>` 在 `$ErrorActionPreference = "Stop"` 下抛
+          # **终止性** `ItemNotFoundException`（不是"返回空集合"），于是这一步在 main 上恒红。
+          # 故先判存在性：不存在 → 显式打印"本分支无 sprint 文档 → 跳过"并 **exit 0**（判据不变，
+          # 只是把"没有可校验对象"如实说成跳过，而不是把它伪装成失败）。选择器正则语义**未改动**。
+          $sprintGlob = 'docs/iteration/sprint/*sprint-*.md'
           $pat = '三查锚点\s*[:：]\s*`?[0-9a-fA-F]{7,40}'
           $checked = 0
-          foreach ($f in Get-ChildItem docs/iteration/sprint/*sprint-*.md) {
-            if (Select-String -Path $f.FullName -Pattern $pat -Quiet) {
-              Write-Host "close-readiness -> $($f.Name)"
-              python verify/verify_close_readiness.py --sprint $f.FullName
-              $checked++
+          if (Test-Path 'docs/iteration/sprint') {
+            foreach ($f in Get-ChildItem $sprintGlob) {
+              if (Select-String -Path $f.FullName -Pattern $pat -Quiet) {
+                Write-Host "close-readiness -> $($f.Name)"
+                python verify/verify_close_readiness.py --sprint $f.FullName
+                $checked++
+              }
             }
+            Write-Host "close-readiness: checked $checked sprint doc(s) declaring a real anchor"
+          } else {
+            Write-Host "close-readiness: no sprint docs on this branch -> step skipped (docs/iteration/ is windows-only; selector '$sprintGlob' matched nothing)"
           }
-          Write-Host "close-readiness: checked $checked sprint doc(s) declaring a real anchor"
 
       - name: Explicit gate tiers (card index / md tables / policy hardcode / lint / structure guard)
         env:

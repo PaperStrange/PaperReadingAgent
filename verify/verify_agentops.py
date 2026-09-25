@@ -5,15 +5,18 @@ UC-4 成本估算（价表 + chars/4 兜底 + pending_price）/ UC-5 报告输�
 UC-7 防双写完整性校验 / UC-9 自报上下文与成本覆盖 / UC-10 价表派生 /
 UC-11 fetch-spec sha256 命中/失配（M10）/ UC-12 账本并发锁无丢失更新（M10）/
 UC-13 fetch-prices 解析与合并优先级（M9）/ UC-14 评审类 run 的 scope 来源闸门（TG-11）/
-UC-19（TG-8②）离线开关：开关开启 → 三个外呼入口（fetch-spec / fetch-prices / provider 刷新）
+UC-19（TG-8②）离线开关：
+开关开启 → 三个外呼入口（fetch-spec / fetch-prices / provider 刷新）
 在**发请求之前**拒绝并点名（rc=政策退出码）；开关关闭 → 不误拒；取值拼错 → fail-closed；
 env 优先于政策 `enabled`；HF 离线变量按开关注入；脚本侧(verify/)与后端侧(app/)结论一致。
 
 运行：.venv\\Scripts\\python.exe verify\\verify_agentops.py（纯离线，隔离到临时 AGENT_OPS_DIR）
 
 **F1（2026-09-25）本脚本不再往仓库里写任何文件**：UC-15/UC-16 要用"临时新增一个角色 spec"来
-证明闸门是数据驱动的，旧实现把探针直接写进**真实** `agents/functions/` 并靠 `finally` 删除——
-后果有两个，都实测过：① 两个并行实例互相 clobber（一方删掉另一方正在用的探针 → 两边都 rc=1，
+证明闸门是数据驱动的，旧实现把探针直接写进**真实**
+`agents/functions/` 并靠 `finally` 删除——
+后果有两个，都实测过：① 两个并行实例互相
+clobber（一方删掉另一方正在用的探针 → 两边都 rc=1，
 套件因此偶发红，正是 `TG-8` 记的"失败脚本在 verify_agentops 与 verify_local_dir 之间漂移"）；
 ② 每次运行都往工作区写文件，`git status` 不再干净（测试污染仓库）。
 现改为：把 spec 目录**整体重定向到 %TEMP%**——复制真实 spec 到临时目录，写一份只改
@@ -58,10 +61,12 @@ PASSED = 0
 def run(args: list[str], env: dict, check: bool = False, raw: bool = False) -> subprocess.CompletedProcess:
     """跑一次 CLI。
 
-    TG-11 闸门生效后，评审类 `register` 必须声明 scope 来源；合成 fixture 不涉及真实评审范围，
+    TG-11 闸门生效后，评审类 `register` 必须声明 scope 来源；
+    合成 fixture 不涉及真实评审范围，
     因此默认自动补 `--scope-source self-chosen --deviation <fixture 说明>`。
     **反向对照/负向用例必须用 `raw=True`**（否则闸门被 helper 掩盖，断言恒真）。
-    评审类集合来自 `agents/functions/*.md` 的 `scope_required`（TG-15：不再在本文件写死角色名）。
+    评审类集合来自 `agents/functions/*.md` 的 `scope_required`（TG-15：
+    不再在本文件写死角色名）。
     """
     if (not raw and args and args[0] == "register" and "--scope-source" not in args
             and "--deviation" not in args and args[args.index("--role") + 1] in _POLICY.review_roles):
@@ -109,14 +114,18 @@ def _window_problems(run: dict) -> list[str]:
 
 def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="verify_agentops_"))
-    # ---- F1：spec 目录整体重定向到 %TEMP%（本脚本从此不往仓库写文件） -------------------
-    # 旧实现：UC-15/UC-16 直接把探针 spec 写在 `agents/functions/`（真实仓库目录），靠 `finally` 删。
+    # ---- F1：spec 目录整体重定向到 %TEMP%（本脚本从此不往仓库写文件）
+    # -------------------
+    # 旧实现：UC-15/UC-16 直接把探针 spec 写在 `agents/functions/`（真实仓库目录），
+    # 靠 `finally` 删。
     # 实测后果：① 两个并行实例共享同一个可变文件 → 互相 clobber（两边都 rc=1）；
     # ② 运行期间工作区被污染（`git status` 非空）。修法不是"换个文件名"，而是**换掉 spec 根**：
     # 政策装载的 spec_dir 由 `agents/policy.json::spec_dir` 决定，而政策文件本身可用
     # `PAPERQA_AGENT_POLICY` 重定向（TG-15 的既有能力）。故：
-    #   ① 复制真实 spec 到 %TEMP%（角色集合必须与真实仓库一致，否则 UC-3/4/9/14 会找不到角色）；
-    #   ② 写一份临时政策 JSON：**只改 spec_dir**，其余键逐字取自真实政策（`_POLICY.policy_file`）；
+    # ① 复制真实 spec 到 %TEMP%（角色集合必须与真实仓库一致，
+    # 否则 UC-3/4/9/14 会找不到角色）；
+    # ② 写一份临时政策 JSON：**只改 spec_dir**，
+    # 其余键逐字取自真实政策（`_POLICY.policy_file`）；
     #   ③ 把 `PAPERQA_AGENT_POLICY` 注入每个 CLI 子进程。
     specs_dir = tmp / "specs"
     specs_dir.mkdir()
@@ -136,7 +145,8 @@ def main() -> int:
     runtime = tmp / "runtime"
     registry = runtime / "registry.json"
     try:
-        # 探针隔离的**前置断言**：政策确实指向临时 spec 目录（否则下面的 UC-15/16 会退回写仓库，
+        # 探针隔离的**前置断言**：
+        # 政策确实指向临时 spec 目录（否则下面的 UC-15/16 会退回写仓库，
         # 而且失败形态是"静默写进真实目录"——正是本修复要消灭的东西）。
         ok("F1 政策已重定向：spec_dir 指向 %TEMP%，且与真实政策只差 spec_dir 一个键",
            _POLICY.policy_file.get("spec_dir") != (specs_dir.as_posix())
@@ -199,7 +209,8 @@ def main() -> int:
         ok("UC-3 终态再 running 拒绝", r.returncode != 0 and "非法流转" in (r.stdout + r.stderr),
            (r.stdout + r.stderr).strip()[:60])
 
-        # UC-4：usage×价表精确值（gpt-4o-mini: in=1.5e-7, out=6e-7；USD 0.00135 × fx 7.2 = CNY 0.00972）
+        # UC-4：usage×价表精确值（gpt-4o-mini: in=1.5e-7, out=6e-7；
+        # USD 0.00135 × fx 7.2 = CNY 0.00972）
         run(["register", "--role", "code-review", "--task", "branch:main", "--spec", "code-review@1.0.0",
              "--model", "gpt-4o-mini", "--start"], base_env, check=True)
         data = json.loads(registry.read_text(encoding="utf-8"))
@@ -233,7 +244,9 @@ def main() -> int:
         cost4 = json.loads(registry.read_text(encoding="utf-8"))["runs"][3]["cost_est"]
         ok("UC-4 pending_price", cost4.get("pending_price") is True, f"cost_est={cost4}")
 
-        # 三查修正回归：manual 非 null 时覆盖 auto（人工价 in=1e-6/out=2e-6 → USD 0.005 × 7.2 = CNY 0.036）
+        # 三查修正回归：manual 非 null 时覆盖 auto（人工价
+        # in=1e-6/out=2e-6 → USD 0.005 × 7.2 = CNY
+        # 0.036）
         p = json.loads((runtime / "prices.json").read_text(encoding="utf-8"))
         p["manual"]["gpt-4o-mini"] = {"input_cost_per_token": 1e-6, "output_cost_per_token": 2e-6}
         (runtime / "prices.json").write_text(json.dumps(p, ensure_ascii=False), encoding="utf-8")
@@ -304,7 +317,8 @@ def main() -> int:
         ok("UC-5 报告解析", levels == ["critical", "major", "minor", "nit"], f"levels={levels}")
         ok("UC-5 file:line 位置保留", parsed[0]["where"] == "engine.py:202", f"where={parsed[0]['where']}")
 
-        # UC-11（M10）：fetch-spec sha256 命中/失配——成功路径受 SSRF 防护无法离线走网络，
+        # UC-11（M10）：fetch-spec
+        # sha256 命中/失配——成功路径受 SSRF 防护无法离线走网络，
         # 比对逻辑已抽为 _match_sha256 纯函数，进程内断言两分支
         import importlib.util
         spec = importlib.util.spec_from_file_location("agent_ops", CLI)
@@ -334,7 +348,8 @@ def main() -> int:
         r = run(["list"], base_env, check=True)
         ok("UC-12 并发后完整性有效", r.returncode == 0, "list 加载通过完整性校验")
 
-        # UC-13（M9）：fetch-prices 解析器（deepseek 表格 / openrouter JSON）+ 合并与优先级
+        # UC-13（M9）：fetch-prices 解析器（deepseek 表格 / openrouter JSON）
+        # + 合并与优先级
         spec_fp = importlib.util.spec_from_file_location("fetch_prices", ROOT / "scripts" / "fetch-prices.py")
         fp = importlib.util.module_from_spec(spec_fp)
         assert spec_fp.loader is not None
@@ -354,10 +369,14 @@ def main() -> int:
         )
         ds = fp.parse_deepseek(deepseek_html)
 
-        # ⑬（2026-09-21 关闭三查·二查 windows major）：重定向逐跳复检必须挂在 **HTTPRedirectHandler** 上。
-        # 旧实现 `class _SafeRedirectHandler(urllib.request.HTTPSHandler)` —— `redirect_request` 定义在
-        # `HTTPRedirectHandler` 上，HTTPSHandler 子类的该方法**从不被 urllib 调用** = 死代码，
-        # 而 `build_opener` 仍会挂默认重定向处理器 → 白名单可被一次 302 绕过（SSRF 面）。
+        # ⑬（2026-09-21 关闭三查·二查 windows major）：
+        # 重定向逐跳复检必须挂在 **HTTPRedirectHandler** 上。
+        # 旧实现 `class _SafeRedirectHandler(urllib.request.HTTPSHandler)
+        # ` —— `redirect_request` 定义在
+        # `HTTPRedirectHandler` 上，
+        # HTTPSHandler 子类的该方法**从不被 urllib 调用** = 死代码，
+        # 而 `build_opener` 仍会挂默认重定向处理器 → 白名单可被一次 302 绕过（SSRF 面）
+        # 。
         import urllib.request as _ur
 
         _opener = _ur.build_opener(fp._SafeRedirectHandler())
@@ -395,7 +414,9 @@ def main() -> int:
            and merged["meta"]["fx_usd_cny"] == 7.2
            and "deepseek-v4-flash" in merged["scraped"]["deepseek"]["models"],
            "merge 结构")
-        # 优先级：manual 非 null 覆盖 scraped；manual null → scraped 兜底（进程内重载 module 以改 AGENT_OPS_DIR）
+        # 优先级：manual 非 null 覆盖 scraped；
+        # manual null → scraped 兜底（进程内重载 module 以改
+        # AGENT_OPS_DIR）
         os.environ["AGENT_OPS_DIR"] = str(tmp)
         spec_ao2 = importlib.util.spec_from_file_location("agent_ops2", CLI)
         ao2 = importlib.util.module_from_spec(spec_ao2)
@@ -413,8 +434,10 @@ def main() -> int:
            ao2._prices_for("m") is not None and ao2._prices_for("m")["input_cost_per_token"] == 1e-9,
            "scraped fallback")
 
-        # UC-14（TG-11，Sprint-17）：评审类 run 的 scope 来源闸门（fail-closed，机器可验）
-        # 反向对照：本块断言在**未修复**实现上必须不成立（旧 CLI 无 --scope-source/--deviation 参数）
+        # UC-14（TG-11，Sprint-17）：评审类 run 的 scope 来源闸门（fail-closed，
+        # 机器可验）
+        # 反向对照：本块断言在**未修复**实现上必须不成立（旧 CLI
+        # 无 --scope-source/--deviation 参数）
         r = run(["register", "--role", "code-review", "--task", "nc", "--spec", "code-review@1.0.0"],
                 base_env, raw=True)
         ok("UC-14 评审 run 无 scope 来源 → 拒绝（fail-closed）",
@@ -451,11 +474,15 @@ def main() -> int:
                  "--run-id", "run-uc14-research"], base_env, raw=True)
         ok("UC-14 非评审 role 不强制 scope 来源（防假红）", r.returncode == 0, (r.stdout + r.stderr).strip()[:80])
 
-        # UC-15（TG-15，Sprint-17 D2）：闸门政策**数据驱动**——角色集合/阈值来自数据文件，
-        # 不是代码常量。反向对照：在 spec 目录里临时新增一个声明 `scope_required: true` 的角色，
-        # **不改任何代码**，CLI 必须立刻要求它声明 scope；把声明改成 false 后必须立刻放行。
+        # UC-15（TG-15，Sprint-17 D2）：
+        # 闸门政策**数据驱动**——角色集合/阈值来自数据文件，
+        # 不是代码常量。反向对照：在 spec 目录里临时新增一个声明 `scope_required:
+        # true` 的角色，
+        # **不改任何代码**，CLI 必须立刻要求它声明 scope；
+        # 把声明改成 false 后必须立刻放行。
         # 这同时证明"删声明绕不过去"（缺声明是报错，不是放行，见数据源完备性自检）。
-        # **F1：探针写在 `specs_dir`（%TEMP%）而不是仓库 `agents/functions/`**——见文件头与 main() 开头。
+        # **F1：探针写在 `specs_dir`（%TEMP%）
+        # 而不是仓库 `agents/functions/`**——见文件头与 main() 开头。
         extra_spec = specs_dir / PROBE_SPECS[0]
         try:
             extra_spec.write_text(
@@ -490,7 +517,8 @@ def main() -> int:
             extra_spec.unlink(missing_ok=True)
 
         # UC-16（TG-15）：数据源**缺声明**不是"不需要"，而是 fail-closed 报错（删声明绕不过闸门）
-        # **F1：同样写在 `specs_dir`（%TEMP%）**——旧实现把它写进仓库，是并行的第二个 clobber 源。
+        # **F1：同样写在 `specs_dir`（%TEMP%）**——旧实现把它写进仓库，
+        # 是并行的第二个 clobber 源。
         probe_spec = specs_dir / PROBE_SPECS[1]
         try:
             probe_spec.write_text(
@@ -511,7 +539,8 @@ def main() -> int:
            r.returncode == 0, (r.stdout + r.stderr).strip()[:80])
 
 
-        # UC-17（审核 F1/N5）：coverage_anchor 必须**规范化**为完整 sha，无法解析则 fail-closed
+        # UC-17（审核 F1/N5）：coverage_anchor 必须**规范化**为完整 sha，
+        # 无法解析则 fail-closed
         head_full = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"],
                                    capture_output=True, text=True, encoding="utf-8").stdout.strip()
         head_short = head_full[:8]
@@ -617,10 +646,12 @@ def main() -> int:
            not [p for p in _window_problems(e17d) if "不是完整 40 位" in p],
            f"problems={_window_problems(e17d)}")
 
-        # UC-18（审核 N10）：`finish --result-file` **不得改写报告换行**（LF → CRLF 静默改写）
+        # UC-18（审核 N10）：`finish
+        # --result-file` **不得改写报告换行**（LF → CRLF 静默改写）
         # 原实现 `dest.write_text(rel.read_text(encoding="utf-8"), encoding="utf-8")`：读侧做
         # universal-newline 转换、写侧把 `\n` 落成 `os.linesep`（Windows=CRLF）→ 仓库基线的 LF
-        # 报告被静默改成 CRLF（实测 35721 B → 35913 B / 192 行）。归档步骤最不该动产物字节。
+        # 报告被静默改成 CRLF（实测 35721 B → 35913 B / 192 行）。
+        # 归档步骤最不该动产物字节。
         for tag, eol in (("lf", "\n"), ("crlf", "\r\n")):
             rid = f"run-uc18-{tag}"
             run(["register", "--role", "impact-assessment", "--task", f"eol-{tag}", "--spec",
@@ -645,8 +676,10 @@ def main() -> int:
 
         # A5（审核 M-g）：账本 run_id ↔ `agents/runs/*` 目录名一致性
         # 背景：`register` 自动 run-id 用 UTC 日期、目录/文档用 UTC+8 → 实测
-        # `run-2026-09-24-doc-audit-066`（账本）↔ `run-2026-09-25-doc-audit-066`（目录）。
-        # 历史例外写在数据文件（agents/policy/run-dir-exceptions.json）并**必须注明理由**。
+        # `run-2026-09-24-doc-audit-066`（账本）↔ `run-2026-09-25-doc-audit-066`（目录）
+        # 。
+        # 历史例外写在数据文件（agents/policy/run-dir-exceptions.json）
+        # 并**必须注明理由**。
         real_ledger = json.loads((ROOT / "agents" / "runtime" / "registry.json")
                                  .read_text(encoding="utf-8"))
         ledger_ids = {str(r.get("run_id") or "") for r in real_ledger.get("runs", [])}
@@ -665,8 +698,10 @@ def main() -> int:
         ok("M-g 例外白名单只减不增：登记过的例外若已在账本里有同名 run → 必须删除该例外",
            not stale_exc, f"已不再需要的例外：{stale_exc[:5]}")
 
-        # UC-19（TG-8②）：**离线开关**——一个开关关掉全部外呼，且在**发起请求之前**拒绝并点名。
-        # 判据（卡文）：开关开启 → 每个被禁止的外呼入口 rc≠0 且点名原因（不是靠网络超时）；
+        # UC-19（TG-8②）：**离线开关**——一个开关关掉全部外呼，
+        # 且在**发起请求之前**拒绝并点名。
+        # 判据（卡文）：开关开启 →
+        # 每个被禁止的外呼入口 rc≠0 且点名原因（不是靠网络超时）；
         #              开关关闭 → 允许（或按设计）。
         # 反向对照（§6"倒过来试试"）：以下每条的对照分支都断言"**没有**出现 OFFLINE-REFUSED"，
         # 即不能只证明"开关开着会拒绝"，还要证明"关着不会无故拒绝"（否则闸门可能是恒拒绝）。
@@ -762,7 +797,8 @@ def main() -> int:
         ok("UC-19 开关开启时注入政策声明的 HF 离线变量（消除 HEAD 重试阻塞）",
            injected_on == hf_on and bool(hf_on), f"injected={injected_on}（政策 {hf_on}）")
 
-        # ④两侧实现一致（app/offline_guard.py 与 verify/outbound_guard.py）：同一 env 取值同结论
+        # ④两侧实现一致（app/offline_guard.py 与 verify/outbound_guard.py）：
+        # 同一 env 取值同结论
         app_guard_spec = importlib.util.spec_from_file_location(
             "app_offline_guard", ROOT / "paper-qa-script" / "app" / "offline_guard.py")
         ag = importlib.util.module_from_spec(app_guard_spec)
@@ -780,6 +816,67 @@ def main() -> int:
             os.environ.pop(env_name, None)
         ok("UC-19 运行时两侧（脚本侧 verify/ + 后端侧 app/）对同一开关给出一致结论", same,
            f"app={ag.switch_state()}")
+
+        # ⑤政策**不可读/非法** → 产品侧按**离线**处理（M4，三查 finding major-4）。
+        #   原实现把"文件缺失/坏 JSON"折成 `{}`，`bool({}.get("enabled"))` = False
+        #   = **在线** ⇒ 开关自己的数据不可读时，产品静默回到"全部外呼放行"——
+        #   正是政策明文要消灭的"静默变成永远在线"。判据可核：不看超时，直接看
+        #   **判定值**（`switch_state()[0] is True`）、来源说明是否点名了政策问题，
+        #   以及 `refuse_if_offline()` 是否**真的**拒绝。
+        #   逐态断言（5 态）+ 反向对照（合法政策 + 开关关闭 → 在线），防"恒拒绝"也能过。
+        #   实现说明：用**内存替身**（只实现 `read_text()`）替代写临时文件——既不多一个
+        # 写盘落点（`verify_artifact_paths.py` 的动态目标棘轮按文件设上限），
+        # 也不留产物；
+        # `load_policy_file()` 走的仍是同一条读取路径（含 OSError / JSONDecodeError）。
+        class PolicyProbe:
+            """政策文件替身：`body` 或 `exc`（二选一），不落盘。"""
+
+            def __init__(self, body: str = "", exc: Exception | None = None) -> None:
+                self.body, self.exc = body, exc
+
+            def read_text(self, encoding: str = "utf-8") -> str:
+                if self.exc is not None:
+                    raise self.exc
+                return self.body
+
+        real_app_policy = ag.POLICY
+        os.environ.pop(env_name, None)  # 本块只考政策文件这一路：env 未设
+        bad_switch_json = json.dumps({"offline_switch": "yes"})
+        invalid_policy_states = [
+            ("文件不存在", PolicyProbe(exc=FileNotFoundError("policy.json"))),
+            ("坏 JSON", PolicyProbe("{not json")),
+            ("顶层是 null", PolicyProbe("null")),
+            ("顶层是数组（类型错）", PolicyProbe('["not", "an", "object"]')),
+            ("offline_switch 不是对象", PolicyProbe(bad_switch_json)),
+        ]
+        for label, probe in invalid_policy_states:
+            ag.POLICY = probe
+            off_state, off_why = ag.switch_state()
+            refused = False
+            try:
+                ag.refuse_if_offline("uc19 政策不可读探针")
+            except ag.OfflineRefused:
+                refused = True
+            ok(f"UC-19⑤ 政策{label} → 产品侧判定**离线**且点名原因（并真的拒绝外呼）",
+               off_state is True and "policy.json" in off_why and "离线" in off_why
+               and refused,
+               f"offline={off_state} why={off_why[:100]} refused={refused}")
+
+        valid_switch = {**_POLICY.policy_file["offline_switch"], "enabled": False}
+        ag.POLICY = PolicyProbe(json.dumps(
+            {**_POLICY.policy_file, "offline_switch": valid_switch},
+            ensure_ascii=False, indent=2))
+        on_state, on_why = ag.switch_state()
+        allowed = True
+        try:
+            ag.refuse_if_offline("uc19 合法在线探针")
+        except ag.OfflineRefused:
+            allowed = False
+        ok("UC-19⑤ 反向对照：合法政策 + 开关关闭（env 未设）→ 产品侧**在线**放行"
+           "（证明上面 5 态不是恒拒绝）",
+           on_state is False and allowed and "offline_switch.enabled" in on_why,
+           f"offline={on_state} why={on_why} allowed={allowed}")
+        ag.POLICY = real_app_policy
 
         # UC-20（D0-3(a)/TG-17⑤）：**产出型 run 的逐条标注**——实现类工作补登记挂评审
         # role 时，
@@ -911,7 +1008,8 @@ def main() -> int:
         ok("UC-7 防双写", r.returncode != 0 and "完整性校验" in (r.stdout + r.stderr),
            (r.stdout + r.stderr).strip()[:80])
 
-        # F1 收尾断言：整轮跑完，仓库的 spec 目录**一个探针文件都没有**（且内容与运行前逐字节相同）。
+        # F1 收尾断言：整轮跑完，
+        # 仓库的 spec 目录**一个探针文件都没有**（且内容与运行前逐字节相同）。
         # 判据取"文件系统事实"，不是"我记得 unlink 过"——旧实现正是靠这句记忆，而它在并行下不成立。
         repo_probes = [name for name in PROBE_SPECS if (FUNCTIONS / name).exists()]
         ok("F1 全程零仓库污染：agents/functions/ 下没有任何探针 spec（并行安全的前提）",
