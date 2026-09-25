@@ -4,7 +4,11 @@
 二查必须含 `windows`/`main`、〇查必须早于二查……**每加一个步骤/角色/分支都要改这个文件**，
 而"改代码"本身没有任何闸门在守（`TG-15` 卡的起因）。TG-15 之后：
 
-    C1 声明完备：凡产出评审结论的 run 必须有 scope 声明（外部引用 或 自选理由）
+    C1 声明完备：**本次关闭窗口内**凡产出评审结论的 run 必须有 scope 声明
+                 （外部引用 或 自选理由，且理由长度 ≥
+                 `agents/policy.json::scope_min_deviation_chars`）；
+                 窗口起点取自**账本侧**（`ledger_close_window`），
+                 窗口之前的 run 属历史、不产生问题
     C2 指涉可核：任何外部引用必须解析到"存在且可用"的对象；运行数据里的每个 role 必须能落到 spec
     C3 覆盖闭环：`git rev-list <锚点>..<HEAD>` 的**每个提交**必须有归属
 
@@ -89,20 +93,38 @@ def load_runs(path: Path) -> list[dict]:
 
 
 def parse_sprint(doc: str) -> dict:
-    """解析 §9 结构化 run 表 + 三查锚点（容错：表格列数 ≥5 且首列以 run- 开头）。"""
-    rows = []
-    for line in doc.splitlines():
+    """解析 §9 结构化 run 表 + 三查锚点（容错：表格列数 ≥5 且首列以 run- 开头）。
+
+    N9②（2026-09-25 独立复核实测）：原实现要求 `line.startswith("|")`，
+    于是**缩进的表格行被静默丢弃**——行首留缩进是合法 Markdown
+    （表格块可以缩在列表项/引用里），"§9 里明明登记了这一行"与
+    "闸门看到的表里没有它"会同时成立：被校验方无法靠写文档满足判据，
+    闸门也不给原因。现按 `line.lstrip()` 判首字符。
+
+    **仍然结构非法**的 run 行（首列是 `run-…` 但列数 <5，例如缺尾管道 /
+    少了整列）不再静默丢，而是收进 `malformed` 由 `check_linkage` 点名
+    ——"丢行"正是 N8 一族（空集/缺失 = PASS）的形态：丢了它就等于没登记，
+    而"没登记"必须由闸门说出来，不能靠人猜。
+    """
+    rows: list[dict] = []
+    malformed: list[dict] = []
+    for lineno, raw in enumerate(doc.splitlines(), 1):
+        line = raw.lstrip()
         if not line.startswith("|"):
             continue
         cells = [c.strip() for c in ROW_SPLIT.split(line)[1:-1]]
-        if len(cells) >= 5 and cells[0].startswith("run-"):
-            rows.append({
-                "run_id": cells[0], "role": cells[1], "target": cells[2],
-                "scope_source": cells[3], "coverage": cells[4],
-                "deviation": cells[5] if len(cells) > 5 else "",
-            })
+        if not cells or not cells[0].startswith("run-"):
+            continue  # 表头 / 分隔行 / 占位行（首列不是 run-…）→ 本就不是 run 行
+        if len(cells) < 5:
+            malformed.append({"line": lineno, "cells": len(cells), "text": raw.strip()})
+            continue
+        rows.append({
+            "run_id": cells[0], "role": cells[1], "target": cells[2],
+            "scope_source": cells[3], "coverage": cells[4],
+            "deviation": cells[5] if len(cells) > 5 else "",
+        })
     m = ANCHOR_RE.search(doc)
-    return {"rows": rows, "anchor": m.group(1) if m else None}
+    return {"rows": rows, "malformed": malformed, "anchor": m.group(1) if m else None}
 
 
 def _spec_of(policy: AgentPolicy, role: str) -> dict:
@@ -133,6 +155,21 @@ def ledger_close_window(policy: AgentPolicy, runs: list[dict]) -> str | None:
     ——最新 = 本次关闭那一批（更早的同 role run 属于上一个 Sprint 的关闭，不应被本 Sprint 的 §9 要求）；
     再取这些 run 的 `started_at` 最小值 = 窗口起点。账本里连一条关闭 run 都没有时返回 None
     （此时需求侧 C1 已经报"缺 run"，本函数不替它下结论）。
+
+    **同一个窗口供两处使用**（一处推导、两处消费，避免两套口径）：
+      * `check_linkage`：窗口内每个 close/review role 的 run 必须登记在
+        §9 表里（双向比对）；
+      * `check_c1`（D1，2026-09-25 用户裁定）：C1 的判定域 = 窗口内的 run；
+        窗口之前的历史 run（`TG-11` 之前的记录里根本没有 `scope_source`
+        字段，且账本有完整性哈希、不可回填）**不产生问题**——否则真数据上
+        恒有 34 条"永久 FAIL"，闸门退化成人人无视的噪音。
+        窗口不可推导（返回 None）时**不过滤**（= 全域）：这是 fail-closed
+        方向，宁可多报也不静默收窄。
+
+    比较口径：`started_at` 按**字符串字典序**比较（与 N6 的区间比对同口径）。
+    账本写入的时间戳统一带 `+00:00` 偏移时字典序 = 时间序；该前提由账本自身
+    保证（`agent-ops register` 用 UTC ISO 串），混入别的偏移会让本函数失去
+    意义——故这里不做时区归一化，而是明确记录口径。
     """
     starts: list[str] = []
     for step in policy.close_ledger_steps:
@@ -192,20 +229,69 @@ def check_requirements(policy: AgentPolicy, runs: list[dict]) -> list[str]:
     return problems
 
 
-def check_c1(policy: AgentPolicy, runs: list[dict]) -> list[str]:
-    """C1 声明完备：凡**产出评审结论**的 run（spec 声明 scope_required: true）必须有 scope 声明。"""
+def check_c1(policy: AgentPolicy, runs: list[dict],
+             window_start: str | None = None) -> list[str]:
+    """C1 声明完备：**本次关闭窗口内**凡**产出评审结论**的 run
+    （spec 声明 `scope_required: true`）必须有 scope 声明，
+    且自选理由长度不得低于政策阈值。
+
+    判定域为什么必须收窄（D1，2026-09-25 用户裁定；`TG-17` ② 的落地）：
+    原实现遍历**全部**账本 run。真数据实测
+    （`--sprint docs/iteration/sprint/2026-09-21-sprint-17.md`）：
+    68 条 run 里 34 条被判"无 scope 声明"，而这 34 条**全部**是
+    `TG-11` 之前的记录（当时 run 结构里没有 `scope_source` 字段），
+    且账本有完整性哈希 ⇒ **不可回填** ⇒ 判据变成"无论怎么填文档都
+    FAIL 34 条"的永久噪音：闸门长期红着，人就不再看它，同一屏里真正的
+    当期缺口也跟着失效（"狼来了"式失效，TG-17 ② 的原话）。
+    现判定域 = 窗口内（窗口起点取自**账本侧**，见 `ledger_close_window`），
+    窗口之前的历史 run 不卷入。
+
+    **窗口必须来自账本、不能来自被校验的 §9**：否则"把 §9 写窄一点"
+    就能把当期缺口挤出判定域，收窄就从"去噪"变成"静默放行"。
+    窗口不可推导时 `window_start is None` → **不过滤**（fail-closed）。
+
+    `scope_min_deviation_chars`（N9③）：此前该政策值**只在 fixture 里
+    出现**、真判据从不执行 ⇒ "`--deviation` 写 1 个字"能过闸门，而
+    `agent-ops register` 会当场拒绝它——"登记时验得过、闸门读不到"
+    正是 TG-15 要消灭的两套口径。现两侧同源（都由政策提供阈值）。
+
+    **阈值的适用面与 `register` 逐字对齐**：长度下限只在**自选范围**
+    （`scope_source == "self-chosen"`，或来源为空而只给了 deviation
+    ——`register` 落库时正是把它写成 `self-chosen`）这条路径上执行；
+    来源是合法引用（`impact-assessment:<run_id>`）时 deviation 只是
+    附注，`register` 不校验其长度，闸门**也不得**改判（否则会出现
+    "登记合法、闸门判红"的假红——与"读得到就该验得过"同源）。
+    """
     problems: list[str] = []
+    min_chars = policy.scope_min_deviation_chars
+    domain = ("全域（窗口不可推导）" if window_start is None
+              else f"本次关闭窗口 started_at >= {window_start}")
     for r in runs:
         role = str(r.get("role") or "")
         if role not in policy.review_roles:
             continue
+        started = str(r.get("started_at") or "")
+        # 窗口之前的 run = 历史（不产生问题）。注意 `started_at` 缺失时**不豁免**：
+        # 无法定位就先按当期判（fail-closed），不拿"字段缺失"换免检。
+        if window_start is not None and started and started < window_start:
+            continue
         source = str(r.get("scope_source") or "").strip()
         deviation = str(r.get("scope_deviation") or "").strip()
+        rid = r.get("run_id")
+        # `register` 把"无名来源 + 给了理由"落库为 `self-chosen`，故两者同属自选范围路径
+        self_chosen = source == "self-chosen" or (not source and bool(deviation))
         if not source and not deviation:
-            problems.append(f"[C1] {r.get('run_id')}（role={role}）产出评审结论但未声明 scope 来源，"
-                            f"也无自选范围理由")
-        elif source == "self-chosen" and not deviation:
-            problems.append(f"[C1] {r.get('run_id')} 自选范围但未声明 deviation")
+            problems.append(f"[C1] {rid}（role={role}）产出评审结论但未声明 "
+                            f"scope 来源，也无自选范围理由（判定域：{domain}）")
+        elif self_chosen and not deviation:
+            problems.append(f"[C1] {rid} 自选范围但未声明 deviation"
+                            f"（判定域：{domain}）")
+        elif self_chosen and len(deviation) < min_chars:
+            problems.append(f"[C1] {rid}（role={role}）的 scope_deviation 仅 "
+                            f"{len(deviation)} 字符，低于政策 "
+                            f"scope_min_deviation_chars={min_chars} ⇒ 不构成"
+                            f"可核范围理由（同一阈值由 agent-ops register "
+                            f"执行；判定域：{domain}）")
     return problems
 
 
@@ -241,19 +327,32 @@ def check_c2(policy: AgentPolicy, runs: list[dict]) -> list[str]:
     return problems
 
 
-def check_linkage(policy: AgentPolicy, sprint: dict, runs: list[dict]) -> list[str]:
+def check_linkage(policy: AgentPolicy, sprint: dict, runs: list[dict],
+                  window_start: str | None = None) -> list[str]:
     """§9 结构化表 ↔ 账本**双向**一致（防"写了没跑"/"跑了没写"）。
 
     **窗口起点取自账本侧**（`ledger_close_window`），不取自被校验的 §9 文档——
     否则"删掉 §9 里最早的几行"就能把窗口抬高、把早期 run 挤出检查范围（N6 实测的绕过路径）。
     文档侧只参与**区间比对**：§9 最早一行不得晚于账本窗口起点。
+
+    `window_start` 由 `evaluate()` 统一推导后传入（与 `check_c1` 同一个窗口；
+    单独调用时传 None 则本函数自行推导，语义相同）。
+    `sprint["malformed"]`（首列 `run-…` 但列数 <5 的行）逐条点名：这些行**等于没登记**，
+    静默丢掉它们会让"登记了"与"闸门认了"两件事悄悄分叉（N8 一族）。
     """
     problems: list[str] = []
     by_id = {r.get("run_id"): r for r in runs}
     ledger_roles = {s.role for s in policy.close_ledger_steps} | policy.review_roles
     table_ids = {row["run_id"] for row in sprint["rows"]}
 
-    window_start = ledger_close_window(policy, runs)
+    for row in sprint.get("malformed") or []:
+        problems.append(
+            f"[linkage] §9 表行结构非法（第 {row['line']} 行："
+            f"{row['cells']} 列 < 5）：{row['text'][:70]}"
+            f" → 该行被忽略 = 该 run 未登记")
+
+    if window_start is None:
+        window_start = ledger_close_window(policy, runs)
     scoped = [r for r in runs if r.get("role") in ledger_roles
               and (window_start is None or str(r.get("started_at") or "") >= window_start)]
 
@@ -323,12 +422,18 @@ def check_c3(policy: AgentPolicy, sprint: dict, runs: list[dict], att: Attributi
 
 def evaluate(policy: AgentPolicy, sprint: dict, runs: list[dict], *,
              att: Attribution | None = None, check_coverage: bool = True) -> list[str]:
-    """返回失败原因列表（空 = 通过）。三条不变式 + 需求（全部数据驱动）。"""
+    """返回失败原因列表（空 = 通过）。三条不变式 + 需求（全部数据驱动）。
+
+    **关闭窗口只推导一次**：C1 的判定域（D1）与 §9↔账本的区间比对（N6）
+    必须用**同一个**窗口，两处各推一次＝两套口径，而口径分叉正是本卡要治的
+    形态（"工具一个口径、闸门另一个口径"）。
+    """
     problems: list[str] = []
+    window_start = ledger_close_window(policy, runs)
     problems += check_requirements(policy, runs)
-    problems += check_c1(policy, runs)
+    problems += check_c1(policy, runs, window_start)
     problems += check_c2(policy, runs)
-    problems += check_linkage(policy, sprint, runs)
+    problems += check_linkage(policy, sprint, runs, window_start)
     if check_coverage:
         if att is None:
             problems.append("[C3] 覆盖检查已启用但未提供归属计算结果（内部错误）")
@@ -391,6 +496,13 @@ FIXTURE_SPECS = {
     "code-review": True,
     "lessons-learned": False,
     "workspace-check": False,
+    # **评审类但不在关闭流水线里**的角色：真账本里就有这样的历史 run
+    # （`run-2026-09-02-agent-onboarding-review-036`，正是 D1 之前被永久
+    # 点名的 34 条之一）。D1 的判定域反向对照用它：既落在 C1 的管辖
+    # （`scope_required: true`），又不参与关闭步骤的"〇查必须早于后续步骤"
+    # 次序判据（那是 `check_requirements` 的另一条判据，本卡不动它——
+    # 它的口径是"全域"，加一条早期 run 会改它的结论，与本卡无关）。
+    "agent-onboarding-review": True,
 }
 
 SHA_A, SHA_B, SHA_C, SHA_D = "a" * 40, "b" * 40, "c" * 40, "d" * 40
@@ -427,6 +539,13 @@ def _run(rid: str, role: str, task: str, started: str, scope="", dev=None,
     return {"run_id": rid, "role": role, "task_id": task, "started_at": started,
             "status": "succeeded", "scope_source": scope, "scope_deviation": dev,
             "coverage_anchor": anchor, "covers_through": through, "coverage_window": "self"}
+
+
+def _rows(runs: list[dict]) -> list[dict]:
+    """账本 run → §9 表行（`-` = 该格未填，与 `_doc` 同口径）。"""
+    return [{"run_id": r["run_id"], "role": r["role"], "target": r["task_id"],
+             "scope_source": r.get("scope_source") or "-", "coverage": "core",
+             "deviation": r.get("scope_deviation") or "-"} for r in runs]
 
 
 def _doc(rows: list[dict], anchor: str | None) -> str:
@@ -574,6 +693,99 @@ def _selfcheck() -> int:
     p = evaluate(policy, good, mutant, att=_fixture_attribution(mutant))
     ok("C1 反向对照：评审类 run 去掉 scope 声明 → FAIL",
        any(x.startswith("[C1]") for x in p), f"problems={p[:1]}")
+
+    # ---- D1（2026-09-25 用户裁定）：C1 判定域 = **本次关闭窗口** --------------
+    # 窗口起点取自账本侧。原实现遍历全账本 ⇒ 真数据恒 FAIL 34 条（`TG-11`
+    # 之前的记录没有 `scope_source` 字段，且账本有完整性哈希、不可回填）
+    # ⇒ 闸门退化成人人无视的噪音。收窄必须**不放松**：
+    # 窗口内缺声明仍 FAIL、窗口外缺声明不报、窗口不可推导时不过滤。
+    hist = _run("run-hist-900", "agent-onboarding-review", "onboarding-scan",
+                "2026-09-20T22:00:00+00:00", scope="", dev=None)
+    hist_runs = [*runs, hist]
+    p = evaluate(policy, parse_sprint(_doc(_rows(hist_runs), SHA_A)), hist_runs,
+                 att=_fixture_attribution(hist_runs))
+    ok("D1 反向对照 a：窗口**之前**的评审 run 缺 scope 声明 → 不报告"
+       "（历史不卷入；整条闸门仍 PASS）",
+       p == [], f"problems={p[:2]}")
+
+    inwin = _run("run-hist-901", "agent-onboarding-review", "onboarding-scan",
+                 "2026-09-21T02:30:00+00:00", scope="", dev=None)
+    inwin_runs = [*runs, inwin]
+    p = evaluate(policy, parse_sprint(_doc(_rows(inwin_runs), SHA_A)), inwin_runs,
+                 att=_fixture_attribution(inwin_runs))
+    ok("D1 反向对照 b：窗口**之内**的评审 run 缺 scope 声明 → FAIL 且点名"
+       "该 run（收窄 ≠ 放宽）",
+       any(x.startswith("[C1]") and "run-hist-901" in x for x in p)
+       and [x for x in p if not x.startswith("[C1]")] == [], f"problems={p[:2]}")
+
+    orphan = [_run("run-orphan-902", "agent-onboarding-review", "onboarding-scan",
+                   "2026-09-01T00:00:00+00:00", scope="", dev=None)]
+    p = check_c1(policy, orphan, ledger_close_window(policy, orphan))
+    ok("D1 反向对照 c：账本里没有任何关闭步骤 run（窗口不可推导）→ 不过滤，"
+       "仍 FAIL（fail-closed）",
+       ledger_close_window(policy, orphan) is None
+       and any("run-orphan-902" in x for x in p),
+       f"window={ledger_close_window(policy, orphan)} problems={p[:1]}")
+
+    # ---- D2（N9③）：C1 必须**执行**政策的 deviation 阈值 --------------------
+    dev_short = "短理由"
+    short = [dict(r, scope_source="self-chosen", scope_deviation=dev_short)
+             if r["run_id"] == "run-c-003" else r for r in runs]
+    p = check_c1(policy, short, ledger_close_window(policy, short))
+    ok(f"D2 反向对照：self-chosen 的 deviation 短于政策阈值"
+       f"（{len(dev_short)} < {policy.scope_min_deviation_chars} 字符）"
+       f"→ FAIL 且点名 run-c-003",
+       any("run-c-003" in x and "scope_min_deviation_chars" in x for x in p),
+       f"problems={p[:1]}")
+
+    exact = [dict(r, scope_source="self-chosen",
+                  scope_deviation="合" * policy.scope_min_deviation_chars)
+             if r["run_id"] == "run-c-003" else r for r in runs]
+    p = check_c1(policy, exact, ledger_close_window(policy, exact))
+    ok("D2 正向对照：deviation 长度**恰等于**政策阈值 → 不报（阈值是下界）",
+       p == [], f"problems={p[:1]}")
+
+    # 阈值适用面必须与 `agent-ops register` 逐字对齐：来源是**合法引用**时
+    # deviation 只是附注，register 不校验其长度 ⇒ 闸门也不得判红（否则是假红）。
+    ref_short = [dict(r, scope_deviation=dev_short)
+                 if r["run_id"] == "run-c-003" else r for r in runs]
+    p = check_c1(policy, ref_short, ledger_close_window(policy, ref_short))
+    ok("D2 正向对照：有合法引用来源时 deviation 短 → **不报**"
+       "（与 register 同口径，防假红）",
+       p == [], f"problems={p[:1]}")
+
+    # 阈值必须真的来自**政策数据**：把 fixture 政策的阈值改成 `dev_short` 的长度，
+    # 同一份输入必须转为通过——否则说明阈值是代码常量、政策只是摆设。
+    relaxed_file = tmp / "policy-relaxed.json"
+    relaxed_policy = dict(FIXTURE_POLICY, scope_min_deviation_chars=len(dev_short))
+    relaxed_file.write_text(json.dumps(relaxed_policy), encoding="utf-8")
+    pol_relaxed = load_policy(root=tmp, spec_dir=tmp / "specs",
+                              policy_path=relaxed_file,
+                              fanout_path=tmp / "fanout.json")
+    ok("D2 反向对照（数据驱动）：阈值改为 = 实际长度 → 同一输入不再 FAIL"
+       "（值来自政策，非代码常量）",
+       check_c1(pol_relaxed, short, ledger_close_window(pol_relaxed, short)) == [],
+       f"threshold={pol_relaxed.scope_min_deviation_chars}")
+
+    # ---- D2（N9②）：`parse_sprint` 容忍缩进；非法 run 行不静默丢 ------------
+    base_doc = _doc(good["rows"], SHA_A)
+    indented = "\n".join(("  " + ln if ln.startswith("|") else ln)
+                         for ln in base_doc.splitlines())
+    ok("D2 反向对照：缩进的 §9 表格行不得被丢弃"
+       "（原 `startswith('|')` 会把整表看成空表）",
+       len(parse_sprint(indented)["rows"]) == len(good["rows"]) == len(runs),
+       f"rows={len(parse_sprint(indented)['rows'])} 期望={len(runs)}")
+    ok("D2 正向对照：缩进不改变锚点解析（缩进前后 anchor 一致）",
+       parse_sprint(indented)["anchor"] == good["anchor"] == SHA_A,
+       f"anchor={parse_sprint(indented)['anchor']}")
+
+    bad_doc = base_doc + "\n| run-bad-999 | code-review |\n"
+    sp_bad = parse_sprint(bad_doc)
+    p = evaluate(policy, sp_bad, runs, att=_fixture_attribution(runs))
+    ok("D2 反向对照：结构非法的 run 行（列数 <5）→ 逐条点名，不再静默丢",
+       len(sp_bad["malformed"]) == 1 and len(sp_bad["rows"]) == len(runs)
+       and any("表行结构非法" in x and "run-bad-999" in x for x in p),
+       f"malformed={sp_bad['malformed']}")
 
     mutant = [dict(r, scope_source="impact-assessment:run-ghost-999") if r["role"] == "code-review" else r
               for r in runs]
