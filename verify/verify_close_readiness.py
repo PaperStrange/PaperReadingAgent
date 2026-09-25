@@ -883,6 +883,33 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
     runs = load_runs(registry_path())
     sprint = parse_sprint(path.read_text(encoding="utf-8"))
 
+    # **账本不存在 ≠ 账本有问题**（C4，2026-09-25 关闭期实测）：`agents/runtime/registry.json`
+    # 被 `.gitignore` 忽略 ⇒ **CI 的全新 checkout 必然没有它**。此时 C1/需求（"流水线步骤跑过没有"）、
+    # linkage（账本↔§9 双向一致）与 C3 覆盖归属**都无从判定**——它们的数据源就是账本。
+    # 旧行为是把"没有数据"判成"数据不合格"（实测 10 项 FAIL：4 条"缺 run" + 6 条"§9 写了但账本无记录"），
+    # 于是**推上去那一刻 windows 的必需检查恒红**，而修法只能是伪造账本。
+    # 现按 `verify_ledger_measurement.py`（code-review-072 critical）的同一口径处理：
+    # **缺账本 → 显式 SKIP（理由上屏、rc=0）**；**账本存在但坏 → 照旧 fail-closed**（下见 evaluate 前的解析）。
+    ledger_path = registry_path()
+    ledger_missing = not ledger_path.is_file()
+    if ledger_missing:
+        print(f"SKIP[ledger-absent] 账本不存在：{ledger_path}")
+        print("  → C1/需求、linkage、C3 覆盖归属**本环境无从判定**（它们的数据源就是账本；"
+              "`registry.json` 被 .gitignore 忽略 ⇒ 全新 checkout 没有它是正常状态）。")
+        print("  本环境仍然校验**不依赖账本的部分**：Sprint 文档可解析、§9 run 表结构合法、"
+              "三查锚点已声明且形态合法。完整关闭判定是**本机/关闭期动作**（须在有账本的环境跑）。")
+        if not sprint.get("anchor"):
+            print("CLOSE-READINESS FAIL（1 项）：")
+            print("  - [C3] 本 Sprint 文档未声明三查锚点（`三查锚点: <sha>`）——该判据不依赖账本")
+            return 1
+        for row in sprint.get("malformed") or []:
+            print("CLOSE-READINESS FAIL（1 项）：")
+            print(f"  - [linkage] §9 表行结构非法（第 {row['line']} 行）：{row['text'][:60]}")
+            return 1
+        print(f"CLOSE-READINESS SKIP-PASS（账本缺失档）：{path.name}（run 表 {len(sprint['rows'])} 行，"
+              f"锚点 {str(sprint.get('anchor'))[:8]}；账本相关判据未执行）")
+        return 0
+
     att = None
     if check_coverage:
         anchor = sprint.get("anchor") or ""
