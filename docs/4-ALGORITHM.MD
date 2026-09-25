@@ -75,7 +75,7 @@ REGISTRY :=
 - 内置 4 家：`deepseek / dashscope / openai / openrouter`（OpenRouter 为通用网关，`model=openrouter/auto` 智能路由）。
 - 自定义/文件条目字段与默认值（缺失字段补齐 `_ENTRY_DEFAULTS`）：`api_base=None, model=必填, vision_model="", embedding=st-multi-qa-MiniLM-L6-cos-v1, embedding_local=True, has_embedding_api=False, key_envs=("OPENAI_API_KEY",), thinking_disabled=False`。
 - 名称一律 `strip().lower()`；非法条目（如缺 `model`）**只跳过该条目**，不拖垮注册表（review 修正）。
-- 刷新链路：`scripts/refresh-providers.py`（`--fetch` 抓官方 `meta.source_urls` → M16 归档 + proposal；`--apply` 刷新 `fetched_at/status`；**模型名变更需人工确认或显式 `--accept-candidates`**；抓取失败**保留旧文件**）；定时：`scripts/scheduled-tasks.py --task providers`（默认 14 天，可配置）。
+- 刷新链路：`scripts/refresh-providers.py`（`--fetch` 抓官方 `meta.source_urls` → M16 归档 + proposal；`--apply` 刷新 `fetched_at/status`；**模型名变更需人工确认或显式 `--accept <provider>:<field>=<value>`**（旧开关 `--accept-candidates` **已弃用：传入即被忽略**并打印 WARN——见 `scripts/refresh-providers.py` 的 `args.accept_candidates` 分支）；抓取失败**保留旧文件**）；定时：`scripts/scheduled-tasks.py --task providers`（默认 14 天，可配置）。
 
 ### 3.2 密钥解析（DSL）
 
@@ -599,7 +599,7 @@ classDiagram
 - [ ] D4：会话级 `data_source_params` 唯一来源；SSRF 校验（含重定向复检与 198.18/15 豁免）；200MB 上限；自愈 = 目录指纹 + **三重损坏探针（files.zip zlib / index/meta.json / tantivy open+searcher）** → 整目录重建（同指纹增量；Sprint-7 M1 升级）
 - [ ] D5：schema 新增字段同步 `validate_config` 分支与 KNOWN_RUNTIME_KEYS；影响提示
 - [ ] D6：六步前置条件/写回字段表
-- [ ] D7：草稿态聚焦保护、面板联动、Run All 拓扑（节点参数独立 → 会话级共享）；**更改配置后下游自动重跑 config**（stale 检查）；**Config 节点初始默认值 schema 派生 + 前端零硬编码（16 键）**
+- [ ] D7：草稿态聚焦保护、面板联动、Run All 拓扑（节点参数独立 → 会话级共享）；**更改配置后下游自动重跑 config**（stale 检查）；**Config 节点初始默认值 schema 派生 + 前端零硬编码（守卫键集合由 `get_config_schema()` 派生、覆盖全部 schema 字段，不再写死键名清单；字段总数以 `python verify\verify_config_schema.py` 现跑输出的 `PASS: schema 字段总数 fields=N` 行为准，本行不写死）**
 - [ ] D6/D8：retrieve 去重与 `result` 标记；**多语检索 v1（CJK 零命中 → 英文关键词重试，query_used/query_strategy(direct|keyword_retry|fallback_first_n)/hit_note）**；parse 单文件定位报错；`prune_litellm_callbacks`（engine 层，7 列表，MAX_CALLBACKS 防护，上限 env 可配 `PAPERQA_LITELLM_CALLBACK_LIMIT`）；config 重跑失效下游状态；stream `is_disconnected` 静默退出
 - [ ] D8：SSE 线协议字段（新增字段 = 新增兼容负担，须评估）
 - [ ] D1+（F-AC8）：`providers/*.json` 主来源与合并顺序（兜底 < 文件 < 旧 providers.json < env）；逐文件校验只跳过坏文件；`provider_source` 标记；`/api/providers` 的 source/fetched_at/source_urls；`refresh-providers.py` 的 fail-closed（抓取失败不动文件）与"模型名需人工确认"
@@ -607,7 +607,7 @@ classDiagram
 - [ ] D6+（TG-5）：分层 runner 的 tier 选择与 fail-closed、预算上限优先级（CLI > env `PAPERQA_NIGHTLY_BUDGET_CNY` > 默认 10）、三态成本判定（unknown 不放行）；`scheduled-tasks.py` due 判定与 `--record-cost` 回填；**状态文件 fail-closed（TG-7：损坏 → 退出 2 + `.corrupt` 副本；BOM 容忍）**
 - [ ] Retro③（§13）：用量回调抗 prune（裁剪后重挂）、计费键"请求名 → 响应名取有价者"、缺价不臆测（`cost_cny=None` + `unpriced_models`）、空账不可当 measured、suite 实测聚合与 `scheduled-tasks` 自动回填（新鲜度绑定）
 - [ ] F-AC16 v1（§14.1）：checkpoint 只读索引字段与 API 形状、`payload_path/payload_exists` 诚实回显、坏 manifest fail-soft、快照字段白名单；GUI 面板零成本检查
-- [ ] M18 v1（§14.2）：报告时效三态（stale/suspect/fresh）、只分析调研归档、引用只在 §7 表格行内判定、无时区信息按 **UTC+8** 解析、容差 3600s 可配
+- [ ] M18 v1（§14.2）：报告时效三态（stale/suspect/fresh）、只分析调研归档、引用**优先**在 §7 表格行内判定（§7 内**没有**表格行时**有意退化**为扫整节 §7：`scope_text = rows or section7`，`scripts/report-freshness.py:241`）、无时区信息按 **UTC+8** 解析、容差 3600s 可配
 - [ ] 本文相关 UML 图与真值表行序是否仍与代码短路顺序一致
 
 > 更新历史：2026-08-30 初版（覆盖 Sprint-2 分层、Sprint-3 数据源、Sprint-4 体验/嵌入推荐/provider 扩展）；同日后追加 Sprint-5 一致性自愈/Sprint-6 多语检索/Sprint-7 M1 三重探针 + M2 回调上限配置化；**2026-09-12 追加 Sprint-16：D1 provider 一文件（providers/*.json + 来源标记 + 刷新链路）、D6 parse_chunk_embed 文献级 checkpoint（§8.4）、TG-5 分层 runner/定时底座/三态预算闸门**；**2026-09-20 追加走查修复（归档门禁双向交叉引用、TG-7 状态读取 fail-closed）与 Retro③ 成本可观测（§13：token 实测 → 价表换算 → suite 聚合 → 闸门自动回填）**。
@@ -668,7 +668,7 @@ classDiagram
 
 - **脚本**：`scripts/report-freshness.py`（`--check` 有 stale 退出 1；`--only`/`--runs-dir`/`--providers-dir`/`--json`/`--refresh-tolerance-s` 可配）。
 - **三条判定**：① provider `fetched_at` 晚于归档最新证据抓取时间 **+ 容差（默认 3600s）** → `stale`；② **§7 表格行**点名的 evidence 缺失 → `stale`；③ evidence mtime 晚于报告 mtime → `suspect`；其余 `fresh`。
-- **口径要点（均为实测踩坑）**：只分析**调研归档**（有 `evidence/` 或报告名以 `tech-research` 开头）——否则会把其它 role 报告引用的 `1-WORKFLOW.MD` 误判为缺失证据；引用只在 §7 **表格行**内判定——否则 §7 之后的自由段落也会被算进来；**无时区信息的时间一律按 UTC+8 解析**（本机 UTC+9；证据头 `... UTC+8` 是字面标签，按本机解析会整体差 1 小时→同轮产出的归档被自己判 stale）。
+- **口径要点（均为实测踩坑）**：只分析**调研归档**（有 `evidence/` 或报告名以 `tech-research` 开头）——否则会把其它 role 报告引用的 `1-WORKFLOW.MD` 误判为缺失证据；引用**优先**在 §7 **表格行**内判定——否则 §7 之后的自由段落也会被算进来；§7 内**没有**表格行时**有意退化**为扫整节 §7（`scope_text = rows or section7`，`scripts/report-freshness.py:241`；理由见该文件 `:235-237` 的注释：否则"点名证据缺失"会完全静默，且与归档门禁 `verify/verify_archive.py` 只要求"文件名出现在 §7 文本"的口径不一致）；**无时区信息的时间一律按 UTC+8 解析**（本机 UTC+9；证据头 `... UTC+8` 是字面标签，按本机解析会整体差 1 小时→同轮产出的归档被自己判 stale）。
 - **真实结论（2026-09-21）**：3 fresh / 2 stale —— `run-2026-09-12-tech-research-047` 与 `run-2026-09-12-provider-refresh-001` 因 09-20 官网刷新而**依据已变**；`run-2026-09-20-provider-refresh-001` fresh。
 - **验证**：`verify_freshness.py`（offline，**25 断言**：三态规则 / 跳过非调研归档 / 正文提及不算引用 / 时区口径 / CLI 契约 / 容错）。
 - **v1 边界**：只读检测，不改写报告、不自动重跑、**不做逐结论溯源**（模型值漂移的自动归因留待下一增量；现值在 JSON 中列出供人工比对）。
