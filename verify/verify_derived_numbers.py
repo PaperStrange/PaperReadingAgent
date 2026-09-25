@@ -280,9 +280,13 @@ def selftest() -> int:
     ok("反向对照 J 基线键指向的文件在 `HEAD` 里存在、工作区被删 → FAIL 且点名『被删』"
        "（旧实现按父目录推断，会把它当分支差异放行）",
        any("被删" in p for p in problems), f"problems={problems[:1]}")
-    problems, _ = _ev_case({"docs/iteration/no-such-file-xyz.md": 0},
-                           {"docs/iteration/no-such-file-xyz.md": 0})
-    ok("反向对照 K 目录在 `HEAD` 里存在、文件不在 → FAIL 且点名『在本分支上被删』",
+    # K 的载体必须**在任何分支的 `HEAD` 里都存在**（二查 `run-…-088` critical 2 的实测：
+    # 第一版用 `docs/iteration/**`——那是 windows-only 子树 ⇒ 在 main 上 `path_in_head()`
+    # 为假 ⇒ 判据不触发、自检自己红，而真数据判据本来是 PASS 的）。`docs/` 两个分支都有。
+    problems, _ = _ev_case({"docs/no-such-file-xyz.md": 0},
+                           {"docs/no-such-file-xyz.md": 0})
+    ok("反向对照 K 目录在 `HEAD` 里存在、文件不在 → FAIL 且点名『在本分支上被删』"
+       "（载体取 `docs/`，两个分支的 `HEAD` 都有 ⇒ main 上同样可跑）",
        any("在本分支上被删" in p for p in problems), f"problems={problems[:1]}")
     problems, _ = _ev_case({"docs/no-such-tree-xyz/a.md": 0}, {})
     ok("反向对照 L **新增**基线键而该路径在 `HEAD` 里根本不存在 → FAIL"

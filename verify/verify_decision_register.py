@@ -64,6 +64,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from verify.agent_policy import path_in_head  # noqa: E402
+
 if not __debug__:  # noqa: SIM108 —— -O/PYTHONOPTIMIZE 会剥离 assert；守卫必须是普通语句，不能是 assert
     raise SystemExit("本闸门不得在 -O/PYTHONOPTIMIZE 下运行（`__debug__` 为 False ⇒ "
     "判据会被整体剥离）——见 3-LEARNED 1.65")
@@ -175,14 +177,22 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
     warns: list[str] = []
     path = Path(doc) if doc is not None else root / rel
     if not path.is_file():
-        return {"problems": [f"{rel} 不存在（决策登记册是裁决的唯一登记处，缺失即 "
-        f"fail-closed）"],
-                "warns": [], "stats": {}}
+        # 分支差异 ≠ 缺失（2026-09-25 二查 `run-…-088` critical 1 的实测形态）：登记册是
+        # windows-only 的治理文档，`main`/同步分支按设计可能没有它 ⇒ **具名 SKIP**
+        # （判决行不得打 PASS、不得打印 `EVIDENCE:`），而不是 fail-closed 的红。
+        # 判据本身不变：这个文件在**本分支存在**时，下面每一条照旧判。
+        return {"problems": [], "skipped": True, "stats": {},
+                "warns": [f"{rel} 不在本分支（windows-only 治理文档）⇒ "
+                f"本次机检**未执行**"
+                          f"（**不是通过**；windows 上必须存在并按全部判据核）"]}
     text = path.read_text(encoding="utf-8", errors="replace")
+    _lines = text.splitlines()
     for section in SECTIONS:
-        if section not in text:
-            problems.append(f"[章节] 缺 "
-            f"{section!r}（登记册的结构契约；删章节等于删判据）")
+        # 章节必须在**行首**出现（二查 `run-…-087` minor 5：子串测试能被正文/围栏里的
+        # 同名字样满足 ⇒ "章节在位"这条判据形同虚设）
+        if not any(line.startswith(section) for line in _lines):
+            problems.append(f"[章节] 缺 {section!r}（登记册的结构契约；"
+                            f"删章节等于删判据；只认**行首**标题，正文提及不算）")
     entries = parse_entries(text)
     if not entries:
         problems.append("[条目] 一个条目都没解析出来（解析口径或文件结构变了 ⇒ "
@@ -191,10 +201,16 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
     # 归纳标记词（`TG-20` ③(v)：原文块里**不得**混排主代理的归纳）
     induction_marks = ("我认为", "这意味着", "结论是", "主代理归纳", "我判断", "即：")
     for e in entries:
-        missing = [f for f in FIELDS if f not in e["fields"]]
+        # ② 字段**标签在场**还不够，值必须**非空**（二查 `run-…-087` major 4：8
+        # 个空值标签
+        # 也能 PASS ⇒ "空值条目既不算已核也不算待回填"，等于把登记册变成一张空表）。
+        # 允许的"空"是**显式占位**（`待回填` / `未验证（待补）` / `无`），它们非空。
+        missing = [f for f in FIELDS
+                   if f not in e["fields"] or not e["fields"][f].strip()]
         if missing:
-            problems.append(f"[字段] {e['id']} 缺字段：{'、'.join(missing)}（§1 "
-            f"的字段定义即契约）")
+            problems.append(f"[字段] {e['id']} 缺字段或值为空：{'、'.join(missing)}"
+                            f"（§1 的字段定义即契约；无值请写 "
+                            f"`待回填`/`未验证（待补）`）")
         quote = e["fields"].get("原文", "")
         src = e["fields"].get("出处", "")
         # ③(iv)：出处必须是**可定位的指针**，或显式的"会话"形态（§1 只认这两种）
@@ -215,27 +231,39 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
             problems.append(f"[状态词] {e['id']} 的生效状态={status[:30]!r} "
             f"不在受控状态词表内"
                             f"（{list(STATUS_WORDS)}）——状态词是机检的唯一入口，不许自创")
-        if status.startswith("已被取代"):
+        # **必须用归一化后的状态词**（二查 `run-…-087` major 2 的实测）：真条目
+        # `docs/6-DECISIONS.md:84` 写的是 `**已被取代** [已被 … 取代（…）]`，
+        # 未归一时 `status.startswith("已被取代")` 为假 ⇒ **整段取代判据根本不执行**
+        # （raw=1 条 vs 归一后 2 条）。同族：只用"去掉 `**`"就够，但要用**同一处**归一。
+        if status_norm.startswith("已被取代"):
             m = SUPERSEDE_RE.search(status)
             if not m:
-                problems.append(f"[取代] {e['id']} 标了『已被取代』却没有 `[已被 "
-                f"<条目号> 取代（日期）]` 标注")
+                problems.append(f"[取代] {e['id']} 标了『已被取代』却没有 "
+                                f"`[已被 <条目号> 取代（日期）]` 标注")
             else:
                 who = m.group("who")
                 if re.fullmatch(r"(D-\d{6}-\d+|V-\d+)", who) and who not in ids:
                     problems.append(f"[取代] {e['id']} 的取代方 {who} 在本文件里不存在"
                                     f"（指向不存在的条目 = 悬空取代）")
-    # 指针可核（全文）
+    # 指针可核（全文）。**分支差异 ≠ 漂移**（二查 `run-…-088` critical 1）：
+    # 登记册里大量指针指向 `docs/iteration/**`（windows-only）⇒ 在没有该子树的分支上
+    # 不能判 FAIL，只能**具名跳过**（否则 G2 的同步 PR 会让 main 的 CI 变红，650 项）。
+    # 证据仍是 git：`path_in_head()` —— 在 HEAD 里存在而工作区没有 = **被删** ⇒ FAIL。
     pointers: list[tuple[str, int, str]] = []
     for m in POINTER_RE.finditer(text):
         pointers.append((m.group(1), int(m.group(2)), m.group(0)))
     bad_ptr = 0
+    absent_ptr = 0
     for relp, line, raw in pointers:
         target = root / relp
         if not target.is_file():
-            problems.append(f"[指针] {raw} 指向的文件不存在（指针漂移；复核 run-…083 "
-            f"抓到过 6 处）")
-            bad_ptr += 1
+            if path_in_head(root, relp):
+                problems.append(f"[指针] {raw} 在 `HEAD` "
+                f"的提交树里存在、工作区却不存在 ⇒ "
+                                f"被删（不是分支差异）")
+                bad_ptr += 1
+            else:
+                absent_ptr += 1        # 本分支没有这条路径 ⇒ 未核（计数可见，不当通过）
             continue
         total = len(target.read_text(encoding="utf-8", errors="replace").splitlines())
         if line < 1 or line > total:
@@ -246,6 +274,7 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
     # 条误报）。
     v_entries = [e for e in entries if e["id"].startswith("V-")]
     checked = 0
+    unverifiable = 0
     mismatch: list[str] = []
     for e in v_entries:
         # 字段名一律用**基名**（见 `_canon_field`）
@@ -255,6 +284,12 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
         ptrs = _pointers(src)
         if not m_q or not ptrs:
             continue                     # 非仓内出处（会话/待回填）不在此判据内
+        # **本分支没有的路径**（如 main 上的 `docs/iteration/**`）⇒
+        # 这条引文本次**核不了**：
+        # 计入 `unverifiable`（可见），不计入"已核 0 条"的空转守卫，也不判 FAIL。
+        if not any((root / relp).is_file() for relp, _ln in ptrs):
+            unverifiable += 1
+            continue
         fragments = _quote_fragments(m_q.group("body"))
         if not fragments:
             # 片段太短（如"现在修"）⇒ 核它没有意义，跳过并不算通过
@@ -301,11 +336,14 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
     # **看起来通过**。
     # "应核 0 条"与"该核的都没核"必须能区分：有仓内出处的 §4.1 条目 > 0 而 checked == 0
     # ⇒ FAIL。
-    in_repo = [e for e in v_entries if _pointers(e["fields"].get("出处", ""))]
+    in_repo = [e for e in v_entries
+               if any((root / p).is_file()
+                      for p, _ln in _pointers(e["fields"].get("出处", "")))]
     if in_repo and checked == 0:
         problems.append(f"[引文↔出处] {len(in_repo)} 条 §4.1 "
-        f"条目带仓内出处、却**一条都没被核对**"
-                        f"（判据空转：取值键名/解析口径被改坏时会出现这种『看起来通过』）")
+        f"条目带**本分支可核**的出处、"
+                        f"却**一条都没被核对**（判据空转：取值键名/解析口径被改坏时会出现"
+                        f"这种『看起来通过』）")
     pending = [e["id"] for e in entries
                if e["fields"].get("生效状态", "").startswith("待回填")
                or e["fields"].get("验证时间戳", "").startswith("待回填")
@@ -313,12 +351,17 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
     if pending:
         warns.append(f"{len(pending)} 条条目仍是待回填/未验证（前 8 条：{pending[:8]}）"
                      f"——回填前不得引用为已核生效裁决")
+    if absent_ptr or unverifiable:
+        warns.append(f"本分支不存在的路径：指针 {absent_ptr} 处未核、引文 "
+        f"{unverifiable} 条未核"
+                     f"（分支差异；windows 上这些**全部**要核，见 `summary` 的 0/0）")
     stats = {"entries": len(entries),
              "section3": sum(1 for e in entries if e["id"].startswith("D-")),
              "section41": len(v_entries), "pointers": len(pointers),
-             "bad_pointers": bad_ptr, "quotes_checked": checked,
+             "bad_pointers": bad_ptr, "pointers_branch_absent": absent_ptr,
+             "quotes_checked": checked, "quotes_unverifiable": unverifiable,
              "quotes_mismatch": len(mismatch), "pending": len(pending)}
-    return {"problems": problems, "warns": warns, "stats": stats}
+    return {"problems": problems, "warns": warns, "stats": stats, "skipped": False}
 
 
 def selftest() -> int:
@@ -371,9 +414,38 @@ def selftest() -> int:
        f"problems={bogus['problems'][:1]}")
     dangling = run(build({"出处": "docs/does-not-exist.md:3",
                           "证据": "docs/does-not-exist.md:3"}))
-    ok("反向对照 c 指针指向不存在的文件 ⇒ FAIL",
-       any("不存在" in p for p in dangling["problems"]),
-       f"problems={dangling['problems'][:1]}")
+    ok("反向对照 c1 指针指向**本分支与 `HEAD` 都没有**的路径 ⇒ 记『未核』"
+       "（`pointers_branch_absent`），不误判成漂移"
+       "（二查 run-…-088 critical 1：登记册大量指针指向 windows-only 子树）",
+       dangling["problems"] == []
+       and dangling["stats"].get("pointers_branch_absent", 0) >= 1,
+       f"problems={dangling['problems'][:1]} stats={dangling['stats']}")
+    # 反向对照 c2（**被删**才是 FAIL）：在 `%TEMP%` 的**真 git
+    # 仓库**里提交一份文件再删掉
+    # ⇒ `path_in_head()` 为真、工作区没有 ⇒ 必须 FAIL（真入口、真
+    # git，不注入中间变量）。
+    import subprocess as _sp
+    repo = str(Path(tempfile.gettempdir()) / "decision-register-selftest-repo")
+    _sp.run(["git", "init", "-q", repo], capture_output=True)
+    (Path(tempfile.gettempdir()) / "decision-register-selftest-repo" / "docs").mkdir(
+        parents=True, exist_ok=True)
+    (Path(tempfile.gettempdir()) / "decision-register-selftest-repo" / "docs"
+     / "gone.md").write_text("line 1\nline 2\n", encoding="utf-8")
+    _sp.run(["git", "-C", repo, "add", "-A"], capture_output=True)
+    _sp.run(["git", "-C", repo, "-c", "user.name=t",
+             "-c", "user.email=t@example.invalid",
+             "commit", "-q", "-m", "fixture"], capture_output=True)
+    (Path(tempfile.gettempdir()) / "decision-register-selftest-repo" / "docs"
+     / "gone.md").unlink()
+    (Path(tempfile.gettempdir()) / "decision-register-selftest.md").write_text(
+        build({"原文": '"line 1"', "出处": "docs/gone.md:1", "证据": "docs/gone.md:1"}),
+        encoding="utf-8")
+    deleted = check_register(
+        Path(repo), doc=Path(tempfile.gettempdir()) / "decision-register-selftest.md")
+    ok("反向对照 c2 路径在 `HEAD` 里存在、工作区被删 ⇒ FAIL（『被删』与『分支差异』"
+       "必须分开）",
+       any("被删" in p for p in deleted["problems"]),
+       f"problems={deleted['problems'][:1]}")
     wrong_quote = run(build({"原文": '"这句话在源文件里根本没有"'}))
     ok("反向对照 d §4.1 引文与出处行不符 ⇒ FAIL（引文可核 ≠ 指针存在）",
        any("引文↔出处" in p for p in wrong_quote["problems"]),
@@ -383,6 +455,18 @@ def selftest() -> int:
     ok("反向对照 f 『已被取代』指向不存在的条目 ⇒ FAIL（悬空取代）",
        any("取代方" in p for p in superseded["problems"]),
        f"problems={superseded['problems'][:1]}")
+    # 二查 run-…-087 major 2 的**真实排版**：状态词带 `**` 加粗 ⇒
+    # 必须走同一条归一化后再判
+    bold = run(build({"生效状态": "**已被取代** [已被 D-250925-99 "
+    "取代（2026-01-01）]"}))
+    ok("反向对照 f′ 加粗形态 `**已被取代**` 也必须触发取代判据（未归一化会整段跳过）",
+       any("取代方" in p for p in bold["problems"]),
+       f"problems={bold['problems'][:1]}")
+    # 二查 run-…-087 major 4：8 个标签齐全但**值全空** ⇒ 必须 FAIL（空表不是登记册）
+    empty = run(build({k: "" for k in FIELDS}))
+    ok("反向对照 i 8 个字段标签齐全但值全空 ⇒ FAIL（标签在场 ≠ 有内容）",
+       any("值为空" in p for p in empty["problems"]),
+       f"problems={empty['problems'][:1]}")
     bad_src = run(build({"出处": "我记得是在某份文档里"}))
     ok("反向对照 g 出处既非 `path:line` 也非『会话』形态 ⇒ FAIL（出处不可核 = "
     "引文不可核）",
@@ -410,13 +494,19 @@ def main() -> int:
         if len(report["problems"]) > 40:
             print(f"  … 另有 {len(report['problems']) - 40} 项")
         return 1
+    if report.get("skipped"):
+        # M-B 口径：**没查**不许打印 PASS/`EVIDENCE:`（判决行自己说明原因）
+        print("DECISION-REGISTER SKIP（本分支没有 `docs/6-DECISIONS.md`；"
+              "真数据判据**未执行**——**不是通过**）")
+        return 0
     s = report["stats"]
     print(f"DECISION-REGISTER PASS：{s.get('entries')} 条条目（§3 {s.get('section3')} "
     f"/ §4.1 "
-          f"{s.get('section41')}）；指针 {s.get('pointers')} 处全部可核；§4.1 "
-          f"引文-出处逐条核对 "
-          f"{s.get('quotes_checked')} 条、0 条不符；待回填 {s.get('pending')} 条（见 "
-          f"WARN）")
+          f"{s.get('section41')}）；指针 {s.get('pointers')} 处（其中本分支不存在 "
+          f"{s.get('pointers_branch_absent')} 处未核）；§4.1 引文-出处逐条核对 "
+          f"{s.get('quotes_checked')} 条、{s.get('quotes_mismatch')} 条不符"
+          f"（另 {s.get('quotes_unverifiable')} 条因路径不在本分支未核）；"
+          f"待回填 {s.get('pending')} 条（见 WARN）")
     rc = selftest()
     if rc == 0:
         print(f"EVIDENCE: verify_decision_register.py assertions={PASSED} rc=0 "

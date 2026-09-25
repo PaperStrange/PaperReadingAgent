@@ -287,6 +287,28 @@ def committed_rebase_problems(committed: dict | None, parent_policy: dict | None
     return problems
 
 
+def _invokes_guard(text: str) -> bool:
+    """该文件是否在**命令位置**调用了结构守卫的 git 档
+    （`structure-guard.py verify --from-git`）。
+
+    为什么不能只做子串搜索（二查 `run-…-087` major 1 的探针实测）：CI 里那行
+    `Write-Host "gate: structure-guard.py verify --from-git …"`
+    的**标签文本本身**就满足子串匹配
+    ⇒ 把真调用删掉、只留标签，判据照样"零问题"。于是"接线判据"守的是一句**注释**，
+    不是一条命令。
+    判据改为：**跳过注释/回显行**（`#`、`Write-Host`、`echo`、`::`
+    标签），再看剩下的行里有没有该调用
+    ——与"守卫必须挂在真函数上"同一族（反例档案例 14）。
+    """
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", "Write-Host", "echo", "::")):
+            continue
+        if re.search(r"structure-guard\.py\s+verify\s+--from-git", stripped):
+            return True
+    return False
+
+
 def unskippable_wiring_problems(*, ci: Path, hook: Path, installer: Path) -> list[str]:
     """③ 判据本体（A-M12 ①）：结构守卫的「**不可跳过层**」三处接线必须在位。
 
@@ -313,16 +335,16 @@ def unskippable_wiring_problems(*, ci: Path, hook: Path, installer: Path) -> lis
     if not ci.is_file():
         problems.append(f"[不可跳过] {CI_REL} 不存在——"
                         f"结构守卫的不可跳过层只能接在 CI 上（fail-closed）")
-    elif not re.search(r"structure-guard\.py\s+verify\s+--from-git",
-                       ci.read_text(encoding="utf-8", errors="replace")):
+    elif not _invokes_guard(ci.read_text(encoding="utf-8", errors="replace")):
         problems.append(
-            f"[不可跳过] {CI_REL} 里没有 `structure-guard.py verify --from-git …`——"
-            f"守卫就退回『依赖人记得跑快照』的形态（R1 第 6 次事故的根因）")
+            f"[不可跳过] {CI_REL} 里**命令位置**没有 `structure-guard.py verify "
+            f"--from-git …`"
+            f"（标签/注释里的同名字样不算）——守卫就退回『依赖人记得跑快照』的形态"
+            f"（R1 第 6 次事故的根因）")
     if not hook.is_file():
         problems.append(f"[不可跳过] {HOOK_REL} 模板不存在"
                         f"（便利层缺失；CI 层仍在，但本地无即时拦截）")
-    elif not re.search(r"structure-guard\.py\s+verify\s+--from-git",
-                       hook.read_text(encoding="utf-8", errors="replace")):
+    elif not _invokes_guard(hook.read_text(encoding="utf-8", errors="replace")):
         problems.append(f"[不可跳过] {HOOK_REL} 没有调用与 CI **同一条**判据"
                         f"（两层各判一套＝同一个字段两种读法）")
     if not installer.is_file():
@@ -536,6 +558,18 @@ def selftest() -> int:
                             "structure-guard.py --replay"), encoding="utf-8")
         ok("A-M12① 反向对照 a：CI 里那条 git 基线调用被拿掉（只剩自检档）→ FAIL 且点名"
            "（守卫退回『依赖人记得跑快照』的形态）",
+           any("--from-git" in p for p in _probe_problems()),
+           f"problems={_probe_problems()[:1]}")
+        # **二查 run-…-087 major 1 的原始形态**：只删**真调用**那一行、保留 `Write-Host`
+        # 里的
+        # 同名字样 ⇒ 子串匹配会把这句**标签**当成接线、判"零问题"（假绿）。
+        ci_probe.write_text(
+            "\n".join(line for line in ci_text.splitlines()
+                      if "python scripts/structure-guard.py verify "
+                      "--from-git" not in line),
+            encoding="utf-8")
+        ok("A-M12① 反向对照 a′：只删**真调用**、保留标签里的同名字样 ⇒ FAIL"
+           "（判据必须认命令位置，不认文本出现）",
            any("--from-git" in p for p in _probe_problems()),
            f"problems={_probe_problems()[:1]}")
         ci_probe.write_text(ci_text, encoding="utf-8")

@@ -1605,7 +1605,10 @@ def main() -> int:
                             "唯一合法修复路径；文件须存在+必带理由+留痕）")
     p.add_argument("run_id")
     p.add_argument("--file", action="append", required=True,
-                   help="产物路径（相对仓库根；可重复；每个都必须真实存在）")
+                   help="产物路径（**相对 agents/ 根**，形如 "
+                   "`runs/<run_id>/<role>.report.md`；"
+                        "可重复；每个都必须真实存在。二查 run-…-087 minor：这里原文写"
+                        "『相对仓库根』，与实现只认 agents 根的口径不符）")
     p.add_argument("--reason", required=True,
                    help="回填理由（≥10 字符）：为什么补、依据哪份产物")
     p.add_argument("--by", default="main-agent")

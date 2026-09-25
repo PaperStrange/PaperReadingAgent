@@ -1218,7 +1218,10 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
                   if run_sprint_identity(r) is not None
                   or str(r.get("started_at") or "") >= window_start]
     print(f"[domain] Sprint-{sprint_id}；域内 run {len(domain)} 条"
-          f"（身份不可派生、按 fail-closed 保留 {unknown_ident} 条）"
+          f"（其中**身份不可派生、按 fail-closed 保留** {unknown_ident} 条——"
+          f"该计数是**全账本**里无 Sprint 身份的 run 数，不是域内子集；"
+          f"二查 run-…-087 minor 7：旧文案把两个数并列成『域内 8 条（保留 23 "
+          f"条）』自相矛盾）"
           f"；作用域 run = {candidate.get('run_id')}；窗口起点 = {window_start}")
     if window_problems:
         print(f"DOMAIN-UNAVAILABLE：Sprint-{sprint_id} 的窗口被次序/时序判据弃用"
@@ -2047,9 +2050,21 @@ def _selfcheck() -> int:
     # 判据三条：输出含 `SKIP[ledger-absent]`、**不含** `EVIDENCE:`（机读证据行不得由"跳过"产生）、
     # 且不得出现 `CLOSE-READINESS PASS`。
     empty_ops = Path(tempfile.mkdtemp(prefix="verify_close_readiness_noop_"))
+    # 载体必须**自带**、不能写死 windows-only 的 Sprint 文档（二查 `run-…-088` critical
+    # 3：
+    # 第一版写死 `docs/iteration/sprint/2026-09-21-sprint-17.md` ⇒ 在没有
+    # `docs/iteration/**`
+    # 的分支（main）上，子进程拿到的是 `rc=2 Sprint 文档不存在` ⇒
+    # 自检自己红，而判据本身没坏）。
+    # 这里现写一份最小 Sprint 文档到 `%TEMP%`，两个分支都能跑同一条判据。
+    (Path(tempfile.gettempdir()) / "close-readiness-selftest-sprint.md").write_text(
+        "# Sprint fixture\n\n"
+        "三查锚点: b6198f5180561868e07989e6689185199f439d76\n\n"
+        "## 9. 关闭三查\n\n| run_id | role |\n|---|---|\n",
+        encoding="utf-8")
     probe2 = subprocess.run(
         [sys.executable, str(Path(__file__).resolve()), "--sprint",
-         "docs/iteration/sprint/2026-09-21-sprint-17.md"],
+         str(Path(tempfile.gettempdir()) / "close-readiness-selftest-sprint.md")],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
         env={**os.environ, "AGENT_OPS_DIR": str(empty_ops)})
     blob = probe2.stdout + probe2.stderr

@@ -244,6 +244,12 @@ def check_sprint(sprint_file: Path, *, runs_dir: Path = RUNS_DIR) -> int:
     print(f"CLOSE-TAX PASS：{path.name}（声明与报告派生逐字一致："
           + ", ".join(f"{k}={actual[k]}" for k in KEYS)
           + f"；来源 {len(runs)} 个 run）")
+    # 真数据 PASS 档也要机读证据行（二查 `run-…-087` minor 6：`1-WORKFLOW.MD:387` 的
+    # "证据形态四件套"要求新闸门给 `EVIDENCE:` 行，而此前只有自检档打印）
+    print(f"EVIDENCE: verify_close_tax_reading.py rc=0 "
+          f"mode=real-data "
+          + " ".join(f"{k}={actual[k]}" for k in KEYS)
+          + f" sources={len(runs)}（断言数只在自检档有意义，此处不写死）")
     return 0
 
 

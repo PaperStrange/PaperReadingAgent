@@ -88,6 +88,11 @@ jobs:
               if (Select-String -Path $f.FullName -Pattern $pat -Quiet) {
                 Write-Host "close-readiness -> $($f.Name)"
                 python verify/verify_close_readiness.py --sprint $f.FullName
+                # 关闭税读数闸门（TG-19 M-E）：**同一选择器**（声明了真锚点的 Sprint 文档）。
+                # 二查 run-…-087 minor 6：它的触发条件是"§9 有 run 行 / 声明真锚点"，此前**没接 CI**，
+                # 于是"关闭记录缺机读读数行"只能靠人记得跑。
+                Write-Host "close-tax -> $($f.Name)"
+                python verify/verify_close_tax_reading.py --sprint $f.FullName
                 $checked++
               }
             }
@@ -119,7 +124,7 @@ jobs:
           python verify/verify_lint.py
           # TG-20 ③（2026-09-25 D6）：决策登记册机检——字段齐全 / 受控状态词 / 被取代指向存在的条目 /
           # `path:line` 指针可核 / §4.1 逐字引文↔出处逐条核对。它此前是**纯人工**维护的。
-          Write-Host "gate: verify_decision_register.py  (档位=真数据：docs/6-DECISIONS.md；含 7 条反向对照自检)"
+          Write-Host "gate: verify_decision_register.py  (档位=真数据：docs/6-DECISIONS.md；含 12 条反向对照自检（现跑为准）)"
           python verify/verify_decision_register.py
           # A-M12（2026-09-25 提前交付，Sprint 归属仍为 Sprint-18/G2）：结构守卫的**自检**档。
           # CI 里没有"编辑前的快照"可比（快照是本地工作流的运行态产物），所以这里只跑 `--replay`：
@@ -156,6 +161,10 @@ jobs:
           if (-not $baseOk) {
             # 单提交分支（没有父提交）没有可比基线 ⇒ **具名跳过**，不冒充通过
             Write-Host "structure-guard: 本分支没有可解析的父提交（单提交/孤立历史）→ 本步显式跳过（不是通过）"
+            # 二查 run-…-088 major：上面两处 `git rev-parse` **探测**失败会把 `$LASTEXITCODE`
+            # 留在非零态，而 GH 的 pwsh 模板在步骤末尾 `exit $LASTEXITCODE` ⇒ 日志说"跳过"、
+            # 步骤却失败（探针实测 STEP-END last=1）。跳过是**判定结论**，必须显式归零。
+            $global:LASTEXITCODE = 0
           } else {
             Write-Host "gate: structure-guard.py verify --from-git $guardBase  (档位=git 基线：本次 push 的提交范围；有意删除须带 Structure-Removal 署名行)"
             python scripts/structure-guard.py verify --from-git $guardBase
