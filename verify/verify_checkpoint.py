@@ -127,6 +127,15 @@ def prune_checks() -> None:
            json.dumps({"removed": removed3, "left": sorted(p.stem for p in root.glob("*.json"))}))
 
 
+def _exempted_local(value):
+    """本函数内造 fixture 数据、不是闸门政策（TG-15：`verify_no_policy_hardcode.py` 识别该名并放行）。
+
+    仅用于"测试用文件名/临时清单"这类**就地生成的数据**；闸门自身引用的政策清单
+    （覆盖路径、角色集合、阈值）一律来自 `agents/policy.json` / spec frontmatter，禁止就地写死。
+    """
+    return value
+
+
 async def main() -> int:
     import httpx
 
@@ -137,7 +146,7 @@ async def main() -> int:
     make_pdf(alpha, _ALPHA_TEXT)
     make_pdf(beta, _BETA_TEXT)
     shutil.copy2(alpha, gamma)  # 逐字节相同 → 触发 paperqa 内容去重
-    paths = ["Alpha.pdf", "Beta.pdf"]
+    paths = _exempted_local(["Alpha.pdf", "Beta.pdf"])  # 测试用 fixture 文件名，非政策
 
     server = start_backend(BACKEND, SERVER_LOG, ROOT)
     if not wait_healthy(server, SERVER_LOG):

@@ -32,6 +32,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENTS_BASE = Path(os.environ.get("AGENT_OPS_DIR", str(REPO_ROOT / "agents")))
 PRICES_PATH = AGENTS_BASE / "runtime" / "prices.json"
 
+# TG-8②：离线开关（唯一实现与政策数据见 verify/outbound_guard.py + agents/policy.json::offline_switch）。
+# `scripts/**` 与 `verify/**` 共用同一份实现是**刻意的**：三个外呼脚本各写一份"离线判断"
+# 就等于三份会漂移的政策（§6 政策数据化）。
+sys.path.insert(0, str(REPO_ROOT))
+
+from verify.outbound_guard import OfflineRefused, refuse_exit_code, refuse_if_offline  # noqa: E402
+
 
 @contextlib.contextmanager
 def _prices_lock():
@@ -103,6 +110,9 @@ class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 
 def _fetch(url: str, timeout: int = 30) -> str:
+    # TG-8②：**发请求之前**先过离线开关——命中即抛 `OfflineRefused`（点名来源与目标 URL）。
+    # 放在白名单校验之前：拒绝原因必须是"开关开着"，而不是被后面的校验分支改写。
+    refuse_if_offline(url)
     if not _host_allowed(url):
         raise ValueError(f"non-allowlisted source: {url}")
     opener = urllib.request.build_opener(_SafeRedirectHandler())
@@ -233,11 +243,16 @@ def main() -> int:
     scraped: dict[str, dict] = {}
     for prov, url in SOURCES.items():
         try:
+            refuse_if_offline(url)  # TG-8②：开关开启 → 在任何网络动作之前拒绝（含 DNS/连接）
             text = _fetch(url)
             got = parsers[prov](text)
             print(f"[{prov}] fetched {len(text)} bytes -> {len(got)} models {sorted(got)}")
             if got:
                 scraped[prov] = {"models": got}
+        except OfflineRefused:
+            # **不吞**：本分支把"开关拒绝"与"网络抖动"分开——前者必须让整条命令以政策退出码结束
+            # （"拒绝"不是"抓取失败"，写成 FAIL 会让读日志的人以为再试一次就好了）。
+            raise
         except Exception as exc:  # noqa: BLE001
             print(f"[{prov}] FAIL: {type(exc).__name__}: {exc}")
 
@@ -254,4 +269,11 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # TG-8②：离线拒绝必须变成**明确的退出码**（政策 `offline_switch.refuse_exit_code`）。
+    # `OfflineRefused` 继承 BaseException，故上面的 `except Exception` 兜底不会把它降级成
+    # "抓取失败→继续跑"；这里才是唯一收口点。
+    try:
+        sys.exit(main())
+    except OfflineRefused as exc:
+        print(f"OFFLINE-REFUSED: {exc}")
+        sys.exit(refuse_exit_code())

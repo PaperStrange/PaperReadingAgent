@@ -218,7 +218,6 @@ def render_markdown(records: list[FunctionRecord], paths: dict[str, list[list[st
         "settings:Settings.get_summary_llm",
         "settings:Settings.get_embedding_model",
     ]
-    rec_map = {r.id: r for r in records}
     for k in keys:
         # allow exact or suffix match for class methods
         target = next((r for r in records if r.id.endswith(k)), None)

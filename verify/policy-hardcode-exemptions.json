@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "_comment": "TG-15⑦：verify/verify_no_policy_hardcode.py 的豁免台账。每条豁免必须写明 category 与 reason；键可用 glob，但**值必须精确**（脚本仅豁免列出的路径/名称/表达式，绝不整文件豁免）。豁免 = 有理由的例外；新增豁免本身就是一次政策决定，必须在卡/评审记录里说明。",
+  "roles": [
+    {
+      "file": "verify/verify_agentops.py",
+      "reason": "单测 fixture 里的合成角色名（断言 CLI 行为用），不是闸门政策。该文件已改为从 load_policy().review_roles 读评审类集合（见其 run() 的 TG-15 注释）。",
+      "category": "test-fixture",
+      "names": ["code-review", "doc-audit", "impact-assessment"]
+    },
+    {
+      "file": "verify/verify_close_readiness.py",
+      "reason": "FIXTURE_* 常量与 _selfcheck()/_write_fixture_policy() 内的角色名是**合成政策与反向对照样本**（验证闸门自身用），不是执行政策；真政策已全部走 load_policy()/agents/policy.json。",
+      "category": "test-fixture",
+      "names": ["FIXTURE_FANOUT", "FIXTURE_SPECS", "FIXTURE_POLICY"],
+      "functions": ["_write_fixture_policy", "_selfcheck"]
+    }
+  ],
+  "paths": [
+    {
+      "file": "verify/verify_no_policy_hardcode.py",
+      "reason": "探测器自身的内置兜底清单（跨平台 site-packages 名）；本身就是该规则的实现载体。",
+      "category": "tool-self",
+      "names": ["VENV_PARTS"]
+    },
+    {
+      "file": "src/collect_acl.py",
+      "reason": "ACL Anthology 的**会议/数据集名**（acl/emnlp/naacl），是采集范围的数据取值，不是本仓库的覆盖路径清单。A6 扩大扫描集（审核 R1：旧实现只扫 39/182 个 .py）后首次被 R3 扫到；R3 的语义是『覆盖路径清单须来自 policy.json::lint_paths』，此处不适用。作用域精确到常量名。",
+      "category": "data-processing",
+      "names": ["TARGET_COLLECTIONS"]
+    },
+    {
+      "file": "paper-qa-script/runtime_trace.py",
+      "reason": "运行时埋点的**被追踪对象**（paperqa 的点分模块/函数路径），是插桩目标而非本仓库的覆盖路径清单。A6 扩大扫描集（审核 R1）后首次被 R3 扫到；R3 的语义是『覆盖路径清单须来自 policy.json::lint_paths』，此处不适用。作用域精确到两个类属性名。",
+      "category": "data-processing",
+      "names": ["TARGETS", "MODULE_TARGETS"]
+    }
+  ],
+  "numbers": [],
+  "status": [
+    {
+      "file": "verify/verify_no_policy_hardcode.py",
+      "reason": "探测器自身的**词表**：用来识别'有人在代码里抄账本状态白名单'。它是检查工具的词表，不是闸门政策（账本状态机的真源已是 agents/policy.json::ledger_status，由 scripts/agent-ops.py 消费）。按 category 豁免，因此只放行本类别，不放行该文件里的其它类别发现。",
+      "category": "tool-self",
+      "categories": ["status"]
+    }
+  ]
+}

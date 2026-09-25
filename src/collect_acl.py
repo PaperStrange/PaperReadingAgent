@@ -6,7 +6,7 @@ import json
 import re
 import argparse
 from pathlib import Path
-from typing import Iterable, Any, Dict, List, Optional
+from typing import Iterable, Any, Dict, List
 
 from tqdm import tqdm
 from acl_anthology import Anthology

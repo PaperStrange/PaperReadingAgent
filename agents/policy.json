@@ -1,0 +1,386 @@
+{
+  "version": 1,
+  "_comment": "TG-15：闸门政策数据（不可从 fanout.json / spec frontmatter 推导的阈值与开关）。脚本与 verify 闸门一律从这里读，禁止在代码里写政策常量。判据见 docs/iteration/phases/testing-governance/backlog.MD 的 TG-15 卡；规则条文见 docs/1-WORKFLOW.MD §6 规则与纪律（政策数据化）。本文件出现无人读取的键会被 closure_problems() 判为漂移（死数据）。",
+  "spec_glob": "*.md",
+  "spec_dir": "agents/functions",
+  "scope_min_deviation_chars": 10,
+  "scope_ref_sources": [
+    "impact-assessment:"
+  ],
+  "ledger_status": {
+    "_comment": "TG-15：账本状态机（原先写死在 scripts/agent-ops.py 的 _STATUSES/_TERMINAL/_TRANSITIONS）。二查 finding：#2 状态白名单仍是代码常量、_allowed_exit_states() 是死代码 → 现搬进数据并由 CLI 消费。",
+    "all": ["queued", "running", "succeeded", "failed", "cancelled"],
+    "terminal": ["succeeded", "failed", "cancelled"],
+    "transitions": {
+      "queued": ["running"],
+      "running": ["succeeded", "failed", "cancelled"]
+    },
+    "non_credible": ["failed", "cancelled"]
+  },
+  "ledger_measurement": {
+    "_comment": "TG-13：账本『测量化』口径（dur / rounds / unknown 三条可核文本）+ 历史棘轮基线。闸门 verify/verify_ledger_measurement.py 与 CLI scripts/agent-ops.py 都从这里读，禁止在代码里另写一份口径（政策数据化，见 1-WORKFLOW.MD §6）。卡：docs/iteration/phases/testing-governance/cards/TG-13.md。",
+    "dur": "**墙钟口径**：`dur = ended_at - started_at`（同一 run 的**累计**墙钟时长；`round` 追加会把 ended_at 前移到末轮，故 dur 覆盖全部轮次）。**不是**『首末轮时间差』——账本逐轮只有 ended_at（没有逐轮 started_at），且首轮起点就是 started_at，两者在现有数据结构下不可区分；**不是**报告自报时长（报告时长不得回填账本）。任一端缺失/不可解析 → 该 run 的 dur 为 `unknown`。",
+    "rounds": "**真源 = 报告轮次**：产物报告里能数出轮次标记（`report_round_pattern`）时以报告为准，并与账本 `rounds_count`/`rounds[]` **核对**（不一致 = 测量缺陷，FAIL）。报告不可数时账本声明值只是 **declared 声明**（`measurement_source=declared`），不得当作实测值上报看板（TG-10③：看板展示前必须先保证数字可信，否则是把失真数据可视化）。",
+    "unknown": "**缺值必须显式 unknown**：无法测量时 `dur_minutes=null` 且 `measurement_source=unknown`，展示层写 `dur=unknown`/`rounds=unknown`；**禁止**用 `0.00`、整十分钟等退化值冒充实测值——`0.00` 的含义是『未测得』，不是『零耗时』。",
+    "measurement_source_values": ["wall-clock", "declared", "unknown"],
+    "measurement_sources": {
+      "_comment": "run 的『测量来源』字段 `measurement_source` 的取值语义（CLI 写入 / 闸门核对）。",
+      "wall-clock": "dur 由 CLI 在真实事件时刻写入的 started_at/ended_at 算出，且未命中退化判定 → 可信墙钟实测值。",
+      "declared": "数字来自声明而非实测（时间戳命中退化判定，或 rounds 只有 CLI 声明而无报告可核）→ 不得当作实测值使用或上报。",
+      "unknown": "无测量（时间戳缺失/不可解析，或既无声明也无报告）→ 必须显式写 unknown，禁止回落 0.00。"
+    },
+    "degenerate": {
+      "_comment": "退化值判定（时间戳口径），三类都是『不是测量值』：zero = started_at 与 ended_at 逐字节相同（dur 恰 0.00，把『未测得』写成『零耗时』）；round = dur 恰为 round_minutes_multiple 的整数倍（写入时刻凑整，2026-09-25 实测 3 例恰 10.00 分钟）；missing = 终态 run 缺任一端时间戳。",
+      "round_minutes_multiple": 10
+    },
+    "report_round_pattern": "(?:Round\\s*(\\d+)|第\\s*(\\d+)\\s*轮)",
+    "terminal_report_globs": ["*.report.md", "*report*.md", "*final*.md"],
+    "run_dir_exceptions_file": "agents/policy/run-dir-exceptions.json",
+    "dur_minutes_tolerance": 0.01,
+    "in_flight": {
+      "_comment": "**在飞 run**（status 非终态）不得被当成缺陷（2026-09-25 M2 修）：spec 强制『**先写报告、后 finish**』（`agents/functions/code-review.md`），于是『报告已落盘、终态尚未写回』在写报告到 finish 之间**必然出现**——把它当缺陷是与工作流互斥的结构性假红（旧口径 `terminal_not_written_back` 上限为 0，每个在飞 run 都会踩）。两类分开处理：① `terminal_not_written_back` 只在报告**已经等了超过** `terminal_writeback_grace_minutes` 仍不写回时判（超时 = 停摆，照旧逐条点名、按 cap 计；宽限期内 = 在飞，只打 INFO 不计缺陷）。② 评审类无 `result_files`（`missing_result_files_review`）只对**终态** run 判——非终态 run 尚未产出，同 A 类既有口径『非终态 run 尚未产出，不算缺失』。宽限期用 **epoch 秒**（报告文件 mtime 距现在），与项目时区无关。",
+      "terminal_writeback_grace_minutes": 120
+    },
+    "legacy_ratchet": {
+      "_comment": "棘轮基线：历史 run 允许存在的缺陷**计数上限**——实测值，2026-09-25（UTC+8）对全量 67 条账本行 + 69 个 agents/runs 目录一次测得。上限只许在重评基线时**下调**，不许为了变绿上调；闸门对超过上限的每一例逐条点名。**判定域**见 `domain`（2026-09-25 修：早于本次关闭窗口起点的存量计入上限，窗口内严格判定——旧口径『截止日 = 上限实测日 = 交付日』会把**当天新建**的 run 判成历史，拿当天更早实测的上限去量它 ⇒ 计数必然顶破上限，闸门在自己的交付日结构性红）。到期日 `review_by` 过后闸门直接 FAIL（没有到期日的豁免就是永久豁免）。**目录类历史债不走计数上限**，走 `agents/policy/run-dir-exceptions.json` 白名单（每条必须写 reason，且只减不增）。",
+      "domain": {
+        "_comment": "棘轮判定域的**规则名**（实现只认这一个取值，改数据不改代码即 fail-closed）：`close_window_start_exclusive` = 早于本次关闭窗口起点（`started_at < 窗口起点`）的 run 计入计数上限；窗口起点由 `verify_close_readiness.ledger_close_window()` 从**账本侧**推导（= `close_gate.scope_ref_step` 作用域 run 的 `started_at`），本闸门**复用同一实现**、同一比较口径（`started_at >= 窗口起点` = 窗口内，与 C1/N6 逐字一致——一个窗口只能有一处推导）。窗口内（含起点那条作用域 run）的 run 一律**严格判定**：无上限、无豁免。窗口不可推导（作用域 run 缺席/无 started_at）→ 退回 `cutoff_local_date` 的日期域并**在输出里点名『回退域』**（回退是放宽方向，必须可见；不得静默把全量账本判红，也不得静默收窄）。",
+        "window": "close_window_start_exclusive"
+      },
+      "cutoff_local_date": "2026-09-25",
+      "measured_at": "2026-09-25",
+      "review_by": "2026-10-31",
+      "caps": {
+        "output_chars_zero": 12,
+        "missing_result_files_review": 9,
+        "zero_duration": 3,
+        "round_duration": 3,
+        "negative_duration": 0,
+        "missing_timestamp": 0,
+        "rounds_mismatch": 1,
+        "terminal_not_written_back": 0
+      }
+    }
+  },
+  "artifact_paths": {
+    "_comment": "TG-9：新脚本产物目录约定（运行态 JSON → agents/runtime/、日志/截图 → 已忽略的 verify/*.log|png、临时结果 → %TEMP%）。闸门 verify/verify_artifact_paths.py 消费；规则条文见 docs/1-WORKFLOW.MD §6（新脚本产物目录约定）与 verify/README.md。**双向差集**：每条 ignored_roots 必须①被 .gitignore 真正忽略（对合成探针 check-ignore 命中，拼错即死配置）②在 .gitignore 里确有对应行③确有代码在用它；反过来，代码里每个已被忽略的落点也必须能归到某条声明根上。",
+    "ignore_file": ".gitignore",
+    "scan_globs": [
+      "scripts/**/*.py",
+      "verify/**/*.py",
+      "verify/**/*.mjs",
+      "src/**/*.py",
+      "paper-qa-script/**/*.py"
+    ],
+    "ignored_roots": [
+      "agents/runtime/*",
+      "agents/runs/",
+      "verify/*.log",
+      "verify/*.png",
+      "verify/suite_result.json"
+    ],
+    "tracked_targets": {
+      "_comment": "脚本有意改写的**已入库数据文件**（不是运行态产物）：每条必须①git 已跟踪②扫描集里确有脚本写它③写明 reason；三条任一不成立即 FAIL（死配置/假声明）。",
+      "agents/runtime/prices.json": "fetch-prices.py / agent-ops.py：litellm 价表落盘（数据文件，需入库；.gitignore 用 ! 白名单放行）",
+      "verify/settings_baseline.json": "verify_config_schema.py --regen-baseline：Settings 升级基线（数据文件，需入库；显式重建才写）"
+    },
+    "temp": {
+      "_comment": "临时结果落点：这些写法**等价于 %TEMP%**（判定为合法落点）。",
+      "module": "tempfile",
+      "calls": ["TemporaryDirectory", "TemporaryFile", "NamedTemporaryFile", "mkdtemp", "mkstemp", "gettempdir"],
+      "env_names": ["TEMP", "TMP", "TMPDIR"],
+      "literals": ["%TEMP%"]
+    },
+    "dynamic_ratchet": {
+      "_comment": "**动态目标棘轮**：写盘目标由函数参数/argv/运行时决定、无法静态判定者按**文件**计数设上限（2026-09-25 实测值，只许下调）。**未列入上限表的文件出现动态目标 = FAIL**（新脚本必须让产物落点可静态判定：用模块级常量拼路径，别把落点交给参数/argv）。`> 上限` = FAIL；`< 上限` 只提示收紧（不惩罚把动态目标改少的重构）。到期未重评 → FAIL。",
+      "cutoff_local_date": "2026-09-25",
+      "review_by": "2026-10-31",
+      "measured_at": "2026-09-25",
+      "measured_total": 107,
+      "_measured_how": "verify/verify_artifact_paths.py --report（真实仓库扫描集 89 个脚本 / 290 个写盘目标；其余 56 已忽略 + 119 %TEMP% + 3 已入库数据 + 1 无默认落点 + 4 仓库外绝对路径。闸门**不自我豁免**，故含它自己的 2 处）",
+      "files": {
+        "paper-qa-script/app/config_schema.py": 1,
+        "paper-qa-script/app/embedding_recommender.py": 2,
+        "paper-qa-script/app/orchestration.py": 11,
+        "paper-qa-script/app/remote_resolver.py": 3,
+        "paper-qa-script/manual_index_paper.py": 1,
+        "paper-qa-script/python_qa.py": 1,
+        "scripts/agent-ops.py": 7,
+        "scripts/card-inventory.py": 2,
+        "scripts/migrate-scope-declarations.py": 1,
+        "scripts/normalize-spec-eol.py": 1,
+        "scripts/refresh-providers.py": 12,
+        "scripts/report-freshness.py": 2,
+        "scripts/scheduled-tasks.py": 4,
+        "scripts/structure-guard.py": 5,
+        "src/collect_acl.py": 2,
+        "src/collect_iclr_openreview.py": 2,
+        "src/collect_neurips_proceedings.py": 2,
+        "verify/e2e_common.py": 2,
+        "verify/run_suite.py": 3,
+        "verify/verify_agentops.py": 5,
+        "verify/verify_archive.py": 1,
+        "verify/verify_card_index.py": 2,
+        "verify/verify_checkpoint.py": 6,
+        "verify/verify_checkpoint_index.py": 1,
+        "verify/verify_close_readiness.py": 1,
+        "verify/verify_freshness.py": 7,
+        "verify/verify_index_health.py": 5,
+        "verify/verify_ledger_measurement.py": 4,
+        "verify/verify_matrix.py": 1,
+        "verify/verify_md_tables.py": 1,
+        "verify/verify_no_policy_hardcode.py": 4,
+        "verify/verify_providers.py": 1,
+        "verify/verify_runner.py": 2,
+        "verify/verify_artifact_paths.py": 2
+      }
+    }
+  },
+  "offline_switch": {
+    "_comment": "TG-8：**离线开关**（一个开关关掉全部外呼）。为什么放这里而不是新配置文件：本项目已有唯一真源 `agents/policy.json`（§6 规则：阈值与开关一律进这里，代码里不得写政策常量），开关的『名字 + 关闭语义 + 拒绝文案』属于同类数据；为什么不放 `provider_config`/`.env`：那两处是**服务商凭据与模型**的配置面，与本开关的语义（进程级外呼闸门）不同源。**取值优先级：env `env_var` > 本键 `enabled`**——env 是显式操作者开关（继承到所有子进程，套件里可逐命令注入），本键是默认值（CI/离线机器把仓库配成默认离线只需改一个字段，不必改脚本）。判据（不是靠网络超时）：每个外呼入口在**发起请求之前**查开关，命中即**拒绝并点名**来源与目标 URL。守门/消费方：`verify/outbound_guard.py`（唯一实现，被 `scripts/fetch-prices.py`、`scripts/refresh-providers.py`、`scripts/agent-ops.py fetch-spec`、`paper-qa-script/app/engine.py` 共用）。",
+    "enabled": false,
+    "env_var": "PAPERQA_OFFLINE",
+    "env_true_values": ["1", "true", "yes", "on"],
+    "env_false_values": ["0", "false", "no", "off"],
+    "hf_offline_env": {
+      "_comment": "开关开启时同时注入的 HuggingFace/Transformers 离线变量（TG-8 正文 ③：避免 HEAD 重试阻塞）。它们不影响上面各入口的『拒绝』判据，只消除本地向量模型解析时的外呼重试。",
+      "HF_HUB_OFFLINE": "1",
+      "TRANSFORMERS_OFFLINE": "1"
+    },
+    "refuse_exit_code": 2,
+    "refusal_reason": "离线开关已开启（{source}）→ 拒绝外呼：{target}（不做超时降级、不静默换路径）。关闭方式：设 PAPERQA_OFFLINE=0，或把 agents/policy.json::offline_switch.enabled 改回 false。"
+  },
+  "lint_paths": [
+    "paper-qa-script",
+    "verify",
+    "scripts",
+    "src"
+  ],
+  "lint_rules": {
+    "_comment": "ruff 规则分级（TG-15：原写死在 verify_lint.py）；分级理由见该脚本 docstring 与 pre-research/tech/2026-09-21-lint-deps-security-check.MD §3.2",
+    "hard_a": "E9,F63,F7,F82",
+    "hard_b": "F401,F811,F841,E702,E711,E712,E722,W292",
+    "report_only": "D101,D102,D103,E501"
+  },
+  "lint_readability_ratchet": {
+    "_comment": "TG-6：**可读性棘轮**——把 C 级（`lint_rules.report_only` = 缺 docstring / 行长）从『只报告』改成『咬得住的棘轮』：闸门判 `计数 > 上限 → FAIL` 并**逐条点名**（规则号 + 实测计数 + 上限 + 超出条数），`review_by` 过期同样 FAIL。为什么是棘轮而不是硬 0：这四类是**历史既存债**且与正常改动同步漂移——新增代码行数、函数、字符串都会改变计数，硬 0 等价于要求全仓重排（对比 A/B 级 2026-09-23 一次清零：那两类是语法/未定义名/未用导入，属真 bug 且修复零成本）。**cap 只许下调**（重评基线时按当次实测下调，不许为了变绿上调）；**caps 键集必须与 `lint_rules.report_only` 逐键相等**（少一条 = 该类无限放行；多一条 = 死数据/拼写漂移，闸门逐条点名）。上限来源＝**2026-09-25（UTC+8）实测全仓值**（`lint_paths` 四个路径共 2896 条：D101=12 / D102=46 / D103=207 / E501=2631；本卡落地前的同口径读数为 2910 = 12/46/210/2642）——此前卡里手抄的读数（11/42/191~192/1774~1804）**已经漂了**，故一律以当次实测为准，不得沿用旧读数。到期日 `review_by` 过后闸门 FAIL（没有到期日的豁免就是永久豁免）。守门闸门 = `verify/verify_lint.py`。",
+    "measured_at": "2026-09-25",
+    "review_by": "2026-10-31",
+    "caps": {
+      "D101": 12,
+      "D102": 46,
+      "D103": 205,
+      "E501": 2510
+    },
+    "_remeasure_2026_09_25_close": "关闭期**下调**（只减不增）：D103 207→205（补 10 处 public 函数 docstring）、E501 2631→2552（把本批新增/改写的长 CJK docstring 与注释行按**显示宽度**折行——ruff 的 E501 按显示宽度计、CJK 占 2 列）。上一版把 cap 记在实测之上（E501 2631 vs 冻结 HEAD 实测 2615）留下的**静默配额**已按 `docs/3-LEARNED.MD` 1.66 收掉：现在 **cap = 当次实测**（零余量）。**已知局限（复核 finding iv）**：`verify_gate_integrity.py` 的单调性判据与 `git HEAD` 比较 ⇒ 它只能拦住**未提交**的上调；一次**已提交**的放宽会成为新基线（要堵这一层需要『把实测值也钉进政策』，属 Sprint-18 候选）。**`measured_total` 必须等于四类 cap 之和**（该等式已由 `verify_gate_integrity.py` 机检——2026-09-25 复核 #3 实测它曾停在 2833 而实测合计 2815，属『没人读的第二份声明』，同族形态）。",
+    "measured_total": 2773
+  },
+  "archive_role_prefix": "tech-research",
+  "card_index": {
+    "_comment": "TG-14④ 卡索引 lint 的判据参数（原写在 verify/verify_card_index.py，被 verify_no_policy_hardcode.py 判为 R1 阈值硬编码——闸门又抓住了写闸门的人）。A3（finding N7，2026-09-25）收紧 ④：首版只比「卡正文前 N 字」是否作为子串出现在 Sprint 文档某行——**在副本前填充 ≥61 字符即可规避**（指纹不再连续，判据静默放行）。现改为**全文行级指纹比对**：卡正文段落（整段，非前 N 字）必须整段不被 Sprint 文档的**任何一行**包含。填充/加引号/插字都会打断包含关系 → 规避路径被堵；合法计划表行仍然放行（它天然只含卡正文的**开头句**，不含整段）。",
+    "required_sections": ["状态", "规模", "来源", "Sprint"],
+    "min_fingerprint_chars": 25,
+    "min_line_chars": 30,
+    "status_aliases": {
+      "_comment": "⑥ 状态一致性的状态词表：{状态词: [别名…]}。卡文件 `## 状态` 首行、backlog 索引行『状态』列、该卡所属 Sprint 文档看板行，三处必须归一到**同一个状态词**。匹配取**最长别名优先**（`实质完成` 不会被 `完成` 抢走）；归不出状态词即 FAIL（禁止『判不了就当没问题』）。词表是数据：新增状态词只改这里，不改闸门代码。",
+      "完成": ["已完成", "完成", "DONE", "✅"],
+      "实质完成": ["实质完成"],
+      "进行中": ["进行中", "WIP"],
+      "候选": ["候选"],
+      "待办": ["待办"],
+      "计划中": ["计划中"],
+      "待排期": ["待排期"],
+      "已交付": ["已交付"],
+      "冻结": ["冻结"]
+    },
+    "baseline_file": "agents/runtime/tg14-baseline.json",
+    "negation_prefixes": ["未", "不", "非", "尚未", "还没"],
+    "baseline_command": "python scripts/card-inventory.py",
+    "baseline_summary_regex": "合计：(\\d+) 张卡 / (\\d+) 个阶段 / 非卡行 (\\d+)"
+  },
+  "md_table_docs": [
+    "docs/1-WORKFLOW.MD",
+    "docs/2-ARCHITECTURE.MD",
+    "docs/3-LEARNED.MD",
+    "docs/4-ALGORITHM.MD",
+    "docs/5-VERSIONS.MD",
+    "verify/README.md",
+    "verify/TEST-MATRIX.MD",
+    "agents/README.md"
+  ],
+  "hardcode_exemptions": {
+    "_comment": "A11（审核 N4）：`verify/policy-hardcode-exemptions.json` 的**台账校验参数**。二查实测：台账里加一条 `categories:[\"policy\"]` 即 rc 0，同一屏还打印『无政策硬编码 clean』——与台账自述『绝不整文件豁免』直接冲突（一条数据编辑就把整份代码静音）。校验四条：① `category` 必在白名单；② `reason` 必填且 ≥ min_reason_chars；③ **作用域最小化**——每条的 names/functions/categories 不得全空（无作用域的条目 = 整文件豁免）；④ 类别级豁免（`categories`）只允许给 `category_wide_files`（工具自身的词表），取值限 `category_wide_categories`。",
+    "categories": ["test-fixture", "tool-self", "data-processing", "cli-contract", "display-only"],
+    "min_reason_chars": 10,
+    "category_wide_categories": ["status"],
+    "category_wide_files": ["verify/verify_no_policy_hardcode.py"]
+  },
+  "md_table_coverage": {
+    "_comment": "A10（审核 N1/R1）：`md_table_docs` + `md_table_globs` 的**范围声明**，用于与文件系统做**双向差集**。roots = 递归纳入其下全部 `.md`/`.MD` 的目录；include_files = 目录之外的单个文件（必须存在）。闸门实测『应扫 N / 实扫 M』并要求 N==M：差集非空即 FAIL 并逐条点名——这正是 N1 的形态（政策只写了 4 条窄 glob，阶段级 `.MD` 与分析类文档从不自动纳入，实测漏 29/160，其中 7 处是真缺陷）。根是**独立声明**的：删掉某条 glob 不会连带缩小应扫集，故『少扫一棵树』也会被抓。",
+    "roots": ["docs", "verify"],
+    "include_files": ["agents/README.md"]
+  },
+  "hardcode_scan_coverage": {
+    "_comment": "A6（审核 R1，2026-09-25）：`verify/verify_no_policy_hardcode.py` 扫描集的**范围声明**，与文件系统做**双向差集**（同 `md_table_coverage` 的 A10 做法）。roots = 必扫树（每条必须存在，其下全部 `.py` 进扫描集）；globs = 实际展开（每条必须 ≥1 命中）；两侧展开结果必须**相等**，闸门打印『应扫 N / 实扫 M』，不一致即 FAIL 并逐条点名（『应扫未扫』『实扫超出声明』）。roots 是**独立声明**的，删掉一条 glob 不会连带缩小应扫集。exclude_dirs = 显式排除（相对仓库根；裸名按路径任意段匹配，含 `/` 的按前缀匹配）：`paper-qa`（vendored 上游库）、`.venv`/`node_modules`（依赖环境）、`__pycache__`/`.ruff_cache`（缓存）、`agents/runs`（**运行产物**：评审/执行 run 的 scratch 树，含 verify/scripts 的一次性副本，不是仓库源码）、`.agents`（工具态，未跟踪）。**封闭世界**：仓库里任何含 `.py` 的树必须落在 roots 或 exclude_dirs 内——出现未纳管的树即 FAIL（防『新加一棵代码树但没人把它纳入闸门』）。R1 的事故形态：旧实现把 `('scripts','verify')` 写死在脚本里，实测只扫 39/182 个 `.py`，闸门却打印 PASS——『漏扫』让 PASS 的含义从『查过没问题』退化成『没查』。",
+    "roots": ["scripts", "verify", "src", "paper-qa-script"],
+    "globs": ["scripts/**/*.py", "verify/**/*.py", "src/**/*.py", "paper-qa-script/**/*.py"],
+    "exclude_dirs": ["paper-qa", ".venv", "node_modules", "__pycache__", ".ruff_cache", "agents/runs", ".agents"]
+  },
+  "md_table_globs": [
+    "docs/**/*.md",
+    "docs/**/*.MD",
+    "verify/**/*.md",
+    "verify/**/*.MD",
+    "agents/README.md"
+  ],
+  "md_table_legacy_files": {
+    "_comment": "棘轮（ratchet）基线：这些**历史 Sprint/验收文档**里的表格结构缺陷是既存的（2026-09-23 扩覆盖时首次被扫到，共 15 处：内容里的管道未转义 / 表头与数据行列数不符）。避免为了让闸门变绿而改写已关闭 Sprint 的历史记录（2026-09-23 实测过一次越界改写，已 revert）。A2 修法（finding M-a/N2/R3，2026-09-25）：**按文件设上限**——`files` 由路径列表改为 `{路径: 缺陷数上限}`，闸门对基线文件也判 `len(found) > cap → FAIL`（棘轮只许变紧：上限只减不增，且**不许用「修好一处、新增一处」把总量顶回上限**——上限值本身只能在重评基线时下调）。上限来源＝各文件实测缺陷数。**新文件/新改动一律判失败**；清这批历史债需另开卡逐处人工修（每处需人判：补表头列 / 转义内容管道 / 合并单元格）。",
+    "review_by": "2026-10-31",
+    "files": {
+      "docs/iteration/sprint/2026-08-30-sprint-6.md": 1,
+      "docs/iteration/sprint/2026-09-07-sprint-15.md": 12,
+      "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD": 1,
+      "docs/iteration/sprint/2026-09-12-sprint-16.md": 1
+    }
+  },
+  "deduction_rates": {
+    "_comment": "§2.1.1（用户 2026-09-25 采纳 v0）：**未闭环 critical/major 的扣率**。这是**政策数据**——不是文档举例、不是脚本常量；闸门与将来的结算调用一律从这里读（政策数据化，见 docs/1-WORKFLOW.MD §6）。守门闸门 = verify/verify_deduction_rates.py；条文见 docs/iteration/sprint/2026-09-21-governance-batch-plan.MD §2.1.1 与 cards/TG-15.md（两处**只引用本键，不复制数值**）。计分口径：以**被判级的卡**为对象，`扣分 = 卡点数 × Σ(未闭环发现的比例)`；比例只按**级别**取，不按条数线性累加。",
+    "ratios": {
+      "critical": 0.5,
+      "major": 0.2,
+      "minor": 0.0,
+      "nit": 0.0
+    },
+    "ratios_note": "比例表：级别 → 占卡点数的比例。每条必须是 ∈[0,1] 的有限数（不得写注释键——注释写在本键；写成字符串/超界/负值一律 fail-closed）。**至少一项 > 0**：全 0 等于规则恒不扣分 = 静默关掉规则，故拒绝。",
+    "merge_same_root_cause": true,
+    "merge_same_root_cause_note": "**同根因合并开关**（不是常量）：true = 同一根因的多条发现合并计一次、取其中最高级别；false = 逐条线性累加。根因分组由调用方给（`deduction_for(..., root_causes=...)`）；**未给分组时按「每条各自一个根因」处理——不静默合并**（静默合并会低估扣分，是 fail-open 方向）。",
+    "cap_at_card_points": true,
+    "cap_note": "**封顶**：单卡总扣分不超过该卡点数（下限 0、不倒扣）。false = 不封顶。",
+    "rounding_step": 0.05,
+    "rounding_note": "**取整步长**：结果四舍五入到 rounding_step（与账本精度 0.05 一致）。必须是 (0,1] 内的有限数。",
+    "ratchet_item_folding": {
+      "_comment": "§2.1.1 第 5 条：原「棘轮『上限制+到期日』未闭环 → 扣 0.5」**折算为一条 major**（= 卡点数 × ratios[unclosed_folds_to_level]），不再单独列固定值——避免同一件事两种算法。调用方在构造 levels 时为该根因追加 count 条 `unclosed_folds_to_level`；本键由 verify/verify_deduction_rates.py 校验（级别必须在 ratios 里、count 为正整数），以免这条折算又被写回代码常量。",
+      "unclosed_folds_to_level": "major",
+      "count": 1
+    },
+    "unclosed_criteria": [
+      {
+        "id": "fixed",
+        "label": "① 已修",
+        "evidence": "有提交 sha（修复提交本身）",
+        "evidence_kinds": ["commit-sha"],
+        "requires_due_date": false
+      },
+      {
+        "id": "reverse-control",
+        "label": "② 有反向对照",
+        "evidence": "在**未修复**实现上跑出 FAIL 的记录",
+        "evidence_kinds": ["fail-record"],
+        "requires_due_date": false
+      },
+      {
+        "id": "guarded",
+        "label": "③ 有闸门/断言守住",
+        "evidence": "脚本名 + 断言名（两者都要，缺一不算）",
+        "evidence_kinds": ["gate-name", "assertion-name"],
+        "requires_due_date": false
+      },
+      {
+        "id": "deferred",
+        "label": "④ 属显式延期且写了到期日",
+        "evidence": "延期记录 + **到期日**（YYYY-MM-DD）；无到期日 → 视为未闭环",
+        "evidence_kinds": ["deferral-record", "due-date"],
+        "requires_due_date": true
+      }
+    ],
+    "unclosed_criteria_note": "**「未闭环」的四条判据**（逐条可核）：一条发现处于未闭环 ⟺ **四条都拿不出可核证据**。判据是「闭合条件」，故缺证据即未闭环（fail-closed = 多扣分而非少扣分）。结构化约束：≥1 条必须声明 `requires_due_date: true`——否则「显式延期」会静默退化成「说一句延期就算闭环」（这正是第 ④ 条要堵的洞）；`id` 必须唯一（重复 = 判据集合不可枚举）。",
+    "undetermined": "比例表/判据未落为数据之前，结算记为「扣率未定」——**不得默认按 0、不得执行方自选**（§2.1.1 第 6 条）。"
+  },
+  "close_gate": {
+    "scope_ref_step": "scope",
+    "coverage": {
+      "exceptions_file": "agents/policy/coverage-exceptions.json",
+      "doc_only_globs": [
+        "docs/**",
+        "*.md",
+        "agents/**/*.md"
+      ],
+      "_comment": "C3-T：覆盖默认由 run 数据计算（每个 run 的 (coverage_anchor, covers_through]），本表只登记**例外**。例外必须 sha 钉死（full 40 位）；表落后于例外集合之外 → 默认 FAIL 并逐条点名未归属 sha（失效方向反转：不静默变绿）。",
+      "scope_run_window": "B3（2026-09-25）覆盖窗口语义：**作用域类 run 不承担内容覆盖**——即 `close_gate.scope_ref_step` 指向那一步的 role（本仓＝impact-assessment），以及 spec 声明 `coverage_window: none` 的 role。它们只在 T0 界定本次关闭覆盖哪些变更，其 (coverage_anchor, covers_through] 因此常为 (X, X] 空区间，**空区间不判问题**。**内容评审类 run 承担内容覆盖**——spec 声明 `coverage_window: self` 的评审 role（本仓＝code-review / doc-audit / agent-onboarding-review）；其空窗口仍判 FAIL，并给出修复指引（`scripts/agent-ops.py set-anchor <run_id> --covers-through <sha> --reason <理由>` 受控回填，或重跑该评审）。判据不按 role 名硬编码：作用域类由 `scope_ref_step` 派生，其余由 spec frontmatter 派生。"
+    }
+  },
+  "derived_numbers": {
+    "_comment": "『派生数字不得手抄』（2026-09-25，Sprint-17 关闭期；根因＝一查 run-2026-09-25-doc-audit-070 finding 1/2）：文档里引用**派生数字**（断言数/卡数/文件数/脚本数/字节数/C 级条数/棘轮计数）只有两种合法形态——① **复现命令 + 以该命令输出为准**；② **标明时点的历史读数**（同行带日期或 sha）。写成『现测 <数字>』『实测 <数字>』这类**当期主张**即违规。闸门 = verify/verify_derived_numbers.py（offline）。`baseline` 按文件设违规处数上限：**只减不增**（与 git HEAD 版逐项比较，上调即 FAIL），`review_by` 到期即 FAIL；未列入 baseline 的文件上限 = `default_cap`（新文档一处都不许有）。规则条文 = docs/1-WORKFLOW.MD §6『派生数字不得手抄』。baseline 初值 = 2026-09-25 全仓实测（32 个历史文件 / 111 处，其余文档 0 处）。",
+    "scan_globs": ["docs/**/*.md", "docs/**/*.MD"],
+    "generated_files": ["verify/TEST-MATRIX.MD"],
+    "time_anchor_regex": "(?:20\\d\\d-\\d\\d-\\d\\d|`[0-9a-f]{7,40}`|以现跑为准|以命令输出为准|现跑为准|现值以|以该命令输出为准)",
+    "default_cap": 0,
+    "patterns": [
+      {"id": "claim_count", "regex": "(?:现测|实测|当前|现有)\\s*[:：]?\\s*\\**\\s*\\d+\\s*(?:张卡|卡\\b|个阶段|脚本|个文件|文件|份|条|B\\b)", "hint": "改成『复现命令 + 以该命令输出为准』，或在同一行标注时点（日期/sha）"},
+      {"id": "all_pass", "regex": "ALL\\s*PASS\\s*\\(\\s*\\d+\\s*assertions?", "hint": "断言数以现跑末行为准，不要在文档里固化"},
+      {"id": "assertions_cn", "regex": "\\d+\\s*条?断言", "hint": "同上：改为命令 + 以末行为准，或同行标注时点"},
+      {"id": "evidence_line", "regex": "EVIDENCE:[^\\n]*assertions=\\d+", "hint": "机读证据行由脚本现跑打印，不抄进文档"},
+      {"id": "matrix_check", "regex": "CHECK OK:\\s*\\d+\\s*脚本", "hint": "脚本数以 verify_matrix.py check 现跑为准"},
+      {"id": "suite_scripts", "regex": "SUITE PASSED\\s*\\(\\s*\\d+", "hint": "套件脚本数以现跑为准"},
+      {"id": "ratchet_counts", "regex": "(?:E501|D10[123])\\s*=\\s*\\d+", "hint": "棘轮计数以 EVIDENCE 行现跑为准"},
+      {"id": "c_level_total", "regex": "C\\s*级[^\\n]{0,24}?\\d{3,}\\s*条", "hint": "C 级条数以 verify_lint.py 报告行现跑为准"}
+    ],
+    "baseline": {
+      "docs/3-LEARNED.MD": 8,
+      "docs/4-ALGORITHM.MD": 4,
+      "docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-learned.MD": 3,
+      "docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-runs.MD": 1,
+      "docs/iteration/phases/refactor-analysis/2026-09-21-fac13-14-impact.MD": 1,
+      "docs/iteration/phases/refactor-analysis/backlog.MD": 1,
+      "docs/iteration/phases/refactor-analysis/cards/F-AC10.md": 1,
+      "docs/iteration/phases/testing-governance/2026-09-25-d2d3-independent-review.MD": 1,
+      "docs/iteration/phases/testing-governance/2026-09-25-governance-exit-evidence.MD": 3,
+      "docs/iteration/phases/testing-governance/2026-09-25-open-items-check.MD": 3,
+      "docs/iteration/phases/testing-governance/cards/TG-10.md": 1,
+      "docs/iteration/phases/testing-governance/cards/TG-13.md": 1,
+      "docs/iteration/phases/testing-governance/cards/TG-14.md": 1,
+      "docs/iteration/phases/testing-governance/cards/TG-17.md": 3,
+      "docs/iteration/phases/testing-governance/cards/TG-6.md": 2,
+      "docs/iteration/phases/testing-governance/cards/TG-7.md": 4,
+      "docs/iteration/phases/testing-governance/cards/TG-8.md": 3,
+      "docs/iteration/pre-research/tech/2026-08-31-testing-governance.MD": 1,
+      "docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD": 1,
+      "docs/iteration/sprint/2026-08-30-sprint-8.md": 4,
+      "docs/iteration/sprint/2026-08-30-sprint-9.md": 2,
+      "docs/iteration/sprint/2026-08-31-f2-acceptance-guide.MD": 3,
+      "docs/iteration/sprint/2026-08-31-sprint-10.md": 1,
+      "docs/iteration/sprint/2026-08-31-sprint-11.md": 5,
+      "docs/iteration/sprint/2026-08-31-sprint-12.md": 3,
+      "docs/iteration/sprint/2026-08-31-sprint-13.md": 5,
+      "docs/iteration/sprint/2026-08-31-sprint-14.md": 5,
+      "docs/iteration/sprint/2026-09-07-sprint-15.md": 19,
+      "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD": 5,
+      "docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD": 9,
+      "docs/iteration/sprint/2026-09-12-sprint-16.md": 6,
+      "docs/iteration/sprint/2026-09-21-sprint-17.md": 1
+    },
+    "review_by": "2026-10-31"
+  },
+  "gate_integrity": {
+    "_comment": "闸门可信度（2026-09-25，Sprint-17 关闭期；两条均已实测，见 docs/3-LEARNED.MD 1.65/1.66）：① 裸 `assert` 承担判定 ⇒ `python -O`/`PYTHONOPTIMIZE=1` 下判据被整体剥离却照常打印 `ALL PASS`（同一样本正常档 rc=1、-O 档 rc=0）；套件起子进程不构造 `env=` ⇒ 一个环境变量能让整套闸门变绿。② 棘轮上限是自声明数据，`cap` 记在实测之上 = 给新增违规发**静默配额**，且没有任何机制阻止『调高上限即变绿』。闸门 = verify/verify_gate_integrity.py（offline）：`guard_required` 里的每个闸门必须含 `guard_line`（-O 下 `__debug__` 为 False ⇒ 立即失败退出，不打印成功行）；`probe_gate` 只是**入口**：`-O` 探针实际逐个跑 `guard_required` 全部闸门，判据 = 每个都**非零退出且不打印 `ALL PASS`**（单跑一条等于自证——2026-09-25 修复验证复核 finding ii）；`ratchets` 列出的上限表与 git HEAD 版逐项比较，**任何上调即 FAIL**，且每张表必须带未过期的 `review_by`。存量闸门不回溯改造，未列入 `guard_required` 的逐条 WARN（缺口可见）。",
+    "guard_line": "if not __debug__:",
+    "guard_required": [
+      "verify/verify_lint.py",
+      "verify/verify_deduction_rates.py",
+      "verify/verify_no_policy_hardcode.py",
+      "verify/verify_card_index.py",
+      "verify/verify_derived_numbers.py",
+      "verify/verify_gate_integrity.py",
+      "verify/verify_artifact_paths.py",
+      "verify/verify_close_readiness.py"
+    ],
+    "probe_gate": "verify/verify_gate_integrity.py",
+    "probe_args": ["--selftest"],
+    "ratchets": [
+      {"pointer": "lint_readability_ratchet.caps", "review_by_pointer": "lint_readability_ratchet.review_by"},
+      {"pointer": "md_table_legacy_files.files", "review_by_pointer": "md_table_legacy_files.review_by"},
+      {"pointer": "ledger_measurement.legacy_ratchet.caps", "review_by_pointer": "ledger_measurement.legacy_ratchet.review_by"},
+      {"pointer": "derived_numbers.baseline", "review_by_pointer": "derived_numbers.review_by"}
+    ]
+  }
+}

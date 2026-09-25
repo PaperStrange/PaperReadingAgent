@@ -18,7 +18,6 @@ import ipaddress
 import os
 import re
 import socket
-import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import urljoin, urlparse

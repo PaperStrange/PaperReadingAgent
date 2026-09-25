@@ -22,6 +22,11 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 2026-09-25（未闭环核查 O1）：checkout@v4 默认 fetch-depth=1（浅克隆），而关闭前置闸门的
+          # C3 覆盖闭环要跑 `git rev-list <锚点>..HEAD`——浅克隆下锚点不可达会直接报错。
+          # 填真锚点后该分支首次实跑，故必须取全历史。
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -62,6 +67,67 @@ jobs:
           # 矩阵防漂移必须独立执行（verify_matrix.py 自身不参与 tier 选择）
           python verify/verify_matrix.py check
 
+      - name: Close-readiness gate for sprints that claim closure (TG-11)
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          # TG-11 ③b/M4：**谁声称已关闭，谁就必须自证**——只校验**真的写了锚点 sha** 的 Sprint 文档
+          # （D4：不对历史 Sprint 文档追溯；占位文字如"三查锚点: 待填"不算声明，故用正则而非关键词匹配）。
+          # 2026-09-25（code-review-072 C2）：`docs/iteration/sprint/` 是 **windows-only** 目录，
+          # main 上没有它——`Get-ChildItem <不存在的目录>` 在 `$ErrorActionPreference = "Stop"` 下抛
+          # **终止性** `ItemNotFoundException`（不是"返回空集合"），于是这一步在 main 上恒红。
+          # 故先判存在性：不存在 → 显式打印"本分支无 sprint 文档 → 跳过"并 **exit 0**（判据不变，
+          # 只是把"没有可校验对象"如实说成跳过，而不是把它伪装成失败）。选择器正则语义**未改动**。
+          $sprintGlob = 'docs/iteration/sprint/*sprint-*.md'
+          $pat = '三查锚点\s*[:：]\s*`?[0-9a-fA-F]{7,40}'
+          $checked = 0
+          if (Test-Path 'docs/iteration/sprint') {
+            foreach ($f in Get-ChildItem $sprintGlob) {
+              if (Select-String -Path $f.FullName -Pattern $pat -Quiet) {
+                Write-Host "close-readiness -> $($f.Name)"
+                python verify/verify_close_readiness.py --sprint $f.FullName
+                $checked++
+              }
+            }
+            Write-Host "close-readiness: checked $checked sprint doc(s) declaring a real anchor"
+          } else {
+            Write-Host "close-readiness: no sprint docs on this branch -> step skipped (docs/iteration/ is windows-only; selector '$sprintGlob' matched nothing)"
+          }
+
+      - name: Explicit gate tiers (card index / md tables / policy hardcode / lint / structure guard)
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          # A3（finding M-e/M-f/N7，2026-09-25）：**显式**调用闸门并**打印实际档位/参数**（A3 起四个；
+          # A-M12 起追加结构守卫自检，见本步骤末尾）。
+          # 此前 CI 只显式接了 verify_close_readiness.py，其余四个只经套件**默认参数**间接运行，
+          # 于是"跑的是哪一档"在日志里不可核（实测：card_index 默认档在坏数据上只 WARN ⇒ 套件绿
+          # 不能证明卡索引一致）。这里每个闸门都打印它的档位，任一步非零即整步失败（fail-closed）。
+          # 与"Offline verify suite"步骤的分工：套件跑**全部** offline 脚本（覆盖自动扩展），
+          # 本步骤固化**档位可核**（严格档 + 参数可见）——两侧都保留，不互相替代。
+          Write-Host "gate: verify_card_index.py --check --strict  (档位=严格：索引↔卡文件 + 必备节 + 正文分离；阈值取自 agents/policy.json::card_index)"
+          python verify/verify_card_index.py --check --strict
+          Write-Host "gate: verify_md_tables.py  (档位=默认全扫描集；棘轮基线上限 + review_by 由 agents/policy.json::md_table_legacy_files 决定)"
+          python verify/verify_md_tables.py
+          Write-Host "gate: verify_no_policy_hardcode.py  (档位=默认仓库全扫 scripts/ + verify/；豁免台账 verify/policy-hardcode-exemptions.json)"
+          python verify/verify_no_policy_hardcode.py
+          Write-Host "gate: verify_lint.py  (档位=默认 A/B 硬闸门 + C 级只报；规则分级取自 agents/policy.json::lint_rules；ruff pin 见 requirements-windows.txt)"
+          python verify/verify_lint.py
+          # A-M12（2026-09-25 提前交付，Sprint 归属仍为 Sprint-18/G2）：结构守卫的**自检**档。
+          # CI 里没有"编辑前的快照"可比（快照是本地工作流的运行态产物），所以这里只跑 `--replay`：
+          # 它在 %TEMP% 的副本上复跑 R1 的真实输入 + F2/H1/T1 反向对照，断言每类都被**按期望**处置
+          # （该拦下的 rc=1、该放行的 rc=0 且带 [新增]/[修改] 标注）+ 干净副本 rc=0 + 真文件零改动
+          # ——证明机制本身有效，而不是"声明它有效"。类别数与断言数**不写死在标签/注释里**：
+          # F2/H1/T1 是逐批追加的，写死的数字必然过期（旧文本还停在"5 类 R1"，实际已远超）；
+          # 以脚本自报的末行 `ALL PASS (N assertions)` 为准。文档集取自
+          # agents/policy.json::md_table_docs/md_table_globs（与 verify_md_tables.py 同源）。
+          Write-Host "gate: structure-guard.py --replay  (档位=全类别复跑自检：R1 真实输入 + F2/H1/T1 反向对照；类别数见脚本自报首行、断言数见末行 ALL PASS (N assertions)，标签不写死数字；不含本地快照比对)"
+          python scripts/structure-guard.py --replay
+
       - name: Build reactflow frontend
         working-directory: paper-qa-script/reactflow-paperqa-prototype/frontend
         run: |
@@ -93,6 +159,9 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 同上（e2e 手动作业）：全历史，避免锚点不可达。
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"

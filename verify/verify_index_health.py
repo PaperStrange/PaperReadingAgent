@@ -13,7 +13,6 @@ from __future__ import annotations
 VERIFY_META = {'features': '索引一致性三重探针 + 损坏自愈（合成六形态，离线）', 'tier': 'offline', 'providers': [], 'est_seconds': 20, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
 
 import asyncio
-import json
 import os
 import shutil
 import sys

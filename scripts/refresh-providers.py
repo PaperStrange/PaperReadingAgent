@@ -35,6 +35,13 @@ RUNS_DIR = ROOT / "agents" / "runs"
 STATUS_FILE = ROOT / "agents" / "runtime" / "provider_refresh_status.json"
 PROPOSAL_FILE = ROOT / "agents" / "runtime" / "provider_refresh_proposal.json"
 
+# TG-8②：离线开关（唯一实现 = verify/outbound_guard.py；政策数据 = agents/policy.json::offline_switch）。
+# `--from-file`（离线快照）路径不经过 fetch_text，故开关开启时**仍然可用**——这是刻意的：
+# "禁止外呼"不等于"禁止离线工作"，快照档本来就是零外呼路径。
+sys.path.insert(0, str(ROOT))
+
+from verify.outbound_guard import OfflineRefused, refuse_exit_code, refuse_if_offline  # noqa: E402
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
@@ -71,7 +78,13 @@ class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 
 def fetch_text(url: str) -> tuple[str | None, str | None]:
-    """返回 (文本, 错误原因)；失败不抛异常，由调用方记录 reason。"""
+    """返回 (文本, 错误原因)；失败不抛异常，由调用方记录 reason。
+
+    TG-8②：**发请求之前**先过离线开关——`OfflineRefused` 继承 `BaseException`，
+    故本函数的 `except Exception` 不会把它吞成 `(None, "ConnectionError: ...")`：
+    被开关拒绝时**整条命令**以政策退出码结束，而不是在归档里留一条"抓取失败"的假证据。
+    """
+    refuse_if_offline(url)
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https":
         return None, f"仅允许 https：{parsed.scheme}"
@@ -505,4 +518,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # TG-8②：离线拒绝 → 明确退出码（政策 `offline_switch.refuse_exit_code`），不伪装成"抓取失败"。
+    try:
+        sys.exit(main())
+    except OfflineRefused as exc:
+        print(f"OFFLINE-REFUSED: {exc}")
+        sys.exit(refuse_exit_code())
