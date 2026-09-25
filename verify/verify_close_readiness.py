@@ -1,6 +1,7 @@
 """TG-15：关闭前置闸门（offline）——**三条不变式 + 数据驱动**，替换原先的按角色硬编码判据。
 
-历史（为什么改）：TG-11 ③b 版本把判据写成"按角色名逐条判断"——`CLOSE_ROLES` 写死 4 个角色、
+历史（为什么改）：
+TG-11 ③b 版本把判据写成"按角色名逐条判断"——`CLOSE_ROLES` 写死 4 个角色、
 二查必须含 `windows`/`main`、
 〇查必须早于二查……**每加一个步骤/角色/分支都要改这个文件**，
 而"改代码"本身没有任何闸门在守（`TG-15` 卡的起因）。TG-15 之后：
@@ -28,7 +29,9 @@ C3-T 例外表（用户 2026-09-23 选型 + 对"表过期"的担心）：覆盖*
 **表落后 = 默认 FAIL 并逐条点名未归属 sha**（失效方向反转：不静默变绿）。
 
 用法：
-    .venv\\Scripts\\python.exe verify\\verify_close_readiness.py                    # 自检（合成 fixture，含反向对照）
+    .venv\\Scripts\\python.exe
+    verify\\verify_close_readiness.py                    # 自检（合成 fixture，
+    含反向对照）
     .venv\\Scripts\\python.exe verify\\verify_close_readiness.py --sprint <文件>     # 真数据（关闭时）
     .venv\\Scripts\\python.exe verify\\verify_close_readiness.py --sprint <文件> --no-coverage
                                                                                   # 覆盖
@@ -1214,6 +1217,7 @@ def _selfcheck() -> int:
     # 三条对照钉住新口径。
     SHA_OLD = "aaaa1111" + "0" * 32  # 代表"更老、不在序号表内"的锚点
     SHA_ODD = "bbbb2222" + "0" * 32  # 代表"与本次历史无关"的锚点
+    SHA_OLD2 = "cccc3333" + "0" * 32  # 代表"更老、不在序号表内"的**上界**（历史 run 的形态）
     order_b5 = order_index([SHA_B, SHA_A])  # SHA_B 最新、SHA_A 次之
     w_older = CoverageWindow(run_id="run-b5-older", role=other_role, anchor=SHA_OLD,
                              through=SHA_B, from_run=True)
@@ -1251,6 +1255,20 @@ def _selfcheck() -> int:
     ok("B5 反向对照 c：`_is_ancestor` 对**无法解析的锚点**必须返回 False 而**不得抛错**"
        "（否则整闸门中止、点名分支成死代码）",
        _is_ancestor(ROOT, "deadbeef" * 5, head_sha(ROOT)) is False, "bogus sha → False")
+    # B5 反向对照 d（自查发现的**假阳性回归**）：
+    # 窗口**两个端点都证明为更老** = 该窗口整体落在本次
+    # 关闭窗口**之前**（历史 run 的正常形态：063/064/065/066/067…）
+    # ⇒ 贡献 0 覆盖是**预期**、
+    # **不得点名**。上界判据第一版只判锚点、上界一律点名 ⇒ 实测 12 项假阳性。
+    w_hist = CoverageWindow(run_id="run-b5-hist", role=other_role, anchor=SHA_OLD,
+                            through=SHA_OLD2, from_run=True)
+    att_hist = Attribution(anchor=SHA_A, head=SHA_B, shas=[SHA_A], order=order_b5,
+                           windows=[w_hist], exceptions=[], root=None, policy=policy,
+                           older_anchors={SHA_OLD}, older_throughs={SHA_OLD2})
+    ok("B5 反向对照 d：窗口两端点**都早于**文档锚点（历史 run）→ 不点名且不贡献覆盖"
+       "（否则历史窗口会被整片误报）",
+       att_hist.window_problems() == [] and att_hist.owner(SHA_A, ()) is None,
+       f"problems={att_hist.window_problems()[:1]} owner={att_hist.owner(SHA_A, ())}")
 
     # 短 sha 是**另一族**缺陷，与 run 类别无关：作用域类 run 也必须判（否则"跑完即登记"
     # 之外还会多一条"短 sha 免检"的后门）。

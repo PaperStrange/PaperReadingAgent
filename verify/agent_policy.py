@@ -1,6 +1,7 @@
 """TG-15：政策数据加载器（数据驱动闸门的唯一入口）。
 
-**为什么需要这个模块**（背景与判据见 `docs/iteration/phases/testing-governance/backlog.MD` 的 `TG-15` 卡）：
+**为什么需要这个模块**（背景与判据见
+`docs/iteration/phases/testing-governance/backlog.MD` 的 `TG-15` 卡）：
 
 闸门原先靠"遇到一个场景加一条判据"成长——角色名写死在 `scripts/agent-ops.py`（`_REVIEW_ROLES`）、
 `verify/verify_close_readiness.py`（`CLOSE_ROLES`）、
@@ -989,15 +990,26 @@ def attribution(root: Path | None, anchor: str, head: str, runs,
     # `9ffc108d` 就早于文档锚点 `f30c6e47`）。判据用 git 的祖先关系（可核），
     # 判不了就**不**进集合（走 fail-closed + 逐条点名）。
     older_anchors: set[str] = set()
+    older_throughs: set[str] = set()
     for w in windows:
-        if w.anchor in order or w.anchor in older_anchors:
-            continue
-        if _is_ancestor(root, w.anchor, anchor):
+        if w.anchor not in order and w.anchor not in older_anchors \
+                and _is_ancestor(root, w.anchor, anchor):
             older_anchors.add(w.anchor)
+        # **上界同族**（2026-09-25 复核 #3 finding 4 的补全）：
+        # `covers_through` 早于文档锚点
+        # = 该窗口整体落在本次关闭窗口**之前**（历史 run 的正常形态）
+        # ⇒ 贡献 0 覆盖是**预期**，
+        # 不是缺陷。第一版只判了锚点、
+        # 上界一律点名 ⇒ 实测把 063/064/065/066/067 等历史窗口
+        # 全部误报（12 项假阳性）。判据与锚点对称：**证明得了更老 → 放行；
+        # 证明不了 → 点名**。
+        if w.through not in order and w.through not in older_throughs \
+                and _is_ancestor(root, w.through, anchor):
+            older_throughs.add(w.through)
     return Attribution(
         anchor=anchor, head=head, shas=shas, order=order, windows=windows,
         exceptions=list(exceptions or []),
-        root=root, policy=policy, older_anchors=older_anchors,
+        root=root, policy=policy, older_anchors=older_anchors, older_throughs=older_throughs,
     )
 
 
@@ -1037,7 +1049,8 @@ class Attribution:
                  order: dict[str, int], windows: list[CoverageWindow],
                  exceptions: list[dict], root: Path | None,
                  policy: "Policy | None" = None,
-                 older_anchors: set[str] | None = None):
+                 older_anchors: set[str] | None = None,
+                 older_throughs: set[str] | None = None):
         self.anchor = anchor
         self.head = head
         self.shas = shas
@@ -1051,6 +1064,7 @@ class Attribution:
         # 故这类锚点虽然不在
         # 序号表里，窗口依然有效——旧实现把它们一律当"不覆盖"，实测 14/14 窗口全失效。
         self.older_anchors = set(older_anchors or ())
+        self.older_throughs = set(older_throughs or ())
         self._files: dict[str, list[str]] = {}
 
     def _covers(self, window: CoverageWindow, sha: str) -> bool:
@@ -1150,7 +1164,7 @@ class Attribution:
             # 第一版把它嵌在"锚点也解释不了"分支里（复核 #3 finding：`anchor∈order` +
             # `covers_through∉order` 这一组合 0 项、仍静默）——两个端点各自独立失效，
             # 不能互为前提。
-            if w.through not in self.order:
+            if w.through not in self.order and w.through not in self.older_throughs:
                 problems.append(
                     f"{w.run_id}（role={w.role}）的 covers_through={w.through[:12]} 不在本次计算范围"
                     f"（{self.anchor[:8]}..{self.head[:8]}）内 ⇒ 该窗口贡献 0 覆盖（静默丢弃的同族形态）。"
