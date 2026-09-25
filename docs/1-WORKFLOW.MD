@@ -333,6 +333,45 @@ node .\verify\gui_check_config_schema.mjs      # Sprint-11/12/13：schema 清单
 `finish` 记 `covers_through`，于是每个 run 自带 `(anchor, through]` 覆盖窗口；
 Sprint 文档里的 `三查锚点` 只用于**关闭判定**，不再是覆盖真源。
 
+**关闭窗口的起点 = 本次关闭的「作用域 run」（B1，2026-09-25 close-blocker 批）**：
+`verify/verify_close_readiness.py::ledger_close_window` 取 `agents/policy.json::close_gate.scope_ref_step`
+（本仓 = `scope` 步，即 `fanout.json` 的 `order: 1`）在账本里**最新**那条 run 的 `started_at`
+作为窗口起点，C1 判定域与 §9↔账本区间比对**共用同一个窗口**。
+- **为什么不是"各必填步骤最新 run 的最小值"**（改前口径）：一个**与本次关闭无关的历史步骤 run**
+  就能把窗口拉到它自己那一刻（实测：Sprint-16 补跑的 `lessons-learned-058` 把窗口定到
+  4 天前 ⇒ 中间的历史 run 被拖进判定域、当期缺口反而被淹没）。
+- **作用域 run 缺席 = 窗口不可推导 ⇒ `None` ⇒ 不过滤（fail-closed 全域）**，**不退回**旧口径。
+- **收窄 ≠ 放宽**：窗口内当期缺口仍逐条 FAIL；窗口外另有 `check_requirements`
+  （按 `fanout.json` 必填步骤、**不看窗口**）兜底"本期流水线没跑过"。
+- `close_gate.scope_ref_step` 是数据：**装载时**校验它指向一个存在且 `close_ledger=true`
+  的步骤（拼错会让窗口恒不可推导、判定域静默退回全域 ⇒ 当场抛 `PolicyError`）。
+
+**覆盖窗口的两族缺陷与受控回填（B2/B4，2026-09-25）**：短 sha 会让
+`CoverageWindow.covers()` 恒 False ⇒ 该窗口**静默消失**（不报任何错）。两族输入都必须能**合法修**，
+否则闸门报的是"不可修的红"＝永久噪音：
+
+| 症状（闸门原文） | 受控回填命令 | 约束 |
+|---|---|---|
+| `[C3-窗口] … 不是完整 40 位 sha` | `agent-ops.py set-anchor <run_id> --anchor <sha>` 或 `--covers-through <sha> --reason <理由>` | sha 规范化成完整 40 位、解析失败 fail-closed、`--reason` ≥10 字符、两端口**全部解析成功后才落库**、每次**实际变更**追加 `anchor_backfills`（含 `field`/`from`/`to`/`reason`/`by`）；**同值 = 无操作**（假留痕比无留痕更坏） |
+| `[C1] 评审类 run … 未声明 scope 来源` | `agent-ops.py set-scope <run_id> --source self-chosen --deviation "<理由>" --reason <为什么回填>` | 校验**完全复用** `_validate_scope()`（与 `register` 逐条同口径）；`role` 取自账本行自身；每次实际变更追加 `scope_backfills` |
+
+> **回填的是数据、不是判据**：不得为了让闸门变绿而在关闭闸门里开"逐条列名的例外"
+> （那是把可修的账本缺口固化成长期放行规则），也**不得**回填一个未经证实的覆盖上界
+> （例如 `--covers-through HEAD` 而该 run 实际没评审过那些提交——那是**伪造覆盖**）。
+
+**空窗口语义按 run 类别分流（B3，2026-09-25）**：`coverage_anchor == covers_through`
+（`register` 与 `finish` 落在同一提交）时：
+- **作用域类 run 不承担内容覆盖** ⇒ 空区间**不判问题**。作用域类 = `close_gate.scope_ref_step`
+  指向那一步的 role（本仓 `impact-assessment`）+ spec 声明 `coverage_window: none` 的 role。
+  它只在 T0 界定本次关闭覆盖哪些变更，用"量内容覆盖的尺子"量它是结构性假红。
+- **内容评审类 run**（spec 声明 `coverage_window: self` 的评审 role：`code-review` /
+  `doc-audit` / `agent-onboarding-review`）声称覆盖内容却贡献 0 覆盖 ⇒ **仍判 FAIL** 并打印
+  修复指引（`set-anchor --covers-through` 或重跑）。
+- **短 sha 不在此豁免内**（另一族缺陷，任何 run 都判）。
+- 语义真源 = `agents/policy.json::close_gate.coverage.scope_run_window`（缺键即 fail-closed）；
+  判定**不按 role 名硬编码**：作用域类由 `scope_ref_step` 派生，其余由 spec frontmatter 派生
+  （已用"把 `scope_ref_step` 改指别步 ⇒ 同一 role 判定翻转"做反向对照）。
+
 **加东西时的正确动作（自查表）**：
 
 | 要加/改 | 该改哪里 | 不该改哪里 |

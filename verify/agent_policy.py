@@ -385,7 +385,47 @@ class Policy:
 
     @property
     def close_gate(self) -> dict:
-        return self._data("close_gate")
+        """关闭闸门的需求侧开关（`close_gate`）。
+
+        B1（2026-09-25）起新增一条**跨键一致性**校验：
+        `close_gate.scope_ref_step` 是本闸门"本次关闭窗口从哪里开始"的唯一定义者
+        （`verify_close_readiness.ledger_close_window` 取该步骤最新 run 的
+        `started_at`）。
+        它若拼错成一个**不存在的步骤名**，窗口就会悄悄退化成"不可推导"
+        ⇒ C1/§9 判定域变成全域 ⇒ 闸门从"收窄"回到"永久噪音"，
+        而拼错本身不会有任何东西报出来。故这里 fail-closed：名字必须非空、且必须能在
+        `fanout.json::sprint_close_pipeline` 里找到一个 `ledger=True` 的步骤与之同名。
+
+        同时校验 `coverage.scope_run_window`（B3 的语义说明文案）：窗口语义是本闸门的
+        判据文案真源，缺它就是"文档承诺 > 实现"（同 `_as_bool` 一族）。
+        """
+        val = self._data("close_gate")
+        if not isinstance(val, dict):
+            raise PolicyError(f"close_gate 必须是对象，实际 {val!r}")
+        step_name = str(val.get("scope_ref_step") or "").strip()
+        if not step_name:
+            raise PolicyError("close_gate.scope_ref_step 缺失"
+                              "（关闭窗口的起点由它定义，不能留空）")
+        matching = [s for s in self.steps if s.step == step_name]
+        if not matching:
+            raise PolicyError(
+                f"close_gate.scope_ref_step={step_name!r} 在 "
+                f"fanout.json::sprint_close_pipeline 里不存在"
+                f"（已有步骤：{[s.step for s in self.steps]}）"
+                f"——步骤名拼错会让关闭窗口不可推导、判定域静默退回全域")
+        if not any(s.ledger for s in matching):
+            raise PolicyError(
+                f"close_gate.scope_ref_step={step_name!r} 对应的步骤没有产出账本 run"
+                f"（close_ledger=false）⇒ 窗口起点无处可取，关闭窗口恒不可推导")
+        coverage = val.get("coverage")
+        if not isinstance(coverage, dict):
+            raise PolicyError(f"close_gate.coverage 必须是对象，实际 {coverage!r}")
+        if not str(coverage.get("scope_run_window") or "").strip():
+            raise PolicyError(
+                "close_gate.coverage.scope_run_window 缺失"
+                "（B3：作用域类 run 不承担内容覆盖的语义说明是判据文案的真源，"
+                "不得留空——否则空窗口该不该报全凭读代码）")
+        return val
 
     # ---- 数据源 3：离线开关（TG-8） ------------------------------------------------
     @property
@@ -658,6 +698,12 @@ def load_policy(root: Path | None = None, *, spec_dir: Path | None = None,
         raise PolicyError(
             "；".join(problems) + "｜修复：python scripts/migrate-scope-declarations.py"
             "（迁移期可临时设 PAPERQA_POLICY_ALLOW_UNDECLARED=1，但不得用于正常开发）")
+    # B1/B3（2026-09-25）：关闭闸门的需求侧数据（`close_gate`）同样纳入
+    # **装载时**不变量。为什么不能只在被读取时校验：`scope_ref_step` 拼错会让
+    # "本次关闭窗口"**恒不可推导** ⇒ C1/§9 的判定域静默退回全域（闸门从"收窄去噪"
+    # 变回"永久噪音"），而"读不到就等于没这条判据"正是本模块开头点名的失效形态。
+    # 让它在这里当场抛错，任何命令都不会带着一个"窗口永远定不出来"的政策继续跑。
+    policy.close_gate  # noqa: B018 —— 触发属性校验（缺键/步骤名不存在/缺文案 → PolicyError）
     return policy
 
 
@@ -772,15 +818,22 @@ def attribution(root: Path | None, anchor: str, head: str, runs,
     return Attribution(
         anchor=anchor, head=head, shas=shas, order=order, windows=windows,
         exceptions=list(exceptions or []),
-        root=root,
+        root=root, policy=policy,
     )
 
 
 class Attribution:
-    """一次覆盖归属计算的完整结果（`unowned` 非空 = C3 未闭环 → 闸门 FAIL 并逐条点名）。"""
+    """一次覆盖归属计算的完整结果（`unowned` 非空 = C3 未闭环 → 闸门 FAIL 并逐条点名）。
 
-    def __init__(self, *, anchor: str, head: str, shas: list[str], order: dict[str, int],
-                 windows: list[CoverageWindow], exceptions: list[dict], root: Path | None):
+    `policy` 为可选（fixture 可省）：给了才能判定"该 run 属作用域类还是内容评审类"
+    （B3 的空窗口语义）。省略时**所有**空窗口都判问题——收窄只由数据触发，
+    不由"忘了传政策"触发（fail-closed 方向）。
+    """
+
+    def __init__(self, *, anchor: str, head: str, shas: list[str],
+                 order: dict[str, int], windows: list[CoverageWindow],
+                 exceptions: list[dict], root: Path | None,
+                 policy: "Policy | None" = None):
         self.anchor = anchor
         self.head = head
         self.shas = shas
@@ -788,29 +841,80 @@ class Attribution:
         self.windows = windows
         self.exceptions = exceptions
         self.root = root
+        self.policy = policy
         self._files: dict[str, list[str]] = {}
+
+    # -- B3：覆盖窗口语义（作用域类 run vs 内容评审类 run） -----------------------
+    def scope_role_names(self) -> set[str]:
+        """**作用域类** role：只界定"本次关闭覆盖哪些变更"、不承担内容覆盖。
+
+        两个来源（都不按 role 名硬编码）：
+          ① `close_gate.scope_ref_step` 指向的关闭步骤 role
+             （本仓 = `impact-assessment`）——fanout 的 `order: 1` 步，
+             语义就是 T0 界定变更集；
+          ② spec 自己声明 `coverage_window: none` 的 role（本仓 = workspace-check /
+             tech-research / _template-agent）——它们本就不参与覆盖计算。
+        """
+        if self.policy is None:
+            return set()
+        names: set[str] = set()
+        wanted = str(self.policy.close_gate.get("scope_ref_step") or "").strip()
+        names |= {s.role for s in self.policy.steps if s.step == wanted}
+        names |= {r for r, spec in self.policy.specs.items()
+                  if spec.coverage_window == "none"}
+        return names
+
+    def is_scope_run(self, role: str) -> bool:
+        return role in self.scope_role_names()
 
     # -- 例外表校验（用户 P2 关切的"表过期"三件套之 (b)：sha 钉死，禁止通配） -------
     def window_problems(self) -> list[str]:
-        """窗口自身的结构性缺陷（2026-09-23 二查 major #3）。
+        """窗口自身的结构性缺陷（2026-09-23 二查 major #3 + 2026-09-25 B3）。
 
-        实测：账本里 `covers_through="e6ccd257"`（**8 位短 sha**），而 `order` 里只有完整 sha
-        → `covers()` 静默返回 False，该窗口**形同不存在**，却不报任何错。
-        同理：(X, X] 是空区间（register 与 finish 都在同一 HEAD）——这两种都会让"自动覆盖"
-        悄悄变成零，从而把 C3 的压力全推给例外表。**静默**正是要消灭的东西：这里逐条点名。
+        **短 sha（B2 同族，任何 run 都判）**：实测账本里 `covers_through="e6ccd257"`
+        （8 位）而 `order` 里只有完整 sha → `covers()` 静默返回 False，
+        该窗口**形同不存在**，却不报任何错。**静默**正是要消灭的东西：
+        无论该 run 属哪一类，这里逐条点名。
+        （受控回填见 `scripts/agent-ops.py set-anchor --covers-through`。）
+
+        **空区间（B3 按 run 类别分语义）**：
+        `coverage_anchor == covers_through`（`register` 与 `finish` 落在同一提交）
+        意味着该 run 贡献 0 覆盖。此时**分类判定**：
+          * **作用域类 run**（如 `impact-assessment`，见 `scope_role_names`）——
+            **不判问题**。它的职责是 T0 界定本次关闭覆盖哪些变更，本来就不该扛内容覆盖；
+            对它报"空区间"等于用一把量内容覆盖的尺子去量一把界定范围的尺子
+            ⇒ 真数据上 `run-…-impact-assessment-065` 就是这种"跑完即登记"的形态，
+            报它是**结构性假红**（TG-17 ①）。
+          * **内容评审类 run**（`code-review` / `doc-audit` / `agent-onboarding-review`
+            等 spec 声明 `coverage_window: self` 的评审 role）——**仍判 FAIL**，并
+            给出可执行的修复路径。它们**声称**覆盖了一段内容却实际覆盖 0 个提交
+            （`run-…-code-review-068` 就是这种），若放行则 C3 的压力会静默全落到例外表，
+            正是本闸门存在的理由。判据文案真源 =
+            `close_gate.coverage.scope_run_window`。
         """
         problems: list[str] = []
         full = 40
         for w in self.windows:
             for label, sha in (("coverage_anchor", w.anchor), ("covers_through", w.through)):
                 if len(sha) != full or any(c not in "0123456789abcdef" for c in sha.lower()):
+                    flag = "anchor" if label == "coverage_anchor" else "covers-through"
                     problems.append(
-                        f"{w.run_id} 的 {label}={sha!r} 不是完整 40 位 sha → 该窗口在覆盖计算中"
-                        f"被静默丢弃（CLI 已改为自动记完整 sha；历史记录需回填）")
+                        f"{w.run_id} 的 {label}={sha!r} 不是完整 40 位 sha"
+                        f" → 该窗口在覆盖计算中被静默丢弃"
+                        f"（CLI 已改为自动记完整 sha；历史记录需受控回填："
+                        f"`scripts/agent-ops.py set-anchor {w.run_id} "
+                        f"--{flag} <sha> --reason <理由>`）")
             if len(w.anchor) == full and w.anchor == w.through:
+                if self.is_scope_run(w.role):
+                    # B3：作用域类 run 不承担内容覆盖，空区间是正常形态（见方法文档）
+                    continue
                 problems.append(
-                    f"{w.run_id} 的窗口 ({w.anchor[:8]}, {w.through[:8]}] 是**空区间**"
-                    f"（登记与收尾在同一提交）→ 该 run 实际贡献 0 覆盖，C3 压力全落到例外表")
+                    f"{w.run_id}（role={w.role}，内容评审类）的窗口 "
+                    f"({w.anchor[:8]}, {w.through[:8]}] 是**空区间**"
+                    f"（登记与收尾在同一提交）"
+                    f"→ 该 run 声称覆盖内容却实际贡献 0 覆盖，C3 压力全落到例外表。"
+                    f"修复：`scripts/agent-ops.py set-anchor {w.run_id} "
+                    f"--covers-through <sha> --reason <受控回填理由>`（或重跑该评审）")
         return problems
 
     def empty_interval(self) -> bool:

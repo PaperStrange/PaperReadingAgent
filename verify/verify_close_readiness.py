@@ -49,6 +49,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from verify.agent_policy import (  # noqa: E402
+    ENV_POLICY,
     Attribution,
     PolicyError,
     attribution,
@@ -143,18 +144,57 @@ def exact_target(run: dict) -> str:
     return str(run.get("task_id") or "").strip()
 
 
+def scope_step_run(policy: AgentPolicy, runs: list[dict]) -> dict | None:
+    """本次关闭的**作用域 run** = 作用域步骤
+    （`close_gate.scope_ref_step`，本仓 = `scope`）在本账本里最新的那一条 run。
+
+    为什么"最新"：关闭流水线的每一步一个 Sprint 只跑一次；同 role 更早的 run
+    属于上一个 Sprint 的关闭（本仓实测：`lessons-learned` 的 058 是 **Sprint-16**
+    关闭补跑的那条），不应被本 Sprint 的 §9 要求，也不应定义本 Sprint 的窗口。
+
+    `step.targets` 非空时按 target **精确匹配**过滤（口径同 N3；本仓 `scope` 步无
+    targets，故实际不过滤——但判据不能建立在"当前数据刚好没有 targets"上）。
+    没有 run、或最新 run 没有 `started_at` → 返回 None（调用方 fail-closed）。
+    """
+    wanted_step = str(policy.close_gate.get("scope_ref_step") or "").strip()
+    if not wanted_step:
+        return None
+    candidates: list[dict] = []
+    for step in policy.close_ledger_steps:
+        if step.step != wanted_step:
+            continue
+        bucket = [r for r in runs if str(r.get("role") or "") == step.role]
+        if step.targets:
+            wanted_targets = set(step.targets)
+            bucket = [r for r in bucket if exact_target(r) in wanted_targets]
+        candidates += bucket
+    if not candidates:
+        return None
+    latest = max(candidates, key=lambda r: str(r.get("started_at") or ""))
+    return latest if str(latest.get("started_at") or "") else None
+
+
 def ledger_close_window(policy: AgentPolicy, runs: list[dict]) -> str | None:
-    """从**账本侧**推导本次关闭窗口的起点（N6，`started_at` 最小值）。
+    """从**账本侧**推导本次关闭窗口的起点
+    = **本次关闭的作用域 run 的 `started_at`**（B1）。
 
     为什么不能取自 §9 自己（二查实测的绕过路径）：原实现是
     `window_start = min(§9 各行的 started_at)`，于是**删掉 §9 里最早的几行**就把窗口整体抬高，
     落在窗口之前、账本里真实存在的 run 全部退出 `scoped` → "账本有 run 但 §9 未登记"一条都不报
     → 闸门 PASS。**被校验的文档不得定义自己的校验窗口。**
 
-    做法（不读 §9）：对每条**必填关闭步骤**，取账本里满足它（role + target 精确匹配）的**最新** run
-    ——最新 = 本次关闭那一批（更早的同 role run 属于上一个 Sprint 的关闭，不应被本 Sprint 的 §9 要求）；
-    再取这些 run 的 `started_at` 最小值 = 窗口起点。账本里连一条关闭 run 都没有时返回 None
-    （此时需求侧 C1 已经报"缺 run"，本函数不替它下结论）。
+    为什么是"本次关闭的作用域 run"，而不是"各必填步骤最新 run 的最小 `started_at`"
+    （B1 改前）：
+    改前口径取的是**跨步骤**的最小值，于是一个**与本次关闭无关的历史步骤 run**
+    就能把窗口拉到它自己那一刻——真数据实测：`lessons-learned` 的 058
+    （Sprint-16 关闭补跑的收尾 run）把窗口起点定到 `2026-09-20T17:34:57`，
+    而本 Sprint 的作用域 run 是 `2026-09-25T…`
+    ⇒ 窗口被拉宽约 4 天，中间的历史 run 被拖进 C1/§9 判定域、当期缺口反而被淹没。
+    **"窗口有多宽"必须由"本次关闭从哪一刻开始"决定，而那一刻的定义者只能是作用域
+    步骤**——它是关闭流水线的第 1 步
+    （`fanout.json::sprint_close_pipeline` 的 `order`），语义就是
+    "界定本次关闭覆盖哪些变更"。作用域 run 缺席时**不退回**旧口径：返回 None 让调用方
+    fail-closed（不过滤 = 全域），宁可多报也不静默收窄。
 
     **同一个窗口供两处使用**（一处推导、两处消费，避免两套口径）：
       * `check_linkage`：窗口内每个 close/review role 的 run 必须登记在
@@ -166,24 +206,18 @@ def ledger_close_window(policy: AgentPolicy, runs: list[dict]) -> str | None:
         窗口不可推导（返回 None）时**不过滤**（= 全域）：这是 fail-closed
         方向，宁可多报也不静默收窄。
 
+    **收窄不等于放宽**（B1 的反向对照，见自检 B1a/B1b）：窗口内的当期缺口仍逐条 FAIL；
+    窗口外**另有**一条独立的兜底判据——`check_requirements` 按 `fanout.json` 的必填步骤
+    检查"本次关闭的流水线是否真的跑过"，它**不看窗口**。因此"作用域 run 之后没有跑过
+    二查/lessons"这件事不会因为窗口收窄而消失（否则收窄就成了静默放行）。
+
     比较口径：`started_at` 按**字符串字典序**比较（与 N6 的区间比对同口径）。
     账本写入的时间戳统一带 `+00:00` 偏移时字典序 = 时间序；该前提由账本自身
     保证（`agent-ops register` 用 UTC ISO 串），混入别的偏移会让本函数失去
     意义——故这里不做时区归一化，而是明确记录口径。
     """
-    starts: list[str] = []
-    for step in policy.close_ledger_steps:
-        bucket = [r for r in runs if str(r.get("role") or "") == step.role]
-        if step.targets:
-            wanted = set(step.targets)
-            bucket = [r for r in bucket if exact_target(r) in wanted]
-        if not bucket:
-            continue
-        latest = max(bucket, key=lambda r: str(r.get("started_at") or ""))
-        start = str(latest.get("started_at") or "")
-        if start:
-            starts.append(start)
-    return min(starts) if starts else None
+    run = scope_step_run(policy, runs)
+    return str(run.get("started_at")) if run else None
 
 
 # --------------------------------------------------------------------- 判据
@@ -463,7 +497,12 @@ FIXTURE_POLICY = {
     "close_gate": {
         "scope_ref_step": "scope",
         "coverage": {"exceptions_file": "coverage-exceptions.json",
-                     "doc_only_globs": ["docs/**"]},
+                     "doc_only_globs": ["docs/**"],
+                     # B3：作用域类 run 不承担内容覆盖的语义说明。fixture 也必须齐全——
+                     # 真实政策缺它时 `Policy.close_gate` 直接 fail-closed（"读不到"不得
+                     # 静默等于"没这条语义"），fixture 自然要同口径。
+                     "scope_run_window": "fixture：作用域类 run 不承担内容覆盖，"
+                                         "空窗口不判问题"},
     },
 }
 
@@ -534,6 +573,17 @@ def _load_fixture_policy(tmp: Path) -> AgentPolicy:
     return load_policy(root=tmp, spec_dir=tmp / "specs", policy_path=policy_path, fanout_path=fanout_path)
 
 
+def _fixture_policy_path(tmp: Path) -> Path:
+    """fixture 政策的**实际路径**。
+
+    `load_policy` 的优先级是 `env > 参数 > root/agents/policy.json`——因此当
+    `PAPERQA_AGENT_POLICY` 被设成一份**别处的**政策时（套件里就会这样：各闸门用 env
+    注入自己的 fixture），显式传 `tmp/"policy.json"` 会被 env 覆盖掉，结果"测的是别的
+    政策"。本函数让自检与 `load_policy` **同口径**取环境变量，避免这条静默分叉。
+    """
+    return Path(os.environ.get(ENV_POLICY, str(tmp / "policy.json")))
+
+
 def _run(rid: str, role: str, task: str, started: str, scope="", dev=None,
          anchor: str = SHA_A, through: str = SHA_D) -> dict:
     return {"run_id": rid, "role": role, "task_id": task, "started_at": started,
@@ -589,7 +639,24 @@ def _fixture_attribution(runs: list[dict], *, exceptions: list[dict] | None = No
         windows = [type(w)(run_id=w.run_id, role=w.role, anchor=SHA_A, through=SHA_C,
                           from_run=True) for w in windows]
     return Attribution(anchor=SHA_A, head=SHA_D, shas=shas, order=order,
-                       windows=windows, exceptions=list(exceptions or []), root=None)
+                       windows=windows, exceptions=list(exceptions or []), root=None,
+                       policy=policy)
+
+
+# 自检期 fixture policy（由 `_selfcheck` 赋值为真实 fixture policy）。
+# **必须传给 `Attribution`**：B3 的空窗口语义要按 run 类别判定，而"类别"来自
+# `close_gate.scope_ref_step` + spec frontmatter（数据），不是代码常量。
+_FIXTURE_POLICY: AgentPolicy | None = None
+
+
+def _att(runs: list[dict], *, exceptions: list[dict] | None = None,
+         unowned_extra: bool = False,
+         policy: AgentPolicy | None = None) -> Attribution:
+    """`_fixture_attribution` 的自检包装：默认带上 fixture 政策
+    （B3 需要它判 run 类别）。"""
+    return _fixture_attribution(
+        runs, exceptions=exceptions, unowned_extra=unowned_extra,
+        policy=policy if policy is not None else _FIXTURE_POLICY)
 
 
 def _windows(runs: list[dict]):
@@ -647,8 +714,11 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
 def _selfcheck() -> int:
     import tempfile
 
+    global _FIXTURE_POLICY
+
     tmp = Path(tempfile.mkdtemp(prefix="verify_close_readiness_"))
     policy = _load_fixture_policy(tmp)
+    _FIXTURE_POLICY = policy  # `_att()` 默认带上它（B3 按 run 类别判空窗口）
     runs = _fixture_runs()
     good = parse_sprint(_doc([
         {"run_id": r["run_id"], "role": r["role"], "target": r["task_id"],
@@ -659,13 +729,13 @@ def _selfcheck() -> int:
     ok("自检 ⓪ 数据源完备（fanout 步骤 role 都有 spec + 全部显式声明 scope_required + 无死键）",
        policy.closure_problems() == [], f"problems={policy.closure_problems()[:2]}")
     ok("自检 ① 合规场景 + 覆盖闭环 → PASS",
-       evaluate(policy, good, runs, att=_fixture_attribution(runs)) == [], "problems=[]")
+       evaluate(policy, good, runs, att=_att(runs)) == [], "problems=[]")
 
     # ---- 变异用例：**从 fanout.json 自动生成**（不逐场景手写）----------------
     for step in policy.close_ledger_steps:
         mutant = [r for r in runs if r.get("role") != step.role]
         rows = [row for row in good["rows"] if row["role"] != step.role]
-        p = evaluate(policy, parse_sprint(_doc(rows, SHA_A)), mutant, att=_fixture_attribution(mutant))
+        p = evaluate(policy, parse_sprint(_doc(rows, SHA_A)), mutant, att=_att(mutant))
         ok(f"变异（自动生成）① 抽掉步骤 {step.order}:{step.step}（role={step.role}）→ FAIL",
            any("缺 run" in x for x in p), f"problems={p[:1]}")
 
@@ -683,14 +753,14 @@ def _selfcheck() -> int:
                      "deviation": r.get("scope_deviation") or "-"}
                     for r in mutant]
             p = evaluate(policy, parse_sprint(_doc(rows, SHA_A)), mutant,
-                         att=_fixture_attribution(mutant))
+                         att=_att(mutant))
             ok(f"变异（自动生成）② 抽掉 {role} 的 target={target!r}（保留同 role 诱饵 run）→ FAIL",
                any(f"缺 target={target!r}" in x for x in p), f"problems={p[:1]}")
 
     # ---- 三条不变式各自的反向对照 ----------------------------------------
     mutant = [dict(r, scope_source="", scope_deviation=None) if r["role"] == "code-review" else r
               for r in runs]
-    p = evaluate(policy, good, mutant, att=_fixture_attribution(mutant))
+    p = evaluate(policy, good, mutant, att=_att(mutant))
     ok("C1 反向对照：评审类 run 去掉 scope 声明 → FAIL",
        any(x.startswith("[C1]") for x in p), f"problems={p[:1]}")
 
@@ -703,16 +773,135 @@ def _selfcheck() -> int:
                 "2026-09-20T22:00:00+00:00", scope="", dev=None)
     hist_runs = [*runs, hist]
     p = evaluate(policy, parse_sprint(_doc(_rows(hist_runs), SHA_A)), hist_runs,
-                 att=_fixture_attribution(hist_runs))
+                 att=_att(hist_runs))
     ok("D1 反向对照 a：窗口**之前**的评审 run 缺 scope 声明 → 不报告"
        "（历史不卷入；整条闸门仍 PASS）",
        p == [], f"problems={p[:2]}")
+
+    # ---- B1（2026-09-25）：关闭窗口起点 = **本次关闭的作用域 run** ------------
+    # 改前口径 = "各必填步骤最新 run 的 started_at 最小值"，于是一个与本次关闭无关的
+    # 历史步骤 run 就能把窗口拉到它自己那一刻（真数据实测：Sprint-16 补跑的 lessons 058
+    # 把窗口定到 4 天前），中间的历史 run 被拖进判定域、当期缺口被淹没。
+    # 新口径只认"作用域步骤（close_gate.scope_ref_step）最新 run"那一刻。
+    scope_role = next(s.role for s in policy.steps
+                      if s.step == policy.close_gate["scope_ref_step"])
+    ok("B1 正向对照：窗口起点 = **作用域步骤**最新 run 的 started_at"
+       "（不是跨步骤最小值）",
+       ledger_close_window(policy, runs) == "2026-09-21T01:00:00+00:00",
+       f"window={ledger_close_window(policy, runs)}"
+       f"（作用域 run=run-k-001 / 最早的非作用域 run=02:00）")
+
+    # 反向对照 a：**把作用域 run 拿掉**——旧口径仍会从"其余步骤最新 run 的最小值"
+    # 编出一个窗口（于是闸门照常跑、看起来一切正常），
+    # 新口径必须返回 None ⇒ 调用方不过滤（fail-closed）。
+    no_scope = [r for r in runs if r.get("role") != scope_role]
+    ok("B1 反向对照 a：作用域 run 缺席 → 窗口不可推导（None，fail-closed 不过滤），"
+       "**不退回**旧口径编窗口",
+       ledger_close_window(policy, no_scope) is None
+       and check_c1(policy, no_scope, ledger_close_window(policy, no_scope)) == [],
+       f"window={ledger_close_window(policy, no_scope)}")
+
+    # 反向对照 b：同 role 更早的 run 出现时，窗口仍取**最新**那条（不取最小值）。
+    # 若实现退回"跨步骤/全 role 最小值"，这一条会立刻把窗口拉到 2026-09-20——
+    # 那正是 B1 改前在真数据上发生的事（lessons 058 把窗口拖到 4 天前）。
+    draggy = [*runs,
+              _run("run-drag-903", scope_role, "decoy", "2026-09-20T00:00:00+00:00")]
+    ok("B1 反向对照 b：同 role 更早的 run 出现时，窗口仍取**最新**那条"
+       "（不取最小值）",
+       ledger_close_window(policy, draggy) == "2026-09-21T01:00:00+00:00",
+       f"window={ledger_close_window(policy, draggy)}")
+
+    # 反向对照 c：非作用域步骤的 run **再早**也不得定义窗口（旧口径正是被这条拖走的）
+    earliest_other = min(str(r["started_at"]) for r in runs
+                         if r.get("role") != scope_role)
+    ok(f"B1 反向对照 c：非作用域步骤最早 run（{earliest_other}）**不得**定义窗口起点"
+       f"（旧口径 = min 跨步骤 ⇒ 正是这条把真数据窗口拖到 4 天前）",
+       ledger_close_window(policy, runs) != earliest_other,
+       f"window={ledger_close_window(policy, runs)}")
+
+    # 反向对照 d（政策侧）：`scope_ref_step` 拼错 = 窗口恒不可推导
+    # ⇒ 判定域静默退回全域。故 `Policy.close_gate` 必须**装载即 fail-closed**，
+    # 不能等闸门报出来。
+    bad_fanout = tmp / "fanout-bad-scope-step.json"
+    bad_steps = [dict(FIXTURE_FANOUT["sprint_close_pipeline"][0], step="scpoe"),
+                 *FIXTURE_FANOUT["sprint_close_pipeline"][1:]]
+    bad_fanout.write_text(json.dumps(
+        {**FIXTURE_FANOUT, "sprint_close_pipeline": bad_steps},
+        ensure_ascii=False), encoding="utf-8")
+    try:
+        load_policy(root=tmp, spec_dir=tmp / "specs",
+                    policy_path=_fixture_policy_path(tmp), fanout_path=bad_fanout)
+        ok("B1 反向对照 d：close_gate.scope_ref_step 拼错 → 装载即 fail-closed", False,
+           "未抛 PolicyError（窗口会静默退回全域）")
+    except PolicyError as exc:
+        ok("B1 反向对照 d：close_gate.scope_ref_step 拼错 → 装载即 fail-closed"
+           "（不静默退回全域判定）",
+           "scope_ref_step" in str(exc), str(exc)[:110])
+    bad_fanout.unlink()
+
+    # ---- B3（2026-09-25）：空窗口按 run 类别分语义 ---------------------------
+    # 作用域类 run（本 fixture = impact-assessment，「跑完即登记」⇒ 窗口恒为 (X, X]）
+    # **不承担内容覆盖** ⇒ 空区间不判问题；内容评审类（code-review/doc-audit）声称覆盖
+    # 内容却贡献 0 覆盖 ⇒ 仍判 FAIL 并给修复指引。
+    from verify.agent_policy import CoverageWindow, order_index
+
+    def _window_problems_for(role: str, anchor: str) -> list[str]:
+        w = CoverageWindow(run_id=f"run-b3-{role}", role=role, anchor=anchor,
+                           through=anchor, from_run=True)
+        att = Attribution(anchor=anchor, head=anchor, shas=[],
+                          order=order_index([anchor]),
+                          windows=[w], exceptions=[], root=None, policy=policy)
+        return att.window_problems()
+
+    ok("B3 正向对照：作用域类 run（impact-assessment, 跑完即登记）的空窗口"
+       " → **不判问题**（它不承担内容覆盖）",
+       _window_problems_for("impact-assessment", SHA_A) == [],
+       f"problems={_window_problems_for('impact-assessment', SHA_A)}")
+    for content_role in sorted(policy.review_roles):
+        probs = _window_problems_for(content_role, SHA_A)
+        ok(f"B3 反向对照：内容评审类 run（{content_role}）的空窗口"
+           f" → 仍 FAIL 且给修复指引",
+           any("空区间" in x and "set-anchor" in x and content_role in x
+               for x in probs),
+           f"problems={probs[:1]}")
+
+    # 语义必须由**数据**驱动、而不是按 role 名写死：换一份把 scope_ref_step 指到别的
+    # 步骤的政策，同一 role 的判定必须翻转（"作用域类"是政策说的，不是代码认名字）。
+    other_step = next(s.step for s in policy.close_ledger_steps if s.step != "scope")
+    other_role = next(s.role for s in policy.close_ledger_steps if s.step == other_step)
+    flipped_file = tmp / "policy-flip-scope-step.json"
+    flipped_file.write_text(json.dumps(
+        {**FIXTURE_POLICY,
+         "close_gate": {**FIXTURE_POLICY["close_gate"], "scope_ref_step": other_step}},
+        ensure_ascii=False), encoding="utf-8")
+    pol_flip = load_policy(root=tmp, spec_dir=tmp / "specs", policy_path=flipped_file,
+                           fanout_path=tmp / "fanout.json")
+    w = CoverageWindow(run_id="run-b3-flip", role=other_role, anchor=SHA_A,
+                       through=SHA_A, from_run=True)
+    att_flip = Attribution(anchor=SHA_A, head=SHA_A, shas=[],
+                           order=order_index([SHA_A]),
+                           windows=[w], exceptions=[], root=None, policy=pol_flip)
+    ok(f"B3 反向对照（数据驱动）：把 scope_ref_step 改指 {other_step!r} → 同一 role "
+       f"({other_role}) 的空窗口**转为不判问题**（作用是政策给的，不是代码认角色名）",
+       att_flip.window_problems() == [], f"problems={att_flip.window_problems()[:1]}")
+
+    # 短 sha 是**另一族**缺陷，与 run 类别无关：作用域类 run 也必须判（否则"跑完即登记"
+    # 之外还会多一条"短 sha 免检"的后门）。
+    short_scope = CoverageWindow(run_id="run-b3-short", role=scope_role, anchor=SHA_A,
+                                 through=SHA_A[:8], from_run=True)
+    att_short = Attribution(anchor=SHA_A, head=SHA_A, shas=[],
+                            order=order_index([SHA_A]),
+                            windows=[short_scope], exceptions=[], root=None,
+                            policy=policy)
+    ok("B3 正向对照：作用域类 run 的**短 sha** 仍判问题（空区间豁免不扩到短 sha 缺陷）",
+       any("不是完整 40 位" in x for x in att_short.window_problems()),
+       f"problems={att_short.window_problems()[:1]}")
 
     inwin = _run("run-hist-901", "agent-onboarding-review", "onboarding-scan",
                  "2026-09-21T02:30:00+00:00", scope="", dev=None)
     inwin_runs = [*runs, inwin]
     p = evaluate(policy, parse_sprint(_doc(_rows(inwin_runs), SHA_A)), inwin_runs,
-                 att=_fixture_attribution(inwin_runs))
+                 att=_att(inwin_runs))
     ok("D1 反向对照 b：窗口**之内**的评审 run 缺 scope 声明 → FAIL 且点名"
        "该 run（收窄 ≠ 放宽）",
        any(x.startswith("[C1]") and "run-hist-901" in x for x in p)
@@ -781,7 +970,7 @@ def _selfcheck() -> int:
 
     bad_doc = base_doc + "\n| run-bad-999 | code-review |\n"
     sp_bad = parse_sprint(bad_doc)
-    p = evaluate(policy, sp_bad, runs, att=_fixture_attribution(runs))
+    p = evaluate(policy, sp_bad, runs, att=_att(runs))
     ok("D2 反向对照：结构非法的 run 行（列数 <5）→ 逐条点名，不再静默丢",
        len(sp_bad["malformed"]) == 1 and len(sp_bad["rows"]) == len(runs)
        and any("表行结构非法" in x and "run-bad-999" in x for x in p),
@@ -789,12 +978,12 @@ def _selfcheck() -> int:
 
     mutant = [dict(r, scope_source="impact-assessment:run-ghost-999") if r["role"] == "code-review" else r
               for r in runs]
-    p = evaluate(policy, good, mutant, att=_fixture_attribution(mutant))
+    p = evaluate(policy, good, mutant, att=_att(mutant))
     ok("C2 反向对照：引用不存在的 run（幻影引用）→ FAIL",
        any("不存在的对象" in x for x in p), f"problems={p[:1]}")
 
     ghost_role = [*runs, _run("run-x-900", "no-such-role", "t", "2026-09-21T05:00:00+00:00")]
-    p = evaluate(policy, good, ghost_role, att=_fixture_attribution(ghost_role))
+    p = evaluate(policy, good, ghost_role, att=_att(ghost_role))
     ok("C2 反向对照：账本出现无 spec 的 role（不认角色名）→ FAIL",
        any("无 spec 的 role" in x for x in p), f"problems={p[:1]}")
 
@@ -830,34 +1019,34 @@ def _selfcheck() -> int:
 
     # ---- C3 反向对照 ------------------------------------------------------
     p = evaluate(policy, parse_sprint(_doc(good["rows"], None)), runs,
-                 att=_fixture_attribution(runs))
+                 att=_att(runs))
     ok("C3 反向对照：未声明三查锚点 → FAIL", any("未声明三查锚点" in x for x in p), f"problems={p[:1]}")
 
-    p = evaluate(policy, good, runs, att=_fixture_attribution(runs, unowned_extra=True))
+    p = evaluate(policy, good, runs, att=_att(runs, unowned_extra=True))
     ok("C3 反向对照：锚点→HEAD 有未归属提交（窗口/表落后于 HEAD）→ FAIL 且点名 sha",
        any("无归属" in x and SHA_D[:10] in x for x in p), f"problems={p[:1]}")
 
     bad_exc = [{"sha": SHA_E, "class": "DOC-ONLY", "reason": "ok"},
                {"sha": "f" * 8, "class": "DOC-ONLY", "reason": "短 sha"}]
-    p = evaluate(policy, good, runs, att=_fixture_attribution(runs, exceptions=bad_exc))
+    p = evaluate(policy, good, runs, att=_att(runs, exceptions=bad_exc))
     ok("C3-T 反向对照：例外表短 sha → FAIL（例外必须 sha 钉死）",
        any("不是完整 40 位" in x for x in p), f"problems={p[:2]}")
 
     bad_exc = [{"sha": SHA_E, "class": "DOC-ONLY", "reason": "ok"},
                {"sha": "*" * 40, "class": "DOC-ONLY", "reason": "通配"}]
-    p = evaluate(policy, good, runs, att=_fixture_attribution(runs, exceptions=bad_exc))
+    p = evaluate(policy, good, runs, att=_att(runs, exceptions=bad_exc))
     ok("C3-T 反向对照：例外表含通配 sha → FAIL（禁止模式匹配未来提交）",
        any("含通配" in x for x in p), f"problems={p[:2]}")
 
     bad_exc = [{"sha": SHA_E, "class": "DOC-ONLY", "reason": ""}]
-    p = evaluate(policy, good, runs, att=_fixture_attribution(runs, exceptions=bad_exc))
+    p = evaluate(policy, good, runs, att=_att(runs, exceptions=bad_exc))
     ok("C3-T 反向对照：例外缺 reason → FAIL", any("缺 reason" in x for x in p), f"problems={p[:1]}")
 
     # ---- linkage 反向对照 -------------------------------------------------
     ghost = parse_sprint(_doc(good["rows"] + [{"run_id": "run-ghost-999", "role": "code-review",
                                                "target": "branch:main", "scope_source": "-",
                                                "coverage": "core", "deviation": "-"}], SHA_A))
-    p = evaluate(policy, ghost, runs, att=_fixture_attribution(runs))
+    p = evaluate(policy, ghost, runs, att=_att(runs))
     ok("linkage 反向对照：§9 写了 run 但账本无记录 → FAIL",
        any("账本无记录" in x for x in p), f"problems={p[:1]}")
 
@@ -869,28 +1058,28 @@ def _selfcheck() -> int:
         rows = [{"run_id": r["run_id"], "role": r["role"], "target": r["task_id"],
                  "scope_source": r.get("scope_source") or "-", "coverage": "core",
                  "deviation": r.get("scope_deviation") or "-"} for r in mutant]
-        p = evaluate(policy, parse_sprint(_doc(rows, SHA_A)), mutant, att=_fixture_attribution(mutant))
+        p = evaluate(policy, parse_sprint(_doc(rows, SHA_A)), mutant, att=_att(mutant))
         ok(f"N3 反向对照：task_id={tampered!r} 不得冒充 target={expected_target!r}（精确匹配，子串不算）→ FAIL",
            any(f"缺 target={expected_target!r}" in x for x in p), f"problems={p[:1]}")
 
     # ---- N6a 反向对照：**删掉 §9 里最早的两行**不得让窗口抬高（窗口取自账本侧）-------
     p = evaluate(policy, parse_sprint(_doc(good["rows"][2:], SHA_A)), runs,
-                 att=_fixture_attribution(runs))
+                 att=_att(runs))
     ok("N6 反向对照 a：§9 删掉最早两行 → 仍 FAIL（账本有 run 未登记 + 区间比对）",
        any("账本有 run 但 §9 run 表未登记" in x and "run-k-001" in x for x in p)
        and any("linkage/区间" in x for x in p), f"problems={p[:2]}")
-    p = evaluate(policy, parse_sprint(_doc(good["rows"], SHA_A)), runs, att=_fixture_attribution(runs))
+    p = evaluate(policy, parse_sprint(_doc(good["rows"], SHA_A)), runs, att=_att(runs))
     ok("N6 正向对照：§9 行齐全时窗口比对不误报（好输入 rc=0）", p == [], f"problems={p[:1]}")
 
     # ---- N6b 反向对照：§9 的 role / target 写错 → FAIL（原先只比对 scope_source）------
     for field, bad in (("role", "doc-audit"), ("target", "branch:production")):
         rows = [dict(r) for r in good["rows"]]
         rows[2] = {**rows[2], field: bad}
-        p = evaluate(policy, parse_sprint(_doc(rows, SHA_A)), runs, att=_fixture_attribution(runs))
+        p = evaluate(policy, parse_sprint(_doc(rows, SHA_A)), runs, att=_att(runs))
         ok(f"N6 反向对照 b：§9 第 3 行 {field} 写错（{bad!r}）→ FAIL（role/target 一并比对）",
            any(f"{field}={bad!r} 与账本" in x for x in p), f"problems={p[:1]}")
 
-    p = evaluate(policy, good, runs, att=_fixture_attribution(runs, unowned_extra=False),
+    p = evaluate(policy, good, runs, att=_att(runs, unowned_extra=False),
                  check_coverage=False)
     ok("覆盖检查可关闭（CI 无 git 历史时的显式降级路径）", p == [], f"problems={p}")
 

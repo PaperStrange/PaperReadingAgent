@@ -226,7 +226,8 @@
         "*.md",
         "agents/**/*.md"
       ],
-      "_comment": "C3-T：覆盖默认由 run 数据计算（每个 run 的 (coverage_anchor, covers_through]），本表只登记**例外**。例外必须 sha 钉死（full 40 位）；表落后于例外集合之外 → 默认 FAIL 并逐条点名未归属 sha（失效方向反转：不静默变绿）。"
+      "_comment": "C3-T：覆盖默认由 run 数据计算（每个 run 的 (coverage_anchor, covers_through]），本表只登记**例外**。例外必须 sha 钉死（full 40 位）；表落后于例外集合之外 → 默认 FAIL 并逐条点名未归属 sha（失效方向反转：不静默变绿）。",
+      "scope_run_window": "B3（2026-09-25）覆盖窗口语义：**作用域类 run 不承担内容覆盖**——即 `close_gate.scope_ref_step` 指向那一步的 role（本仓＝impact-assessment），以及 spec 声明 `coverage_window: none` 的 role。它们只在 T0 界定本次关闭覆盖哪些变更，其 (coverage_anchor, covers_through] 因此常为 (X, X] 空区间，**空区间不判问题**。**内容评审类 run 承担内容覆盖**——spec 声明 `coverage_window: self` 的评审 role（本仓＝code-review / doc-audit / agent-onboarding-review）；其空窗口仍判 FAIL，并给出修复指引（`scripts/agent-ops.py set-anchor <run_id> --covers-through <sha> --reason <理由>` 受控回填，或重跑该评审）。判据不按 role 名硬编码：作用域类由 `scope_ref_step` 派生，其余由 spec frontmatter 派生。"
     }
   }
 }

@@ -562,26 +562,143 @@ def cmd_update(args: argparse.Namespace) -> None:
 
 @_with_registry_lock
 def cmd_set_anchor(args: argparse.Namespace) -> None:
-    """受控回填：修正**已登记** run 的 `coverage_anchor`（审核 N5/F1 要求的口子）。
+    """受控回填：修正**已登记** run 的覆盖窗口端点
+    `coverage_anchor` / `covers_through`。
 
-    约束：必须给 `--reason`（≥10 字符：谁修、为什么、依据哪条审核发现）；sha 必须可解析并规范化；
-    每次回填追加一条 `anchor_backfills` 记录（可审计，不是静默改数）。
+    `coverage_anchor`（审核 N5/F1 要求的口子）：短 sha 会让
+    `CoverageWindow.covers()` 恒 False（`order` 里只有完整 sha）
+    ⇒ 该 run 的覆盖窗口被**静默丢弃**。
+
+    `covers_through`（B2，2026-09-25）：**同一族缺陷，原先没有回填口**。实测
+    `run-…-impact-assessment-062` 的 `covers_through="e6ccd257"`（8 位）、
+    `run-…-doc-audit-066` 的 `covers_through="9ffc108"`（7 位）——两者都被 C3 判
+    `[C3-窗口] … 不是完整 40 位 sha`，但**没有合法修复路径**：`finish` 只对
+    running→terminal 的**当时**生效，对已收尾的历史 run 无法重跑。于是闸门报的
+    问题**不可修**＝永久红（同 D1 之前 C1 的形态），而"不可修的红"正是让闸门
+    退化成人人无视的噪音的那条路径。故这里补上对称的受控回填口。
+
+    约束（与 `--anchor` **逐条同构**，两处受理同一族输入不得两套口径）：
+      * 至少给一个端点（`--anchor` 和/或 `--covers-through`）；都不给 = 调用错误；
+      * sha 必须可解析并**规范化成完整 40 位**（`_resolve_sha`），失败 fail-closed；
+      * 必须给 `--reason`（≥10 字符：谁修、为什么、依据哪条审核发现）；
+      * **同时解析两个端点后再落库**（任一失败则都不写）——半途写一半会让账本停在
+        一个"锚点已换、上界未换"的中间态，而那个中间态的窗口是**捏造**的；
+      * 值有变化才追加 `anchor_backfills` 记录：同值回填不改库、不留痕、报"无变化"
+        （**假留痕**比无留痕更坏——审计会据此以为窗口被改过）。
     """
     data = _load_registry()
     r = _find_run(data, args.run_id)
-    resolved = _resolve_sha(args.anchor)
-    if not resolved:
-        raise SystemExit(f"COVERAGE-ANCHOR-ERROR: {args.anchor!r} 无法解析为提交（fail-closed）")
+    raw_anchor = (getattr(args, "anchor", "") or "").strip()
+    raw_through = (getattr(args, "covers_through", "") or "").strip()
+    if not raw_anchor and not raw_through:
+        raise SystemExit(
+            "set-anchor 至少要给 --anchor 和/或 --covers-through 之一（否则是无操作）")
     reason = (args.reason or "").strip()
     if len(reason) < 10:
-        raise SystemExit("回填必须给 --reason（≥10 字符的理由）：谁修、为什么、依据哪条审核发现")
-    old = r.get("coverage_anchor")
-    r["coverage_anchor"] = resolved
-    r.setdefault("anchor_backfills", []).append(
-        {"at": _now(), "from": old, "to": resolved, "reason": reason, "by": args.by})
-    _save_registry(data)
-    print(f"anchor updated {r['run_id']}: {str(old or '')[:8] or 'none'} -> {resolved[:8]} "
-          f"(backfills={len(r['anchor_backfills'])})")
+        raise SystemExit(
+            "回填必须给 --reason（≥10 字符的理由）：谁修、为什么、依据哪条审核发现")
+    # 两个端点**先全部解析成功再落库**：中途失败不得留下半改状态
+    resolved_anchor = _resolve_sha(raw_anchor) if raw_anchor else None
+    if raw_anchor and not resolved_anchor:
+        raise SystemExit(
+            f"COVERAGE-ANCHOR-ERROR: --anchor {raw_anchor!r} 无法解析为提交"
+            f"（fail-closed：短 sha 会让覆盖窗口被静默丢弃，"
+            f"这正是本命令要修的那族缺陷）")
+    resolved_through = _resolve_sha(raw_through) if raw_through else None
+    if raw_through and not resolved_through:
+        raise SystemExit(
+            f"COVERAGE-ANCHOR-ERROR: --covers-through {raw_through!r} 无法解析为提交"
+            f"（fail-closed：短 sha 会让覆盖窗口被静默丢弃，"
+            f"这正是本命令要修的那族缺陷）")
+    changed: list[str] = []
+    for label, resolved in (("coverage_anchor", resolved_anchor),
+                            ("covers_through", resolved_through)):
+        if resolved is None:
+            continue
+        old = r.get(label)
+        if old == resolved:
+            print(f"set-anchor {r['run_id']}: {label} 已是 {resolved[:8]}"
+                  f"（无变化，未追加留痕）")
+            continue
+        r[label] = resolved
+        r.setdefault("anchor_backfills", []).append(
+            {"at": _now(), "field": label, "from": old, "to": resolved,
+             "reason": reason, "by": args.by})
+        changed.append(f"{label} {str(old or '')[:8] or 'none'} -> {resolved[:8]}")
+    if changed:
+        _save_registry(data)
+        print(f"anchor updated {r['run_id']}: " + "；".join(changed)
+              + f" (backfills={len(r['anchor_backfills'])})")
+    else:
+        print(f"set-anchor {r['run_id']}: 无变化（未写盘）")
+
+
+@_with_registry_lock
+def cmd_set_scope(args: argparse.Namespace) -> None:
+    """受控回填：给**已登记** run 补/改 `scope_source` + `scope_deviation`（B4）。
+
+    **为什么需要这个口**（`TG-17` ⑤ 的实例）：`1-WORKFLOW.MD` §4.2 定义了"修复验证
+    复核"——它是**非二查**、不替代关闭三查、`scope = 修复影响面`（cap 5 / 15min）。
+    这类 run 的正确登记形态见 `2026-09-23-tg11-retro.MD:80`：
+    `--scope-source self-chosen --deviation "<fix blast radius 与理由>"`。
+    但 `run-2026-09-21-code-review-060` 是在该规则**生效之前**登记的，因此库里
+    `scope_source=None`：**实际发生过一次修复验证复核，账本却没有留下它的范围声明**。
+    C1 的判据（评审类 run 必须有 scope 声明）报的正是这件事——它报得对：
+    缺口在**数据**，不在判据。
+
+    **为什么不改用"例外清单"绕过**：在关闭闸门里为"该类历史 run"开一份逐条列名的
+    例外，等于把一处**可修的账本缺口**固化成一条长期放行规则（例外清单只会变长，
+    而且它是闸门自己的白名单——正是"改数据 vs 改闸门"两难里错的那一边）。
+    故这里补数据、不放宽判据。
+
+    **与 `register` 同口径（关键）**：校验**完全复用** `_validate_scope()`——它是
+    scope 规则（评审类必声明 / 引用必须存在且可用 / 自选必须够长）的**唯一实现**。
+    本命令不另写一套判据，否则会出现"回填进得去、闸门判红"或反之的两套口径
+    （TG-15 要消灭的形态）。因此这里能接受的东西与 `register` 能接受的**逐条相同**：
+    合法引用前缀，或 `self-chosen` + ≥`scope_min_deviation_chars` 字符的偏离理由。
+
+    约束（与 `set-anchor` 同构）：
+      * 必须给 `--reason`（≥10 字符：为什么回填、依据哪份记录/卡）；
+      * 新声明与库中现值**完全相同** → 无操作（不改库、不追加留痕、报"无变化"）；
+      * 每次实际变更追加 `scope_backfills` 记录
+        （含 `field`/`from`/`to`/`reason`/`by`）。
+    """
+    data = _load_registry()
+    r = _find_run(data, args.run_id)
+    reason = (args.reason or "").strip()
+    if len(reason) < 10:
+        raise SystemExit(
+            "回填必须给 --reason（≥10 字符的理由）：为什么回填、依据哪份记录/卡")
+    # 复用 register 的唯一校验实现（见 docstring）。`--source`/`--deviation` 走同一
+    # `args` 命名空间，因为 `_validate_scope` 读的就是这两个属性名。
+    # `role` **取自账本里这条 run 自己的 role**，不由命令行传：被校验对象的角色是
+    # 既成事实，让人用参数覆盖它 = 又开了一条"换个角色就走另一套判据"的路
+    # （例如把评审类说成非评审类）。
+    args.role = str(r.get("role") or "")
+    args.scope_source = (args.source or "").strip()
+    args.deviation = (args.deviation or "").strip()
+    source, deviation = _validate_scope(args, data)
+    if not source and not deviation:
+        raise SystemExit(
+            "set-scope 至少要写入 scope_source 或 scope_deviation 之一"
+            "（否则是无操作）；"
+            "非评审类 role 不受 C1 约束，补 scope 只在评审类 run 上有意义")
+    changed: list[str] = []
+    for field, new in (("scope_source", source), ("scope_deviation", deviation)):
+        old = r.get(field)
+        if (old or None) == (new or None):
+            continue
+        r[field] = new
+        r.setdefault("scope_backfills", []).append(
+            {"at": _now(), "field": field, "from": old, "to": new,
+             "reason": reason, "by": args.by})
+        changed.append(f"{field} {str(old)[:40]!r} -> {str(new)[:40]!r}")
+    if changed:
+        _save_registry(data)
+        print(f"scope updated {r['run_id']}: " + "；".join(changed)
+              + f" (backfills={len(r['scope_backfills'])})")
+    else:
+        print(f"set-scope {r['run_id']}: 无变化（未写盘）")
 
 
 @_with_registry_lock
@@ -1063,10 +1180,31 @@ def main() -> int:
     p.add_argument("--write", action="store_true", help="把候选例外写到 agents/runtime/coverage-candidates.json")
     p.add_argument("--fail-on-unowned", action="store_true", help="存在未归属提交即退出 1（CI/关闭前置）")
 
-    p = sub.add_parser("set-anchor", help="审核 N5/F1：受控回填已登记 run 的 coverage_anchor（必须给理由）")
+    p = sub.add_parser("set-anchor",
+                       help="审核 N5/F1 + B2：受控回填已登记 run 的覆盖窗口端点 "
+                            "coverage_anchor / covers_through（必须给理由）")
     p.add_argument("run_id")
-    p.add_argument("--anchor", required=True, help="新锚点（短 sha 会被规范化为完整 40 位；无法解析则拒绝）")
-    p.add_argument("--reason", required=True, help="回填理由（≥10 字符）：谁修、为什么、依据哪条审核发现")
+    p.add_argument("--anchor", default="",
+                   help="新锚点（短 sha 会被规范化为完整 40 位；无法解析则拒绝）")
+    p.add_argument("--covers-through", default="",
+                   help="B2：新覆盖上界（同 --anchor 的规范化与 fail-closed 约束；"
+                        "用于修短 sha 让窗口被静默丢弃的历史记录）")
+    p.add_argument("--reason", required=True,
+                   help="回填理由（≥10 字符）：谁修、为什么、依据哪条审核发现")
+    p.add_argument("--by", default="main-agent")
+
+    p = sub.add_parser("set-scope",
+                       help="B4：受控回填已登记 run 的 scope_source / scope_deviation"
+                            "（校验与 register 逐条同口径；必须给理由）")
+    p.add_argument("run_id")
+    p.add_argument("--source", default="",
+                   help="新 scope 来源：空 或 self-chosen（空 + 给了 --deviation "
+                        "即落库为 self-chosen）；也接受合法引用前缀"
+                        "（如 impact-assessment:<run_id>），校验与 register 逐条同口径")
+    p.add_argument("--deviation", default="",
+                   help="自选/偏离范围的理由（self-chosen 路径必填，长度下限取自政策）")
+    p.add_argument("--reason", required=True,
+                   help="回填理由（≥10 字符）：为什么回填、依据哪份记录/卡")
     p.add_argument("--by", default="main-agent")
     p = sub.add_parser("validate-spec")
     p.add_argument("spec_file")
@@ -1083,7 +1221,7 @@ def main() -> int:
         "list": cmd_list, "validate-spec": cmd_validate_spec, "fetch-spec": cmd_fetch_spec,
         "parse-report": cmd_parse_report, "prices-derive": _derive_prices,
         "round": cmd_round, "interrupt": cmd_interrupt, "close-sync": cmd_close_sync,
-        "set-anchor": cmd_set_anchor,
+        "set-anchor": cmd_set_anchor, "set-scope": cmd_set_scope,
     }[args.cmd](args)
     return 0
 

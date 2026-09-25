@@ -42,7 +42,7 @@ PROBE_SPECS = ("tg15-probe-role.md", "tg15-undeclared-role.md")
 
 sys.path.insert(0, str(ROOT))
 
-from verify.agent_policy import ENV_POLICY, load_policy  # noqa: E402
+from verify.agent_policy import ENV_POLICY, Attribution, load_policy  # noqa: E402
 
 # TG-15：角色集合**不再在本文件复制一份**（原先这里写死 {"code-review","doc-audit"}，与
 # agent-ops.py 的 `_REVIEW_ROLES`、verify_close_readiness.py 的 `CLOSE_ROLES` 三处并存 →
@@ -80,6 +80,31 @@ def ok(name: str, cond: bool, detail: str = "") -> None:
     assert cond, f"{name} FAIL: {detail}"
     PASSED += 1
     print(f"PASS: {name} {detail}")
+
+
+def _window_problems(run: dict) -> list[str]:
+    """对**单个账本行**跑一遍关闭闸门的窗口结构判据
+    （B2 的反向对照用真实判据，不另写一份）。
+
+    为什么复用而不是重写：`[C3-窗口] 不是完整 40 位 sha` 这条判据的语义只在
+    `Attribution.window_problems()` 里；测试若自己写一遍"长度不等于 40"，就变成
+    "验得过的口径"与"闸门判的口径"两套——正是 TG-15 要消灭的形态。
+    这里用最小 `Attribution`（order 只含 run 自己的两个端点）驱动同一条方法。
+    """
+    from verify.agent_policy import CoverageWindow, order_index
+
+    windows = []
+    for key in ("coverage_anchor", "covers_through"):
+        value = str(run.get(key) or "").strip()
+        if value:
+            windows.append(CoverageWindow(run_id=str(run.get("run_id") or "?"),
+                                          role=str(run.get("role") or ""),
+                                          anchor=value, through=value, from_run=True))
+    order = order_index([w.anchor for w in windows] + [w.through for w in windows])
+    att = Attribution(anchor=windows[0].anchor if windows else "", head="",
+                      shas=[], order=order, windows=windows, exceptions=[],
+                      root=None, policy=_POLICY)
+    return [p for p in att.window_problems() if "不是完整 40 位" in p]
 
 
 def main() -> int:
@@ -508,10 +533,89 @@ def main() -> int:
                  "--reason", "审核 F1：短 sha 使覆盖窗口被静默丢弃，回填为完整 sha"], base_env, raw=True)
         e17b = next(x for x in json.loads(registry.read_text(encoding="utf-8"))["runs"]
                     if x["run_id"] == "run-uc17-short")
-        ok("UC-17 受控回填成功且留痕（anchor_backfills）",
-           r.returncode == 0 and e17b.get("coverage_anchor") == head_full
-           and len(e17b.get("anchor_backfills") or []) == 1,
+        # 行为变更（B2，2026-09-25）：这一条**本来就是同值**（`register` 已把 head_short
+        # 规范化成 head_full），故现在正确地判为"无变化"——旧实现会追加一条**假留痕**，
+        # 下面 UC-17b 逐条断言新语义。这里先立一条真实存在的回填（换成一个不同的端点），
+        # 再验证"成功 + 留痕"这条判据本身仍然成立。
+        ok("UC-17 同值 --anchor 回填 = 无变化、不留痕（B2 起不再产生假留痕）",
+           r.returncode == 0 and "无变化" in (r.stdout + r.stderr)
+           and not (e17b.get("anchor_backfills") or []),
+           f"rc={r.returncode} backfills={len(e17b.get('anchor_backfills') or [])}")
+        prev = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD~1"],
+                              capture_output=True, text=True,
+                              encoding="utf-8").stdout.strip()
+        r = run(["set-anchor", "run-uc17-short", "--anchor", prev,
+                 "--reason", "UC-17：verify 受控回填成功路径（改成一个不同的端点）"],
+                base_env, raw=True)
+        e17b = next(x for x in json.loads(registry.read_text(encoding="utf-8"))["runs"]
+                    if x["run_id"] == "run-uc17-short")
+        ok("UC-17 受控回填成功且留痕（anchor_backfills，记明 field）",
+           r.returncode == 0 and e17b.get("coverage_anchor") == prev
+           and len(e17b.get("anchor_backfills") or []) == 1
+           and e17b["anchor_backfills"][0].get("field") == "coverage_anchor",
            f"backfills={len(e17b.get('anchor_backfills') or [])}")
+
+        # UC-17b（B2）：**空操作不得假装回填过**。同值重复回填时，旧实现照样追加一条
+        # `anchor_backfills`，于是"谁在什么时候动过这个窗口"的留痕里会混进
+        # **没动过**的记录（假留痕比无留痕更坏：审计据此以为窗口被改过）。
+        # 现改为：值无变化 → 不改库、不追加留痕、显式报"无变化"
+        # （上面的 UC-17 已实测这一条）。
+        def _backfills() -> list[dict]:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+            row = next(x for x in data["runs"]
+                       if x["run_id"] == "run-uc17-short")
+            return row.get("anchor_backfills") or []
+
+        n_before = len(_backfills())
+        r = run(["set-anchor", "run-uc17-short", "--anchor", prev,
+                 "--reason", "UC-17b：同值重复回填必须是无操作（不得追加假留痕）"],
+                base_env, raw=True)
+        n_after = len(_backfills())
+        ok("UC-17b 同值回填 = 无操作：rc=0、显式报「无变化」、"
+           "**不**追加 anchor_backfills",
+           r.returncode == 0 and "无变化" in (r.stdout + r.stderr)
+           and n_after == n_before,
+           f"rc={r.returncode} backfills {n_before}->{n_after}")
+
+        # UC-17c（B2）：`--covers-through` 与 `--anchor` 必须**同构**受理同一族缺陷
+        # （短 sha 让 `CoverageWindow.covers()` 恒 False ⇒ 窗口被静默丢弃）。此前只有
+        # `--anchor` 有回填口，`covers_through` 短 sha 报的问题**不可修** = 永久红。
+        r = run(["set-anchor", "run-uc17-short",
+                 "--reason", "UC-17c：两个端点都不给"], base_env, raw=True)
+        ok("UC-17c 两个端点都不给 → 拒绝（否则是「什么都没做但报成功」）",
+           r.returncode != 0 and "至少要给" in (r.stdout + r.stderr),
+           (r.stdout + r.stderr).strip()[:70])
+        r = run(["set-anchor", "run-uc17-short",
+                 "--covers-through", "deadbeefdeadbeef",
+                 "--reason", "UC-17c：无法解析的 covers_through 必须 fail-closed"],
+                base_env, raw=True)
+        ok("UC-17c 无法解析的 --covers-through → 拒绝"
+           "（COVERAGE-ANCHOR-ERROR，不静默存坏值）",
+           r.returncode != 0 and "COVERAGE-ANCHOR-ERROR" in (r.stdout + r.stderr),
+           (r.stdout + r.stderr).strip()[:70])
+        r = run(["set-anchor", "run-uc17-short",
+                 "--covers-through", head_short, "--reason", "太短"],
+                base_env, raw=True)
+        ok("UC-17c --covers-through 回填缺理由（<10 字符）→ 拒绝",
+           r.returncode != 0 and "理由" in (r.stdout + r.stderr),
+           (r.stdout + r.stderr).strip()[:70])
+        r = run(["set-anchor", "run-uc17-short",
+                 "--covers-through", head_short,
+                 "--reason", "B2：短 sha 的 covers_through 会让窗口被静默丢弃，"
+                             "回填为完整 sha"],
+                base_env, raw=True)
+        e17d = next(x for x in json.loads(registry.read_text(encoding="utf-8"))["runs"]
+                    if x["run_id"] == "run-uc17-short")
+        recs = e17d.get("anchor_backfills") or []
+        ok("UC-17c 短 sha 的 --covers-through 被规范化为完整 40 位并留痕（记明 field）",
+           r.returncode == 0 and e17d.get("covers_through") == head_full
+           and bool(recs) and recs[-1].get("field") == "covers_through"
+           and recs[-1].get("to") == head_full,
+           f"covers_through={str(e17d.get('covers_through'))[:12]}… "
+           f"field={recs[-1].get('field') if recs else None}")
+        ok("UC-17c 回填后该窗口不再被判「不是完整 40 位 sha」（闸门与账本同口径）",
+           not [p for p in _window_problems(e17d) if "不是完整 40 位" in p],
+           f"problems={_window_problems(e17d)}")
 
         # UC-18（审核 N10）：`finish --result-file` **不得改写报告换行**（LF → CRLF 静默改写）
         # 原实现 `dest.write_text(rel.read_text(encoding="utf-8"), encoding="utf-8")`：读侧做
