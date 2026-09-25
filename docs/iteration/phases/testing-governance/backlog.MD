@@ -17,7 +17,7 @@
 | TG-3 | P4 ATDD case-first：功能卡模板增"验收 case"节（实现前先写步骤+断言），下一张新功能卡实测；** | ✅ 完成（Sprint-15：§2.1 九卡 case 先行实测 + 边界覆盖规则落盘） | Sprint-15 | [cards/TG-3.md](cards/TG-3.md) |
 | TG-4 | provider e2e 三脚本去漂移：参数化共享基座，修复 verify_e2e_openai 潜在 1.46 bug | ✅ 完成 | Sprint-14（2026-08-31，PR #48） | [cards/TG-4.md](cards/TG-4.md) |
 | TG-5 | P3 分层 runner + cron 夜间全量联网套件（fail-closed）。**参数已预决（D3）**：每周一次 | ✅ **完成（Sprint-16）** | Sprint-16 | [cards/TG-5.md](cards/TG-5.md) |
-| TG-6 | **验收方式改进（DoD 补"人机交互验收面" + 过程可见证据 + 规范执行可核查）**：① DoD 现偏代码执行层， | 候选 | Sprint-17（治理批 G1 = 规则落地） | [cards/TG-6.md](cards/TG-6.md) |
+| TG-6 | **验收方式改进（DoD 补"人机交互验收面" + 过程可见证据 + 规范执行可核查）**：① DoD 现偏代码执行层， | ✅ 已交付（2026-09-25：C 级棘轮 + 四件套证据规范 + `TG-14`/`TG-7` 补证） | Sprint-17（治理批 G1 = 规则落地） | [cards/TG-6.md](cards/TG-6.md) |
 | TG-7 | **预算闸门 fail-open**：`scripts/scheduled-tasks.py` 的 `load_stat | ✅ 完成（2026-09-20 当日闭环） | Sprint-16（走查修复） | [cards/TG-7.md](cards/TG-7.md) |
 | TG-8 | **自举后端前端口自检 + 离线开关统一注入**（Retro 行动项 ② 升级为必修）：`verify/e2e_comm | **计划中（Sprint-17，用户 2026-09-21 确认）** | Sprint-17（治理批 G1） | [cards/TG-8.md](cards/TG-8.md) |
 | TG-9 | **新脚本产物目录约定**（Retro 行动项 ④）：新脚本产物默认写**已忽略目录**（运行态 JSON → `age | **计划中（Sprint-17，用户 2026-09-21 确认）** | Sprint-17（治理批 G1） | [cards/TG-9.md](cards/TG-9.md) |

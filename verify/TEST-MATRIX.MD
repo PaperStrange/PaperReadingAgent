@@ -46,7 +46,7 @@
 | `verify_index_health.py` | 索引一致性三重探针 + 损坏自愈（合成六形态，离线） | offline | — | 20s | ¥0 | — | none |
 | `verify_ledger_measurement.py` | TG-13 账本测量化闸门：口径可核（dur/rounds/unknown 来自 policy）+ 账本↔agents/runs 双向一致（白名单须有 reason 且只减不增）+ 时间戳退化（相同/0.00/整十分钟/负值/缺失）+ rounds vs 报告轮次 + 终态已写回 + measurement_source/dur_minutes 契约 + 历史棘轮（计数上限 + review_by）+ CLI 写入侧自检（finish/round 标注退化、list 显示 unknown） | offline | — | 14s | ¥0 | — | none |
 | `verify_ledger_rounds.py` | TG-10 账本多轮次记录：round 追加（终态可用）/首轮快照保留/产出累加/累计时长/中断事件（round --interrupted 与 interrupt）/list 展示/非法 run 拒绝（离线） | offline | — | 8s | ¥0 | — | none |
-| `verify_lint.py` | G1 Python ruff 闸门：A 级 E9/F63/F7/F82 与 B 级 F401/F811/F841/E702/E711/E712/E722/W292 全仓 0；C 级 D101-103/E501 只报基线；含好坏文件反向对照自检 | offline | — | 15s | ¥0 | — | ruff |
+| `verify_lint.py` | G1 Python ruff 闸门：A 级 E9/F63/F7/F82 与 B 级 F401/F811/F841/E702/E711/E712/E722/W292 全仓 0；C 级 D101-103/E501 改为棘轮（caps+review_by 来自 policy，计数>cap 即 FAIL 点名；含干净副本/注入违规/过期/缺键/多键五条反向对照）+ EVIDENCE 机读证据行 | offline | — | 15s | ¥0 | — | ruff |
 | `verify_local_dir.py` | F-AC3 引擎接线实证：临时目录 paper_directory → load_index → retrieve 候选来自该目录（免密：注入占位 key，链路无 LLM 调用） | offline | — | 90s | ¥0 | /api/new_session, /api/run_step | self-boots-backend |
 | `verify_md_tables.py` | Markdown 表格结构自检：未转义管道切分的单元格数一致性（② 恒真式判据已删，裸管道由 ① 覆盖，脚本内建坏/好样本反向对照）+ 扫描集双向差集 + 棘轮上限；三次 R1 事故后固化的编辑安全网 | offline | — | 2s | ¥0 | — | none |
 | `verify_no_policy_hardcode.py` | TG-15⑦ 硬编码政策闸门：scripts/verify 内不得再写死角色集合/成员判定字面量/覆盖路径清单；豁免须写 category+reason；含三类注入样本反向对照 | offline | — | 10s | ¥0 | — | none |

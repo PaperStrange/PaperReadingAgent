@@ -307,6 +307,52 @@ class Policy:
         return val
 
     @property
+    def lint_readability_ratchet(self) -> dict:
+        """C 级（可读性）**棘轮基线**（`policy.json::lint_readability_ratchet`，TG-6）。
+
+        为什么分级之外还要一份上限表：C 级（缺 docstring / 行长）是**历史既存债**，
+        且随正常改动漂移；硬 0 等于要求全仓重排，而"只报告"又等于没有闸门
+        （数字没人看、涨了没人管）。棘轮 = 允许历史债在**计数上限**内存在，
+        超出即 FAIL 并点名。
+
+        校验一律 fail-closed（缺键 / 类型错 / 上限写成非数字 → `PolicyError`）：
+        上限写错会让棘轮**静默失效**（同 `_as_bool` 与 TG-13 的 caps 校验）。
+        与 `lint_rules.report_only` 的**逐键相等**由闸门判定
+        （`verify_lint.ratchet_problems`），因为那是跨键一致性，属闸门职责。
+        """
+        val = self._data("lint_readability_ratchet")
+        if not isinstance(val, dict):
+            raise PolicyError(f"lint_readability_ratchet 必须是对象，实际 {val!r}")
+        if not str(val.get("measured_at") or "").strip():
+            raise PolicyError("lint_readability_ratchet.measured_at 缺失"
+                              "（上限必须有实测日期，否则无从复核基线）")
+        # 严格 `YYYY-MM-DD`：闸门按字典序比较 → 格式一乱比较就无意义（棘轮永不失效）
+        _require_iso_date(val.get("review_by"), "lint_readability_ratchet.review_by")
+        caps = val.get("caps")
+        if not isinstance(caps, dict) or not caps:
+            raise PolicyError(
+                f"lint_readability_ratchet.caps 必须是非空映射，实际 {caps!r}")
+        for code, cap in caps.items():
+            if not str(code).strip():
+                raise PolicyError(
+                    f"lint_readability_ratchet.caps 出现空规则号：{caps!r}")
+            if isinstance(cap, bool) or not isinstance(cap, int) or cap < 0:
+                raise PolicyError(
+                    f"lint_readability_ratchet.caps[{code!r}] 必须是 ≥0 的整数，"
+                    f"实际 {cap!r}——上限写错会让棘轮静默失效")
+        return val
+
+    def lint_readability_caps(self) -> dict[str, int]:
+        """`{规则号: 计数上限}`（只许下调；换规则集须同时改 caps，闸门判双侧差集）。"""
+        return {str(k): int(v)
+                for k, v in self.lint_readability_ratchet["caps"].items()}
+
+    def lint_readability_review_by(self) -> str:
+        """棘轮到期日（过期未重评即 FAIL，同 `md_table_legacy_files.review_by`）。"""
+        return _require_iso_date(self.lint_readability_ratchet["review_by"],
+                                 "lint_readability_ratchet.review_by")
+
+    @property
     def archive_role_prefix(self) -> str:
         return str(self._data("archive_role_prefix"))
 
@@ -504,6 +550,9 @@ class Policy:
         consumed = {
             "version", "_comment", "spec_glob", "spec_dir", "scope_min_deviation_chars",
             "scope_ref_sources", "lint_paths", "lint_rules", "archive_role_prefix", "close_gate",
+            # TG-6：C 级（可读性）棘轮基线（计数上限 + measured_at + review_by），
+            # 由 verify/verify_lint.py 消费
+            "lint_readability_ratchet",
             "ledger_status", "md_table_docs", "md_table_globs", "md_table_legacy_files", "card_index",
             # A10（N1）：md_table_globs 的**范围声明**（roots/include_files），由 verify_md_tables.py 消费
             "md_table_coverage",
