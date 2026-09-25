@@ -854,6 +854,58 @@ def cmd_set_sprint(args: argparse.Namespace) -> None:
 
 
 @_with_registry_lock
+def cmd_set_result_files(args: argparse.Namespace) -> None:
+    """受控回填：给**已收尾** run 补 `result_files`
+    （评审产物未归档时的唯一合法修复路径）。
+
+    **为什么需要**（2026-09-25 实测）：`finish --result-file` 是**当时**唯一写入口，
+    而 `verify/verify_ledger_measurement.py` 对**终态评审类 run** 严格判
+    `[missing_result_files_review]`——"账本说做过了、产物不见了"。
+    我 `finish run-2026-09-25-code-review-083` 时忘了带 `--result-file`，
+    随后 `finish` 拒绝二次收尾（`非法流转 succeeded -> succeeded`，
+    这条 fail-closed 是对的），
+    于是该问题**不可修** = 永久红——与 `set-output-chars` 当初面对的是同一形态
+    （见其 docstring）。故补一个**受控**入口：必须给 `--reason`（≥10 字符）、
+    文件**必须真实存在**、每次变更追加 `result_files_backfills` 留痕、同值 = 无操作。
+
+    **路径口径**：账本里存量值一律是**相对 `agents/` 根**的
+    `runs/<run_id>/<role>.report.md`
+    （`agent-ops.py` 的 `_AGENTS_BASE`；`verify_ledger_measurement.py` 的
+    `REVIEW_REPORT_REL` 同此口径）。故本命令**只认这一种**：既有值怎么写的，
+    新值就怎么写——不做"仓库根也行"的宽容解析（两套根 = 同一个字段两种读法，
+    正是"同一个数值两处写死"的变体）。
+    """
+    data = _load_registry()
+    r = _find_run(data, args.run_id)
+    reason = (args.reason or "").strip()
+    if len(reason) < 10:
+        raise SystemExit(
+            "回填必须给 --reason（≥10 字符的理由）：为什么补、依据哪份产物")
+    wanted = list(dict.fromkeys(str(f) for f in (args.file or [])))
+    if not wanted:
+        raise SystemExit(
+            "set-result-files 至少要给一个 --file <产物路径>（否则是无操作）")
+    for rel in wanted:
+        if not (_AGENTS_BASE / rel).is_file():
+            raise SystemExit(
+                f"RESULT-FILE-ERROR: {rel!r} 不存在于 agents 根下"
+                f"（期望 {_AGENTS_BASE / rel}）；fail-closed：产物路径必须可核，"
+                f"且口径与存量值一致 = 相对 agents/ 根写 "
+                f"`runs/<run_id>/<role>.report.md`")
+    old = list(r.get("result_files") or [])
+    if old == wanted:
+        print(f"set-result-files {r['run_id']}: 无变化（未写盘；现值 {len(old)} 条）")
+        return
+    r["result_files"] = wanted
+    r.setdefault("result_files_backfills", []).append(
+        {"at": _now(), "field": "result_files", "from": old, "to": wanted,
+         "reason": reason, "by": args.by or "main-agent"})
+    _save_registry(data)
+    print(f"result_files updated {r['run_id']}: {len(old)} -> {len(wanted)} 条 "
+          f"(backfills={len(r['result_files_backfills'])})")
+
+
+@_with_registry_lock
 def cmd_set_output_chars(args: argparse.Namespace) -> None:
     """受控回填：修正**已收尾** run 的 `output_chars`（产出未测量时写 0 会冒充"无产出"）。
 
@@ -1548,6 +1600,15 @@ def main() -> int:
     p.add_argument("--reason", required=True,
                    help="回填理由（≥10 字符）：为什么回填、依据哪份记录/卡")
     p.add_argument("--by", default="main-agent")
+    p = sub.add_parser("set-result-files",
+                       help="受控回填**已收尾** run 的 result_files（产物漏归档时的"
+                            "唯一合法修复路径；文件须存在+必带理由+留痕）")
+    p.add_argument("run_id")
+    p.add_argument("--file", action="append", required=True,
+                   help="产物路径（相对仓库根；可重复；每个都必须真实存在）")
+    p.add_argument("--reason", required=True,
+                   help="回填理由（≥10 字符）：为什么补、依据哪份产物")
+    p.add_argument("--by", default="main-agent")
     p = sub.add_parser("mark-produced",
                        help="D0-3(a)/TG-17⑤：把已登记 run **逐条**标注为「产出型 run」"
                             "（实现类工作挂评审 role，不承担内容覆盖）；必带理由+留痕")
@@ -1574,6 +1635,7 @@ def main() -> int:
         "round": cmd_round, "interrupt": cmd_interrupt, "close-sync": cmd_close_sync,
         "set-anchor": cmd_set_anchor, "set-scope": cmd_set_scope,
         "set-sprint": cmd_set_sprint,
+        "set-result-files": cmd_set_result_files,
         "set-output-chars": cmd_set_output_chars,
         "mark-produced": cmd_mark_produced,
     }[args.cmd](args)

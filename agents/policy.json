@@ -102,12 +102,12 @@
       "env_names": ["TEMP", "TMP", "TMPDIR"],
       "literals": ["%TEMP%"]
     },
-    "dynamic_ratchet": {
+    "dynamic_ratchet":     {
       "_comment": "**动态目标棘轮**：写盘目标由函数参数/argv/运行时决定、无法静态判定者按**文件**计数设上限（2026-09-25 实测值，只许下调）。**未列入上限表的文件出现动态目标 = FAIL**（新脚本必须让产物落点可静态判定：用模块级常量拼路径，别把落点交给参数/argv）。`> 上限` = FAIL；`< 上限` 只提示收紧（不惩罚把动态目标改少的重构）。到期未重评 → FAIL。",
       "cutoff_local_date": "2026-09-25",
       "review_by": "2026-10-31",
       "measured_at": "2026-09-25",
-      "measured_total": 107,
+      "measured_total": 105,
       "_measured_how": "verify/verify_artifact_paths.py --report（真实仓库扫描集 89 个脚本 / 290 个写盘目标；其余 56 已忽略 + 119 %TEMP% + 3 已入库数据 + 1 无默认落点 + 4 仓库外绝对路径。闸门**不自我豁免**，故含它自己的 2 处）",
       "files": {
         "paper-qa-script/app/config_schema.py": 1,
@@ -123,7 +123,7 @@
         "scripts/refresh-providers.py": 12,
         "scripts/report-freshness.py": 2,
         "scripts/scheduled-tasks.py": 4,
-        "scripts/structure-guard.py": 5,
+        "scripts/structure-guard.py": 4,
         "src/collect_acl.py": 2,
         "src/collect_iclr_openreview.py": 2,
         "src/collect_neurips_proceedings.py": 2,
@@ -131,7 +131,7 @@
         "verify/run_suite.py": 3,
         "verify/verify_agentops.py": 5,
         "verify/verify_archive.py": 1,
-        "verify/verify_card_index.py": 2,
+        "verify/verify_card_index.py": 1,
         "verify/verify_checkpoint.py": 6,
         "verify/verify_checkpoint_index.py": 1,
         "verify/verify_close_readiness.py": 1,
@@ -144,7 +144,50 @@
         "verify/verify_providers.py": 1,
         "verify/verify_runner.py": 2,
         "verify/verify_artifact_paths.py": 2
-      }
+      },
+      "measured_value": {
+        "paper-qa-script/app/config_schema.py": 1,
+        "paper-qa-script/app/embedding_recommender.py": 2,
+        "paper-qa-script/app/orchestration.py": 11,
+        "paper-qa-script/app/remote_resolver.py": 3,
+        "paper-qa-script/manual_index_paper.py": 1,
+        "paper-qa-script/python_qa.py": 1,
+        "scripts/agent-ops.py": 7,
+        "scripts/card-inventory.py": 2,
+        "scripts/migrate-scope-declarations.py": 1,
+        "scripts/normalize-spec-eol.py": 1,
+        "scripts/refresh-providers.py": 12,
+        "scripts/report-freshness.py": 2,
+        "scripts/scheduled-tasks.py": 4,
+        "scripts/structure-guard.py": 4,
+        "src/collect_acl.py": 2,
+        "src/collect_iclr_openreview.py": 2,
+        "src/collect_neurips_proceedings.py": 2,
+        "verify/e2e_common.py": 2,
+        "verify/run_suite.py": 3,
+        "verify/verify_agentops.py": 5,
+        "verify/verify_archive.py": 1,
+        "verify/verify_card_index.py": 1,
+        "verify/verify_checkpoint.py": 6,
+        "verify/verify_checkpoint_index.py": 1,
+        "verify/verify_close_readiness.py": 1,
+        "verify/verify_freshness.py": 7,
+        "verify/verify_index_health.py": 5,
+        "verify/verify_ledger_measurement.py": 4,
+        "verify/verify_matrix.py": 1,
+        "verify/verify_md_tables.py": 1,
+        "verify/verify_no_policy_hardcode.py": 4,
+        "verify/verify_providers.py": 1,
+        "verify/verify_runner.py": 2,
+        "verify/verify_artifact_paths.py": 2
+      },
+      "rebased_at": "2026-09-25",
+      "rebased_reason": "M-C 收口（独立复核 run-2026-09-25-code-review-083 major ④）：本表此前未被 gate_integrity.ratchets 覆盖 ⇒ 声明 Σ=107 而现跑 105，存在 2 处静默配额。本次把 structure-guard 5→4、verify_card_index 2→1 收到当次实测（= 现跑 105），并把本表纳入棘轮判据（measured_value 逐键快照 + rebased_from 记录授权前的数值）。",
+      "rebased_from": {
+        "scripts/structure-guard.py": 5,
+        "verify/verify_card_index.py": 2
+      },
+      "_m_c_note": "本块自 2026-09-25 起进 `gate_integrity.ratchets`：缺 measured_value/measured_at、cap > measured_value、键集不等、提交态上调无署名（rebased_at/rebased_reason/rebased_from）都会被 verify/verify_gate_integrity.py 判 FAIL。"
     }
   },
   "offline_switch": {
@@ -190,7 +233,7 @@
       "E501": 2494
     },
     "_measured_value_why": "M-C（TG-19，2026-09-25 D3）：把**重评基线那一刻的实测值**钉进政策。判据（verify/verify_gate_integrity.py）：`cap ≤ measured_value` 逐键成立、`measured_value` 键集与 `caps` 逐键相等、`measured_total` 同时等于 Σcaps 与 Σmeasured_value；**改 caps 或 measured_value 必须带 `rebased_at` + `rebased_reason`**（提交态的放宽因此成为一次**具名事件**，不再是盲区）。**它不是活读数**：活读数由守门闸门（`verify_lint.py`）测并判 `实测 ≤ cap`；三者串起来即 `实测 ≤ cap ≤ 重评时实测`。",
-    "_remeasure_2026_09_25_close": "关闭期**下调**（只减不增）：D103 207→205（补 10 处 public 函数 docstring）、E501 2631→2552（把本批新增/改写的长 CJK docstring 与注释行按**显示宽度**折行——ruff 的 E501 按显示宽度计、CJK 占 2 列）。上一版把 cap 记在实测之上（E501 2631 vs 冻结 HEAD 实测 2615）留下的**静默配额**已按 `docs/3-LEARNED.MD` 1.66 收掉：现在 **cap = 当次实测**（零余量）。**已知局限（复核 finding iv）**：`verify_gate_integrity.py` 的单调性判据与 `git HEAD` 比较 ⇒ 它只能拦住**未提交**的上调；一次**已提交**的放宽会成为新基线（要堵这一层需要『把实测值也钉进政策』，属 Sprint-18 候选）。**`measured_total` 必须等于四类 cap 之和**（该等式已由 `verify_gate_integrity.py` 机检——2026-09-25 复核 #3 实测它曾停在 2833 而实测合计 2815，属『没人读的第二份声明』，同族形态）。",
+    "_remeasure_2026_09_25_close": "关闭期**下调**（只减不增）：D103 207→205（补 10 处 public 函数 docstring）、E501 2631→2494（把本批新增/改写的长 CJK docstring 与注释行按**显示宽度**折行——ruff 的 E501 按显示宽度计、CJK 占 2 列；中间一度到 2552，最终值以 `verify_lint.py` 现跑为准）。上一版把 cap 记在实测之上（E501 2631 vs 冻结 HEAD 实测 2615）留下的**静默配额**已按 `docs/3-LEARNED.MD` 1.66 收掉：现在 **cap = 当次实测**（零余量）。**原『已知局限』（复核 finding iv：单调性只与 `git HEAD` 比较 ⇒ 提交态放宽是新基线）已于 2026-09-25 D3 由 `TG-19` M-C 收口**：棘轮必须带 `measured_value`/`measured_at`，提交态上调必须带 `rebased_at` + `rebased_reason` + `rebased_from`（署名绑定到它授权的那组数值）。**`measured_total` 必须同时等于四类 cap 之和与 `measured_value` 之和**（两者都由 `verify_gate_integrity.py` 机检）。",
     "measured_total": 2757
   },
   "archive_role_prefix": "tech-research",
@@ -252,7 +295,7 @@
     "agents/README.md"
   ],
   "md_table_legacy_files": {
-    "_comment": "棘轮（ratchet）基线：这些**历史 Sprint/验收文档**里的表格结构缺陷是既存的（2026-09-23 扩覆盖时首次被扫到，共 15 处：内容里的管道未转义 / 表头与数据行列数不符）。避免为了让闸门变绿而改写已关闭 Sprint 的历史记录（2026-09-23 实测过一次越界改写，已 revert）。A2 修法（finding M-a/N2/R3，2026-09-25）：**按文件设上限**——`files` 由路径列表改为 `{路径: 缺陷数上限}`，闸门对基线文件也判 `len(found) > cap → FAIL`（棘轮只许变紧：上限只减不增，且**不许用「修好一处、新增一处」把总量顶回上限**——上限值本身只能在重评基线时下调）。上限来源＝各文件实测缺陷数。**新文件/新改动一律判失败**；清这批历史债需另开卡逐处人工修（每处需人判：补表头列 / 转义内容管道 / 合并单元格）。",
+    "_comment": "棘轮（ratchet）基线：这些**历史 Sprint/验收文档**里的表格结构缺陷是既存的（2026-09-23 扩覆盖时首次被扫到，共 15 处：内容里的管道未转义 / 表头与数据行列数不符）。避免为了让闸门变绿而改写已关闭 Sprint 的历史记录（2026-09-23 实测过一次越界改写，已 revert）。A2 修法（finding M-a/N2/R3，2026-09-25）：**按文件设上限**——`files` 由路径列表改为 `{路径: 缺陷数上限}`，闸门对基线文件也判 `len(found) > cap → FAIL`（棘轮只许变紧：上限只减不增，且**不许用「修好一处、新增一处」把总量顶回上限**——上限值本身只能在重评基线时下调）。上限来源＝各文件实测缺陷数。**新文件/新改动一律判失败**；清这批历史债需另开卡逐处人工修（每处需人判：补表头列 / 转义内容管道 / 合并单元格）。**2026-09-25 D3 更新**：`TG-18` 已把这 15 处**逐处清零**（4 个文件现跑『问题 0』），本表四个上限相应置 **0**（+ `rebased_at`/`rebased_reason`）——现在的语义是『这四个文件不得再出现表格缺陷』，见 `_measured_value_why`。",
     "review_by": "2026-10-31",
     "files": {
       "docs/iteration/sprint/2026-08-30-sprint-6.md": 0,
@@ -445,7 +488,8 @@
       {"pointer": "lint_readability_ratchet.caps", "review_by_pointer": "lint_readability_ratchet.review_by"},
       {"pointer": "md_table_legacy_files.files", "review_by_pointer": "md_table_legacy_files.review_by"},
       {"pointer": "ledger_measurement.legacy_ratchet.caps", "review_by_pointer": "ledger_measurement.legacy_ratchet.review_by"},
-      {"pointer": "derived_numbers.baseline", "review_by_pointer": "derived_numbers.review_by"}
+      {"pointer": "derived_numbers.baseline", "review_by_pointer": "derived_numbers.review_by"},
+      {"pointer": "artifact_paths.dynamic_ratchet.files", "review_by_pointer": "artifact_paths.dynamic_ratchet.review_by"}
     ]
   }
 }

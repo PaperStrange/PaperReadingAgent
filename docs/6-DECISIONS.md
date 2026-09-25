@@ -161,6 +161,18 @@
 - 证据：[`TG-20`](iteration/phases/testing-governance/cards/TG-20.md)；本文件；计划书 §3/§4 的插入记录
 - 验证时间戳：未验证（待补——机检判据落地后回填）
 - 违背事故：无
+
+### D-250925-12 D4 之前**中途插入**一次独立复核
+
+- 原文（逐字，本会话消息片段）："先插一次'中途独立复核'"
+- 出处：会话（对主代理"是否先把 D1~D3 收口、再进 D4"的选项点选）
+- 时点：2026-09-25（UTC+8，D3 收尾后、D4 开工前）
+- 主代理归纳：**独立复核不再只在 Sprint 关闭时做**——D4 之前先插一次，对象 = D1~D3 已落地的代码＋文档＋闸门；产出按既有 `code-review` 口径逐条分级（critical/major/minor/nit ＋ `file:line`），"Fix this round: yes" 的**当场整改**，"Fix this round: no" 的转 backlog 并记理由
+- 生效状态：生效（**已执行**：`run-2026-09-25-code-review-083`；critical 0 / major 5 / minor 4 / nit 1，5 条 major 全部本轮整改）
+- 证据：`agents/runs/run-2026-09-25-code-review-083/code-review.report.md`（18058 字符；账本 `result_files` 为**受控回填**，留痕 `result_files_backfills`）；整改逐条见 [`TG-19`](iteration/phases/testing-governance/cards/TG-19.md) 与 [`sprint-18` §5/§7](iteration/sprint/2026-09-25-sprint-18.md)
+- 验证时间戳：2026-09-25（复核 run 已登记收尾；整改后 `verify_lint` 的 E501 由 2521 → **2493**/上限 2494、`verify_gate_integrity` 19 断言、`verify_agentops` 120 断言全绿）
+- 违背事故：无
+
 ## 4. 历史裁决（征集稿全量分层：逐字原话全收／二手转述入附录）
 
 > **用户裁定（R1，2026-09-25）**：分层并入——**逐字原话全收**；二手转述里只有主代理判定「仍生效」的进 §4.2，其余进 §4.3 附录（**未判定效力，不得引用为裁决**）。
@@ -462,7 +474,7 @@
 
 ### V-028 P-a 暂存分支方案批准
 - 原文（逐字）: "按优化方案执行｜｜；｜｜按照你的优化方案来执行"（`｜｜` 为分段符）
-- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:252；docs/iteration/sprint/2026-09-21-sprint-17.md:254
+- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:259；docs/iteration/sprint/2026-09-21-sprint-17.md:261
 - 时点: 2026-09-25
 - 主代理归纳: 待回填
 - 生效状态: 待回填
@@ -473,7 +485,7 @@
 
 ### V-029 前两点要落实到位
 - 原文（逐字）: "前两点要落实到位"
-- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:267
+- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:274
 - 时点: 2026-09-25
 - 主代理归纳: 待回填
 - 生效状态: 待回填
@@ -483,7 +495,7 @@
 
 ### V-030 合并并备 Plan B
 - 原文（逐字）: "合并，同时做好合并冲突的 Plan B 准备"
-- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:286
+- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:293
 - 时点: 2026-09-25
 - 主代理归纳: 待回填
 - 生效状态: 待回填
@@ -493,7 +505,7 @@
 
 ### V-031 sha 纪律要求
 - 原文（逐字）: "不想再看到 sha 传参/使用出问题"
-- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:298
+- 出处: docs/iteration/sprint/2026-09-21-sprint-17.md:305
 - 时点: 2026-09-25
 - 主代理归纳: 待回填
 - 生效状态: 待回填
@@ -1148,7 +1160,7 @@
 
 ### V-096 交互类检查反向对照（倒过来试试）
 - 原文（逐字）: "倒过来试试"
-- 出处: docs/1-WORKFLOW.MD:427；docs/1-WORKFLOW.MD:385
+- 出处: docs/1-WORKFLOW.MD:432
 - 时点: 2026-09-21
 - 主代理归纳: 待回填
 - 生效状态: 待回填
@@ -1158,7 +1170,7 @@
 
 ### V-097 子代理中断/接管必须留痕
 - 原文（逐字）: "运行时间变短/中途被停"
-- 出处: docs/1-WORKFLOW.MD:429；docs/1-WORKFLOW.MD:430
+- 出处: docs/1-WORKFLOW.MD:434
 - 时点: 2026-09-21
 - 主代理归纳: 待回填
 - 生效状态: 待回填

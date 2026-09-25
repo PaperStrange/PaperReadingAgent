@@ -250,6 +250,33 @@ def committed_rebase_problems(committed: dict | None, parent_policy: dict | None
                 f"却没有 `{block}.rebased_at` + `{block}.rebased_reason`（≥10 字符）⇒ "
                 f"提交态的放宽必须是一次**具名事件**（谁、何时、依据哪次实测）；"
                 f"补上这两个字段，或把上限改回去")
+            continue
+        # **署名必须绑定到它授权的那组数值**（2026-09-25 独立复核 `run-…083` major）：
+        # 光有 `rebased_at` + 理由不够——"先降后升"可以复用上一次的旧署名绕过。
+        # 现要求 `rebased_from` 逐键等于**父提交**里被抬高那些键的值：
+        # 旧署名对不上新数值 ⇒ FAIL。
+        rebased_from = dig(committed, f"{block}.rebased_from") if block else None
+        before: dict = {}
+        for k in raised:
+            before[k] = old_caps.get(k)
+        for k in raised_mv:
+            before.setdefault(k, old_mv.get(k))
+        if not isinstance(rebased_from, dict):
+            problems.append(
+                f"[棘轮/提交态] {pointer} 抬高了 {sorted(before)} "
+                f"但缺 `{block}.rebased_from`"
+                f"（**这次重评授权前的数值**）⇒ 无法判断署名是不是**这一次**的"
+                f"（'先降后升 + 复用旧署名'正是这样绕过的）")
+        else:
+            stale = {k: (rebased_from.get(k), v) for k, v in before.items()
+                     if rebased_from.get(k) != v}
+            if stale:
+                problems.append(
+                    f"[棘轮/提交态] {pointer} 的 `{block}.rebased_from` "
+                    f"与父提交实测不符"
+                    f"（键: {{键: (rebased_from, 父提交值)}} = {stale}）"
+                    f"⇒ 署名**不是这一次**的"
+                    f"（旧署名被复用）；把 `rebased_from` 更新为本次重评前的数值")
     return problems
 
 
@@ -387,10 +414,21 @@ def selftest() -> int:
        f"problems={problems[:1]}")
     named = {"lint_readability_ratchet": _blk(
         {"E501": 12}, measured={"E501": 12}, rebased_at="2026-09-25",
-        rebased_reason="重评基线：按当次实测下调（E501 2631→2494）")}
+        rebased_reason="重评基线：按当次实测下调（E501 2631→2494）",
+        rebased_from={"E501": 10})}
     problems = committed_rebase_problems(named, prev, pointers=pointers)
-    ok("M-C 反向对照 N2 同样的上调**带 rebased_at + 理由** → PASS（成为具名事件）",
+    ok("M-C 反向对照 N2 同样的上调**带 rebased_at + 理由 + rebased_from** "
+       "→ PASS（具名事件）",
        problems == [], f"problems={problems[:1]}")
+    stale_sig = {"lint_readability_ratchet": _blk(
+        {"E501": 12}, measured={"E501": 12}, rebased_at="2026-04-01",
+        rebased_reason="重评基线：按当次实测下调（2026-04 那次，不是这次）",
+        rebased_from={"E501": 7})}
+    problems = committed_rebase_problems(stale_sig, prev, pointers=pointers)
+    ok("M-C 反向对照 N4（复核 major 的原始形态）：**先降后升 + 复用旧署名** ⇒ FAIL"
+       "（`rebased_from` 必须等于父提交被抬高键的值）",
+       any("rebased_from" in p and "旧署名" in p for p in problems),
+       f"problems={problems[:1]}")
     problems = committed_rebase_problems(named, head_raised, pointers=pointers)
     ok("M-C 反向对照 N3 提交态**不变**时不做要求（防假红）", problems == [],
        f"problems={problems[:1]}")

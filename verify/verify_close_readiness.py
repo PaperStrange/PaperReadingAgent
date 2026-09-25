@@ -338,36 +338,56 @@ def _contributes_coverage(policy: AgentPolicy | None, run: dict) -> bool:
     return role not in scope_roles
 
 
-def domain_right_boundary(runs: list[dict], *,
-                          policy: AgentPolicy | None = None) -> tuple[str | None, str | None]:
-    """域的**右端** = `(sha, 定义它的 run_id)`：
-    域内**最新一条**声明了合法 `covers_through`
-    的 run 所覆盖到的提交。
+def domain_right_boundary(
+        runs: list[dict], *,
+        policy: AgentPolicy | None = None,
+        root: Path | None = None) -> tuple[str | None, str | None, list[str]]:
+    """域的**右端** = `(sha, 定义它的 run_id, 具名问题)`：域内**覆盖最远**那条 run 的
+    `covers_through`。
 
-    为什么右端也必须取自域内（M-A 的第二半，2026-09-25 实测）：
+    为什么右端必须取自域内（M-A 的第二半，2026-09-25 实测）：
     C3 的判据是"锚点→HEAD 每个提交有归属"，而 `HEAD` 是**移动靶** ⇒ 下一个 Sprint 的提交
     会掉进本 Sprint 的判据里（G2 开工当天的提交就会被算成 Sprint-17 的"未归属提交"）。
     域既然由被判定物派生，右端就必须由**该 Sprint 自己的记录**界定。
 
-    取"最新一条 run 的 `covers_through`"而不是"全部 sha 的字典序最大"：sha 的字典序
-    ≠ 提交序（后者要问 git），而覆盖率随 run 时间单调增长在本仓是**陈述过的前提**
-    （`attribution()` 会另行校验锚点与右端的祖先关系，不成立时报具名问题）。
+    **按覆盖远近，不按登记时间**（2026-09-25 独立复核 `run-…083` major）：
+    原实现取"`started_at` 最新那条" ⇒ **后登记一条覆盖更少的 run** 就能把 C3 的判定域
+    静默缩小（`_contributes_coverage` 只保证"它承担覆盖"，不保证"它覆盖得更远"）。
+    现按**祖先关系**取最远者：`X` 更远 ⇔ `X.covers_through` 是
+    `Y.covers_through` 的后代；
+    **不可比（分叉）⇒ 具名问题**（fail-closed，不猜谁更远）。
+    `root is None`（夹具/无 git）⇒ 退回"登记时间最新"并**在问题里点名该口径**，
+    自检仍可跑。
     """
-    best_started: str | None = None
-    best_sha: str | None = None
-    best_rid: str | None = None
+    cands: list[dict] = []
     for r in runs:
         if not _contributes_coverage(policy, r):
             continue
-        sha = str(r.get("covers_through") or "").strip()
-        if not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
+        if re.fullmatch(r"[0-9a-fA-F]{40}", str(r.get("covers_through") or "").strip()):
+            cands.append(r)
+    if not cands:
+        return None, None, []
+    if root is None:
+        latest = max(cands, key=lambda r: str(r.get("started_at") or ""))
+        return (str(latest["covers_through"]), str(latest.get("run_id") or "?"),
+                ["[域右端] 无 git 根可比（夹具模式）⇒ 按**登记时间最新**取右端；"
+                 "真数据模式会做祖先比较"])
+    best = cands[0]
+    problems: list[str] = []
+    for cand in cands[1:]:
+        a = str(best["covers_through"])
+        b = str(cand["covers_through"])
+        if a == b:
             continue
-        started = str(r.get("started_at") or "")
-        if best_started is None or started >= best_started:
-            best_started, best_sha, best_rid = started, sha, str(r.get("run_id") or "?")
-    if best_sha is None:
-        return None, None
-    return best_sha, best_rid
+        if _is_ancestor(root, a, b):
+            best = cand
+        elif not _is_ancestor(root, b, a):
+            problems.append(
+                f"[域右端] {best.get('run_id')} 的 covers_through {a[:10]} 与 "
+                f"{cand.get('run_id')} 的 {b[:10]} **不可比**（互不为祖先）"
+                f"⇒ 域右端无法判定"
+                f"（fail-closed：不猜哪个更远；查这两条 run 是否分属不同血统）")
+    return str(best["covers_through"]), str(best.get("run_id") or "?"), problems
 
 
 def scope_step_runs(policy: AgentPolicy, runs: list[dict], *,
@@ -805,12 +825,22 @@ def check_linkage(policy: AgentPolicy, sprint: dict, runs: list[dict],
         rid = r.get("run_id")
         started = _ts(str(r.get("started_at") or ""))
         age_min = (now_epoch - started.timestamp()) / 60 if started else None
-        if grace is not None and age_min is not None and age_min < grace:
+        if grace is not None and age_min is not None and 0 <= age_min < grace:
             # A-M13 ④：在飞宽限内只提示（不计缺陷）——"刚登记、§9 还没写"是工作流的常态，
             # 不是缺口；超期仍逐条 FAIL（宽限不是豁免）。
             print(f"INFO[linkage-in-flight] {rid} 登记 {age_min:.0f} 分钟前、"
                   f"§9 run 表尚未登记 ⇒ 宽限 {grace:.0f} 分钟内只提示不判"
                   f"（口径同 ledger_measurement.in_flight）")
+            continue
+        if age_min is not None and age_min < 0:
+            # 2026-09-25 独立复核 `run-…083` major：宽限**没有下界**时，
+            # 一条 `started_at` 在未来的 run（`age_min` 为负）会**永久**落在宽限内
+            # ⇒ 它的 §9 登记要求被无限期豁免。
+            problems.append(
+                f"[linkage/未来] {rid} 的 started_at="
+                f"{r.get('started_at')!r} **晚于现在**"
+                f"（{age_min:.0f} 分钟）⇒ 未来的 run 不适用在飞宽限（宽限是给"
+                f"刚登记、§9 还没写的当期 run），照旧要求登记")
             continue
         problems.append(f"[linkage] 账本有 run 但 §9 run 表未登记：{rid}")
 
@@ -1197,16 +1227,21 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
             print(f"  - {p}")
         return DOMAIN_UNAVAILABLE_EXIT
 
+    right_problems: list[str] = []
     att = None
     right_end: str | None = None
     if check_coverage:
         anchor = sprint.get("anchor") or ""
-        right_end, right_run = domain_right_boundary(domain, policy=policy)
+        right_end, right_run, right_problems = domain_right_boundary(
+            domain, policy=policy, root=ROOT)
+        right_end = right_end or None
         head = right_end or head_sha(ROOT)
         print(f"[domain] 右端 = {head[:12]}…"
-              + (f"（由域内最新覆盖 run {right_run} 的 covers_through 界定；"
+              + (f"（由域内**覆盖最远**的 run {right_run} 的 covers_through 界定；"
                  f"其后提交属下一个 Sprint，不进入本期 C3）" if right_end else
                  "（域内没有任何覆盖窗口 ⇒ 退回仓库 HEAD）"))
+        for note in right_problems:
+            print(f"  {note}")
         exceptions: list[dict] = []
         cov = (policy.close_gate.get("coverage") or {})
         exc_file = cov.get("exceptions_file")
@@ -1218,8 +1253,10 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
                 return 2
         att = attribution(ROOT, anchor, head, domain, exceptions, policy=policy)
 
-    problems = evaluate(policy, sprint, domain, att=att, check_coverage=check_coverage,
-                        sprint_id=sprint_id, right_end=right_end, ledger=runs)
+    problems = [*right_problems, *evaluate(policy, sprint, domain, att=att,
+                                           check_coverage=check_coverage,
+                                           sprint_id=sprint_id, right_end=right_end,
+                                           ledger=runs)]
     # D0-3(a)：已标注的"产出型 run"**逐条打印**——它让一条判据对该 run 失效，
     # 若只存在于账本 JSON 里，关闭报告就会"看着全绿"而无人知道有豁免在生效。
     notes = att.produced_only_notes() if att is not None else []
@@ -1852,26 +1889,67 @@ def _selfcheck() -> int:
        derive_close_window(policy, [_run("run-k-108", "impact-assessment", "cleanup",
                                          "2026-09-20T06:00:00+00:00")],
                            sprint_id="16")[0] == "2026-09-20T06:00:00+00:00")
-    right, right_run = domain_right_boundary(s16)
-    ok("M-A 域右端 a：取域内**最新**覆盖 run 的 covers_through",
-       right == SHA_D and right_run == "run-l-105", f"right={right} run={right_run}")
+    right, right_run, right_notes = domain_right_boundary(s16)
+    ok("M-A 域右端 a：夹具模式（无 git 根）按**登记时间最新**取右端，并点明该口径",
+       right == SHA_D and right_run == "run-l-105" and len(right_notes) == 1,
+       f"right={right} run={right_run} "
+       f"notes={right_notes[:1]}")
     tweaked = [*s16[:4], {**s16[4], "covers_through": SHA_C}]
-    ok("M-A 域右端 b：按 run 时序取，而不是 sha 的字典序最大",
+    ok("M-A 域右端 b：夹具模式下仍按登记时间（**真数据模式改为按祖先远近**——见 d/e）",
        domain_right_boundary(tweaked)[0] == SHA_C)
     ok("M-A 域右端 c：域内没有任何合法覆盖窗口 → None（调用方退回仓库 HEAD）",
        domain_right_boundary([{"run_id": "x", "covers_through": ""}])[0] is None)
+    # ---- 2026-09-25 独立复核 `run-…083` 的两条 major：
+    # 域右端与在飞宽限的边界 ----------
+    # 域右端 d：**按覆盖远近**（真 git 祖先），不按登记时间——
+    # HEAD~1 那条 run 登记得更晚，
+    # 但它覆盖得更近 ⇒ 必须选 HEAD 那条（原实现会选"更晚登记"的，静默缩小判定域）。
+    import subprocess as _sp  # noqa: PLC0415 —— 只为取两个**真实**提交做反例
+    _head = _sp.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"],
+                    capture_output=True,
+                    text=True, encoding="utf-8").stdout.strip()
+    _parent = _sp.run(["git", "-C", str(ROOT), "rev-parse", "HEAD~1"],
+                      capture_output=True,
+                      text=True, encoding="utf-8").stdout.strip()
+    near_late = {"run_id": "run-right-near", "role": "code-review",
+                 "covers_through": _parent,
+                 "started_at": "2099-01-02T00:00:00+00:00"}
+    far_early = {"run_id": "run-right-far", "role": "code-review",
+                 "covers_through": _head,
+                 "started_at": "2026-01-01T00:00:00+00:00"}
+    got, got_run, got_notes = domain_right_boundary([near_late, far_early], root=ROOT)
+    ok("M-A 域右端 d（复核 major 的原始形态）：**后登记但覆盖更少**的 run "
+       "不得缩小判定域"
+       "——真 git 祖先比较选中覆盖更远者",
+       got == _head and got_run == "run-right-far" and not got_notes,
+       f"got={got[:10] if got else got} run={got_run} notes={got_notes[:1]}")
+    bogus = {"run_id": "run-right-bogus", "role": "code-review",
+             "covers_through": "f" * 40, "started_at": "2099-01-03T00:00:00+00:00"}
+    _, _, div_notes = domain_right_boundary([far_early, bogus], root=ROOT)
+    ok("M-A 域右端 e：两条覆盖端点**不可比**（互不为祖先）"
+       "⇒ 具名问题（fail-closed，不猜）",
+       any("不可比" in n for n in div_notes), f"notes={div_notes[:1]}")
     # 域右端 d/e（2026-09-25 实测事故后补）：**不承担覆盖的 run 不得界定右端**——
     # `produced_only` 与 `coverage_window: none` 两类各一条反向对照。
     prod = {**s16[4], "run_id": "run-x-prod", "covers_through": SHA_E,
             "started_at": "2099-01-01T00:00:00+00:00", "produced_only": True}
-    ok("M-A 域右端 d：`produced_only` run 不得界定域右端（它不是覆盖声明）",
+    ok("M-A 域右端 f：`produced_only` run 不得界定域右端（它不是覆盖声明）",
        domain_right_boundary([*s16, prod])[0] == SHA_D)
     real_pol_r = load_policy()
     impl = {"run_id": "run-x-impl", "role": "implementation", "covers_through": SHA_E,
             "started_at": "2099-01-01T00:00:00+00:00"}
-    ok("M-A 域右端 e：`coverage_window: none` 的 role（实现类）不得界定域右端"
+    ok("M-A 域右端 g：`coverage_window: none` 的 role（实现类）不得界定域右端"
        "——它 finish 时会自动记下**空窗口**，却会因'最新一条'把域右端拉到它那一刻",
        domain_right_boundary([*s16, impl], policy=real_pol_r)[0] == SHA_D)
+    # 在飞宽限的**下界**（复核 major）：未来时间戳的 run 不得被宽限永久豁免。
+    future = [*s16[:1],
+              _run("run-c-111", "code-review", "branch:windows",
+                   "2099-01-01T00:00:00+00:00", "impact-assessment:run-k-101")]
+    p = check_linkage(policy, parse_sprint(_doc(_rows(s16[:1]), SHA_A)), future,
+                      "2026-09-20T01:00:00+00:00")
+    ok("A-M13④ 反向对照（复核 major 的原始形态）：**未来时间戳**的 run 不适用在飞宽限"
+       "（否则它永久免'§9 未登记'）",
+       any("run-c-111" in x and "未来" in x for x in p), f"problems={p[:1]}")
 
     # ---- A-M13（实现类 role 落地后的三条判据）------------------------------------
     # ① 封闭世界**按全账本**（域可以收窄，"这个角色名有没有 spec"不能收窄）

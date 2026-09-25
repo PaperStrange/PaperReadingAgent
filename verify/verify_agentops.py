@@ -1070,11 +1070,80 @@ def main() -> int:
              "spec.loader.exec_module(m);"
              "print(','.join(n for n in ('cmd_register','cmd_set_sprint','cmd_update',"
              "'cmd_finish','cmd_set_scope','cmd_set_anchor','cmd_round',"
-             "'cmd_interrupt') if not hasattr(getattr(m,n),'__wrapped__')))"],
+             "'cmd_set_result_files','cmd_interrupt') "
+             "if not hasattr(getattr(m,n),'__wrapped__')))"],
             cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8")
         ok("UC-22 锁覆盖：写命令必须仍在 `@_with_registry_lock` 内（装饰器不得被挤开）",
            probe.stdout.strip() == "",
            f"未加锁={probe.stdout.strip()!r} rc={probe.returncode}")
+
+        # UC-23（P1 独立复核整改）：`result_files` 的**受控回填**。
+        # 病根（2026-09-25 实测事故）：`finish --result-file` 是收尾**当时**唯一写入口，
+        # 而 `verify_ledger_measurement.py` 对**终态评审类 run** 严格判
+        # `[missing_result_files_review]`；漏带 `--result-file` 之后 `finish`
+        # 拒绝二次收尾
+        # （`succeeded -> succeeded` 非法流转——这条 fail-closed 是对的）
+        # ⇒ 该问题**不可修**
+        # = 永久红。复核 run-083 正是这样（结论在报告里、账本里却没有产物）。
+        run(["register", "--role", "code-review", "--task", "uc23-result-files",
+             "--spec", "code-review@1.0.0", "--run-id", "run-uc23-review"],
+            base_env, check=True)
+        run(["update", "run-uc23-review", "--status", "running"],
+            base_env, check=True)
+        run(["finish", "run-uc23-review", "--status", "succeeded",
+             "--output-chars", "1200"],
+            base_env, check=True)
+
+        def _row23() -> dict:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+            return next(x for x in data["runs"] if x["run_id"] == "run-uc23-review")
+
+        rep23 = tmp / "runs" / "run-uc23-review" / "code-review.report.md"
+        rep23.parent.mkdir(parents=True, exist_ok=True)
+        rep23.write_text("# UC-23 复核报告\n\n- **major** 示例\n", encoding="utf-8")
+        rel23 = "runs/run-uc23-review/code-review.report.md"
+        ok("UC-23 前置：复现病根——漏带 --result-file 的终态评审 run"
+           "（result_files 为空）",
+           _row23().get("result_files") == [] and (tmp / rel23).is_file(),
+           f"result_files={_row23().get('result_files')!r}")
+        r = run(["set-result-files", "run-uc23-review", "--file", rel23,
+                 "--reason", "UC-23：复核产物漏归档——按 agents 根相对路径补登（可核）"],
+                base_env, raw=True)
+        marks23 = _row23().get("result_files_backfills") or []
+        ok("UC-23 受控回填成功 + 六件套留痕（at/field/from/to/reason/by）",
+           r.returncode == 0 and _row23().get("result_files") == [rel23]
+           and len(marks23) == 1
+           and {"at", "field", "from", "to", "reason", "by"} <= set(marks23[-1])
+           and marks23[-1].get("from") == [] and marks23[-1].get("to") == [rel23],
+           f"rc={r.returncode} marks={len(marks23)}")
+        r = run(["set-result-files", "run-uc23-review", "--file", rel23,
+                 "--reason", "UC-23：同值必须无操作（不得追加假留痕）"],
+                base_env, raw=True)
+        ok("UC-23 幂等/防假痕：同值 = 无操作（报『无变化』且留痕条数不变）",
+           r.returncode == 0 and "无变化" in (r.stdout + r.stderr)
+           and len(_row23().get("result_files_backfills") or []) == 1,
+           f"rc={r.returncode} "
+           f"marks={len(_row23().get('result_files_backfills') or [])}")
+        r = run(["set-result-files", "run-uc23-review",
+                 "--file", "runs/run-uc23-review/does-not-exist.md",
+                 "--reason", "UC-23 反向对照：不存在的产物必须被拒"
+                             "（账本不得指向空气）"],
+                base_env, raw=True)
+        ok("UC-23 反向对照：产物不存在 → 拒绝且**不改库**（路径必须可核，fail-closed）",
+           r.returncode != 0 and "RESULT-FILE-ERROR" in (r.stdout + r.stderr)
+           and _row23().get("result_files") == [rel23],
+           f"rc={r.returncode} out={(r.stdout + r.stderr).strip()[:60]}")
+        r = run(["set-result-files", "run-uc23-review", "--file", rel23,
+                 "--reason", "short"], base_env, raw=True)
+        ok("UC-23 反向对照：过短 --reason → 拒绝（回填必须带可核理由）",
+           r.returncode != 0, f"rc={r.returncode}")
+        r = run(["set-result-files", "run-uc23-review",
+                 "--file", "verify/verify_agentops.py",
+                 "--reason", "UC-23 反向对照：只认 agents 根口径，仓库根路径不得混入"],
+                base_env, raw=True)
+        ok("UC-23 反向对照：仓库根相对路径 → 拒绝（**同一个字段不得有两种读法**）",
+           r.returncode != 0 and "RESULT-FILE-ERROR" in (r.stdout + r.stderr),
+           f"rc={r.returncode}")
 
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))

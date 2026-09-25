@@ -56,7 +56,13 @@ for _stream in (sys.stdout, sys.stderr):
 ROOT = Path(__file__).resolve().parent.parent
 RUNS_DIR = ROOT / "agents" / "runs"
 
-TAX_RE = re.compile(r"关闭税读数\s*[:：]\s*(?P<body>.+?)\s*$")
+TAX_RE = re.compile(r"^[ \t]*关闭税读数\s*[:：]\s*(?P<body>.+?)\s*$", re.MULTILINE)
+# "该文档自称已关闭"的判据：声明了**真锚点**（十六进制）或 §9 有 run 表行。
+# 为什么要它：读数行**缺失**时不能一律 SKIP——已关闭的 Sprint 必须补这一行
+# （2026-09-25 独立复核 `run-…083` major/minor：删掉读数行即 rc=0，
+# 等于给"没写读数"开后门）。
+ANCHOR_RE = re.compile(r"三查锚点\s*[:：]\s*`?([0-9a-fA-F]{7,40})`?")
+RUN_ROW_RE = re.compile(r"^\s*\|\s*run-", re.MULTILINE)
 LEVEL_RE = re.compile(r"^- \*\*(critical|major|minor|nit)\b")
 NUMBERED_RE = re.compile(r"^\d+\.\s")
 HEADING_RE = re.compile(r"^##\s+(?P<title>.+?)\s*$")
@@ -78,28 +84,40 @@ def ok(name: str, cond: bool, detail: str = "") -> None:
     print(f"PASS: {name} {detail}")
 
 
-def parse_tax_line(doc: str) -> dict | None:
-    """解析机读读数行 → `{code_major, code_critical, doc_items, runs}`；无该行 → None。
+def parse_tax_line(doc: str) -> tuple[dict | None, list[int]]:
+    """解析机读读数行 → `({...} | None, 命中行号)`。
 
-    **只认第一行**（同一文档里出现两行读数 = 两套口径，后面那行不算数也不放过）。
+    **行首锚定**（`^[ \\t]*关闭税读数…`）：正文里顺带提一句
+    "关闭税读数: code_major=…"**不算**读数行
+    ——否则一句叙述就能顶替机读行（2026-09-25 独立复核 major：
+    `TAX_RE` 原无行首锚点、且只认第一处匹配，
+    实测在真行**之前**写一句同形叙述即可让闸门 `PASS`，而底部的真读数行从未被读）。
+    调用方负责：**命中 ≠ 1 行**时的判定（0 行 = 缺读数；≥2 行 = 两套口径）
+    ——二者都不是"通过"。
     """
-    for line in doc.splitlines():
-        m = TAX_RE.search(line)
-        if not m:
+    hits = [(i, m) for i, line in enumerate(doc.splitlines(), 1)
+            for m in [TAX_RE.match(line)] if m]
+    if not hits:
+        return None, []
+    lineno, m = hits[0]
+    body = m.group("body")
+    out: dict = {"runs": []}
+    for token in body.replace("；", " ").split():
+        if "=" not in token:
             continue
-        body = m.group("body")
-        out: dict = {"runs": []}
-        for token in body.replace("；", " ").split():
-            if "=" not in token:
-                continue
-            key, _, value = token.partition("=")
-            key = key.strip()
-            if key in KEYS:
-                out[key] = int(value) if value.strip().lstrip("-").isdigit() else value
-            elif key in ("来源", "runs"):
-                out["runs"] = [r for r in re.split(r"[,\s]+", value) if r]
-        return out
-    return None
+        key, _, value = token.partition("=")
+        key = key.strip()
+        if key in KEYS:
+            out[key] = int(value) if value.strip().lstrip("-").isdigit() else value
+        elif key in ("来源", "runs"):
+            out["runs"] = [r for r in re.split(r"[,\s]+", value) if r]
+    return out, [ln for ln, _ in hits]
+
+
+def claims_closure(doc: str) -> bool:
+    """文档是否自称已关闭（声明真锚点 或 §9 有 run 行）
+    ——决定"缺读数行"是 FAIL 还是 SKIP。"""
+    return bool(ANCHOR_RE.search(doc)) or bool(RUN_ROW_RE.search(doc))
 
 
 def count_code_report(text: str) -> Counter:
@@ -190,17 +208,29 @@ def check_sprint(sprint_file: Path, *, runs_dir: Path = RUNS_DIR) -> int:
     if not path.is_file():
         print(f"CLOSE-TAX-ERROR: Sprint 文档不存在：{path}（fail-closed）")
         return 2
+    if not runs_dir.is_dir():
+        print(f"CLOSE-TAX SKIP（报告目录不存在：{runs_dir}，**不是通过**）")
+        print("  → `agents/runs/**` 被 .gitignore 忽略 ⇒ 全新 checkout "
+              "没有它是正常状态；"
+              "读数派生是**本机/关闭期动作**。")
+        return 0
     doc = io.open(path, encoding="utf-8", errors="replace").read()
-    declared = parse_tax_line(doc)
+    declared, hit_lines = parse_tax_line(doc)
+    if len(hit_lines) > 1:
+        print(f"CLOSE-TAX FAIL（1 项）：文档里有 **{len(hit_lines)} 行**机读读数"
+              f"（行 {hit_lines}）——两行读数 = 两套口径，先合并成唯一一行")
+        return 1
     if declared is None:
-        print(f"CLOSE-TAX SKIP（无 `关闭税读数:` 机读行，**不是通过**）：{path.name}")
-        print("  → 已声明三查锚点的 Sprint 在关闭期必须补这一行"
-              "（口径见 sprint-17.md §9.5；报告缺失的环境同样只报 SKIP）")
+        if claims_closure(doc):
+            print(f"CLOSE-TAX FAIL（1 项）：{path.name} 自称已关闭"
+                  f"（声明了真锚点或 §9 有 run 行）却没有 `关闭税读数:` 机读行"
+                  f"——关闭期必须补这一行（口径见 sprint-17.md §9.5）")
+            return 1
+        print(f"CLOSE-TAX SKIP（未自称关闭、也无读数行，**不是通过**）：{path.name}")
         return 0
     runs = [r for r in declared.get("runs") or []]
     if not runs:
-        print("CLOSE-TAX FAIL（1 项）：机读行缺 `来源=`"
-              "——没有来源就无法派生读数")
+        print("CLOSE-TAX FAIL（1 项）：机读行缺 `来源=`——没有来源就无法派生读数")
         return 1
     actual, problems = derive(runs)
     problems += compare(declared, actual)
@@ -312,13 +342,31 @@ def selftest() -> int:
         ok("反向对照 D：`本轮未发现 critical` 的说明行**不计**（说明行 ≠ 发现）",
            count_code_report(CODE_RPT).get("critical", 0) == 0)
         # 机读行解析：全角冒号 / 中文来源键 / 缺行
-        parsed = parse_tax_line("关闭税读数: code_major=1 code_critical=0 doc_items=2 "
-                                "来源=run-a,run-b")
-        ok("解析：全角冒号 + `来源=` 中文键可读",
+        # 机读行解析：行首锚定 / 全角冒号 / 中文来源键 / 缺行 / 两行
+        parsed, lines = parse_tax_line(
+            "关闭税读数: code_major=1 code_critical=0 doc_items=2 "
+            "来源=run-a,run-b")
+        ok("解析：全角冒号 + `来源=` 中文键可读（并返回命中行号）",
            parsed == {"code_major": 1, "code_critical": 0,
-                      "doc_items": 2, "runs": ["run-a", "run-b"]}, f"parsed={parsed}")
-        ok("解析：文档里没有机读行 ⇒ None（调用方走显式 SKIP，不是 PASS）",
-           parse_tax_line("# 随便一份文档\n没有读数行\n") is None)
+                      "doc_items": 2, "runs": ["run-a", "run-b"]}
+           and lines == [1], f"parsed={parsed} lines={lines}")
+        mid, mid_lines = parse_tax_line(
+            "本节按 `关闭税读数: code_major=999 来源=run-x` 的口径复算。\n")
+        ok("反向对照 A2（复核 major 的原始探针）：**行中**的同形叙述**不算**读数行"
+           "（行首锚定；否则一句正文就能顶替机读行）",
+           mid is None and mid_lines == [], f"parsed={mid} lines={mid_lines}")
+        two, two_lines = parse_tax_line(
+            "关闭税读数: code_major=7 code_critical=3 doc_items=11 来源=run-a\n"
+            "关闭税读数: code_major=999 code_critical=0 doc_items=0 来源=run-b\n")
+        ok("反向对照 A3：两行读数 ⇒ 命中 2 行（调用方据此 FAIL，不当'只认第一行'放行）",
+           two_lines == [1, 2] and two is not None, f"lines={two_lines}")
+        ok("解析：文档里没有读数行 ⇒ (None, [])",
+           parse_tax_line("# 随便一份文档\n没有读数行\n") == (None, []))
+        ok("自称关闭的判据：真锚点 ⇒ True；无锚点无 run 行 ⇒ False",
+           claims_closure("三查锚点: `a89b2821`\n") is True
+           and claims_closure(
+               "| run-2026-09-25-code-review-083 | code-review |\n") is True
+           and claims_closure("# 草稿\n今天没做什么\n") is False)
         # 真数据入口：报告缺失时必须**具名 FAIL/SKIP**，不得静默算 0
         _, missing = derive(["run-2999-01-01-code-review-999"], runs_dir=runs)
         ok("反向对照 E：来源 run 的报告不存在 ⇒ 具名问题（不得把'查不到'算成 0）",
@@ -341,8 +389,6 @@ def main() -> int:
                   f"rc=0 mode=selfcheck")
         return rc
     rc = check_sprint(Path(args.sprint))
-    if rc == 0 and "--selftest" not in sys.argv:
-        pass
     return rc
 
 
