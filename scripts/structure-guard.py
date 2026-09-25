@@ -15,7 +15,8 @@
 `verify` 只对**丢失/变形**报错：
 新增标题 / 新增表格 / **表格新增行** / 新增文件一律 OK 并打印，
 **同一行就地改写**（数量不变、文本变了——标题行 / 锚点行，或表格的表头·单元格）报 `[修改]` 也 OK，
-因此它可以在**任何** Markdown 结构编辑前后无条件各跑一次，而不因"我刚加了内容 / 我刚改了一行"误报。
+因此它可以在**任何** Markdown 结构编辑前后无条件各跑一次，
+而不因"我刚加了内容 / 我刚改了一行"误报。
 
 ## 判据（verify，逐条对应 R1 的真实形态；**丢失 = 数量减少**）
   ① 标题**数量减少** → FAIL 点名 `文件:行 标题`（R1-1 `## 2. 启动条件`、
@@ -38,7 +39,8 @@
 **数量减少 = 丢失 → FAIL**；**数量不变而文本变了 = `[修改]` → rc=0**。
 `--replay` 的 H1-a/H1-b/H1-c
 三条对照把该契约钉成可执行断言（就地改写 rc=0 且输出**不得**含「被删」；
-删标题 / 改级别必须仍 rc=1）。5 类 R1 事故全是"数量减少 / 表格变形"，计数口径**一条都没放过**。
+删标题 / 改级别必须仍 rc=1）。5 类 R1 事故全是"数量减少 / 表格变形"，
+计数口径**一条都没放过**。
 
 **③ 的边界（F2，2026-09-25 实测修正）**：判据只对**丢失/变形**报错——表格**行数增加**（追加一行）
 与新增表格块都是**新增**，rc=0 并打印 `[新增]`。旧实现把"追加一行"报成「表格列数变化」
@@ -72,7 +74,8 @@
 
 ## 快照 schema（自解释；各项均为 `行|…`，行尾空白一律忽略）
     headings : ["41|2|3. 项目管理（分支与远程）"]                        # 行|级别|文本
-    anchors  : ["41|## 3. 项目管理（分支与远程）", "236|**卡片来源与时间口径…**：…"]   # 行|原文
+    anchors  : ["41|## 3. 项目管理（分支与远程）", "236|**卡片来源与时间口径…**：
+    …"]   # 行|原文
     tables   : [{start_line, columns, rows, row_columns, header, row_text}]
       * `row_columns` 是**逐行**单元格数：某数据行被顶掉一格时**表头列数不变**，只有逐行口径
         看得见 R1-3（spec 的"列数/行数"是它的汇总，两者都记）。
@@ -139,8 +142,10 @@ if hasattr(sys.stdout, "reconfigure"):
 SNAPSHOT_REL = "agents/runtime/doc-structure.json"
 HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(\S.*)$")
 BOLD_LEAD_RE = re.compile(r"^\*\*[^*\s].*\*\*")
-# 表格"相似度配对"只看前缀（I1）：一张表可以几十行、几千字符，而 `_pair_leftovers` 是 difflib
-# **逐字**比较——全量喂进去在"整文件的表格全变了"时会退化成 O(表数² × 表长²)。配对只需"像不像"，
+# 表格"相似度配对"只看前缀（I1）：一张表可以几十行、几千字符，
+# 而 `_pair_leftovers` 是 difflib
+# **逐字**比较——全量喂进去在"整文件的表格全变了"时会退化成 O(表数² × 表长²)。
+# 配对只需"像不像"，
 # 逐字判等仍用全文（`_table_text`）。
 TABLE_PAIR_HINT = 600
 
@@ -190,12 +195,14 @@ def coverage_report(root: Path) -> list[str]:
 
     `verify_md_tables.coverage_problems()` 返回 `(应扫, 实扫, problems)` 三元组，
     这里只取 problems
-    （首版实测踩过：把整个三元组当 problems 迭代，于是把"应扫集"这份 160 条清单当成 3 条错误打印出来
+    （首版实测踩过：把整个三元组当 problems 迭代，
+    于是把"应扫集"这份 160 条清单当成 3 条错误打印出来
     ——复用别人判据时**先看清返回契约**）。
 
     `--root`（临时镜像）模式不调用它：那份判据的路径按 `verify_md_tables.ROOT`（真仓库）
     解析，
-    在镜像上跑会得到"检查了另一棵树"的假结论——**宁可明说跳过，也不给一个看起来成立的绿**。
+    在镜像上跑会得到"检查了另一棵树"的假结论——**宁可明说跳过，
+    也不给一个看起来成立的绿**。
     """
     if root.resolve() != ROOT.resolve():
         print("  [覆盖] --root 非仓库根：跳过 md_table_coverage 双向差集（政策集按该根解析）")
@@ -425,7 +432,8 @@ def _table_text(table: dict, legacy: bool = False) -> str:
 
     `legacy` **必须对配对双方取同一个值**（由基线那一侧决定）：现状是刚扫的、
     永远带 `row_text`，
-    拿它跟旧基线的表头比会**每一张表都不等** ⇒ 把整份文档报成"表格被修改"。判据两侧同口径，
+    拿它跟旧基线的表头比会**每一张表都不等** ⇒ 把整份文档报成"表格被修改"。
+    判据两侧同口径，
     否则差异来自 schema 而不是来自内容。
     """
     rows = table.get("row_text")
@@ -472,7 +480,8 @@ def _table_verdict(rel: str, btable: dict, ctable: dict, legacy: bool = False) -
 
     **结构先判、文本后判**（I1）：
       * 行数减少 / 列数签名变化 → FAIL（**精确配对的表也要跑**：旧基线只记表头原文时
-        "逐行原文相同"并不蕴含"结构相同"——R1-3 那种只顶掉一个单元格的变形，表头逐字不变）；
+        "逐行原文相同"并不蕴含"结构相同"——R1-3 那种只顶掉一个单元格的变形，
+        表头逐字不变）；
       * 行数增加 → `[新增]`（F2 契约：新增一律放行）；
       * 结构不变而逐行原文变了 → `[修改]`（rc=0）——I1 的判据核心：**丢失看数量，不看文本**。
     """
@@ -563,7 +572,8 @@ def compare(files: dict[str, dict], baseline: dict) -> tuple[list[str], list[str
         head_fail, head_mod, head_add = _heading_diff(rel, base["headings"], cur["headings"])
         anchor_fail, anchor_mod, anchor_add = _anchor_diff(rel, base["anchors"], cur["anchors"])
         # 旧快照（I1 前）没有逐行原文：该文件的表格一律**按表头口径**比（两侧同口径），
-        # 否则"现状带 row_text、基线只有表头"会把每一张表都报成 `[修改]`（差异来自 schema 不是内容）。
+        # 否则"现状带 row_text、
+        # 基线只有表头"会把每一张表都报成 `[修改]`（差异来自 schema 不是内容）。
         legacy = any("row_text" not in t for t in base["tables"])
         table_fail, table_mod, table_add = _table_diff(rel, base["tables"], cur["tables"], legacy)
         failures += head_fail + anchor_fail + table_fail
@@ -616,7 +626,8 @@ def cmd_snapshot(root: Path, out: Path) -> int:
     tables = sum(len(f["tables"]) for f in files.values())
     print(f"  已记录 {len(files)} 文件 / 标题 {heads} / 锚点行 {anchors} / 表格块 {tables}")
     if missing:
-        # 政策点名的文档缺失是"少扫"形态（verify_md_tables 的 fail-closed 判据管这件事），
+        # 政策点名的文档缺失是"少扫"形态（verify_md_tables 的 fail-closed 判据管这件事）
+        # ，
         # 本脚本只如实报告、不静默跳过，也不重复判别人的判据。
         print(f"  WARN：政策扫描集内 {len(missing)} 个文件不存在（未被记录，先跑 verify_md_tables.py）："
               f"{missing[:5]}")
@@ -931,7 +942,8 @@ def _damage_h1_level(mirror: Path) -> list[str]:
 # H1（2026-09-25）：把「**同数量就地改写 = [修改]，不是丢失**」钉成三条可执行对照。
 # 旧实现实测：batch G 就地 retarget 了 5 份文档的行首粗体锚点行 → 同一行被同时报成
 # 「锚点行被删」（FAIL，rc=1）与「新增锚点行」——纯文本修改被误判成丢失，守卫变成噪音源。
-# `want_rc` = 期望退出码；`must_not` = **禁止出现**的子串（就地改写不得留任何"被删"字样）。
+# `want_rc` = 期望退出码；
+# `must_not` = **禁止出现**的子串（就地改写不得留任何"被删"字样）。
 H1_CASES = (
     ("H1-a", "标题行**就地改写**（数量不变）→ **必须放行**（rc=0）并报『标题被修改』，且不得出现『被删』"
              "（旧实现报『标题被删』= rc=1）",
@@ -1009,7 +1021,8 @@ def _damage_t1_cell(mirror: Path) -> list[str]:
 def _damage_t1_drop_table(mirror: Path) -> list[str]:
     """T1-c：**删掉整张表格**（表块数量 −1）→ 必须 FAIL 并点名『表格块消失』+ 表头原文。
 
-    I1 的**反向对照**：新口径把"表块数量不变"的就地改写放行了，那就必须证明"表块真的少了"
+    I1 的**反向对照**：新口径把"表块数量不变"的就地改写放行了，
+    那就必须证明"表块真的少了"
     这一支还活着——否则「表格块消失」会退化成永不触发的死判据（放宽 = 悄悄卸掉拦截）。
     """
     rel = "docs/5-VERSIONS.MD"
@@ -1028,7 +1041,8 @@ def _damage_t1_drop_table(mirror: Path) -> list[str]:
 # 旧实现实测：把某个表格的**表头单元格就地改写**（列数与行数都不变）⇒ 同一张表被同时报成
 # 「表格块消失」（FAIL）与「新增表格」，rc=1——与 H1 同型：
 # 一次纯文本修改拿到两条相反结论。
-# `want_rc` = **期望**退出码；`must_not` = **禁止出现**的子串（就地改写不得留任何"消失/新增"字样）。
+# `want_rc` = **期望**退出码；
+# `must_not` = **禁止出现**的子串（就地改写不得留任何"消失/新增"字样）。
 T1_CASES = (
     ("T1-a", "表格**表头单元格就地改写**（列数与行数都不变）→ **必须放行**（rc=0）并报『表格被修改』，"
              "且不得出现『表格块消失』『新增表格』（旧实现两条都报 = rc=1）",
@@ -1449,7 +1463,8 @@ def cmd_replay() -> int:
         for line in summary:
             print(f"  {line}")
 
-        # ---- F2 反向对照（2026-09-25）：`_table_diff` 的"新增 vs 丢失/变形"契约 --------------
+        # ---- F2 反向对照（2026-09-25）：
+        # `_table_diff` 的"新增 vs 丢失/变形"契约 --------------
         print("\nF2 反向对照（表格行/列的『新增放行 ↔ 丢失变形拦下』契约，4 类）：")
         for case_id, desc, files, damage, want_rc in F2_CASES:
             print(f"\n[{case_id}] {desc}")
@@ -1476,7 +1491,8 @@ def cmd_replay() -> int:
         ok(f"真文件零改动（F2 后复检）：读过仓库文档 {len(repo_records)} 份（须 0）",
            repo_records == [], f"读过的仓库文档 {repo_records}")
 
-        # ---- H1 就地改写对照（2026-09-25）：标题/锚点的"计数口径"契约 ------------------------
+        # ---- H1 就地改写对照（2026-09-25）：
+        # 标题/锚点的"计数口径"契约 ------------------------
         print("\nH1 就地改写对照（数量不变 = `[修改]`，不是丢失；3 类）：")
         h1_start = len(summary)
         for case_id, desc, files, damage, want_rc, must_not in H1_CASES:
@@ -1499,7 +1515,8 @@ def cmd_replay() -> int:
             ok(f"{case_id} 复原该文件后 verify → rc=0（证明判决来自改写本身，不是副本漂移）",
                back.returncode == 0, f"rc={back.returncode}")
             if want_rc == 0:
-                # 比"复原后 rc=0"更强的判据：复原后**不得**再出现 `[修改]`——证明那条标注确实
+                # 比"复原后 rc=0"更强的判据：
+                # 复原后**不得**再出现 `[修改]`——证明那条标注确实
                 # 来自本次改写，而不是副本里本来就有一处改写被这一次的 rc=0 掩盖掉。
                 ok(f"{case_id} 复原后不再报『修改』（该标注来自本次改写，不是副本固有差异）",
                    "[修改]" not in back_text, f"rc={back.returncode}")
@@ -1513,7 +1530,8 @@ def cmd_replay() -> int:
         ok(f"真文件零改动（H1 后复检）：读过仓库文档 {len(repo_records)} 份（须 0）",
            repo_records == [], f"读过的仓库文档 {repo_records}")
 
-        # ---- T1 表格就地改写对照（2026-09-25，I1）：表格的"计数口径"契约 ----------------------
+        # ---- T1 表格就地改写对照（2026-09-25，I1）：
+        # 表格的"计数口径"契约 ----------------------
         print("\nT1 表格就地改写对照（表块数量不变 = `[修改]`，不是『表格块消失』；3 类）：")
         t1_start = len(summary)
         for case_id, desc, files, damage, want_rc, must_not in T1_CASES:

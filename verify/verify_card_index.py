@@ -466,11 +466,25 @@ def run(strict: bool = True, root: Path | None = None) -> list[str]:
             problems.append(f"{phase_dir.name}: 检查过程异常（{type(exc).__name__}: {exc}）"
                             f"——闸门自身出错也必须 FAIL，不得当作通过")
     # ⑦ 只对真实仓库判（fixture 目录里没有 `scripts/card-inventory.py`，也没有基线文件）
+    # 。
+    # **分支差异**（C6，2026-09-25 sync PR #53 的 CI 实测）：
+    # `docs/iteration/**` 是 **windows-only**，
+    # `main`/同步分支上没有它 ⇒ 卡库存工具输出 `合计：0 张卡 / 0 个阶段`，
+    # 与基线快照（97/4/1）必然不等
+    # ⇒ 判据 ⑦ 在 main 上恒红（实测 `SUITE FAILED (1/24): verify_card_index.py`）。
+    # 口径同"账本缺失"：**该分支没有这套数据 ⇒ 判据不适用**，
+    # **显式 SKIP 且不打印 PASS**（跳过不得冒充通过）；
+    # 数据在、只是与基线不符时照旧 FAIL（fail-closed 方向不变）。
     if root == ROOT:
-        try:
-            problems += baseline_problems(root)
-        except Exception as exc:  # noqa: BLE001 —— 同上：拿不到事实源也 FAIL
-            problems.append(f"卡库存基线判据（⑦）执行异常（{type(exc).__name__}: {exc}）——fail-closed")
+        phases_root = root / "docs" / "iteration" / "phases"
+        if not phases_root.is_dir():
+            print(f"SKIP[no-iteration-docs] 判据 ①~⑦ 不适用：{phases_root} 不存在"
+                  f"（`docs/iteration/**` 为 windows-only，本分支没有该目录）——**本行不是 PASS**")
+        else:
+            try:
+                problems += baseline_problems(root)
+            except Exception as exc:  # noqa: BLE001 —— 同上：拿不到事实源也 FAIL
+                problems.append(f"卡库存基线判据（⑦）执行异常（{type(exc).__name__}: {exc}）——fail-closed")
     return problems
 
 
@@ -625,7 +639,16 @@ def selfcheck(check_real: bool = True) -> int:
 
         # 反向对照 H（⑦）：基线判据必须**真的比对**（不是恒真）
         baseline_file = ROOT / BASELINE_REL
-        if baseline_file.is_file():
+        phases_present = (ROOT / "docs" / "iteration" / "phases").is_dir()
+        if baseline_file.is_file() and not phases_present:
+            # **分支差异**（C6，sync PR #53 的 CI 实测）：
+            # `main`/同步分支没有 `docs/iteration/phases`
+            # ⇒ 卡库存工具必然报 0 卡，与基线快照不等。
+            # 此时 **H/H2 两条对照都不适用**（不是通过）——
+            # 用子进程驱动的"基线 vs 实测"对照在该分支上无事实源可比。
+            print(f"SKIP[no-iteration-docs] ⑦ 的两条对照（H/H2）不适用："
+                  f"{ROOT / 'docs' / 'iteration' / 'phases'} 不存在——**本行不是 PASS**")
+        elif baseline_file.is_file():
             totals = dict((json.loads(baseline_file.read_text(encoding="utf-8")) or {})
                           .get("totals") or {})
             bad = base / "baseline_bad.json"
