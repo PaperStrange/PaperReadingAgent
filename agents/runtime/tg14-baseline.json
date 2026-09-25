@@ -184,17 +184,24 @@
           "cells": 5,
           "title": "编辑边界事故族治理：写入前体检 + 标题层检测（由 Sprint-17 内 5 次真实事故提炼；用户 2026-09-2",
           "title_chars": 71
+        },
+        {
+          "card": "A-M13",
+          "line": 46,
+          "cells": 5,
+          "title": "实现类 run 的账本 role（`implementation` spec）＋ 在飞宽限（来源＝`TG-17` 证据⑤",
+          "title_chars": 89
         }
       ],
       "non_card_rows": [
         {
           "first_cell": "—",
-          "line": 55,
+          "line": 56,
           "cells": 3,
           "kind": "placeholder"
         }
       ],
-      "card_count": 26
+      "card_count": 27
     },
     "mental-models": {
       "backlog": "docs/iteration/phases/mental-models/backlog.MD",
@@ -709,14 +716,21 @@
           "cells": 5,
           "title": "闸门债：15 处历史表格缺陷逐处清理（棘轮基线 4 个文件／15 处；review_by=2026-10-31）",
           "title_chars": 60
+        },
+        {
+          "card": "TG-19",
+          "line": 33,
+          "cells": 5,
+          "title": "关闭税机制化：判定域绑定 / 反空转不变式 / 棘轮完整性 / 关闭税读数派生（G2 头号机制卡；来源＝关闭期复核的机制",
+          "title_chars": 109
         }
       ],
       "non_card_rows": [],
-      "card_count": 18
+      "card_count": 19
     }
   },
   "totals": {
-    "cards": 97,
+    "cards": 99,
     "phases": 4,
     "non_card_rows": 1
   }
