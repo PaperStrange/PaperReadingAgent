@@ -100,6 +100,8 @@ G2 照原计划做治理（用户 B1①），**头号复测指标 = M1 关闭税
 
 **修复验证复核与关闭三查分节记录**（复核 run **不计入**三查覆盖）。关闭前必须全绿：`verify_close_readiness.py --sprint <G2 文档>`、`run_suite.py --tier offline`、`verify_gate_integrity.py`、`verify_derived_numbers.py`、`verify_md_tables.py`、`verify_card_index.py`、`scripts/structure-guard.py --replay`，以及 push 触发的 CI（"全新 checkout 模拟"必须用 `git clone`，`git archive` 会剥掉 `.git` 而假失败）。
 
+> **CI 读法（2026-09-25 实测，避免把取消当失败）**：以**分支头**那次 run 的结论为准；被后续 push 取代的中间 run 会被并发组标成 `cancelled`——它**既不是失败也不是"已验过"**（同一棵树的内容由头 run 覆盖）。查 run 时按**机器取的完整 40 位 sha** 过滤（短 sha 会静默查不到）。
+
 **Sprint-17 关闸读数的恢复时点（回答"多久后才能重启 sprint17 的关闭判定"）**：`TG-19` 的 M-A 一落地即可重跑（无需等 G2 关闭）。M-A 的反向对照 ① 就是本日事故的复现，**其通过即等于 Sprint-17 的关闭读数恢复**（届时应只剩真实项）。在那之前，没有任何**合法**手段能恢复该读数：账本 `agents/runtime/registry.json` 被 `.gitignore:38` 忽略、有完整性哈希，删/改 `run-…-081` 属"改数据以换绿"。
 
 ## 8. 待用户裁定
