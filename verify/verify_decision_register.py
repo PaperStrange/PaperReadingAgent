@@ -177,13 +177,20 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
     warns: list[str] = []
     path = Path(doc) if doc is not None else root / rel
     if not path.is_file():
-        # 分支差异 ≠ 缺失（2026-09-25 二查 `run-…-088` critical 1 的实测形态）：登记册是
-        # windows-only 的治理文档，`main`/同步分支按设计可能没有它 ⇒ **具名 SKIP**
-        # （判决行不得打 PASS、不得打印 `EVIDENCE:`），而不是 fail-closed 的红。
-        # 判据本身不变：这个文件在**本分支存在**时，下面每一条照旧判。
+        # 两种"不存在"必须分开（修复验证复核 `run-…-089` major 1d(b) 的实测）：
+        #   * **在 HEAD 的树里存在、工作区没有** ⇒ **被删** ⇒ FAIL（与同批的指针判据、
+        #     与 `md_tables` 的条件根口径一致——旧码在这里走 SKIP rc=0，方向反了）；
+        #   * HEAD 里也没有（`main`/同步分支按设计没有这份 windows-only 治理文档）
+        #     ⇒ **具名 SKIP**（判决行不得打 PASS、不得打印 `EVIDENCE:`）。
+        if doc is None and path_in_head(root, rel):
+            return {"problems": [f"{rel} 在 `HEAD` 的提交树里存在、工作区却不存在 "
+                                 f"⇒ **被删**"
+                                 f"（不是分支差异）——决策登记册是裁决的唯一登记处，"
+                                 f"删除即 fail-closed"],
+                    "skipped": False, "stats": {}, "warns": []}
         return {"problems": [], "skipped": True, "stats": {},
                 "warns": [f"{rel} 不在本分支（windows-only 治理文档）⇒ "
-                f"本次机检**未执行**"
+                          f"本次机检**未执行**"
                           f"（**不是通过**；windows 上必须存在并按全部判据核）"]}
     text = path.read_text(encoding="utf-8", errors="replace")
     _lines = text.splitlines()
@@ -248,7 +255,14 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
     # 指针可核（全文）。**分支差异 ≠ 漂移**（二查 `run-…-088` critical 1）：
     # 登记册里大量指针指向 `docs/iteration/**`（windows-only）⇒ 在没有该子树的分支上
     # 不能判 FAIL，只能**具名跳过**（否则 G2 的同步 PR 会让 main 的 CI 变红，650 项）。
-    # 证据仍是 git：`path_in_head()` —— 在 HEAD 里存在而工作区没有 = **被删** ⇒ FAIL。
+    # 但"未核"必须**收窄到真正不存在的子树**（修复验证复核 `run-…-089` major 1d(a)
+    # 的实测：
+    # 首版把**打错/改名的路径**也算成未核 ⇒ 旧码 FAIL、新码 PASS，判据被自己放宽了）。
+    # 三层判据（证据都是 git）：
+    #   * 该路径在 `HEAD` 树里存在 ⇒ **被删** ⇒ FAIL；
+    #   * 该路径**父目录**在 `HEAD` 树里存在 ⇒ 同级目录里没有这个名字 =
+    #     **打错/改名/漂移** ⇒ FAIL；
+    #   * 父目录也不在树里（如 `docs/iteration/**` 在 main）⇒ 真·分支差异 ⇒ 记未核。
     pointers: list[tuple[str, int, str]] = []
     for m in POINTER_RE.finditer(text):
         pointers.append((m.group(1), int(m.group(2)), m.group(0)))
@@ -258,9 +272,16 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
         target = root / relp
         if not target.is_file():
             if path_in_head(root, relp):
-                problems.append(f"[指针] {raw} 在 `HEAD` "
-                f"的提交树里存在、工作区却不存在 ⇒ "
+                problems.append(f"[指针] {raw} 在 `HEAD` 的提交树里存在、"
+                                f"工作区却不存在 ⇒ "
                                 f"被删（不是分支差异）")
+                bad_ptr += 1
+            elif path_in_head(root, str(Path(relp).parent).replace("\\", "/")):
+                problems.append(f"[指针] {raw} 指向的文件不存在，"
+                                f"而它的目录在 `HEAD` 里存在 ⇒ "
+                                f"**打错或改名**（同级目录里没有这个名字）→ "
+                                f"fail-closed，"
+                                f"不得当成分支差异放行")
                 bad_ptr += 1
             else:
                 absent_ptr += 1        # 本分支没有这条路径 ⇒ 未核（计数可见，不当通过）
@@ -412,14 +433,25 @@ def selftest() -> int:
     ok("反向对照 b 状态词不在受控表内 ⇒ FAIL（状态词是机检入口，不许自创）",
        any("状态词" in p for p in bogus["problems"]),
        f"problems={bogus['problems'][:1]}")
-    dangling = run(build({"出处": "docs/does-not-exist.md:3",
-                          "证据": "docs/does-not-exist.md:3"}))
-    ok("反向对照 c1 指针指向**本分支与 `HEAD` 都没有**的路径 ⇒ 记『未核』"
+    dangling = run(build({"出处": "docs/no-such-tree-xyz/a.md:3",
+                          "证据": "docs/no-such-tree-xyz/a.md:3"}))
+    ok("反向对照 c1 指针指向**本分支与 `HEAD` 都没有**的子树 ⇒ 记『未核』"
        "（`pointers_branch_absent`），不误判成漂移"
        "（二查 run-…-088 critical 1：登记册大量指针指向 windows-only 子树）",
        dangling["problems"] == []
        and dangling["stats"].get("pointers_branch_absent", 0) >= 1,
        f"problems={dangling['problems'][:1]} stats={dangling['stats']}")
+    # 反向对照 c1′（**修复验证复核 `run-…-089` major 1d(a) 的原始形态**）：
+    # 路径在**存在的
+    # 同级目录**里查无此名 = 打错/改名 ⇒ 必须 FAIL（首版把所有"文件不存在"都算成未核
+    # ⇒ 旧码 FAIL、新码 PASS，判据被自己放宽了）。
+    typo = run(build({"出处": "docs/does-not-exist.md:3",
+                      "证据": "docs/does-not-exist.md:3"}))
+    ok("反向对照 c1′ 名字打错/改名（同级目录在 `HEAD` 里存在）⇒ FAIL，"
+       "**不得**混进『未核』",
+       any("打错或改名" in p for p in typo["problems"])
+       and typo["stats"].get("pointers_branch_absent", 0) == 0,
+       f"problems={typo['problems'][:1]}")
     # 反向对照 c2（**被删**才是 FAIL）：在 `%TEMP%` 的**真 git
     # 仓库**里提交一份文件再删掉
     # ⇒ `path_in_head()` 为真、工作区没有 ⇒ 必须 FAIL（真入口、真
@@ -431,6 +463,9 @@ def selftest() -> int:
         parents=True, exist_ok=True)
     (Path(tempfile.gettempdir()) / "decision-register-selftest-repo" / "docs"
      / "gone.md").write_text("line 1\nline 2\n", encoding="utf-8")
+    # 登记册**自身**也要有一份被提交过（供 c3 测"登记册被删"）
+    (Path(tempfile.gettempdir()) / "decision-register-selftest-repo"
+     / "register.md").write_text(build({}), encoding="utf-8")
     _sp.run(["git", "-C", repo, "add", "-A"], capture_output=True)
     _sp.run(["git", "-C", repo, "-c", "user.name=t",
              "-c", "user.email=t@example.invalid",
@@ -446,6 +481,16 @@ def selftest() -> int:
        "必须分开）",
        any("被删" in p for p in deleted["problems"]),
        f"problems={deleted['problems'][:1]}")
+    # 反向对照 c3（**修复验证复核 `run-…-089` major 1d(b)**）：登记册**自身**在 HEAD 里
+    # 存在、工作区被删 ⇒ 必须 FAIL（首版对此走"具名 SKIP rc=0"，
+    # 方向与同批指针判据相反）。
+    (Path(tempfile.gettempdir()) / "decision-register-selftest-repo"
+     / "register.md").unlink()
+    reg_deleted = check_register(Path(repo), rel="register.md")
+    ok("反向对照 c3 登记册自身被删（HEAD 里有）⇒ FAIL，而不是 SKIP",
+       any("被删" in p for p in reg_deleted["problems"])
+       and not reg_deleted.get("skipped"),
+       f"problems={reg_deleted['problems'][:1]} skipped={reg_deleted.get('skipped')}")
     wrong_quote = run(build({"原文": '"这句话在源文件里根本没有"'}))
     ok("反向对照 d §4.1 引文与出处行不符 ⇒ FAIL（引文可核 ≠ 指针存在）",
        any("引文↔出处" in p for p in wrong_quote["problems"]),

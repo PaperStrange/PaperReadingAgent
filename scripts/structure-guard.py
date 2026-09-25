@@ -756,6 +756,30 @@ def git_baseline(root: Path, rev: str,
     return files, missing, unreadable
 
 
+def acks_from_text(text: str, min_reason: int) -> tuple[dict[str, str], list[str]]:
+    """从**一段文本**（如待提交的 commit message 文件）解析署名。
+
+    为什么需要（修复验证复核 `run-…-089` major：087-major-3 的原始形态）：
+    `pre-commit` 钩子
+    跑在**提交信息还不存在**的时刻，而 `removal_acks(root, "HEAD", "HEAD")`
+    的区间恒为空 ⇒
+    本地层**永远看不到**用户写的 `Structure-Removal:` ⇒ 合法的结构删除在本地只能靠
+    `--no-verify` 绕过（而钩子文案恰恰让用户"写署名后重试"，那句提示不可执行）。
+    现在由 `commit-msg` 钩子把**待提交信息文件**（git 以 `$1` 传入）交给同一条判据。
+    """
+    acks: dict[str, str] = {}
+    bad: list[str] = []
+    for m in ACK_RE.finditer(text or ""):
+        path, sep, reason = m.group("body").partition("::")
+        path, reason = path.strip(), reason.strip()
+        if not sep or not path or len(reason) < min_reason:
+            bad.append(f"（待提交信息）{m.group('body').strip()[:80]}"
+                       f"（需要 `<路径> :: <理由≥{min_reason} 字符>`）")
+            continue
+        acks[path.replace("\\", "/")] = reason
+    return acks, bad
+
+
 def removal_acks(root: Path, base: str, head: str) -> tuple[dict[str, str], list[str]]:
     """解析 `base..head` 提交信息里的**具名删除署名**。
 
@@ -784,14 +808,10 @@ def removal_acks(root: Path, base: str, head: str) -> tuple[dict[str, str], list
         if not chunk.strip():
             continue
         sha, _, body = chunk.partition("\x00")
-        for m in ACK_RE.finditer(body):
-            path, sep, reason = m.group("body").partition("::")
-            path, reason = path.strip(), reason.strip()
-            if not sep or not path or len(reason) < min_reason:
-                bad.append(f"{sha.strip()[:8]}：{m.group('body').strip()[:80]}"
-                           f"（需要 `<路径> :: <理由≥{min_reason} 字符>`）")
-                continue
-            acks[path.replace("\\", "/")] = reason
+        got, got_bad = acks_from_text(body, min_reason)
+        for rel, reason in got.items():
+            acks[rel] = reason
+        bad += [f"{sha.strip()[:8]}：{item}" for item in got_bad]
     return acks, bad
 
 
@@ -810,12 +830,19 @@ def _failure_rel(line: str) -> str:
     return head.replace("\\", "/")
 
 
-def cmd_verify_git(root: Path, from_git: str, ack_base: str = "") -> int:
+def cmd_verify_git(root: Path, from_git: str, ack_base: str = "",
+                   ack_file: str = "") -> int:
     """`verify --from-git <rev>`：**不依赖本地快照**的结构守卫（git 当基线）。
 
     判据与快照档**逐条同一套**（`compare()`）：只对丢失/变形报错，新增一律放行；
     差别只在"基线从哪来"。`Structure-Removal:` 署名可把**具名删除**降级为可见的
     `[署名删除]`（不判失败）——署名必须带 ≥10 字符理由，否则 rc=2。
+
+    `ack_file` 非空时，额外从该文件（**待提交的 commit message**，`commit-msg` 钩子以
+    `$1`
+    传入）解析署名。为什么必须有这条路径：`pre-commit` 跑在"提交信息还不存在"的时刻，
+    `removal_acks(root, "HEAD", "HEAD")` 的区间恒为空 ⇒ 本地层永远看不到署名，合法的结构
+    删除只能 `--no-verify`（修复验证复核 `run-…-089` major）。
     """
     sha = resolve_rev(root, from_git)
     if not sha:
@@ -830,6 +857,16 @@ def cmd_verify_git(root: Path, from_git: str, ack_base: str = "") -> int:
         return 2
     base_for_ack = ack_base or from_git
     acks, bad_acks = removal_acks(root, base_for_ack, "HEAD")
+    if ack_file:
+        try:
+            text = Path(ack_file).read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            print(f"STRUCTURE ERROR：--ack-file 读不到 {ack_file!r}"
+                  f"（{exc}）——fail-closed")
+            return 2
+        got, got_bad = acks_from_text(text, policy().structure_ack_min_reason_chars)
+        acks.update(got)
+        bad_acks += got_bad
     if bad_acks:
         print(f"STRUCTURE ERROR：{len(bad_acks)} 条 `Structure-Removal:` 署名不合法"
               f"（fail-closed）")
@@ -1907,6 +1944,9 @@ def main() -> int:
     parser.add_argument("--ack-base", default="",
                         help="`Structure-Removal:` 署名的扫描起点（默认与 --from-git "
                         "同值）")
+    parser.add_argument("--ack-file", default="",
+                        help="额外从该文件解析 `Structure-Removal:` 署名（`commit-msg` "
+                             "钩子把待提交信息文件以 `$1` 传进来）")
     parser.add_argument("--replay", action="store_true",
                         help="用 5 类真实 R1 输入 + 4 类 F2 反向对照 + 3 类 H1 就地改写对照"
                              " + 3 类 T1 表格对照在 %%TEMP%% 副本上复跑自检")
@@ -1943,7 +1983,7 @@ def main() -> int:
             out = _resolve_json(args.out) if args.out else ROOT / SNAPSHOT_REL
             return cmd_snapshot(root, out)
         if args.from_git:
-            return cmd_verify_git(root, args.from_git, args.ack_base)
+            return cmd_verify_git(root, args.from_git, args.ack_base, args.ack_file)
         baseline = _resolve_json(args.baseline) if args.baseline else ROOT / SNAPSHOT_REL
         return cmd_verify(root, baseline)
     except PolicyError as exc:  # 政策数据缺失/非法 → fail-closed（rc=2，与"验出丢失"的 rc=1 区分）

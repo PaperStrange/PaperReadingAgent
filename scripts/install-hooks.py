@@ -30,7 +30,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 # 模块级常量（仓库相对、字面量）：钩子模板目录 = 版本控制里的 `scripts/hooks`
 HOOKS_PATH_REL = "scripts/hooks"
-HOOKS = ("pre-commit",)
+# `commit-msg` 是**带署名的那一半**：只有它能读到待提交信息里的 `Structure-Removal:`
+# （修复验证复核 `run-…-089` major ⇒ 二查 087-major-3）。
+HOOKS = ("pre-commit", "commit-msg")
 
 
 def _git(*args: str) -> subprocess.CompletedProcess:

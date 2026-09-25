@@ -83,6 +83,7 @@ POLICY_REL = "agents/policy.json"
 # 路径是**本闸门要核的事实**（CI 文件、钩子模板、安装器），不是政策阈值 ⇒ 留在这里。
 CI_REL = ".github/workflows/ci.yml"
 HOOK_REL = "scripts/hooks/pre-commit"
+COMMITHOOK_REL = "scripts/hooks/commit-msg"
 INSTALLER_REL = "scripts/install-hooks.py"
 PASSED = 0
 
@@ -309,7 +310,8 @@ def _invokes_guard(text: str) -> bool:
     return False
 
 
-def unskippable_wiring_problems(*, ci: Path, hook: Path, installer: Path) -> list[str]:
+def unskippable_wiring_problems(*, ci: Path, hook: Path, installer: Path,
+                                commithook: Path | None = None) -> list[str]:
     """③ 判据本体（A-M12 ①）：结构守卫的「**不可跳过层**」三处接线必须在位。
 
     要治的形态（本仓实测过的那条）：守卫**有效**但**依赖人记得跑**——快照档的前提是
@@ -347,6 +349,19 @@ def unskippable_wiring_problems(*, ci: Path, hook: Path, installer: Path) -> lis
     elif not _invokes_guard(hook.read_text(encoding="utf-8", errors="replace")):
         problems.append(f"[不可跳过] {HOOK_REL} 没有调用与 CI **同一条**判据"
                         f"（两层各判一套＝同一个字段两种读法）")
+    # `commit-msg`（修复验证复核 `run-…-089` major ⇒ 二查 087-major-3）：
+    # **带署名的那一半**。
+    # `pre-commit` 跑在"提交信息还不存在"的时刻 ⇒ 它永远读不到 `Structure-Removal:`，
+    # 合法结构删除在本地只能 `--no-verify`（两层判据不一致）。缺它即 FAIL。
+    chook = commithook
+    if not chook.is_file():
+        problems.append(f"[不可跳过] {COMMITHOOK_REL} 模板不存在（`pre-commit` 读不到"
+                        f"待提交信息里的署名 ⇒ 合法结构删除在本地只能 `--no-verify`）")
+    elif not _invokes_guard(chook.read_text(encoding="utf-8", errors="replace")):
+        problems.append(f"[不可跳过] {COMMITHOOK_REL} 没有调用与 CI **同一条**判据")
+    elif "--ack-file" not in chook.read_text(encoding="utf-8", errors="replace"):
+        problems.append(f"[不可跳过] {COMMITHOOK_REL} 没有把**待提交信息文件**交给判据"
+                        f"（缺 `--ack-file` ⇒ 署名形同不存在）")
     if not installer.is_file():
         problems.append(f"[不可跳过] {INSTALLER_REL} 不存在——`.git/hooks/` "
         f"不在版本控制里，"
@@ -358,9 +373,10 @@ def unskippable_wiring_problems(*, ci: Path, hook: Path, installer: Path) -> lis
 
 
 def unskippable_guard_problems(root: Path = ROOT) -> list[str]:
-    """③ 真数据入口：把三处接线落点解析到 `<root>/…` 后交给判据本体。"""
+    """③ 真数据入口：把四处接线落点解析到 `<root>/…` 后交给判据本体。"""
     return unskippable_wiring_problems(ci=root / CI_REL, hook=root / HOOK_REL,
-                                       installer=root / INSTALLER_REL)
+                                       installer=root / INSTALLER_REL,
+                                       commithook=root / COMMITHOOK_REL)
 
 
 def guard_problems(root: Path = ROOT) -> tuple[list[str], list[str]]:
@@ -540,17 +556,21 @@ def selftest() -> int:
     ci_probe = Path(tempfile.gettempdir()) / "gate-integrity-unskippable-ci.yml"
     hook_probe = Path(tempfile.gettempdir()) / "gate-integrity-unskippable-pre-commit"
     inst_probe = Path(tempfile.gettempdir()) / "gate-integrity-unskippable-installer.py"
+    chook_probe = Path(tempfile.gettempdir()) / "gate-integrity-unskippable-commit-msg"
     ci_probe.write_text((ROOT / CI_REL).read_text(encoding="utf-8"), encoding="utf-8")
     hook_probe.write_text((ROOT / HOOK_REL).read_text(encoding="utf-8"),
                           encoding="utf-8")
     inst_probe.write_text((ROOT / INSTALLER_REL).read_text(encoding="utf-8"),
                           encoding="utf-8")
+    chook_probe.write_text((ROOT / COMMITHOOK_REL).read_text(encoding="utf-8"),
+                           encoding="utf-8")
     try:
         def _probe_problems() -> list[str]:
             return unskippable_wiring_problems(ci=ci_probe, hook=hook_probe,
-                                               installer=inst_probe)
+                                               installer=inst_probe,
+                                               commithook=chook_probe)
 
-        ok("A-M12① 正向对照：三处接线原样 → 零问题（防假红）",
+        ok("A-M12① 正向对照：四处接线原样 → 零问题（防假红）",
            _probe_problems() == [], f"problems={_probe_problems()[:1]}")
         ci_text = ci_probe.read_text(encoding="utf-8")
         ci_probe.write_text(
@@ -584,8 +604,16 @@ def selftest() -> int:
            any(INSTALLER_REL in p for p in installer_problems),
            next((p for p in installer_problems if INSTALLER_REL in p),
                 installer_problems[:1]))
+        # `commit-msg` 缺失 ⇒ FAIL（修复验证复核 `run-…-089` major 的原始形态：
+        # 没有它，本地层读不到待提交信息里的署名）
+        chook_probe.unlink()
+        chook_problems = _probe_problems()
+        ok("A-M12① 反向对照 d：`commit-msg` 模板缺失 → FAIL（本地读不到署名，"
+           "合法结构删除只能 `--no-verify`）",
+           any(COMMITHOOK_REL in p for p in chook_problems),
+           next((p for p in chook_problems if COMMITHOOK_REL in p), chook_problems[:1]))
     finally:
-        for probe in (ci_probe, hook_probe, inst_probe):
+        for probe in (ci_probe, hook_probe, inst_probe, chook_probe):
             probe.unlink(missing_ok=True)
 
     print(f"\nALL PASS ({PASSED} assertions)")

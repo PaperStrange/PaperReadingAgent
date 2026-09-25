@@ -1,0 +1,37 @@
+#!/bin/sh
+# A-M12 ① 结构守卫的**本地即时层（带署名的那一半）**：提交信息定稿后、提交落库前再跑一次。
+#
+# 为什么需要第二个钩子（修复验证复核 `run-…-089` major，即二查 087-major-3 的原形态）：
+# `pre-commit` 跑在**提交信息还不存在**的时刻，而结构守卫的 `Structure-Removal:` 署名写在
+# **提交信息**里 ⇒ 本地层永远读不到署名，合法的结构删除只能靠 `git commit --no-verify`
+# 绕过——而 `pre-commit` 的提示恰恰让用户"写署名后重试"，那句提示当时**不可执行**。
+# `commit-msg` 由 git 以 `$1` 传入**待提交信息文件**，于是本地层可以跑**与 CI 同一条判据**
+# （`--ack-file`），署名的结构删除被降级为可见的 `[署名删除]`，未署名的一律拒绝。
+#
+# 退出码语义（与脚本一致）：0=通过 1=有丢失/变形 2=用法或政策错误。非 0 一律**拒绝提交**。
+set -u
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+cd "$root" || exit 0
+
+py=".venv/Scripts/python.exe"
+[ -x "$py" ] || py=".venv/bin/python"
+[ -x "$py" ] || py="python"
+
+git rev-parse --verify -q HEAD >/dev/null 2>&1 || exit 0     # 首次提交没有基线
+msgfile=${1:-}
+[ -n "$msgfile" ] || exit 0
+
+out=$("$py" scripts/structure-guard.py verify --from-git HEAD --ack-file "$msgfile" 2>&1)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+  echo "STRUCTURE-GUARD：提交被拒（结构守卫 rc=$rc；本钩子已读取待提交信息里的署名）" >&2
+  echo "$out" | tail -n 20 >&2
+  echo "" >&2
+  echo "修法：① 补回被删的标题/锚点行/单元格（\`git show HEAD:<文件>\` 看原样）；" >&2
+  echo "      ② 有意的结构删除，请在**提交信息**里写一行署名（本钩子会读到）：" >&2
+  echo "         Structure-Removal: <相对路径> :: <理由≥10 字符>" >&2
+  echo "      （不要用 --no-verify 绕过：CI 用同一条判据复核本次 push 的提交范围。）" >&2
+  exit 1
+fi
+exit 0
