@@ -286,6 +286,57 @@ def _apply_measurement(run: dict) -> None:
     run["dur_minutes"] = mins
 
 
+# G3/R-001：写入口 fail-closed 的**判据集**。这三类标记的含义统一是
+# "时长落不出值"（`measurement_of()` 是唯一产出点，此处只做同名比对，不另立口径）。
+_DEGENERATE_FLAGS = ("zero_duration", "missing_timestamp", "negative_duration")
+
+
+def _refuse_degenerate_finish(run: dict, args: argparse.Namespace) -> str:
+    """G3/R-001：`finish` 的**写入口 fail-closed** 守卫；放行时返回具名豁免的说明串。
+
+    病根（2026-09-26 实测 `run-2026-09-26-code-review-092`）：`register` 漏 `--start`
+    ⇒ `update`(running) 与 `finish` 落在**同一自然秒** ⇒ `zero_duration`。
+    此前只打 `⚠退化=` 警告就写库，于是"未测得"被写成"零耗时"——本仓最忌讳的假读数
+    （`1-WORKFLOW.MD` §6 第 12 条：读数必须有来源，编造更禁止）。
+
+    判据 = 终态测量标记命中 `_DEGENERATE_FLAGS`（此时 `dur_minutes` 必为 null）。
+    两条出路，都不做 ⇒ 拒绝，且**连终态一起不写**（半条终态比不写更难审计）：
+      ① 该 run 确实跑过 ⇒ 先 `set-started-at` 受控回填真实起点（要证据），再收尾；
+      ② 确实无法测量（同秒收尾的夹具、从未起跑的 run） ⇒ 具名逃生口：
+         `--allow-degenerate --degenerate-reason <≥10 字符理由>`；
+         理由去空白后 <10 字符 ⇒ 同样拒绝（说不清"为什么不可测"就不许放行）。
+
+    为什么具名理由不写进账本：`registry.json` 的字段集被闸门按政策核对，加字段要另立
+    口径并同步闸门；故理由**上屏**（`cmd_finish` 打印），账本照旧按 `declared`/null
+    如实记"这不是测量值"——逃生口可见，且不改变测量口径本身。
+    """
+    deg = [f for f in (run.get("measurement_flags") or []) if f in _DEGENERATE_FLAGS]
+    if not deg:
+        return ""
+    tag = "/".join(deg)
+    rid = run.get("run_id")
+    reason = (getattr(args, "degenerate_reason", "") or "").strip()
+    if not getattr(args, "allow_degenerate", False):
+        raise SystemExit(
+            f"FINISH-ERROR: 时间戳退化 [{tag}] ⇒ 拒绝写库"
+            "（终态也没写）——「未测得」不得写成「零耗时」（R-001）。\n"
+            "两条修法，选一条：\n"
+            "① 该 run 确实跑过 ⇒ 先受控回填真实起点，再收尾：\n"
+            f"   agent-ops.py set-started-at {rid} --at <真实开始>"
+            " --evidence <可核凭据> --reason <理由>\n"
+            "② 确实无法测量（同秒收尾的夹具 / 从未起跑的 run） ⇒ 显式记账：\n"
+            "   再加 --allow-degenerate --degenerate-reason <≥10 字符理由>\n"
+            "（两条都不做 ⇒ 闸门会对该 run 判 FAIL：缺口比假读数可审计）")
+    if len(reason) < 10:
+        raise SystemExit(
+            "FINISH-ERROR: --allow-degenerate 必须具名："
+            f"--degenerate-reason ≥10 字符（实测 {len(reason)}）⇒ 拒绝写库。\n"
+            "逃生口不具名 = 后人只会读到「零耗时」；"
+            "例：--degenerate-reason "
+            "\"fixture: 同秒收尾，非真实测量（R-001）\"")
+    return f"{tag} | reason={reason}"
+
+
 @contextlib.contextmanager
 def _file_lock(lock_path: Path):
     """通用文件互斥锁（M10/M9）：注册表与价表共用同一模式（msvcrt/fcntl 双平台）。
@@ -1169,12 +1220,17 @@ def cmd_finish(args: argparse.Namespace) -> None:
     # TG-13：终态 → 算测量值（可测 = wall-clock + dur_minutes；
     # 退化 = declared + 标记 + null）
     _apply_measurement(r)
+    # G3/R-001：退化时间戳**拒绝写库**（逃逸口须具名；返回值非空 = 已具名豁免）。
+    _deg_note = _refuse_degenerate_finish(r, args)
     _save_registry(data)
     flags = ",".join(r.get("measurement_flags") or [])
     print(f"finished {args.run_id} -> {r['status']} (cost_est={r['cost_est']})"
           f" dur={r.get('dur_minutes')} min msrc={r.get('measurement_source')}"
           + (f" ⚠退化={'+'.join(r['measurement_flags'])}"
              "（该时长不是测量值，闸门会对新 run 判 FAIL，请检查时钟/时间戳来源）" if flags else ""))
+    if _deg_note:
+        print(f"⚠已具名豁免退化：{_deg_note}"
+              "（该时长不是测量值；账本按 declared/null 记）")
 
 
 @_with_registry_lock
@@ -1592,6 +1648,10 @@ def main() -> int:
     p.add_argument("--usage-cache-write", type=int)
     p.add_argument("--covers-through", default="",
                    help="TG-15：覆盖窗口上界 sha（默认 = 收尾时的 HEAD，自动记录）")
+    p.add_argument("--allow-degenerate", action="store_true",
+                   help="R-001：退化时间戳仍写终态，须配 ≥10 字符理由")
+    p.add_argument("--degenerate-reason", default="",
+                   help="R-001：为何这条时长不可测（≥10 字符；不具名即拒）")
 
     p = sub.add_parser("list")
     p.add_argument("--status")

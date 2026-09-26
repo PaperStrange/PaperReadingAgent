@@ -43,6 +43,14 @@ FUNCTIONS = ROOT / "agents" / "functions"
 # 便于"启动即清理历史遗留 + 收尾断言从未创建"两处共用同一份字面量。
 PROBE_SPECS = ("tg15-probe-role.md", "tg15-undeclared-role.md")
 
+# R-001（G3）：`finish` 的写入口 fail-closed 落库后，**同秒收尾**的夹具会被
+# （正确地）拒绝（`_now()` 秒级截断 ⇒ `started_at == ended_at` ⇒ `zero_duration`）。
+# 本文件的合成夹具断的是**别的**判据（流转/价表/字节/EOL/窗口/留痕），
+# 时长对它们**本无意义** ⇒ 逐条显式传下面这组参数，即"显式记账为非测量"，
+# **不是**为了让夹具变绿而放宽守卫：守卫的拒绝路径由 UC-24 三条反向对照真跑。
+DEGEN_FIXTURE_REASON = "fixture: 同秒收尾，非真实测量（R-001）"
+DEGEN_FIXTURE_ARGS = ("--allow-degenerate", "--degenerate-reason", DEGEN_FIXTURE_REASON)
+
 sys.path.insert(0, str(ROOT))
 
 from verify.agent_policy import ENV_POLICY, Attribution, load_policy  # noqa: E402
@@ -202,7 +210,12 @@ def main() -> int:
         run(["update", run_id, "--status", "running"], base_env, check=True)
         r = run(["update", run_id, "--status", "queued"], base_env)
         ok("UC-3 非法流转 running→queued 拒绝", r.returncode != 0, (r.stdout + r.stderr).strip()[:60])
-        run(["finish", run_id, "--status", "succeeded", "--output-chars", "2000"], base_env, check=True)
+        # R-001 夹具①（非测量）：UC-3 断的是"queued→running→终态"的**流转**与
+        # output_chars；本 run 的 update/finish 落在同一秒 ⇒ 时长本无意义。
+        run(["finish", run_id, "--status", "succeeded", "--output-chars", "2000",
+             *DEGEN_FIXTURE_ARGS], base_env, check=True)
+        # R-001：本条**不传** flag——它断的是"终态再 finish 被状态机拒"，
+        # 在守卫之前就退出（断言的是 `非法流转`，不是退化文案）。
         r = run(["finish", run_id, "--status", "failed"], base_env)
         ok("UC-3 终态再 finish 拒绝", r.returncode != 0 and "非法流转" in (r.stdout + r.stderr),
            (r.stdout + r.stderr).strip()[:60])
@@ -216,8 +229,10 @@ def main() -> int:
              "--model", "gpt-4o-mini", "--start"], base_env, check=True)
         data = json.loads(registry.read_text(encoding="utf-8"))
         run2 = data["runs"][1]["run_id"]
+        # R-001 夹具②（非测量）：UC-4 断的是**价表算术**（usage × 单价 × fx），
+        # 本 run 是 `register --start` 后同秒收尾 ⇒ 时长不是被测对象。
         run(["finish", run2, "--status", "succeeded", "--usage-in", "1000", "--usage-out", "2000",
-             "--output-chars", "100"], base_env, check=True)
+             "--output-chars", "100", *DEGEN_FIXTURE_ARGS], base_env, check=True)
         cost = json.loads(registry.read_text(encoding="utf-8"))["runs"][1]["cost_est"]
         ok("UC-4 价表精确值（CNY）", abs(cost["total"] - 0.00972) < 1e-9 and not cost["estimated"]
            and cost["currency"] == "CNY",
@@ -232,7 +247,9 @@ def main() -> int:
         run(["register", "--role", "doc-audit", "--task", "docs", "--spec", "doc-audit@1.0.0",
              "--model", "gpt-4o-mini", "--input-chars", "4000", "--start"], base_env, check=True)
         run3 = json.loads(registry.read_text(encoding="utf-8"))["runs"][2]["run_id"]
-        run(["finish", run3, "--status", "succeeded", "--output-chars", "4000"], base_env, check=True)
+        # R-001 夹具③（非测量）：断的是 chars/4 兜底成本，时长与本判据无关。
+        run(["finish", run3, "--status", "succeeded", "--output-chars", "4000",
+             *DEGEN_FIXTURE_ARGS], base_env, check=True)
         cost3 = json.loads(registry.read_text(encoding="utf-8"))["runs"][2]["cost_est"]
         ok("UC-4 chars/4 兜底（CNY）", cost3["estimated"] and abs(cost3["total"] - 0.0054) < 1e-9,
            f"total={cost3['total']} estimated={cost3['estimated']}（期望 0.0054）")
@@ -241,7 +258,9 @@ def main() -> int:
         run(["register", "--role", "code-review", "--task", "pr:1", "--spec", "code-review@1.0.0",
              "--model", "deepseek-v4-flash", "--start"], base_env, check=True)
         run4 = json.loads(registry.read_text(encoding="utf-8"))["runs"][3]["run_id"]
-        run(["finish", run4, "--status", "succeeded"], base_env, check=True)
+        # R-001 夹具④（非测量）：断的是无价模型的 `pending_price` 标记，时长无关。
+        run(["finish", run4, "--status", "succeeded", *DEGEN_FIXTURE_ARGS],
+            base_env, check=True)
         cost4 = json.loads(registry.read_text(encoding="utf-8"))["runs"][3]["cost_est"]
         ok("UC-4 pending_price", cost4.get("pending_price") is True, f"cost_est={cost4}")
 
@@ -254,7 +273,9 @@ def main() -> int:
         run(["register", "--role", "code-review", "--task", "pr:2", "--spec", "code-review@1.0.0",
              "--model", "gpt-4o-mini", "--start"], base_env, check=True)
         run6 = json.loads(registry.read_text(encoding="utf-8"))["runs"][4]["run_id"]
-        run(["finish", run6, "--status", "succeeded", "--usage-in", "1000", "--usage-out", "2000"],
+        # R-001 夹具⑤（非测量）：断的是"人工价覆盖 auto"（0.036 CNY），时长无关。
+        run(["finish", run6, "--status", "succeeded", "--usage-in", "1000", "--usage-out", "2000",
+             *DEGEN_FIXTURE_ARGS],
             base_env, check=True)
         cost6 = json.loads(registry.read_text(encoding="utf-8"))["runs"][4]["cost_est"]
         ok("三查修正 manual 覆盖 auto（CNY）", abs(cost6["total"] - 0.036) < 1e-9, f"total={cost6['total']}（期望 0.036）")
@@ -265,6 +286,8 @@ def main() -> int:
         runX = json.loads(registry.read_text(encoding="utf-8"))["runs"][5]["run_id"]
         r = run(["update", runX, "--status", "succeeded"], base_env)
         ok("三查修正 update 终态拒绝", r.returncode != 0, (r.stdout + r.stderr).strip()[:60])
+        # R-001：本条**不传** flag——它断的是"queued 直接 finish 必须被状态机拒"
+        # （断言文案含 `running`），在守卫之前就退出，退化标记根本没被算出来。
         r = run(["finish", runX, "--status", "succeeded"], base_env)
         ok("三查修正 queued→finish 拒绝", r.returncode != 0 and "running" in (r.stdout + r.stderr),
            (r.stdout + r.stderr).strip()[:60])
@@ -296,7 +319,10 @@ def main() -> int:
              "--model", "gpt-4o-mini", "--context-input-tokens", "1000", "--context-max-tokens", "8000",
              "--start"], base_env, check=True)
         run5 = json.loads(registry.read_text(encoding="utf-8"))["runs"][6]["run_id"]
-        run(["finish", run5, "--status", "succeeded", "--cost-override", "0.5"], base_env, check=True)
+        # R-001 夹具⑥（非测量）：断的是上下文占用 ratio 与 `--cost-override` 落账，
+        # 本 run 是 `register --start` 后同秒收尾 ⇒ 时长不是被测对象。
+        run(["finish", run5, "--status", "succeeded", "--cost-override", "0.5",
+             *DEGEN_FIXTURE_ARGS], base_env, check=True)
         e5 = json.loads(registry.read_text(encoding="utf-8"))["runs"][6]
         ok("UC-9 上下文 ratio", e5["context_occupancy"]["ratio"] == 0.125, f"ratio={e5['context_occupancy']['ratio']}")
         ok("UC-9 成本覆盖", e5["cost_est"]["total"] == 0.5 and e5["cost_est"].get("override") is True,
@@ -663,7 +689,10 @@ def main() -> int:
             report = tmp / f"uc18-{tag}.report.md"
             report.write_bytes("".join(f"| 行 {i} | {tag} 报告正文 |{eol}" for i in range(120))
                                .encode("utf-8"))
-            run(["finish", rid, "--status", "succeeded", "--result-file", str(report)],
+            # R-001 夹具⑦（非测量）：断的是归档**按字节**复制（LF/CRLF 不被改写）；
+            # 本 run 的 register/update/finish 同秒 ⇒ 时长不是被测对象。
+            run(["finish", rid, "--status", "succeeded", "--result-file", str(report),
+                 *DEGEN_FIXTURE_ARGS],
                 base_env, check=True)
             dest = tmp / "runs" / rid / "impact-assessment.report.md"
             src_bytes, dst_bytes = report.read_bytes(), dest.read_bytes()
@@ -919,8 +948,10 @@ def main() -> int:
             base_env, check=True)
         run(["update", "run-uc20-produced", "--status", "running"], base_env, check=True
             )
+        # R-001 夹具⑧（非测量）：UC-20 三条 run 断的是 window/produced_only 判据翻转，
+        # 三条都是 register→update→finish 同秒收尾 ⇒ 时长不是被测对象。
         run(["finish", "run-uc20-produced", "--status", "succeeded",
-             "--covers-through", head_full20], base_env, check=True)
+             "--covers-through", head_full20, *DEGEN_FIXTURE_ARGS], base_env, check=True)
 
         def _row20(rid: str = "run-uc20-produced") -> dict:
             data = json.loads(registry.read_text(encoding="utf-8"))
@@ -976,7 +1007,7 @@ def main() -> int:
         run(["update", "run-uc20-nonreview", "--status", "running"], base_env, check=
             True)
         run(["finish", "run-uc20-nonreview", "--status", "succeeded",
-             "--covers-through", head_full20], base_env, check=True)
+             "--covers-through", head_full20, *DEGEN_FIXTURE_ARGS], base_env, check=True)
         r = run(["mark-produced", "run-uc20-nonreview", "--reason", reason20],
                 base_env, raw=True)
         ok("UC-20 反向对照：非评审类 role → 拒绝（语义是「评审 role 但不做内容评审」）",
@@ -992,7 +1023,7 @@ def main() -> int:
         run(["update", "run-uc20-nonempty", "--status", "running"], base_env, check=True
             )
         run(["finish", "run-uc20-nonempty", "--status", "succeeded",
-             "--covers-through", head_full20], base_env, check=True)
+             "--covers-through", head_full20, *DEGEN_FIXTURE_ARGS], base_env, check=True)
         r = run(["mark-produced", "run-uc20-nonempty", "--reason", reason20],
                 base_env, raw=True)
         ok("UC-20 反向对照：窗口**非空**的 run → 拒绝（标注与账本事实矛盾）",
@@ -1090,8 +1121,10 @@ def main() -> int:
             base_env, check=True)
         run(["update", "run-uc23-review", "--status", "running"],
             base_env, check=True)
+        # R-001 夹具⑨（非测量）：断的是"漏带 --result-file 的终态评审 run 可受控回填"，
+        # 本 run 的 register/update/finish 同秒 ⇒ 时长不是被测对象。
         run(["finish", "run-uc23-review", "--status", "succeeded",
-             "--output-chars", "1200"],
+             "--output-chars", "1200", *DEGEN_FIXTURE_ARGS],
             base_env, check=True)
 
         def _row23() -> dict:
@@ -1144,6 +1177,99 @@ def main() -> int:
         ok("UC-23 反向对照：仓库根相对路径 → 拒绝（**同一个字段不得有两种读法**）",
            r.returncode != 0 and "RESULT-FILE-ERROR" in (r.stdout + r.stderr),
            f"rc={r.returncode}")
+
+        # UC-24（R-001 / G3）：`finish` 写入口 **fail-closed**——退化时间戳不得写成终态。
+        # 病根：`register` 漏 `--start` ⇒ `update`(running) 与 `finish` 落在**同一秒**
+        # ⇒ `zero_duration`，"未测得"被写成"零耗时"。三条都**真跑 CLI 子进程**：
+        #   ① 不带 `--allow-degenerate` ⇒ 拒（文案含 FINISH-ERROR）且**账本未动**；
+        #   ② 带 flag + ≥10 字符理由 ⇒ 允许（账本按 declared/null 记，不冒充测量值）；
+        #   ③ 带 flag + <10 字符理由 ⇒ **仍拒**（逃生口必须具名）。
+        # 夹具确定性：`_now()` 秒级截断，"同秒"不是必然事件（实测 update+finish
+        # 约 0.11+0.15 s ⇒ 12 次里命中 10 次）。故先 `_uc24_align()` 等"秒刚翻"，
+        # 未命中就换新 run 重测（有界 3 轮）——重试只补偿"没造出退化态"，
+        # **不放宽判据**：命中后仍逐条断言 rc / 文案 / 账本行。
+        def _uc24_row(rid: str) -> dict:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+            return next(x for x in data["runs"] if x["run_id"] == rid)
+
+        def _uc24_align() -> None:
+            """等到"秒刚翻"再开跑（把 update+finish 压进同一自然秒的窗口最大化）。"""
+            import time as _t
+            while _t.time() % 1 > 0.03:
+                _t.sleep(0.004)
+
+        def _uc24_attempt(rid: str,
+                          extra: list[str]) -> tuple[subprocess.CompletedProcess, dict]:
+            """造一条"同秒收尾"的 run：`register` → `update` → `finish`。
+
+            `register` **不带** `--start`，由 `update` 记起点——这正是 CLI 的正常流程
+            （R-001 已更正"update 应拒绝空 started_at"那条错处方），
+            所以本夹具复现的是**真实**病根，不是人为注入的时间戳。
+            """
+            run(["register", "--role", "impact-assessment", "--task", "uc24-degenerate",
+                 "--spec", "impact-assessment@1.4.4",
+                 "--run-id", rid], base_env, check=True)
+            _uc24_align()
+            run(["update", rid, "--status", "running"], base_env, check=True)
+            proc = run(["finish", rid, "--status", "succeeded", "--output-chars", "10",
+                        *extra], base_env, raw=True)
+            return proc, _uc24_row(rid)
+
+        def _uc24_loop(prefix: str, extra: list[str],
+                       want: str) -> tuple[subprocess.CompletedProcess, dict]:
+            """有界重试到"这一轮真的落在退化态"；`want` = `reject` / `allow`。"""
+            last = (None, {})
+            for i in (1, 2, 3):
+                proc, row = _uc24_attempt(f"{prefix}-{i}", extra)
+                last = (proc, row)
+                hit = (proc.returncode != 0 if want == "reject"
+                       else proc.returncode == 0 and bool(row.get("measurement_flags")))
+                if hit:
+                    return proc, row
+                print(f"INFO[UC-24] {prefix}-{i} 跨秒未命中退化"
+                      f"（rc={proc.returncode} flags={row.get('measurement_flags')}）"
+                      "→ 换新 run 重测（判据不放宽）")
+            return last
+
+        proc24, row24 = _uc24_loop("run-uc24-nofg", [], "reject")
+        out24 = proc24.stdout + proc24.stderr
+        ok("UC-24 反向对照①：退化收尾**不带** flag → 拒绝（非零退出 + FINISH-ERROR）",
+           proc24.returncode != 0 and "FINISH-ERROR" in out24
+           and "zero_duration" in out24,
+           f"rc={proc24.returncode} out={out24.strip()[:64]}")
+        ok("UC-24 反向对照①：文案给出**两条**修法（受控回填 / 具名记账）",
+           "set-started-at" in out24 and "--allow-degenerate" in out24
+           and "--degenerate-reason" in out24,
+           f"尾部={out24.strip()[-56:]}")
+        ok("UC-24 反向对照①：拒绝 = **账本未动**（该 run 仍 running、无 ended_at）",
+           row24.get("status") == "running" and not row24.get("ended_at"),
+           f"status={row24.get('status')!r} ended_at={row24.get('ended_at')!r}")
+        reason24 = "probe: 同秒收尾，非真实测量（R-001）"
+        proc24b, row24b = _uc24_loop("run-uc24-allow",
+                                     ["--allow-degenerate",
+                                      "--degenerate-reason", reason24], "allow")
+        ok("UC-24 正向对照②：flag + ≥10 字符理由 → 写库成功，且该行确为退化态",
+           proc24b.returncode == 0 and row24b.get("status") == "succeeded"
+           and row24b.get("measurement_flags") == ["zero_duration"],
+           f"rc={proc24b.returncode} flags={row24b.get('measurement_flags')}")
+        ok("UC-24 正向对照②：放行 ≠ 冒充测量（`declared` + `dur_minutes=None`）",
+           row24b.get("measurement_source") == "declared"
+           and row24b.get("dur_minutes") is None,
+           f"src={row24b.get('measurement_source')} dur={row24b.get('dur_minutes')}")
+        ok("UC-24 正向对照②：具名理由在 stdout 可见（账本不存该字段，故必须上屏）",
+           reason24 in (proc24b.stdout + proc24b.stderr),
+           f"out={(proc24b.stdout + proc24b.stderr).strip()[-56:]}")
+        proc24c, row24c = _uc24_loop("run-uc24-short",
+                                     ["--allow-degenerate",
+                                      "--degenerate-reason", "太短"], "reject")
+        out24c = proc24c.stdout + proc24c.stderr
+        ok("UC-24 反向对照③：flag + 理由 <10 字符 → **仍拒**（FINISH-ERROR）",
+           proc24c.returncode != 0 and "FINISH-ERROR" in out24c
+           and "10" in out24c,
+           f"rc={proc24c.returncode} out={out24c.strip()[:64]}")
+        ok("UC-24 反向对照③：仍拒 = 账本未动（该 run 仍 running）",
+           row24c.get("status") == "running" and not row24c.get("ended_at"),
+           f"status={row24c.get('status')!r} ended_at={row24c.get('ended_at')!r}")
 
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))
