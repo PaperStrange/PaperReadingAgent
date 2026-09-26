@@ -124,7 +124,7 @@ jobs:
           python verify/verify_lint.py
           # TG-20 ③（2026-09-25 D6）：决策登记册机检——字段齐全 / 受控状态词 / 被取代指向存在的条目 /
           # `path:line` 指针可核 / §4.1 逐字引文↔出处逐条核对。它此前是**纯人工**维护的。
-          Write-Host "gate: verify_decision_register.py  (档位=真数据：docs/6-DECISIONS.md；含 12 条反向对照自检（现跑为准）)"
+          Write-Host "gate: verify_decision_register.py  (档位=真数据：docs/6-DECISIONS.md；反向对照条数见末行 ALL PASS (N assertions)，标签不写死)"
           python verify/verify_decision_register.py
           # A-M12（2026-09-25 提前交付，Sprint 归属仍为 Sprint-18/G2）：结构守卫的**自检**档。
           # CI 里没有"编辑前的快照"可比（快照是本地工作流的运行态产物），所以这里只跑 `--replay`：

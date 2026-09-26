@@ -339,6 +339,10 @@ def main() -> int:
                                   root=ROOT)
     for w in warnings[:20]:
         print(f"WARN: {w}")
+    # 截断必须**自曝**（复核 `088` minor：WARN 被 `[:20]` 吞掉后，
+    # 屏幕上与"只有 20 条"不可区分——静默截断即"没查也说查过了"）。
+    if len(warnings) > 20:
+        print(f"WARN: … 另有 {len(warnings) - 20} 项未列出（本行是截断计数，不是全部）")
     if problems:
         print(f"DERIVED-NUMBERS FAIL（{len(problems)} 项）：")
         for p in problems[:40]:
