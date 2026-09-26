@@ -42,4 +42,8 @@ if [ "$rc" -ne 0 ]; then
   echo "      （署名由 commit-msg 钩子与 CI 复核；不要用 --no-verify 绕过。）" >&2
   exit 1
 fi
+# **成功路径也要让判据输出可见**（复核 `run-…-092` minor）：本钩子此前 rc=0 时把捕获的输出
+# 整个丢掉 ⇒ `STRUCTURE REPORT-ONLY` 横幅在真 `git commit` 里**根本看不见**，而这一层"只报告
+# 不终判"的意义恰恰在于**让人看见**。只回显判决行，避免每次提交都刷屏。
+echo "$out" | grep -E '^[[:space:]]*(\[署名删除\]|\[FAIL\]|STRUCTURE)' || true
 exit 0

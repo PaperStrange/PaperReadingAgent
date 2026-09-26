@@ -34,4 +34,7 @@ if [ "$rc" -ne 0 ]; then
   echo "      （不要用 --no-verify 绕过：CI 用同一条判据复核本次 push 的提交范围。）" >&2
   exit 1
 fi
+# **成功路径也要让"具名事件"可见**（复核 `run-…-092` minor）：此前 rc=0 时本钩子什么都不打印
+# ⇒ 署名删除的 `[署名删除] …｜署名理由：…` 在本地**看不到**，与它自己的文案承诺不符。
+echo "$out" | grep -E '^[[:space:]]*(\[署名删除\]|\[FAIL\]|STRUCTURE)' || true
 exit 0

@@ -190,6 +190,72 @@ def doc_set(root: Path) -> list[str]:
     return out
 
 
+def _glob_re(pattern: str) -> re.Pattern[str]:
+    """把政策 glob 译成正则（`**` = 任意层目录、`*` = 段内任意、`?` = 单字符）。
+
+    为什么译而不用 `Path.match`：后者从右往左匹配、`**` 语义随版本变，
+    而本判据必须与 `root.glob()` 的展开逐条等价。译成正则后语义固定，
+    并由自检里"`doc_set_in_rev(HEAD)` 必须等于 `doc_set()`"这一条钉住。
+    """
+    out = ["^"]
+    i = 0
+    while i < len(pattern):
+        ch = pattern[i]
+        if ch == "*" and i + 1 < len(pattern) and pattern[i + 1] == "*":
+            i += 2
+            if i < len(pattern) and pattern[i] == "/":
+                out.append("(?:.*/)?")
+                i += 1
+            else:
+                out.append(".*")
+            continue
+        if ch == "*":
+            out.append("[^/]*")
+        elif ch == "?":
+            out.append("[^/]")
+        else:
+            out.append(re.escape(ch))
+        i += 1
+    out.append("$")
+    return re.compile("".join(out))
+
+
+def doc_set_in_rev(root: Path, rev: str) -> list[str]:
+    """`<rev>` 提交树里命中**同一条政策**的文档（相对路径，升序去重）。
+
+    为什么必须有它（复核 `run-2026-09-26-code-review-092` major）：
+    `doc_set()` 只从**工作区**展开 `md_table_globs` ⇒ 整份文件被删时，
+    它既不在 `rels`、也不进基线 ⇒ `compare()` 的"文件消失"分支永不触发
+    ⇒ git 基线档对"删文件"是 **fail-open**，而 pre-commit / commit-msg /
+    CI **三层全走这条路径**。
+
+    实测（092，真 git 仓库）：删掉 glob 匹配的 `cards/TG-20.md`（无署名）
+    ⇒ `STRUCTURE PASS`、真 `git commit` rc=0 且 HEAD 前进；172 份受保护
+    文档里**只有 8 份**（显式清单）受保护。而本文件头部、`1-WORKFLOW.MD`
+    与 `A-M12` 卡都把「文件消失 → FAIL」写成**已交付契约** ⇒ 契约与实现
+    不符，属 `3-LEARNED` **1.69** 同族（判据的匹配范围错）。
+
+    取不到树（坏 rev / 非 git 目录）时返回**空**：调用方本来就会因
+    `resolve_rev` 失败 rc=2（fail-closed），这里不重复报错。
+    """
+    data = policy().policy_file
+    docs = data.get("md_table_docs") or []
+    explicit = {str(raw).replace("\\", "/") for raw in docs}
+    globs = data.get("md_table_globs") or []
+    pats = [_glob_re(str(g).replace("\\", "/")) for g in globs]
+    listing = _git("ls-tree", "-r", "--name-only", rev, root=root)
+    if listing.returncode != 0:
+        return []
+    out: list[str] = []
+    for raw in listing.stdout.splitlines():
+        rel = raw.strip()
+        if not rel:
+            continue
+        if rel in explicit or any(p.match(rel) for p in pats):
+            out.append(rel)
+    return sorted(set(out))
+
+
 def coverage_report(root: Path) -> list[str]:
     """真仓库模式下核对"应扫/实扫"双向差集——**复用 `verify_md_tables` 的判据**（不重写）。
 
@@ -856,7 +922,14 @@ def cmd_verify_git(root: Path, from_git: str, ack_base: str = "",
         print(f"STRUCTURE ERROR：--from-git {from_git!r} 解析不出提交（fail-closed："
               f"坏基线会让『比不了』伪装成 PASS）")
         return 2
+    # 并上 `<rev>` 树里的文档集（复核 `092` major）：只取工作区会让**被删的**
+    # 文档既不进 rels、也不进基线 ⇒ "文件消失"分支永不触发（fail-open）。
     rels = doc_set(root)
+    _seen = set(rels)
+    for _rel in doc_set_in_rev(root, sha):
+        if _rel not in _seen:
+            _seen.add(_rel)
+            rels.append(_rel)
     baseline, missing_in_rev, unreadable = git_baseline(root, sha, rels)
     if unreadable:
         print(f"STRUCTURE ERROR：{len(unreadable)} 份文档在 {sha[:8]} 里取不到内容"
@@ -1963,6 +2036,29 @@ def cmd_replay_git() -> int:
         ok("git 基线：坏修订（解析不出的 sha/分支/越界 ~N）→ 全部 rc=2"
            "（『比不了』不得伪装成 PASS：旧写法会让基线为空集后打印 PASS）",
            all(code == 2 for code in rev_codes), f"codes={rev_codes} revs={bad_revs}")
+
+        # **整份文档消失**（复核 `092` major）：git 基线档的 `rels` 过去只从
+        # 工作区展开政策 glob ⇒ 被删文档既不在 rels、也不进基线 ⇒ 该分支
+        # 永不触发。修法 = `doc_set_in_rev()`；三条：正例 + 两条反向对照。
+        _docs = policy().policy_file.get("md_table_docs") or []
+        explicit = {str(x).replace("\\", "/") for x in _docs}
+        glob_only = [r for r in doc_set(mirror) if r not in explicit]
+        ok("前置：夹具里存在只靠 glob 收进来的文档（否则本条空转）",
+           bool(glob_only), f"glob_only 前 3 = {glob_only[:3]}")
+        victim = glob_only[0]
+        (mirror / victim).unlink()
+        _git_commit(mirror, "自检：无署名删除整份 glob 文档")
+        gone = _run_cli("verify", "--root", str(mirror), "--from-git", "HEAD~1")
+        ok("git 基线：整份 glob 文档被删（未署名）→ rc=1 且点名文件消失",
+           gone.returncode == 1 and "文件消失" in gone.stdout
+           and victim in gone.stdout,
+           _evidence(gone.stdout + gone.stderr, ["文件消失"]))
+        (mirror / victim).write_text("# 复原\n\n## A\n\n内容\n",
+                                     encoding="utf-8", newline="\n")
+        _git_commit(mirror, "自检：复原被删文档")
+        back2 = _run_cli("verify", "--root", str(mirror), "--from-git", "HEAD")
+        ok("git 基线：复原后 rc=0（判决来自删除本身，不是夹具漂移）",
+           back2.returncode == 0, f"rc={back2.returncode}")
 
         print(f"\nALL PASS ({PASSED} assertions)")
         return 0
