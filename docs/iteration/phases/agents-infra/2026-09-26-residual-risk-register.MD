@@ -49,11 +49,23 @@
   ③ `--at` 必须带时区、不得晚于 `ended_at`、不得是未来时刻（fail-closed）；
   ④ 值有变化才追加 `started_at_backfills[]{at,by,old,new,evidence,reason}`；同值无操作不留痕；
   ⑤ 命令 docstring 内联写明"**修复工具、不是预防机制**"及其覆盖边界（引用时不得省略）。
-- **仍未落（G3 首批）**：**真正的预防在写入口 fail-closed**——
-  `finish` 在 `ended - started < 1s` 时应**拒绝**（而非只警告 `⚠退化=zero_duration`），
-  除非显式 `--allow-zero-duration --reason <理由>`；`update --status running` 在
-  `started_at` 为空时应**拒绝**并提示先 `register --start`。
-  这两条落地前，**场景 1 仍会复发**。
+- **仍未落（G3 首批）**：**真正的预防在写入口 fail-closed**：`finish` 在 `ended - started < 1s`（或
+  `measurement_flags` 含 `zero_duration`/`missing_timestamp`/`negative_duration`）时应**拒绝写库**，
+  除非显式 `--allow-degenerate --degenerate-reason <≥10 字符理由>`。落地前，**场景 1 仍会复发**。
+  - **⚠️ 本条处方的更正（2026-09-26，我自己写错的一条）**：我原先还写了"`update --status running`
+    在 `started_at` 为空时应拒绝"——**那条是错的**：`register`(queued) → `update`(running) → `finish`
+    **本来就是这个 CLI 的正常流程**，`update` 把 `started_at` 置为"此刻"是**正确行为**。真实故障
+    不是"update 允许空 started_at"，而是**我在子代理已经跑完之后才调 update**（起止落在同一秒）。
+    故预防只需 `finish` 侧守卫，`update` 侧不应加拒绝。
+  - **本轮实现尝试与失败点（2026-09-26，供下次一次做对）**：守卫按上述实现后**当场打断
+    `verify/verify_agentops.py`**——其夹具在同秒完成 `register→finish`（实测被拒的调用形如
+    `cmd finish run-2026-09-26-code-review-001 --status succeeded --output-chars 2000`，
+    拒因 `时间戳退化 [zero_duration]`）；同时我新加的代码让 `verify_lint.py` 的 E501 **超上限 7 行**
+    （棘轮零余量）。**已整文件回退**（`git checkout HEAD -- scripts/agent-ops.py`），工作区与
+    两条闸门均恢复绿。**下次落地必须同时做三件**：① 先清点 `verify_agentops.py` 里全部 `finish`
+    调用点并逐个显式标注（夹具同秒收尾属"非测量"，可传 `--allow-degenerate --degenerate-reason`）；
+    ② 补一条**反向对照**（不带该 flag 的退化收尾必须被拒）——否则守卫的"拒绝"路径永不被闸门跑；
+    ③ 新增行按显示宽度**按构造写短**（E501 上限=实测，零余量）。
 - **复核条件与到期**：写入口守卫落地后重评本条（届时 ①③ 可降级为"历史兼容"）；
   最迟随 G3 关闭复核。到期未复核 ⇒ 按 `1-WORKFLOW.MD` §6 第 8 条留档为机制缺口。
 - **首次登记**：2026-09-26（UTC+8），主代理；依据 = 用户 2026-09-26 追问
