@@ -22,12 +22,21 @@
 不参与；
 4. **上限只许下调**：与 `git HEAD` 版政策逐项比较，任何**上调**即 FAIL（防"把上限调高即变绿"）；
 5. **到期必须重评**：`review_by` 过期即 FAIL（没有到期日的豁免就是永久豁免）；
-6. **死键**：`baseline` 里指向已不存在文件的条目即 FAIL（失效条目必须删除）。
+6. **死键**：`baseline` 里指向已不存在文件的条目即 FAIL（失效条目必须删除）；
+7. **四类形态**（二查 `run-2026-09-25-code-review-087` minor 9 的原文 `:48`，2026-09-26
+   补齐）：`guard_required=N` / `E501=N/N` / `N 条反向对照` / `+N/−N、N 提交`——原先
+   `patterns` 只覆盖另外八类，这四类写成当期主张时**没有任何判据看得见**。
+   三则口径（裁定与实测见 policy 的 `_patterns_087_minor_9`）：`E501=N/N` 与
+   `ratchet_counts` 用负向前瞻分工（**不双计**）；`N 条反向对照` 只认 087 的字面序；
+   `+N/−N、N 提交` 只认变更集复合式（裸 `+N/−N` 的扩展会判红 3 个已无棘轮余量的文档，
+   本批不采纳）。
 
 ## 反向对照（`--selftest`，全自动 fixture）
 
 往合规文档注入 1 处"现测 N 卡"→ 必 FAIL 并点名文件:行；合规形态（命令 + "以输出为准"/
-带 sha 的时点读数）→ 必须 PASS；上限上调 → FAIL；`review_by` 过期 → FAIL；死键 → FAIL。
+带 sha 的时点读数）→ 必须 PASS；上限上调 → FAIL；`review_by` 过期 → FAIL；死键 → FAIL；
+四类形态各自命中一次、且 `E501=N/N` 不双计；锚口径的三条边界（同行豁免／邻行不豁免／
+sha 区间豁免）各一条；条数见末行 `ALL PASS (N assertions)`。
 
 ## 用法
 
@@ -105,9 +114,17 @@ def doc_files(root: Path = ROOT) -> list[Path]:
 def scan_text(text: str) -> list[tuple[int, str, str, str]]:
     """返回 [(行号, 判据 id, 命中文本, hint)]。
 
-    **时点豁免（行级）**：同一行里带**时点锚**（日期 / sha / "以…为准"）的读数属规范允许的
-    "② 标明时点的历史读数"，不判违规——判据治的是"把某个数字当成**当期**事实"这种写法。
-    豁免只到行级、且必须同行可见：把数字写在前面、锚点写在下一段不算。
+    **时点豁免（行级、必须同行可见）**：同一行里带**时点锚**（日期 / sha / sha 区间 /
+    "以…为准"）的读数属规范允许的"② 标明时点的历史读数"，不判违规——判据治的是
+    "把某个数字当成**当期**事实"这种写法。豁免只到行级：把数字写在前面、锚点写在
+    下一行不算。
+
+    **口径裁定（2026-09-26，G2 关闭批；实测见 policy 的 `_patterns_087_minor_9`）**：
+    行首的日期（含 sprint 表格行的首个日期单元格）**仍算**时点锚。收窄它有两个方案，
+    都实测过、都**不在本批**采纳：①"日期必须伴随声明（时点读数/不得当作现值…）"
+    ⇒ 一批历史文档立刻判红（棘轮无余量、无法在批内收平）；②"行首表格日期不算锚"
+    ⇒ 也会判红一个文档，而那一行的日期本就是该行自己的时点（属假阳性）。
+    两者都需要专门的文档清理批次，不能靠收窄判据替代。
     """
     hits: list[tuple[int, str, str, str]] = []
     for i, line in enumerate(text.splitlines(), start=1):
@@ -315,6 +332,41 @@ def selftest() -> int:
         ok("反向对照 I 同行带时点锚（日期/sha）的读数 → 豁免（规范允许的『② 时点读数』形态）",
            scan_text(fixture.read_text(encoding="utf-8")) == [],
            f"hits={scan_text(fixture.read_text(encoding='utf-8'))[:1]}")
+
+    # ---- 087-minor-9 的四类形态 + 锚口径（2026-09-26 G2 关闭批）----------------
+    # 四类逐条对应 087 原文 `:48`；判据 id 与口径见 policy 的 `_patterns_087_minor_9`。
+    four = ("`.venv\\Scripts\\python.exe verify\\verify_gate_integrity.py` ⇒ "
+            "guard_required=9；棘轮 `E501=2493/2494`；"
+            "`--selftest` 自检 9 条反向对照；变更集 +5565/−147、24 提交")
+    got = [pid for _ln, pid, _t, _h in scan_text(four + "\n")]
+    ok("反向对照 N 087 的四类形态（guard_required / E501=N/N / N 条反向对照 / "
+       "+N/−N、N 提交）各自命中且**只命中一次**",
+       sorted(got) == ["diffstat", "gate_required", "ratchet_pair", "replay_count"],
+       f"ids={got}")
+    pair_hits = scan_text("棘轮 `E501=2493/2494` 见末行\n")
+    single_hits = scan_text("棘轮 `E501=2493` 见末行\n")
+    ok("反向对照 N2 `E501=N/N` 不与 `ratchet_counts` 双计"
+       "（成对写法记 1 处、单值写法仍记 1 处 ⇒ 覆盖面不减、计数不虚增）",
+       [pid for _l, pid, _t, _h in pair_hits] == ["ratchet_pair"]
+       and [pid for _l, pid, _t, _h in single_hits] == ["ratchet_counts"],
+       f"pair={pair_hits[:1]} single={single_hits[:1]}")
+    same_line = scan_text("2026-09-25 时点读数：guard_required=9\n")
+    next_line = scan_text("guard_required=9\n2026-09-25 时点读数\n")
+    ok("反向对照 N3 豁免**只到行级、必须同行可见**：锚点在下一行 ⇒ 不豁免",
+       same_line == [] and next_line != [],
+       f"same={same_line[:1]} next={next_line[:1]}")
+    ok("反向对照 N4 sha **区间**（`` `sha1..sha2` ``）与单个 sha 同等有效 ⇒ 该行豁免"
+       "（旧正则认不出区间 ⇒ 对合规的变更集写法是假阳性）",
+       scan_text("变更集 +5565/−147、24 提交（`1cad0b7..9945d6d`）\n") == [],
+       f"hits={scan_text('变更集 +5565/−147、24 提交（`1cad0b7..9945d6d`）')[:1]}")
+    problems, _ = evaluate({"docs/a.md": scan_text("guard_required=9 见末行\n")},
+                           baseline={}, default_cap=0, review_by="2099-01-01",
+                           today="2026-09-26", previous=None,
+                           existing_files={"docs/a.md"})
+    ok("反向对照 N5 四类形态走真判据（`evaluate`，上限 0）"
+       "⇒ FAIL 并点名文件:行与判据 id",
+       any("docs/a.md" in p and "gate_required" in p for p in problems),
+       f"problems={problems[:1]}")
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
 

@@ -389,8 +389,9 @@
     "_comment": "『派生数字不得手抄』（2026-09-25，Sprint-17 关闭期；根因＝一查 run-2026-09-25-doc-audit-070 finding 1/2）：文档里引用**派生数字**（断言数/卡数/文件数/脚本数/字节数/C 级条数/棘轮计数）只有两种合法形态——① **复现命令 + 以该命令输出为准**；② **标明时点的历史读数**（同行带日期或 sha）。写成『现测 <数字>』『实测 <数字>』这类**当期主张**即违规。闸门 = verify/verify_derived_numbers.py（offline）。`baseline` 按文件设违规处数上限：**只减不增**（与 git HEAD 版逐项比较，上调即 FAIL），`review_by` 到期即 FAIL；未列入 baseline 的文件上限 = `default_cap`（新文档一处都不许有）。规则条文 = docs/1-WORKFLOW.MD §6『派生数字不得手抄』。baseline 初值 = 2026-09-25 全仓实测（32 个历史文件 / 111 处，其余文档 0 处）。",
     "scan_globs": ["docs/**/*.md", "docs/**/*.MD"],
     "generated_files": ["verify/TEST-MATRIX.MD"],
-    "time_anchor_regex": "(?:20\\d\\d-\\d\\d-\\d\\d|`[0-9a-f]{7,40}`|以现跑为准|以命令输出为准|现跑为准|现值以|以该命令输出为准)",
+    "time_anchor_regex": "(?:20\\d\\d-\\d\\d-\\d\\d|`[0-9a-f]{7,40}(?:\\.\\.[0-9a-f]{7,40})?`|以现跑为准|以命令输出为准|现跑为准|现值以|以该命令输出为准)",
     "default_cap": 0,
+    "_patterns_087_minor_9": "二查 run-2026-09-25-code-review-087 minor 9 的『四类形态』（原文 :48）= gate_required / E501=N/N / N 条反向对照 / +N/-N、N 提交；2026-09-26 G2 关闭批补齐（本批四类逐条对应 id：gate_required / ratchet_pair / replay_count / diffstat）。口径三则（**都是本次裁定的**）：① ratchet_pair 与 ratchet_counts 用负向前瞻分工（成对写 `E501=N/N` 只记 1 处，不双计；只写 `E501=N` 仍记 1 处 —— 覆盖面不减、计数不虚增）；② replay_count 只认 087 原文的字面序（`N 条反向对照`）；反序形态（`反向对照 N 条`）实测会新增 5 个文档判红、其中 4 个已无棘轮余量（cards/TG-17.md 3→6、cards/TG-20.md 0→1、sprint-17.md 1→2、G2 计划书 0→1）⇒ **本批不采纳**，列为待文档清理批后再做的扩展；③ diffstat 只认 087 原文的变更集复合式（`+N/-N、N 提交`）；裸 `+N/-N` 的扩展实测会新增 3 个已无余量的文档判红（3-LEARNED 8→9、sprint-9 2→3、sprint-16 6→7）⇒ 同上不采纳。`time_anchor_regex` 的两处口径：④ **豁免只到行级、且必须同行可见**（数字在前、锚点在后一行不算）；⑤ sha 区间（反引号包的 `sha1..sha2`）与单个 sha 同等有效（原文写『带 sha』，区间同样把读数钉在提交上；旧正则认不出区间 ⇒ 对 `+N/-N、N 提交（sha1..sha2）` 这种合规写法是假阳性）。**明确未改的口径**：行首的日期（含 sprint 表格行的首个日期单元格）仍算时点锚 —— 收窄的两个方案已实测其代价（『日期须伴随声明』= 25 个文档判红；『行首表格日期不算锚』= 1 个文档判红且该行日期本就是行自己的时点、属假阳性）⇒ 需专门批次的文档清理，不在本批。",
     "patterns": [
       {"id": "claim_count", "regex": "(?:现测|实测|当前|现有)\\s*[:：]?\\s*\\**\\s*\\d+\\s*(?:张卡|卡\\b|个阶段|脚本|个文件|文件|份|条|B\\b)", "hint": "改成『复现命令 + 以该命令输出为准』，或在同一行标注时点（日期/sha）"},
       {"id": "all_pass", "regex": "ALL\\s*PASS\\s*\\(\\s*\\d+\\s*assertions?", "hint": "断言数以现跑末行为准，不要在文档里固化"},
@@ -398,8 +399,12 @@
       {"id": "evidence_line", "regex": "EVIDENCE:[^\\n]*assertions=\\d+", "hint": "机读证据行由脚本现跑打印，不抄进文档"},
       {"id": "matrix_check", "regex": "CHECK OK:\\s*\\d+\\s*脚本", "hint": "脚本数以 verify_matrix.py check 现跑为准"},
       {"id": "suite_scripts", "regex": "SUITE PASSED\\s*\\(\\s*\\d+", "hint": "套件脚本数以现跑为准"},
-      {"id": "ratchet_counts", "regex": "(?:E501|D10[123])\\s*=\\s*\\d+", "hint": "棘轮计数以 EVIDENCE 行现跑为准"},
-      {"id": "c_level_total", "regex": "C\\s*级[^\\n]{0,24}?\\d{3,}\\s*条", "hint": "C 级条数以 verify_lint.py 报告行现跑为准"}
+      {"id": "ratchet_counts", "regex": "(?<![\\w])(?:E501|D10[123])\\s*=\\s*\\d+(?![\\d]*\\s*/\\s*\\d)", "hint": "棘轮计数以 EVIDENCE 行现跑为准"},
+      {"id": "c_level_total", "regex": "C\\s*级[^\\n]{0,24}?\\d{3,}\\s*条", "hint": "C 级条数以 verify_lint.py 报告行现跑为准"},
+      {"id": "gate_required", "regex": "(?<![\\w])(?:guard_required|gate_required)\\s*=\\s*\\d+", "hint": "闸门必需数以 verify_gate_integrity.py 现跑末行为准（087 minor 9 第①类）"},
+      {"id": "ratchet_pair", "regex": "(?<![\\d/])(?:E501|D10[123])\\s*=\\s*\\d+\\s*/\\s*\\d+", "hint": "棘轮计数的 N/N 两值都要由现跑派生（087 minor 9 第②类）"},
+      {"id": "replay_count", "regex": "(?<![\\w])\\d+\\s*条\\s*\\**\\s*反向对照", "hint": "反向对照条数以各闸门 --selftest 末行为准（087 minor 9 第③类）"},
+      {"id": "diffstat", "regex": "(?<![\\w])[+＋]\\s*\\d+\\s*[/／]\\s*[−–-]\\s*\\d+\\s*[、,，]\\s*\\**\\s*\\d+\\s*\\**\\s*提交", "hint": "变更集统计以 git diff --shortstat / rev-list --count 现跑为准（087 minor 9 第④类）"}
     ],
     "baseline": {
       "docs/3-LEARNED.MD": 8,

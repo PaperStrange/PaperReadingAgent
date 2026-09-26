@@ -28,12 +28,25 @@ line <= N`）；
    （规范化：去空白、去引号差异）——这是"引文可核"而不是"指针存在"；
 7. **待回填可见**：`待回填`/`未验证（待补）`
 的**条数与条目号**必须打印出来（**不是**问题项，
-   但"没回填"必须看得见，且 §5/§6 必须与读数一致）。
+   但"没回填"必须看得见，且 §5/§6 必须与读数一致）；
+8. **围栏是示例区、不是判据域**（二查 `run-…-087` minor 5）：先剥 ``` / `~~~`
+   块，再判章节／条目／字段／指针——围栏里的同名标题与示例指针都不算数；
+9. **条目归属按章节行区间**：每条必须落在 `## 3. ` / `## 4.1 ` 的**行区间**内
+   （原先按 ID 前缀归属 ⇒ 章节错位看不见）；
+10. **同名契约字段出现第二次即 FAIL**：`原文` 与 `原文（逐字，选项式）` 归一后
+    同名 ⇒ 撞车必须**点名**（只改取值顺序会把"取错值"变成"静默换值"）。
+    非契约字段（如 `备注`）允许重复 —— 真语料里有 48 条条目这么写；
+11. **"会话"是形态不是子串**：出处没有指针时必须**以 `会话` 开头**
+    （"这不在会话里"这种写法不算）；
+12. **表格单元格不是字段载体**：表格行不解析字段（字段只认 `- 字段：值` 行），
+    但它仍在**指针域**内 —— 表格里的 `path:line` 照核。缩小指针域等于放宽，故不缩。
 
-## 反向对照（`--selftest`，4 条）
+## 反向对照（`--selftest`，条数见末行 `ALL PASS (N assertions)`）
 
 (a) 少一个字段 ⇒ FAIL；(b) 状态词不在受控表内 ⇒ FAIL；(c) 指针指向不存在的文件 ⇒ FAIL；
 (d) §4.1 引文与出处行不符 ⇒ FAIL；外加 (e) 干净 fixture ⇒ 零问题（防假红）。
+判据 8~12 各带一例真入口反例（围栏标题／错位章节／重复契约字段／基名撞车／
+"会话"子串／表格定档）＋ 两条防假红（非契约字段重复、±2 窗口内漂移可见）。
 fixture 全部落在 `%TEMP%`（闸门自身不改仓库文件）。
 
 ## 用法
@@ -87,6 +100,10 @@ POINTER_RE = re.compile(
     r":(\d+)(?:-\d+)?`?")
 QUOTED_RE = re.compile(r"[「『\"“](?P<body>[^」』\"”]{2,})[」』\"”]")
 SUPERSEDE_RE = re.compile(r"\[已被\s*(?P<who>[^\]\s]+)\s*取代")
+# 围栏定界（``` / ~~~，最多 3 空格缩进）：围栏内是**示例区**，不是判据域
+FENCE_RE = re.compile(r"^\s{0,3}(?P<mark>`{3,}|~{3,})")
+# 显式"会话"形态（判据 11）：**必须以 `会话` 开头**，不是"出现过这两个字"
+SESSION_RE = re.compile(r"^\**\s*会话")
 PASSED = 0
 
 
@@ -127,6 +144,54 @@ def _lines_of(path: Path) -> list[str]:
     return path.read_text(encoding="utf-8", errors="replace").splitlines()
 
 
+def _strip_fences(lines: list[str]) -> tuple[list[str], set[int]]:
+    """剥掉围栏块（判据 8）：围栏内的行**置空**，行号不漂。
+
+    返回 `(置空后的行, 围栏行号集合)`。未闭合的围栏按"其后全部置空"处理
+    （fail-closed：章节/字段会因此缺失并判红，而不是被围栏文本满足）。
+    """
+    out: list[str] = []
+    fenced: set[int] = set()
+    mark = ""
+    for idx, line in enumerate(lines, 1):
+        m = FENCE_RE.match(line)
+        if m:
+            if not mark:
+                mark = m.group("mark")[0]
+            elif m.group("mark")[0] == mark:
+                mark = ""
+            fenced.add(idx)
+            out.append("")
+            continue
+        if mark:
+            fenced.add(idx)
+            out.append("")
+            continue
+        out.append(line)
+    return out, fenced
+
+
+def _section_spans(lines: list[str], prefix: str) -> list[tuple[int, int]]:
+    """`prefix` 开头的标题行 → 它的**行区间**（到下一个 `## ` 标题为止）。
+
+    同一前缀可有多处标题（夹具里 `## 4.1 x` 与 `## 4.1 逐字原话` 并存）⇒ 返回
+    全部区间，条目落在**任一**区间内即算归属该章节。
+    """
+    heads = [i for i, ln in enumerate(lines, 1) if ln.startswith("## ")]
+    spans: list[tuple[int, int]] = []
+    for i, ln in enumerate(lines, 1):
+        if not ln.startswith(prefix):
+            continue
+        nxt = [h for h in heads if h > i]
+        spans.append((i, (nxt[0] - 1) if nxt else len(lines)))
+    return spans
+
+
+def _in_spans(line: int, spans: list[tuple[int, int]]) -> bool:
+    """行号是否落在任一区间内。"""
+    return any(start <= line <= end for start, end in spans)
+
+
 def _pointers(src: str) -> list[tuple[str, int]]:
     """`出处` 里可能有**多个**指针（`；` 分隔）⇒ 全部取出来逐个试。"""
     out: list[tuple[str, int]] = []
@@ -146,22 +211,34 @@ def _quote_fragments(body: str) -> list[str]:
 
 
 def parse_entries(text: str) -> list[dict]:
-    """把登记册切成条目：`[{id, title, pos, block, fields}]`
-    （`fields` = 字段基名 → 值）。"""
+    """把登记册切成条目：`[{id, title, pos, block, fields, dups, line}]`。
+
+    `fields` = 字段基名 → 值（**第一次**出现的值生效）；`dups` = 第 2 次起的
+    `(字段基名, 行号, 值)`；`line` = 条目标题所在行号。重复**不再静默丢弃**：
+    契约字段同名的第二次出现由 `check_register` 判 FAIL 并点名（判据 10）——
+    只把 `setdefault` 换成覆盖会把"取错值"变成"静默换值"，两条都不行。
+    """
     marks = [(m.start(), m.group("id"), m.group("title").strip())
              for m in ENTRY_RE.finditer(text)]
     out: list[dict] = []
     for i, (pos, rid, title) in enumerate(marks):
         end = marks[i + 1][0] if i + 1 < len(marks) else len(text)
         block = text[pos:end]
+        line0 = text.count("\n", 0, pos) + 1
         fields: dict[str, str] = {}
-        for line in block.splitlines()[1:]:
+        dups: list[tuple[str, int, str]] = []
+        for off, line in enumerate(block.splitlines()[1:], start=1):
             m = FIELD_RE.match(line.strip())
-            if m:
-                name = _canon_field(m.group("name"))
-                fields.setdefault(name, m.group("value").strip())
+            if not m:
+                continue
+            name = _canon_field(m.group("name"))
+            value = m.group("value").strip()
+            if name in fields:
+                dups.append((name, line0 + off, value))
+                continue
+            fields[name] = value
         out.append({"id": rid, "title": title, "pos": pos, "block": block,
-                    "fields": fields})
+                    "fields": fields, "dups": dups, "line": line0})
     return out
 
 
@@ -194,17 +271,31 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
                           f"（**不是通过**；windows 上必须存在并按全部判据核）"]}
     text = path.read_text(encoding="utf-8", errors="replace")
     _lines = text.splitlines()
+    # 判据 8：**先剥围栏**，后续章节/条目/字段/指针一律只看围栏外（行号不漂）。
+    _body, _fenced = _strip_fences(_lines)
+    body_text = "\n".join(_body)
     for section in SECTIONS:
-        # 章节必须在**行首**出现（二查 `run-…-087` minor 5：子串测试能被正文/围栏里的
-        # 同名字样满足 ⇒ "章节在位"这条判据形同虚设）
-        if not any(line.startswith(section) for line in _lines):
+        # 章节必须在**行首**出现（二查 `run-…-087` minor 5：子串测试能被正文里的
+        # 同名字样满足 ⇒ "章节在位"这条判据形同虚设），**且必须在围栏外**——
+        # 围栏里的标题是示例，满足不了结构契约。
+        if not any(line.startswith(section) for line in _body):
             problems.append(f"[章节] 缺 {section!r}（登记册的结构契约；"
-                            f"删章节等于删判据；只认**行首**标题，正文提及不算）")
-    entries = parse_entries(text)
+                            f"删章节等于删判据；只认**行首**标题，"
+                            f"正文与围栏内提及不算）")
+    entries = parse_entries(body_text)
     if not entries:
         problems.append("[条目] 一个条目都没解析出来（解析口径或文件结构变了 ⇒ "
         "fail-closed）")
     ids = {e["id"] for e in entries}
+    # 判据 9：条目归属按**章节行区间**（不再按 ID 前缀）
+    spans3 = _section_spans(_body, "## 3. ")
+    spans41 = _section_spans(_body, "## 4.1 ")
+    for e in entries:
+        if not (_in_spans(e["line"], spans3) or _in_spans(e["line"], spans41)):
+            problems.append(f"[章节] {e['id']}（:{e['line']}）不在 "
+                            f"`## 3. ` / `## 4.1 ` 的**行区间**内"
+                            f"——条目归属按章节区间判，不按 ID 前缀；"
+                            f"错位条目等于绕过该章节的判据")
     # 归纳标记词（`TG-20` ③(v)：原文块里**不得**混排主代理的归纳）
     induction_marks = ("我认为", "这意味着", "结论是", "主代理归纳", "我判断", "即：")
     for e in entries:
@@ -218,12 +309,21 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
             problems.append(f"[字段] {e['id']} 缺字段或值为空：{'、'.join(missing)}"
                             f"（§1 的字段定义即契约；无值请写 "
                             f"`待回填`/`未验证（待补）`）")
+        # 判据 10：契约字段归一后同名 ⇒ 第二次出现即 FAIL 并**点名**
+        # （只改取值顺序会把"取错值"变成"静默换值"；`setdefault` 会把真值丢掉）
+        dup_contract = [d for d in e["dups"] if d[0] in FIELDS]
+        if dup_contract:
+            named = "、".join(f"`{n}`（第 2 次在 :{ln}）" for n, ln, _v in dup_contract)
+            problems.append(f"[重复字段] {e['id']} 的契约字段被写了第二次：{named}"
+                            f"——同一条目里一个字段只能有一个值；请合并到一行")
         quote = e["fields"].get("原文", "")
         src = e["fields"].get("出处", "")
         # ③(iv)：出处必须是**可定位的指针**，或显式的"会话"形态（§1 只认这两种）
-        if src and not _pointers(src) and "会话" not in src and "待回填" not in src:
+        # 判据 11：形态 = **以 `会话` 开头**（"这不在会话里"这类子串不算显式形态）
+        if (src and not _pointers(src) and not SESSION_RE.match(src)
+                and "待回填" not in src):
             problems.append(f"[出处] {e['id']} 的出处既不是 `path:line` "
-            f"指针、也不是显式的『会话』形态："
+                            f"指针、也不是显式的『会话』形态（须以 `会话` 开头）："
                             f"{src[:40]!r}（§1 只认这两种；出处不可核 = 引文不可核）")
         # ③(v)：原文块与归纳区**不得同段混排**
         hit_marks = [m for m in induction_marks if m in quote]
@@ -264,7 +364,9 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
     #     **打错/改名/漂移** ⇒ FAIL；
     #   * 父目录也不在树里（如 `docs/iteration/**` 在 main）⇒ 真·分支差异 ⇒ 记未核。
     pointers: list[tuple[str, int, str]] = []
-    for m in POINTER_RE.finditer(text):
+    # 判据 8：指针域 = **围栏外**的全文（表格行**在内**，见判据 12 的定档）；
+    # 围栏里的 `path:line` 是示例，不计入计数、不参与引文分流。
+    for m in POINTER_RE.finditer(body_text):
         pointers.append((m.group(1), int(m.group(2)), m.group(0)))
     bad_ptr = 0
     absent_ptr = 0
@@ -297,6 +399,7 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
     checked = 0
     unverifiable = 0
     mismatch: list[str] = []
+    drift: list[str] = []
     for e in v_entries:
         # 字段名一律用**基名**（见 `_canon_field`）
         quote = e["fields"].get("原文", "")
@@ -319,15 +422,27 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
         for frag in fragments:
             want = _norm(frag)
             hit = ""
+            real = 0
             for relp, ln in ptrs:
                 target = root / relp
                 if not target.is_file():
                     continue             # 文件不存在由指针判据点名，这里不重复计
                 lines = _lines_of(target)
+                # 1-based：指针行 ln 的 **±2**（切片下标 ln-3 … ln+1）
                 window = lines[max(0, ln - 3):ln + 2]
-                if any(want in _norm(x) for x in window):
-                    hit = f"{relp}:{ln}"
+                for offset, text_line in enumerate(window):
+                    if want in _norm(text_line):
+                        hit = f"{relp}:{ln}"
+                        real = max(0, ln - 3) + offset + 1
+                        break
+                if hit:
                     break
+            # 判据 6：窗口内命中但**指针行本身没命中** ⇒ 漂移必须**可见**
+            # （不判 FAIL：±2 是规范允许的核对窗口；但"实际在第几行"要说出来）
+            if hit and real and real != int(hit.rsplit(":", 1)[1]):
+                drift.append(f"{e['id']}：指针 {hit}，逐字引文实际命中 "
+                             f":{real}（±2 窗口内 ⇒ 放行，但漂移可见；"
+                             f"建议把指针改到实际行）")
             if not hit:
                 tried = "、".join(f"{p}:{n}" for p, n in ptrs[:3])
                 # **漂移提示**：指针没命中时，顺手在**整个文件**里找一次
@@ -372,16 +487,26 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
     if pending:
         warns.append(f"{len(pending)} 条条目仍是待回填/未验证（前 8 条：{pending[:8]}）"
                      f"——回填前不得引用为已核生效裁决")
+    if drift:
+        rest = f"…另 {len(drift) - 5} 条未列出（本行是截断计数，不是全部）" \
+            if len(drift) > 5 else ""
+        warns.append(f"引文核对：{len(drift)} 条在 ±2 窗口内命中而**指针行未命中**"
+                     f"（漂移可见、不判 FAIL）：" + "；".join(drift[:5]) + rest)
     if absent_ptr or unverifiable:
         warns.append(f"本分支不存在的路径：指针 {absent_ptr} 处未核、引文 "
         f"{unverifiable} 条未核"
                      f"（分支差异；windows 上这些**全部**要核，见 `summary` 的 0/0）")
     stats = {"entries": len(entries),
-             "section3": sum(1 for e in entries if e["id"].startswith("D-")),
-             "section41": len(v_entries), "pointers": len(pointers),
+             "section3": sum(1 for e in entries if _in_spans(e["line"], spans3)),
+             "section41": sum(1 for e in entries if _in_spans(e["line"], spans41)),
+             "pointers": len(pointers),
              "bad_pointers": bad_ptr, "pointers_branch_absent": absent_ptr,
              "quotes_checked": checked, "quotes_unverifiable": unverifiable,
-             "quotes_mismatch": len(mismatch), "pending": len(pending)}
+             "quotes_mismatch": len(mismatch), "pending": len(pending),
+             "quotes_drift": len(drift),
+             "dup_noncontract": sum(1 for e in entries
+                                    for d in e["dups"] if d[0] not in FIELDS),
+             "fenced_lines": len(_fenced)}
     return {"problems": problems, "warns": warns, "stats": stats, "skipped": False}
 
 
@@ -397,7 +522,9 @@ def selftest() -> int:
     # 引文与出处的对照源：用**真仓库文件**里稳定存在的一行（标题行），避免夹具自身漂移
     quote_src = "docs/6-DECISIONS.md:1"
 
-    def build(fields: dict[str, str], src: str = quote_src) -> str:
+    def build(fields: dict[str, str], src: str = quote_src, *,
+              extra: tuple[str, ...] = (), tail: tuple[str, ...] = ()) -> str:
+        """`extra` = 追加在条目字段后（同一条目块内）；`tail` = 追加在文件末尾。"""
         body = [f"## {n}" for n in ("1. 字段定义", "2. 提问纪律", "3. x", "4. x",
                                     "4.1 x", "4.2 x", "4.3 x", "5. x", "6. x")]
         body.append("## 4.1 逐字原话")
@@ -411,7 +538,9 @@ def selftest() -> int:
             # `None` = **整条字段不写**（模拟漏字段）
             if name in rows and rows[name] is not None:
                 body.append(f"- {name}: {rows[name]}")
+        body.extend(extra)
         body.append("## 4.2 x")
+        body.extend(tail)
         return "\n".join(body) + "\n"
 
     def run(text: str) -> dict:
@@ -521,6 +650,80 @@ def selftest() -> int:
     ok("反向对照 h `原文` 里混排归纳标记词 ⇒ FAIL（原文区与归纳区必须分离）",
        any("原文纯洁性" in p for p in mixed["problems"]),
        f"problems={mixed['problems'][:1]}")
+    # ---- 判据 8~12（二查 `run-…-087` minor 5 的五件事）：各一例**真入口**反例 --------
+    # 判据 8：9 个章节标题**只写在围栏里**、真章节全缺 + 一条真条目
+    # ⇒ 修前 `problems == []`（假绿），修后必须逐条点名缺章节。
+    fenced = run("\n".join([
+        "```md",
+        *[f"## {n}" for n in ("1. 字段定义", "2. 提问纪律", "3. x", "4. x", "4.1 x",
+                              "4.2 x", "4.3 x", "5. x", "6. x")],
+        "```", "",
+        "### V-001 夹具",
+        *[f"- {k}: v" for k in FIELDS], ""]))
+    ok("反向对照 j 章节标题只写在围栏里 ⇒ FAIL 且逐条点名缺章节"
+       "（围栏是示例区，满足不了结构契约）",
+       all(any(f"缺 {s!r}" in p for p in fenced["problems"]) for s in SECTIONS),
+       f"problems={fenced['problems'][:1]}")
+    fenced_ptr = run(build({}, tail=("```", "示例：出处写作 `docs/6-DECISIONS.md:1`",
+                                     "```")))
+    ok("反向对照 k 围栏里的示例指针**不计入** `pointers`（也不参与引文分流）",
+       fenced_ptr["problems"] == []
+       and fenced_ptr["stats"].get("pointers") == clean["stats"].get("pointers"),
+       f"problems={fenced_ptr['problems'][:1]} pointers="
+       f"{fenced_ptr['stats'].get('pointers')}/{clean['stats'].get('pointers')}")
+    # 判据 9：条目落在 `## 4.2` 区间（ID 前缀正确、章节归属错位）
+    misplaced = run(build({}, tail=(
+        "### V-002 错位", '- 原文: "决策登记册"', f"- 出处: {quote_src}",
+        f"- 证据: {quote_src}", "- 时点: 2026-01-01", "- 主代理归纳: 夹具",
+        "- 生效状态: 生效", "- 验证时间戳: 2026-01-01", "- 违背事故: 无")))
+    ok("反向对照 l 条目落在 `## 4.2` 区间（不在 §3./§4.1）⇒ FAIL 且点名条目"
+       "（归属按章节行区间，不按 ID 前缀）",
+       any("不在 `## 3. `" in p and "V-002" in p for p in misplaced["problems"]),
+       f"problems={misplaced['problems'][:1]}")
+    # 判据 10：同一个契约字段写两次 / 限定语撞车
+    dup = run(build({}, extra=("- 原文: 诱饵行内容",)))
+    ok("反向对照 m 同一条目里 `原文` 写两次 ⇒ FAIL 且点名 `原文`"
+       "（`setdefault` 丢掉真行、只改覆盖会变成静默换值）",
+       any("重复字段" in p and "原文" in p and "V-001" in p for p in dup["problems"]),
+       f"problems={dup['problems'][:1]}")
+    clash = run(build({}, extra=("- 原文（逐字，选项式）: 第二个值",)))
+    ok("反向对照 n 限定语撞车（`原文（逐字，选项式）` 与 `原文` 归一后同名）⇒ FAIL "
+       "且点名 `原文`",
+       any("重复字段" in p and "`原文`" in p for p in clash["problems"]),
+       f"problems={clash['problems'][:1]}")
+    notes = run(build({}, extra=("- 备注: 第一条", "- 备注: 第二条")))
+    ok("反向对照 o 非契约字段（`备注`）重复 ⇒ 不判 FAIL"
+       "（防假红；真语料同形条目 48 条）",
+       notes["problems"] == [] and notes["stats"].get("dup_noncontract") == 1,
+       f"problems={notes['problems'][:1]} stats={notes['stats']}")
+    # 判据 11：`会话` 是形态不是子串
+    fake_sess = run(build({"出处": "这不在会话里"}))
+    ok("反向对照 p 出处含『会话』二字但不是显式形态（\"这不在会话里\"）⇒ FAIL",
+       any("[出处]" in p for p in fake_sess["problems"]),
+       f"problems={fake_sess['problems'][:1]}")
+    ok("反向对照 q 真语料同形的 `会话（选项点选）` ⇒ 不判 FAIL（18 条真条目都这么写）",
+       run(build({"出处": "会话（选项点选）"}))["problems"] == [],
+       "problems=[]")
+    # 判据 12：表格定档（字段侧不认表格；指针侧**照核**—— 缩小指针域等于放宽）
+    table_only = run("## 1. 字段定义\n## 2. 提问纪律\n## 3. x\n## 4. x\n## 4.1 x\n"
+                     + "## 4.1 逐字原话\n### V-001 夹具\n"
+                     + "\n".join(f"| {k} | v |" for k in FIELDS)
+                     + "\n## 4.2 x\n## 4.3 x\n## 5. x\n## 6. x\n")
+    ok("反向对照 r 8 个字段写成**表格单元格** ⇒ FAIL 缺字段（表格不是字段载体）",
+       any("缺字段" in p for p in table_only["problems"]),
+       f"problems={table_only['problems'][:1]}")
+    table_ptr = run(build({}, tail=("| 示例 | `docs/does-not-exist.md:3` | 说明 |",)))
+    ok("反向对照 s 表格单元格里的坏指针**仍**判 FAIL（表格不在条目区，但在指针域内）",
+       any("打错或改名" in p for p in table_ptr["problems"]),
+       f"problems={table_ptr['problems'][:1]}")
+    # 判据 6：窗口内漂移必须**报出实际行号**（指针 :3、引文实际在 :1）
+    ptrs3 = {"出处": "docs/6-DECISIONS.md:3", "证据": "docs/6-DECISIONS.md:3"}
+    drift = run(build(ptrs3))
+    ok("反向对照 t 引文在指针 ±2 窗口内但**不在指针行** ⇒ 放行且报出实际命中行号"
+       "（漂移可见；判据不放宽也不静默）",
+       drift["problems"] == [] and drift["stats"].get("quotes_drift", 0) >= 1
+       and any("实际命中" in w for w in drift["warns"]),
+       f"drift={drift['stats'].get('quotes_drift')} warns={drift['warns'][:1]}")
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
 
@@ -550,12 +753,15 @@ def main() -> int:
           f"{s.get('section41')}）；指针 {s.get('pointers')} 处（其中本分支不存在 "
           f"{s.get('pointers_branch_absent')} 处未核）；§4.1 引文-出处逐条核对 "
           f"{s.get('quotes_checked')} 条、{s.get('quotes_mismatch')} 条不符"
-          f"（另 {s.get('quotes_unverifiable')} 条因路径不在本分支未核）；"
+          f"（另 {s.get('quotes_unverifiable')} 条因路径不在本分支未核；"
+          f"±2 内漂移 {s.get('quotes_drift')} 条，见 WARN）；"
           f"待回填 {s.get('pending')} 条（见 WARN）")
     rc = selftest()
     if rc == 0:
         print(f"EVIDENCE: verify_decision_register.py assertions={PASSED} rc=0 "
-              f"entries={s.get('entries')} quotes_checked={s.get('quotes_checked')}")
+              f"entries={s.get('entries')} quotes_checked={s.get('quotes_checked')} "
+              f"quotes_drift={s.get('quotes_drift')} "
+              f"pointers={s.get('pointers')}")
     return rc
 
 
