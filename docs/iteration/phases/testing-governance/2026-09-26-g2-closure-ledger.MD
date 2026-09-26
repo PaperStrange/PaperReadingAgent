@@ -93,3 +93,133 @@ A 表若只有状态，行 2 和行 7 看起来是两件独立小事；B 表 E1 
 **先修行 2 是把判据钉在会被替换的实现上**——本会话已经这样返工过一次
 （批 3 的 `commit-msg` 修复是死循环，见复盘 §3）。
 这就是"修一个、红一个"的来源：不是运气，是共享对象没先收敛。
+
+## 实现记录：账本写路径批（A 表行 13／17／18／19，**同批**，2026-09-27）
+
+> **本节的读数口径**：数字一律**时点读数**（测量时点锚 = 本批开工 HEAD `1ed6f93`），
+> 校验以同名复现命令**现跑**为准；本批**未上调任何 cap、未伪造任何时间戳**。
+> **状态真源仍是复盘 §5**（本档只记"关闭所需动作"与实现证据）——
+> 复盘 §5 的状态列**不在本批授权写入集内**，故本节不代它改状态。
+
+### 0. 入场券：调用点／消费者普查（改 `finish` 之前先做）
+
+命令：`git grep -n "cmd_finish\|\"finish\"\|measurement_flags\|retractions\|started_at_backfills"`
+
+| 调用点／消费者 | 位置（现跑） | 类别 | 行为是否变化 |
+|---|---|---|---|
+| `cmd_finish` 定义与派发 | `scripts/agent-ops.py::cmd_finish`／`main()` 的派发表 | 生产 | **是**（守卫前移；复制推迟） |
+| `finish` 真调用 | `verify/verify_ledger_rounds.py`（`register --start` 与 `finish` 相邻） | 夹具 | 否（该夹具早已显式 `--allow-degenerate`） |
+| `finish` 真调用 | `verify/verify_agentops.py`（UC-3/4/10/18/20/22/23/24 多处） | 夹具 | 否（同上，均带具名豁免参数） |
+| `finish` 真调用 | `verify/verify_ledger_measurement.py::run_cli_selfcheck` 等 | 夹具 | 否 |
+| 读 `measurement_flags` | `verify/verify_ledger_measurement.py`（B／F 组、棘轮） | 生产闸门 | **是**（新增"理由必填／字段配对"两条判据） |
+| 读 `measurement_flags` | `verify/verify_agentops.py`（UC-24 正／反向对照） | 夹具 | 否（断言是"包含"，不依赖字段集封闭） |
+| 读 `measurement_flags` | `scripts/agent-ops.py::cmd_list`（打印退化标注） | 生产 | 否 |
+| 读 `agents/runs/*` 目录名 ↔ 账本 | `verify/verify_agentops.py` M-g；`verify/verify_ledger_measurement.py` A 组 | 生产闸门 | **是**（撤回必须同时移出目录，否则两侧判"有目录无记录"） |
+| 读账本顶层键 | `scripts/agent-ops.py::_integrity` 只哈希 `runs`；`verify/verify_ledger_measurement.py` 读 `runs`＋`retractions` | 生产 | **是**（新增顶层 `retractions[]`，不影响完整性哈希） |
+| 读 `retractions` | 本批新增（`cmd_retract`／闸门 A′ 组）；此前**无任何消费者** | 生产 | 新增 |
+| 读真实账本行做真入口判据 | `verify/verify_agentops.py`（UC-20 真入口：按 `started_at`/`usage` 选档） | 生产 | 否（撤回三条探针 run 后仍有可判定行；现跑仍 PASS） |
+
+**结论**：行为变化只落在两个生产消费者（`finish` 的写序、`verify_ledger_measurement` 的判据集）
+与"目录↔账本"一致性上；三个夹具文件**一个都没被打断**（现跑全 PASS）——
+这正是台账 E8 要求"守卫落地前必须普查调用点"的原因（上一批漏普查，`verify_ledger_rounds.py` 当场红）。
+
+### 1. 行 13：`queued` run 不再被判"数据被改过"
+
+* 改动点：`verify/verify_close_readiness.py::scope_window_problems`。
+  未起跑（`started_at` 缺失或不可解析）的后续步骤 run 在次序里**没有位置**：
+  旧实现把它交给 `_before` 的**字典序回退**（`"" < 任何时间戳` 恒真）⇒ 判据③报
+  "引用不可能成立（数据被改过）" ⇒ 窗口被弃用 ⇒ **整档 rc=4**。
+  现改为**显式 SKIP**（上屏点名）并从②③的次序比较中剔除。
+* 反证（真入口 = `--sprint <真文档>` 的 real-data 模式，隔离账本 `AGENT_OPS_DIR=%TEMP%`）：
+  修前 rc=4 且具名"数据被改过"；修后 rc≠4（本例 rc=0）、窗口仍可推导、SKIP 行点名该 run。
+  修前一侧用 `git show HEAD:verify/verify_close_readiness.py` 源码**原地 exec**（注入真 `__file__`，
+  仓库零改动）。
+* 前置断言：该 run 确实 `queued`、确实无 `started_at`、role 属"作用域步骤之后"、
+  `scope_source` 引用本 Sprint 的作用域 run——四条都断言（判据未触发即"不作数"）。
+* 自检：`verify_close_readiness.py` 自检新增"前置 ＋ 反证"两条（末行以现跑为准）。
+
+### 2. 行 17：守卫拒绝路径不留孤儿产物
+
+* 改动点：`scripts/agent-ops.py::cmd_finish` ＋ 新 `_copy_result_file()`。
+  旧序 = 先按字节复制 `--result-file`、后守卫 ⇒ 被拒时产物已落 `runs/<id>/` 而账本行仍 `running`。
+  新序 = **守卫 → 复制 → 写库**（`RUNS_DIR.mkdir` 与复制一并推迟到守卫之后）。
+* 反证（真入口 = 真 CLI 子进程，UC-24 反向对照④）：
+  该轮先断言"确实是守卫拒绝"（`FINISH-ERROR` ＋ `zero_duration`），
+  再比**拒前／拒后目录清单**（`runs/<id>/` 两侧均为空、账本行仍 `running`）。
+* 连带：`verify_ledger_measurement.py` 的 CLI 自检走同一条 `cmd_finish`，故同序受益。
+
+### 3. 行 18：具名豁免的理由**落账本**（裁定 = 选项①，理由如下）
+
+**选①（行内记理由），不选②（裁定"理由只上屏"＋写进口径文档）。** 依据两条：
+
+1. **②在本切片不可执行**：账本字段集的口径真源是 `agents/policy.json::ledger_measurement`
+   （另有 `verify/README.md`／`TEST-MATRIX.MD`），三者**都不在本批授权写入集内**——
+   选②就只能"声称已写进口径文档"而实际没写，那正是本仓最忌讳的"文档承诺 > 实现"。
+2. **实测缺口就是"账本里查不到为什么"**：具名豁免的**事实**已落库
+   （`measurement_flags` ＋ `measurement_source=declared` ＋ `dur_minutes=null`），
+   缺的是**理由文本**；①把它变成可查询字段，②只是把缺口写进文档。
+
+* 改动点：CLI 放行时写 `run["degenerate_reason"]`（原话，去空白后 ≥10 字符）；
+  闸门 F 组新增两条判据：**declared ＋ 当前仍退化 ⇒ 必填 ≥10 字符**；
+  `measurement_flags` 为空却带该字段 ⇒ FAIL（字段与事实不符）。
+* **为什么"当前仍退化"用重算的 `flags` 而不是行内存储的 `measurement_flags`**：
+  受控回填（`set-started-at`）修好起点后，行内标记会**陈旧**——实测
+  `run-2026-09-26-code-review-092` 正是这种行（它写于守卫存在之前，从未走过 `--allow-degenerate`）
+  ⇒ 按存储标记判会把**被修复工具修好的行**追溯判红。首轮实现就是这样，现跑当场抓到并改正（如实记）。
+* 反证（真入口）：UC-24 正向对照断言 `degenerate_reason` **逐字等于**所传理由；
+  并对整本夹具账本断言"`degenerate_reason` ↔ `measurement_flags` **逐行配对**"
+  （前置：确有带退化标记的行，否则不作数）。闸门自检另有"缺理由 ⇒ FAIL""无标记却带字段 ⇒ FAIL"两条。
+
+### 4. 行 19：受控撤回（`retract`）——误登记 run 的唯一合法删除路径
+
+* 新命令 `scripts/agent-ops.py retract <run_id> --reason <≥10 字符> --evidence <存在的路径>`，
+  四条硬约束：①理由长度；②**留痕** `registry.json` 顶层
+  `retractions[]{at, by, run_id, reason, evidence, status_at_retraction, quarantine}`；
+  ③**只认显式点名的单条 id**（正则白名单，通配／批量／前缀／路径分隔符一律拒绝）；
+  ④`--evidence` 必须存在（"凭什么说这条是误登记"必须可核）。
+* **产物不销毁**：`runs/<id>/` 整体**移到** `runtime/retracted-runs/<id>/`（同根、git 忽略域、
+  不在 `runs/` 判定域里）。撤回删的是**账本行**，不是那次动作的现场。
+* 两处 fail-closed：被其余 run 的 `scope_source` 引用的 run 不得撤回（会打断引用链）；
+  已撤回过的 run 不得重复撤回（不做假痕）。
+* **闸门新增 A′ 组判据**（把"撤回"从"账本少了一行"变成可核路径）：
+  留痕条目齐备（`run_id`/`at`/`by`/`reason≥10`/`evidence`）；
+  撤回后该 run **不得**再出现在 `runs`；留痕里的 `quarantine` 非空 ⇒ 该路径必须真实存在。
+  正向样本走**真 CLI**（写盘只有一处实现），闸门只读它——手工造目录等于测自己造的样本。
+* **生产账本的三条探针 run 已按此路径撤回**：
+  `run-2026-09-27-impact-assessment-097／098／099`（价表批验收探针误写入；正确形态是隔离账本），
+  留痕 `retractions[]` 三条、产物在 `runtime/retracted-runs/`、`--evidence` 指向 G2 复盘 §5 行 19
+  的逐字点名（`docs/iteration/phases/testing-governance/2026-09-26-g2-close-retro.MD`）。
+  **未用 `set-started-at` 回填时间戳换绿**（父代理已否决：那是伪造测量值）。
+* 反证（真入口 = 真 CLI）：正向（撤回成功＋行已删＋七字段留痕＋隔离区报告逐字节相同）；
+  反向六条（通配 id／短理由／证据不存在／run 不存在／重复撤回／被引用）全部拒绝**且账本未动、产物未动**。
+* **副作用（如实记）**：撤回的落点在源码里写成**模块常量** `QUARANTINE_DIR`（而不是 `QUARANTINE_DIR / rid`），
+  靠 `shutil.move` 的"目标是已存在目录 ⇒ 移入其内"语义保持 `<隔离区>/<run_id>/`——
+  因为 `verify_artifact_paths.py` 的**动态写盘目标棘轮只许下调**，新增动态落点会让该闸门红
+  （实测：本批首轮实现让 `scripts/agent-ops.py` 超出该表上限，已按"可静态判定"改写）。
+
+### 5. 门槛与爆破半径（末行一律以现跑为准）
+
+| 门槛 | 命令 | 结果 |
+|---|---|---|
+| 语法 | `python -m py_compile`（四个授权文件） | rc=0 |
+| CLI 用例 | `verify\verify_agentops.py` | ALL PASS（断言数以现跑末行为准；含新增 UC-24④／UC-25） |
+| 关闭前置 | `verify\verify_close_readiness.py`（自检 ＋ `--sprint` 真数据） | 自检 ALL PASS；真数据 PASS rc=0 |
+| 账本测量化 | `verify\verify_ledger_measurement.py` | **真实账本 PASS rc=0**（撤回前为 FAIL rc=1，逐条点名 `zero_duration`；**靠撤回机制变绿，不是靠改读数**） |
+| 分层套件 | `verify\run_suite.py --tier offline` | SUITE PASSED（脚本数以现跑末行为准） |
+| Lint | `verify\verify_lint.py` | ALL PASS；全仓 E501 计数**低于**本批开工时读数（未上调 cap） |
+| 产物落点 | `verify\verify_artifact_paths.py` | ALL PASS（动态目标棘轮未超上限） |
+
+**爆破半径**：本批新增判据会对以下既往形态判红——无理由的 `declared` 退化行（行 18）、
+账本缺留痕的撤回（行 19）、未起跑 run 触发的窗口弃用（行 13，改为不再判红）。
+真数据上现跑为 0 项（三条探针 run 已撤回；`run-2026-09-26-code-review-092` 因"当前已不退化"不判红，
+理由见 §3）。
+
+### 6. 本批新发现的边界与未做项（**不静默压掉**）
+
+| # | 项 | 性质 |
+|---|---|---|
+| 1 | **行 18 的判据只覆盖窗口内 run**（棘轮域内的历史行不回溯要求该字段） | 与 F 组既有口径一致（"只对新 run 强制"）；历史行要不要补理由属新决定，未做 |
+| 2 | **`round_duration` 不在 `finish` 守卫的拒绝集内**（`_DEGENERATE_FLAGS` 三类），故该形态不需要 `--degenerate-reason`；但窗口内它本就被 `[round_duration]` 判 FAIL | 口径不对称**如实记录**：未扩大守卫范围（不在本批授权范围，且会改变既有夹具行为） |
+| 3 | **撤回不留"反向操作"**（没有 un-retract） | 撤回后若发现撤错，只能重新登记（新 run_id）；"把行原样写回"没有受控路径。是否要 un-retract 属新决定 |
+| 4 | 复盘 §5 行 13／17／18／19 的**状态列未改**（不在授权写入集内） | 需由状态真源的维护者按本节证据更新；否则"零未闭环项"的账面上仍显示未修 |
+| 5 | `verify_artifact_paths.py` 的动态目标棘轮**只许下调**，任何后续在 `agent-ops.py` 新增动态落点都会红 | 已知约束（本批已按它改写落点），非缺陷 |

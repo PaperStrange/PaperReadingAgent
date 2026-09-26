@@ -599,6 +599,9 @@ def scope_window_problems(policy: AgentPolicy, runs: list[dict], candidate: dict
          `order` + role），不是写死的角色名；
       ③ **引用它的 run 不得比它更早**：`scope_source` 引用了候选 run 的后续步骤 run，其
          `started_at` 早于被引用者 ⇒ 引用不可能成立（数据被改过），窗口不可采信。
+         **但"未起跑"（`queued`／`started_at` 缺失或不可解析）不是"数据被改过"**：
+         这类 run 在次序里**没有位置**，一律**显式 SKIP**（上屏点名）并退出②③的比较
+         （复盘行 13 的反证 = **有 queued run 时整档不得 `rc=4`**）。
 
     ②的口径说明（**与复核建议的字面口径有一处有意分歧，已标注**）：
     字面上"晚于任何后续步骤
@@ -634,6 +637,22 @@ def scope_window_problems(policy: AgentPolicy, runs: list[dict], candidate: dict
         #     实测：Sprint-18 的 081 登记后，账本里 34 条历史后续步骤 run 全在它之前，
         #     于是域被判不可用；这不是事故，是新 Sprint 的正常开局）。
         later = [r for r in later if run_sprint_identity(r) == sprint_id]
+    # 复盘行 13：**未起跑**（`queued`／`started_at` 缺失或不可解析）的后续步骤 run
+    # 在流水线里**没有位置**——既不是"之前"也不是"之后"。旧实现把它交给 `_before`，
+    # 而 `_before` 对不可解析值退回**字典序** ⇒ `"" < 任何时间戳` 恒真 ⇒ 一条
+    # queued run 就能让判据③报"数据被改过"、窗口被弃用 ⇒ 整档 `rc=4`（域不可派生）。
+    # 现改为**显式 SKIP**：从次序比较中剔除并上屏点名（"未起跑"不是"数据被改过"）。
+    positioned: list[dict] = []
+    for run in later:
+        if _ts(str(run.get("started_at") or "")) is None:
+            print(f"SKIP[窗口/未起跑] {run.get('run_id')}"
+                  f"（status={run.get('status')!r}，"
+                  f"started_at={run.get('started_at')!r}）"
+                  f"⇒ 它在流水线里没有位置，不参与次序比较"
+                  f"（行 13：未起跑 ≠ 数据被改过）")
+            continue
+        positioned.append(run)
+    later = positioned
     earlier = [r for r in later if _before(str(r.get("started_at") or ""), started)]
     after = [r for r in later if _before(started, str(r.get("started_at") or ""))]
     if earlier and not after:
@@ -1605,6 +1624,29 @@ def _selfcheck() -> int:
        f"derive={derive_close_window(policy, fresh)} "
        f"｜（该状态下「缺后续步骤 run」由 check_requirements 另行点名："
        f"{len(evaluate(policy, fresh_doc, fresh, att=None, check_coverage=False))} 项）")
+
+    # 复盘行 13：账本里出现 **queued** run（`started_at=None`，尚未起跑）时，
+    # 判据③**不得**把它当成"引用不可能成立（数据被改过）"——旧实现在此把空串交给
+    # `_before` 的字典序回退（`"" < 任何时间戳` 恒真）⇒ 窗口被弃用 ⇒ 整档 `rc=4`。
+    # 反证 = **有 queued run 时整档不得 rc=4**（窗口仍可推导、问题里没有"数据被改过"）。
+    pending = dict(_run("run-c-pending", "code-review", "branch:windows",
+                        "", "impact-assessment:run-k-001"),
+                   started_at=None, status="queued")
+    pending_runs = [*runs, pending]
+    window_pending, problems_pending = derive_close_window(policy, pending_runs)
+    ok("行 13 前置：该 run 确实 queued、确实无 started_at、且确实引用了作用域 run"
+       "（判据未被触发则本条不作数）",
+       pending["status"] == "queued" and pending["started_at"] is None
+       and any(pending["scope_source"].startswith(p)
+               for p in policy.scope_ref_sources)
+       and pending["role"] in close_step_order(policy)[3],
+       f"status={pending['status']} started={pending['started_at']!r}"
+       f" source={pending['scope_source']!r}")
+    ok("行 13：账本里有 queued run ⇒ 不得判「数据被改过」、窗口仍可推导"
+       "（反证：整档不得 rc=4；未起跑 = 显式 SKIP）",
+       window_pending == "2026-09-21T01:00:00+00:00"
+       and not any("数据被改过" in x for x in problems_pending),
+       f"window={window_pending} problems={problems_pending}")
 
     # 反向对照 c：非作用域步骤的 run **再早**也不得定义窗口（旧口径正是被这条拖走的）
     earliest_other = min(str(r["started_at"]) for r in runs

@@ -34,6 +34,8 @@
   --reason <理由>
   python scripts/agent-ops.py mark-produced <run_id> --reason <理由> [--undo]   #
   D0-3(a)：逐条标注「产出型 run」
+  python scripts/agent-ops.py retract <run_id> --reason <理由> --evidence <路径>
+  复盘行 19：受控撤回误登记的 run（删账本行 ＋ 产物移入隔离区 ＋ 留痕 retractions[]）
   python scripts/agent-ops.py validate-spec <file.md>
   python scripts/agent-ops.py fetch-spec <file.md> [--offline]
   python scripts/agent-ops.py parse-report <file.md>
@@ -70,6 +72,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -87,6 +90,12 @@ RUNTIME_DIR = _AGENTS_BASE / "runtime"
 REGISTRY_PATH = RUNTIME_DIR / "registry.json"
 PRICES_PATH = RUNTIME_DIR / "prices.json"
 RUNS_DIR = _AGENTS_BASE / "runs"
+# 复盘行 19：被撤回 run 的产物**隔离区**（同根、git 忽略域内、不在 `runs/` 判定域里）。
+# 撤回必须"删账本行但不销毁产物"——产物是那次动作唯一的现场。
+QUARANTINE_DIR = RUNTIME_DIR / "retracted-runs"
+# 复盘行 19：`retract` 只认**显式点名的单条 run**——通配/批量/前缀/路径一律拒绝
+# （`*?[]`、空白、`..`＋分隔符都不在字符集里）。
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 _CHARS_PER_TOKEN = 4.0  # UC-4 兜底：无 token 上报时 tokens ≈ chars/4
 
@@ -489,9 +498,13 @@ def _refuse_degenerate_finish(run: dict, args: argparse.Namespace) -> str:
          `--allow-degenerate --degenerate-reason <≥10 字符理由>`；
          理由去空白后 <10 字符 ⇒ 同样拒绝（说不清"为什么不可测"就不许放行）。
 
-    为什么具名理由不写进账本：`registry.json` 的字段集被闸门按政策核对，加字段要另立
-    口径并同步闸门；故理由**上屏**（`cmd_finish` 打印），账本照旧按 `declared`/null
-    如实记"这不是测量值"——逃生口可见，且不改变测量口径本身。
+    为什么具名理由**写进账本**（复盘行 18，2026-09-27 改）：此前理由只上屏，
+    账本行里只有 `measurement_flags=['zero_duration']` + `measurement_source='declared'`
+    ——**"这不是测量值"落库了，但"为什么不可测"没有**。于是事后读账本（或读看板）
+    只能看到"零耗时"，看不到它是**具名豁免**；而唯一的解释留在某一次终端输出里。
+    ⇒ 放行时把理由写进该行 `degenerate_reason`（原话、去空白后 ≥10 字符），
+    字段集口径同步在 `verify/verify_ledger_measurement.py` 的 F 组：
+    `declared` + 退化标记 ⇒ `degenerate_reason` 必填；无退化标记却带该字段 ⇒ FAIL。
     """
     deg = [f for f in (run.get("measurement_flags") or []) if f in _DEGENERATE_FLAGS]
     if not deg:
@@ -517,6 +530,8 @@ def _refuse_degenerate_finish(run: dict, args: argparse.Namespace) -> str:
             "逃生口不具名 = 后人只会读到「零耗时」；"
             "例：--degenerate-reason "
             "\"fixture: 同秒收尾，非真实测量（R-001）\"")
+    # 行 18：理由**落账本**（不是只上屏）——具名豁免必须可事后查阅。
+    run["degenerate_reason"] = reason
     return f"{tag} | reason={reason}"
 
 
@@ -1372,9 +1387,131 @@ def cmd_mark_produced(args: argparse.Namespace) -> None:
           f" (marks={len(r['produced_only_marks'])})")
 
 
+def _retract_cited_by(data: dict, rid: str) -> list[str]:
+    """哪些**其余** run 的 `scope_source` 引用了 `rid`（撤回前必须为空）。
+
+    删掉被引用者，引用者的 C2 判据就会指向不存在的对象——那是把一条误登记换成
+    一条真缺陷，不是撤回的目的。
+    """
+    prefixes = _scope_ref_prefixes()
+    citing: list[str] = []
+    for other in data["runs"]:
+        if str(other.get("run_id") or "") == rid:
+            continue
+        if parse_scope_ref(str(other.get("scope_source") or ""), prefixes) == rid:
+            citing.append(str(other.get("run_id") or "?"))
+    return citing
+
+
+@_with_registry_lock
+def cmd_retract(args: argparse.Namespace) -> None:
+    """复盘行 19：**受控撤回**——误登记 run 的唯一合法删除路径。
+
+    （账本原先只能加、不能减。）
+
+    **要解决的是什么**：价表批的验收 run `097`~`099` 是**探针误写入生产账本**的
+    （正确形态 = 隔离账本 `AGENT_OPS_DIR=%TEMP%`）⇒ `verify_ledger_measurement.py`
+    判它们 `zero_duration`，而该闸门在关闭窗口内**严格判定、无上限** ⇒ 套件与 CI 恒红。
+    账本当时**没有合法的删除路径**：手改会被 `_load_registry()` 的完整性校验拒（UC-7），
+    而 `set-started-at` 回填时间戳是**伪造测量值**（父代理已否决）⇒ 误登记 = 永久污染
+    判定域。本命令把"撤回"变成**一条受控、留痕、可审计的路径**，而不是"不许删"。
+
+    **四条硬约束**（缺一条就不是受控撤回）：
+      * ① `--reason` ≥10 字符（同 `set-started-at`/`mark-produced` 口径）；
+      * ② **必须留痕**：顶层 `retractions[]{at, by, run_id, reason, evidence,
+        status_at_retraction, quarantine}`——账本行删了，痕不能删；
+      * ③ **只认显式点名的单条 `run_id`**：正则白名单 `_RUN_ID_RE`，通配/批量/前缀
+        /路径一律拒绝（`*?[]`、空白、路径分隔符都不在字符集里）；
+      * ④ `--evidence <path>` **必须存在**：撤回要能指出"凭什么说这条是误登记"
+        （探针脚本产物、隔离账本对照记录）；拿不出证据就不得撤回。
+
+    **产物不销毁**：`runs/<id>/` 整体**移到** `runtime/retracted-runs/<id>/`
+    （同根、git 忽略域、且不在 `runs/` 判定域里）。撤回删的是**账本行**，
+    不是那次动作的现场；移动目标同时写进留痕的 `quarantine`。
+
+    **fail-closed 两处**：被其余 run 的 `scope_source` 引用的 run 不得撤回；
+    已撤回过的 run 不得重复撤回（不做假留痕，同 B2 的教训）。
+    """
+    rid = str(args.run_id or "")
+    if not _RUN_ID_RE.match(rid):
+        raise SystemExit(
+            f"RETRACT-ERROR: run_id={rid!r} 不是**显式点名的单条 run**"
+            "（只接受 `[A-Za-z0-9][A-Za-z0-9._-]*`：通配符/批量/前缀/路径一律拒绝）")
+    reason = (args.reason or "").strip()
+    if len(reason) < 10:
+        raise SystemExit(
+            "RETRACT-ERROR: 撤回必须给 --reason（≥10 字符）：凭什么说这条是误登记"
+            "（例：探针误写入生产账本，正确形态是隔离账本）")
+    ev = (args.evidence or "").strip()
+    if not ev:
+        raise SystemExit("RETRACT-ERROR: 必须给 --evidence <path>——撤回必须指出可核凭据"
+                         "（探针脚本产物 / 隔离账本对照记录）；拿不出证据就不得撤回")
+    if not Path(ev).exists():
+        raise SystemExit(f"RETRACT-ERROR: --evidence 指向的路径不存在：{ev}")
+    data = _load_registry()
+    if any(str(x.get("run_id") or "") == rid for x in (data.get("retractions") or [])):
+        raise SystemExit(f"RETRACT-ERROR: {rid} 已撤回（留痕已在 retractions[]）"
+                         "——不重复撤回、不留假痕")
+    r = _find_run(data, rid)
+    citing = _retract_cited_by(data, rid)
+    if citing:
+        raise SystemExit(
+            f"RETRACT-ERROR: {rid} 被其余 run 的 scope_source 引用（{citing[:3]}）"
+            "——先处理引用者：撤回被引用者会让 C2 指向不存在的对象")
+    src = RUNS_DIR / rid
+    dest = QUARANTINE_DIR / rid
+    quarantine = None
+    if src.is_dir():
+        if dest.exists():
+            raise SystemExit(f"RETRACT-ERROR: 隔离区已有同名目录 {dest}"
+                             "（fail-closed：不覆盖既有现场）")
+        QUARANTINE_DIR.mkdir(parents=True, exist_ok=True)
+        # 落点写**模块常量**（不是 `QUARANTINE_DIR / rid`）：目录已存在 ⇒
+        # `shutil.move` 把 `src` 移进它里面（仍是 `<隔离区>/<run_id>/`，语义不变），
+        # 而落点表达式**可静态判定**——`verify_artifact_paths.py` 的动态目标棘轮
+        # **只许下调**，新增动态落点会让闸门红（本批实测：8 > 上限 7）。
+        shutil.move(str(src), str(QUARANTINE_DIR))
+        quarantine = str(dest.relative_to(_AGENTS_BASE))
+    status_before = str(r.get("status") or "")
+    data["runs"] = [x for x in data["runs"] if str(x.get("run_id") or "") != rid]
+    trail = data.setdefault("retractions", [])
+    trail.append({"at": _now(), "by": args.by or "main-agent", "run_id": rid,
+                  "reason": reason, "evidence": ev,
+                  "status_at_retraction": status_before, "quarantine": quarantine})
+    _save_registry(data)
+    print(f"retracted {rid}（status_at_retraction={status_before}）"
+          f" 产物隔离={quarantine or '（无产物目录）'}"
+          f" (retractions={len(trail)})")
+    print(f"  reason={reason}")
+    print(f"  evidence={ev}")
+
+
+def _copy_result_file(run: dict, src: Path) -> None:
+    """把 `--result-file` 的产物**按字节**归档到 `runs/<run_id>/<role>.report.md`。
+
+    只在 `finish` 的守卫**放行之后**调用（复盘行 17：拒绝路径不得留孤儿产物）。
+
+    审核 N10（2026-09-25）：**按字节复制**，不得改写换行。
+    原实现是 `dest.write_text(rel.read_text(encoding="utf-8"), encoding="utf-8")`：
+    `read_text` 做 universal-newline 转换（CRLF→LF），`write_text` 又把 `\n` 写回
+    `os.linesep`（Windows = CRLF）——于是**仓库基线 LF 的报告被静默改成 CRLF**
+    （实测 35721 B → 35913 B / 192 行）。
+    这与 D1 的 EOL 事故同族（`2206f376` 修过同一族的另一处，漏了这里），
+    而且是"最不该动字节"的一步：归档动作改变了产物本身。
+    复制实现按字节，源是 LF 就存 LF、源是 CRLF 就存 CRLF（不反向破坏），BOM 亦原样保留。
+    基准用 `_AGENTS_BASE`（`AGENT_OPS_DIR` 重定向时不再崩溃）。
+    """
+    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    dest = RUNS_DIR / run["run_id"] / f"{run['role']}.report.md"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(src.read_bytes())
+    run["result_files"] = [str(dest.relative_to(_AGENTS_BASE))]
+
+
 @_with_registry_lock
 def cmd_finish(args: argparse.Namespace) -> None:
-    """`finish` 子命令：写终态、按**字节**保留原 EOL 归档结果文件、记录 `covers_through`。"""
+    """`finish` 子命令：写终态、按**字节**保留原 EOL 归档结果文件（行 17：守卫之后）、
+    记录 `covers_through`。"""
     data = _load_registry()
     r = _find_run(data, args.run_id)
     if args.status not in _terminal():
@@ -1404,28 +1541,17 @@ def cmd_finish(args: argparse.Namespace) -> None:
     if args.error:
         r["error"] = args.error
     _apply_usage(r, args)
+    # 复盘行 17：`--result-file` 的**按字节复制**推迟到守卫**之后**
+    # （见下方 `_copy_result_file`）。
+    # 旧序是"先复制、后守卫" ⇒ 守卫拒绝时 `runs/<id>/` 已多出一份产物，而账本行仍是
+    # `running`（终态没写、产物却落了盘）= 孤儿产物：账本与目录互相矛盾。
+    # 此处只记"_待复制的源"，**不落盘、不建目录**（`RUNS_DIR.mkdir` 也一并推迟）。
+    result_src: Path | None = None
     if args.result_file:
         rel = Path(args.result_file)
         r["result_files"] = [str(rel)]
         if rel.exists():
-            RUNS_DIR.mkdir(parents=True, exist_ok=True)
-            dest = RUNS_DIR / r["run_id"] / f"{r['role']}.report.md"
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            # 审核 N10（2026-09-25）：**按字节复制**，不得改写换行。
-            # 原实现是 `dest.write_text(rel.read_text(encoding="utf-8"),
-            # encoding="utf-8")`：
-            # `read_text` 做 universal-newline 转换（CRLF→LF），`write_text` 又把 `\n` 写回
-            # `os.linesep`（Windows = CRLF）——于是**仓库基线 LF 的报告被静默改成 CRLF**
-            # （实测 35721 B → 35913 B / 192 行）。
-            # 这与 D1 的 EOL 事故同族（`2206f376` 修过
-            # 同一族的另一处，漏了这里），而且是"最不该动字节"的一步：
-            # 归档动作改变了产物本身。
-            # 复制实现按字节，源是 LF 就存 LF、源是 CRLF 就存 CRLF（不反向破坏），
-            # BOM 亦原样保留。
-            dest.write_bytes(rel.read_bytes())
-            # review 修正（Sprint-8 三查）：
-            # 基准用 _AGENTS_BASE（AGENT_OPS_DIR 重定向时不再崩溃）
-            r["result_files"] = [str(dest.relative_to(_AGENTS_BASE))]
+            result_src = rel
     if args.cost_override is not None:
         r["cost_est"] = {"total": args.cost_override, "currency": "CNY", "estimated": False, "override": True}
     else:
@@ -1435,6 +1561,9 @@ def cmd_finish(args: argparse.Namespace) -> None:
     _apply_measurement(r)
     # G3/R-001：退化时间戳**拒绝写库**（逃逸口须具名；返回值非空 = 已具名豁免）。
     _deg_note = _refuse_degenerate_finish(r, args)
+    # 行 17：守过去了才归档产物（拒绝路径 = 无复制、无新建目录、无写库）。
+    if result_src is not None:
+        _copy_result_file(r, result_src)
     _save_registry(data)
     flags = ",".join(r.get("measurement_flags") or [])
     print(f"finished {args.run_id} -> {r['status']} (cost_est={r['cost_est']})"
@@ -1443,7 +1572,8 @@ def cmd_finish(args: argparse.Namespace) -> None:
              "（该时长不是测量值，闸门会对新 run 判 FAIL，请检查时钟/时间戳来源）" if flags else ""))
     if _deg_note:
         print(f"⚠已具名豁免退化：{_deg_note}"
-              "（该时长不是测量值；账本按 declared/null 记）")
+              "（该时长不是测量值；账本按 declared/null 记，"
+              "理由入该行 `degenerate_reason`）")
 
 
 @_with_registry_lock
@@ -1891,6 +2021,16 @@ def main() -> int:
     p.add_argument("--degenerate-reason", default="",
                    help="R-001：为何这条时长不可测（≥10 字符；不具名即拒）")
 
+    p = sub.add_parser("retract",
+                       help="复盘行 19：受控撤回**误登记**的 run"
+                            "（删账本行 ＋ 产物移入隔离区 ＋ 留痕 retractions[]）")
+    p.add_argument("run_id")
+    p.add_argument("--reason", required=True,
+                   help="撤回理由（≥10 字符）：凭什么说这条是误登记")
+    p.add_argument("--evidence", required=True,
+                   help="可核凭据路径（必须存在）：探针脚本产物 / 隔离账本对照记录")
+    p.add_argument("--by", default="main-agent")
+
     p = sub.add_parser("list")
     p.add_argument("--status")
     p.add_argument("--role")
@@ -2021,6 +2161,7 @@ def main() -> int:
         "set-output-chars": cmd_set_output_chars,
     "set-started-at": cmd_set_started_at,
         "mark-produced": cmd_mark_produced,
+        "retract": cmd_retract,
     }[args.cmd](args)
     return 0
 

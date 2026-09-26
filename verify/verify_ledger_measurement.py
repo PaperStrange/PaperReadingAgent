@@ -48,6 +48,13 @@
       `dur_minutes` 必须是 `null`（不得回落 0.00）；
       可测量的终态 run 必须标 `wall-clock`；
       `dur_minutes` 与时间戳的偏差 > 容差 = 数字被改写。
+      **行 18**：新 run 若 `measurement_source=declared` 且**当前仍退化** ⇒ 必须在该行记
+      `degenerate_reason`（≥10 字符）——具名豁免的理由不得只上屏；
+      反向：`measurement_flags` 为空却带该字段 ⇒ FAIL（字段与事实不符）。
+    A' **行 19 撤回留痕**（顶层 `retractions[]`）：撤回是**改判定域**的动作 ⇒ 必须可核：
+      留痕条目必须齐（`run_id`/`at`/`by`/`reason`≥10 字符/`evidence`）；
+      撤回后该 run **不得**再出现在 `runs`（撤回不完整 = 污染仍在域里）；
+      留痕里的 `quarantine` 非空 ⇒ 该路径必须真实存在（产物被保全，不是销毁现场）。
     G **历史棘轮**：**早于本次关闭窗口起点**的 run 按**计数上限**放行
       （上限 = 2026-09-25 实测值，写在 `legacy_ratchet.caps`，只许下调），
       超过上限逐条点名 FAIL；**窗口内**的 run 无上限、无豁免（严格判定）。
@@ -106,7 +113,19 @@
 非法**（fail-closed，不静默放行）。
 """
 from __future__ import annotations
-VERIFY_META = {'features': 'TG-13 账本测量化闸门：口径可核（dur/rounds/unknown 来自 policy）+ 账本↔agents/runs 双向一致（白名单须有 reason 且只减不增）+ 时间戳退化（相同/0.00/整十分钟/负值/缺失）+ rounds vs 报告轮次 + 终态已写回 + measurement_source/dur_minutes 契约 + 历史棘轮（计数上限 + review_by）+ CLI 写入侧自检（finish/round 标注退化、list 显示 unknown）', 'tier': 'offline', 'providers': [], 'est_seconds': 14, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
+VERIFY_META = {
+    'features': 'TG-13 账本测量化闸门：口径可核（dur/rounds/unknown 来自 policy）'
+                '+ 账本↔agents/runs 双向一致（白名单须有 reason 且只减不增）'
+                '+ 时间戳退化（相同/0.00/整十分钟/负值/缺失）'
+                '+ rounds vs 报告轮次 + 终态已写回'
+                '+ measurement_source/dur_minutes 契约'
+                '（含行 18：declared 且仍退化 ⇒ 行内必须有 degenerate_reason）'
+                '+ 行 19 撤回留痕（retractions[] 齐备/撤回后不得复活/隔离区在）'
+                '+ 历史棘轮（计数上限 + review_by）'
+                '+ CLI 写入侧自检（finish/round 标注退化、list 显示 unknown）',
+    'tier': 'offline', 'providers': [], 'est_seconds': 14, 'est_cost_cny': 0,
+    'routes': [], 'requires': ['none'],
+}
 
 import fnmatch
 import importlib.util
@@ -294,6 +313,24 @@ def load_runs(agents_root: Path) -> list[dict]:
     return [r for r in runs if isinstance(r, dict)]
 
 
+def load_retractions(agents_root: Path) -> list[dict]:
+    """读账本顶层的**撤回留痕** `retractions[]`（复盘行 19）。
+
+    为什么它是闸门的事：撤回是**改判定域**的动作（把一个 run 从判定域里移出去），
+    而"域被谁改、凭什么改"必须可核——只删行不留痕 = 不可审计的删除，
+    那正是行 19 要消灭的形态（此前账本**没有**合法删除路径，于是只能手改或伪造读数）。
+    缺该键 = 没有撤回（不是错误）；结构非法（非数组）= fail-closed。
+    """
+    data = _read_json(agents_root / "runtime" / "registry.json", "账本 registry.json")
+    if "retractions" not in data:
+        return []
+    items = data.get("retractions")
+    if not isinstance(items, list):
+        print(f"LEDGER-MEASUREMENT-ERROR: 账本 retractions 必须是数组，实际 {items!r}")
+        raise SystemExit(2)
+    return [i for i in items if isinstance(i, dict)]
+
+
 def load_exceptions(path: Path) -> tuple[list[dict], list[dict]]:
     """读目录/记录例外白名单（`ledger_measurement.run_dir_exceptions_file`）。
 
@@ -416,7 +453,9 @@ def check_caps_shape(caps: dict, review_by: str, cutoff: str, today: str,
 
 def evaluate(policy, runs: list[dict], runs_dir: Path,
              dir_exceptions: list[dict], record_exceptions: list[dict], *,
-             today: str) -> tuple[list[str], list[str], dict[str, int]]:
+             today: str,
+             retractions: list[dict] | None = None,
+             ) -> tuple[list[str], list[str], dict[str, int]]:
     """核心判定。返回 `(problems, warnings, 历史缺陷计数)`；`problems` 非空 = FAIL。"""
     problems: list[str] = []
     warnings: list[str] = []
@@ -492,6 +531,40 @@ def evaluate(policy, runs: list[dict], runs_dir: Path,
             problems.append(f"[白名单] 记录例外 {rid!r} 已不在账本里（例外只减不增，失效条目必须删除）")
         elif rid in disk_dirs:
             problems.append(f"[白名单] 记录例外 {rid!r} 现在已有产物目录 —— 例外已不再需要，必须删除")
+
+    # ---- A' 撤回留痕（复盘行 19）--------------------------------------------------
+    # "撤回"必须是**受控路径**，不是"账本里少了一行"：删行不留痕 = 不可审计的删除，
+    # 而判定域恰恰由账本派生（域被谁改、凭什么改必须可核）。三条判据各堵一种形态：
+    #   ① 留痕条目本身必须完整（run_id / at / by / reason≥10 字符 / evidence）；
+    #   ② 撤回后该 run **不得**再出现在 `runs`（撤回不完整 = 污染还在判定域里）；
+    #   ③ 留痕里的 `quarantine` 非空 ⇒ 该路径必须**真实存在**（产物被保全了；
+    #      只删不隔离 = 把那次动作的现场销毁，账本与目录两边都查不到了）。
+    quarantines: dict[str, dict] = {}
+    for item in retractions or []:
+        rid_r = str(item.get("run_id") or "").strip()
+        if not rid_r:
+            problems.append("[撤回] retractions 有条目缺 run_id"
+                            f"（{json.dumps(item, ensure_ascii=False)[:80]}）")
+            continue
+        for key in ("at", "by", "reason", "evidence"):
+            if not str(item.get(key) or "").strip():
+                problems.append(f"[撤回] {rid_r} 的留痕缺 {key}"
+                                " —— 撤回必须留痕（行 19：删行不留痕 = 不可审计）")
+        reason_len = len(str(item.get("reason") or "").strip())
+        if 0 < reason_len < 10:
+            problems.append(f"[撤回] {rid_r} 的 reason 只有 {reason_len} 字符（<10）"
+                            " —— 说不清为什么撤回就不是受控撤回")
+        quarantines[rid_r] = item
+    for rid_r, item in sorted(quarantines.items()):
+        if rid_r in ledger_ids:
+            problems.append(f"[撤回] {rid_r} 已在 retractions[] 里撤回，"
+                            "却仍在账本 runs 中"
+                            " —— 撤回不完整（这条污染还在判定域里）")
+        rel_q = str(item.get("quarantine") or "").strip()
+        if rel_q and not (runs_dir.parent / rel_q).exists():
+            problems.append(f"[撤回] {rid_r} 的留痕写了隔离路径 {rel_q!r}，"
+                            "但该路径不存在"
+                            " —— 产物没被保全（撤回只许删账本行，不许销毁现场）")
 
     # ---- 逐 run 判据 --------------------------------------------------------------
     for run in runs:
@@ -609,6 +682,30 @@ def evaluate(policy, runs: list[dict], runs_dir: Path,
                     strict.append({"kind": "dur_minutes_inconsistent", "run_id": rid,
                                    "detail": f"dur_minutes={dur_value!r} 与墙钟时间戳算出的 {measured:.3f} "
                                              f"分钟不一致（容差 {tolerance}）—— 数字被改写或未随轮次刷新"})
+            # 行 18：具名豁免的**理由必须落账本**（`degenerate_reason`）。
+            # 此前理由只上屏 ⇒ 事后读账本只有 `declared`+退化标记+null，
+            # "这不是测量值"落库了、"为什么不可测"没有——唯一的解释留在某次终端输出里。
+            # 判据用的是**重算出的 `flags`**（= 该行**当前**是否仍处退化态），
+            # 不是行内存储的 `measurement_flags`：受控回填（`set-started-at`）修好起点后
+            # 行内标记会**陈旧**——实测 `run-2026-09-26-code-review-092` 正是这种行
+            # （它写于守卫存在之前，从未走过 `--allow-degenerate`）⇒ 按存储标记判会把它
+            # 追溯判红，而那是"修复工具修好了它"的后果，不是本条的缺口。
+            # 反向（字段与事实不符）则按**存储**标记配对：两者是同一次写入的产物。
+            stored_flags = [str(f) for f in (run.get("measurement_flags") or [])]
+            reason18 = str(run.get("degenerate_reason") or "").strip()
+            if str(source) == "declared" and flags and len(reason18) < 10:
+                strict.append({"kind": "degenerate_reason_missing", "run_id": rid,
+                               "detail": f"measurement_source=declared"
+                                         f" + 当前仍退化 {flags}"
+                                         f" ⇒ 必须在该行记 `degenerate_reason`"
+                                         f"（≥10 字符，实测 {len(reason18)}）"
+                                         f"—— 具名豁免的理由不得只上屏（行 18）"})
+            elif reason18 and not stored_flags:
+                strict.append({"kind": "degenerate_reason_orphan", "run_id": rid,
+                               "detail": f"该行 `measurement_flags` 为空"
+                                         f"（{stored_flags}）"
+                                         f"却带 degenerate_reason={reason18!r}"
+                                         f" —— 字段与事实不符（无退化却记豁免理由）"})
 
     # ---- G 棘轮：历史缺陷计数上限 ------------------------------------------------
     counts: dict[str, int] = {kind: 0 for kind in RATCHET_KINDS}
@@ -750,15 +847,19 @@ def fixture_stale_age_minutes(policy, kind: str) -> float | None:
 
 
 def write_fixture_root(base: Path, rows: list[dict], files: dict[str, dict[str, str]],
-                       *, stale_age_minutes: float | None = None) -> None:
+                       *, stale_age_minutes: float | None = None,
+                       retractions: list[dict] | None = None) -> None:
     """把 fixture 写成 agents 根（`runtime/registry.json` + `runs/<run_id>/...`）。
 
     样本一律在 %TEMP%。`stale_age_minutes` 非空时把产物 mtime 拨回那么久之前
-    （`os.utime`，epoch 秒口径）。
+    （`os.utime`，epoch 秒口径）。`retractions` 非空时写进账本顶层（行 19 的反向对照）。
     """
     (base / "runtime").mkdir(parents=True, exist_ok=True)
+    ledger = {"version": 1, "runs": rows}
+    if retractions is not None:
+        ledger["retractions"] = retractions
     (base / "runtime" / "registry.json").write_text(
-        json.dumps({"version": 1, "runs": rows}, ensure_ascii=False, indent=2), encoding="utf-8")
+        json.dumps(ledger, ensure_ascii=False, indent=2), encoding="utf-8")
     stamp = None if stale_age_minutes is None else time.time() - stale_age_minutes * 60
     for rid, entries in files.items():
         run_dir = base / "runs" / rid
@@ -772,12 +873,15 @@ def write_fixture_root(base: Path, rows: list[dict], files: dict[str, dict[str, 
 
 def evaluate_fixture(policy, kind: str, base: Path, *, today: str,
                      dir_exceptions: list[dict] | None = None,
-                     record_exceptions: list[dict] | None = None):
+                     record_exceptions: list[dict] | None = None,
+                     retractions: list[dict] | None = None):
     rows, files = fixture(kind)
     write_fixture_root(base, rows, files,
-                       stale_age_minutes=fixture_stale_age_minutes(policy, kind))
+                       stale_age_minutes=fixture_stale_age_minutes(policy, kind),
+                       retractions=retractions)
     return evaluate(policy, rows, base / "runs", list(dir_exceptions or []),
-                    list(record_exceptions or []), today=today)
+                    list(record_exceptions or []), today=today,
+                    retractions=retractions)
 
 
 # ------------------------------------------------------------------ CLI 写入侧自检
@@ -880,6 +984,50 @@ def run_cli_selfcheck(tmp: Path) -> None:
        degeneracy(module._load_registry()["runs"][1], 10) == ["zero_duration"], "zero_duration")
 
 
+def run_cli_retract_selfcheck(policy, tmp: Path, *, today: str) -> None:
+    """行 19 正向样本：**真 CLI** 撤回一条 run，再用本闸门判同一份数据（零 problem）。
+
+    为什么走 CLI 而不是手工造目录：写盘路径（`runs/<id>/` → `runtime/retracted-runs/<id>/`）
+    只有一处实现（`agent-ops.py::cmd_retract`）；这里手工造目录等于**测自己造的样本**，
+    而且会给本文件新增动态写盘落点（`artifact_paths` 的动态目标棘轮只许下调）。
+    `--result-file` 的来源用**已存在的仓库文件**（读，不写）——
+    避免为了造一个"产物"再添一个落点。
+    """
+    agents = tmp / "agents-row19"
+    module = _load_agent_ops(agents)
+    rid = _exempted_local("run-2026-09-26-impact-assessment-960")
+    module.cmd_register(_ns(run_id=rid, role="impact-assessment", task="row19-probe",
+                            spec="impact-assessment@1.4.4", model="", start=True,
+                            input_chars=None, context_input_tokens=None,
+                            context_max_tokens=None, scope_source="", deviation="",
+                            coverage_anchor=""))
+    module.cmd_finish(_ns(run_id=rid, status="succeeded", output_chars=10,
+                          result_file=str(Path(__file__).resolve()), cost_override=None,
+                          error="", usage_in=None, usage_out=None, usage_cache_read=None,
+                          usage_cache_write=None, covers_through="",
+                          allow_degenerate=True,
+                          degenerate_reason="fixture: 同秒收尾，非真实测量（行 19 样本）"))
+    run_dir = agents / "runs" / rid
+    ok("CLI 自检 ⑦ 行 19 前置：撤回前该 run 有产物目录、账本行仍在"
+       "（前置不成立则本条判据未被触发 ⇒ 不作数）",
+       run_dir.is_dir() and any(r.get("run_id") == rid for r in load_runs(agents)),
+       f"runs/{rid}/ 存在={run_dir.is_dir()}")
+    evidence = agents / "runs" / rid / "impact-assessment.report.md"
+    module.cmd_retract(_ns(run_id=rid,
+                           reason="探针误写入生产账本（行 19 自检样本）",
+                           evidence=str(evidence), by="main-agent"))
+    rows, retr = load_runs(agents), load_retractions(agents)
+    problems, _, _ = evaluate(policy, rows, agents / "runs", [], [],
+                              today=today, retractions=retr)
+    q = str((retr[0] if retr else {}).get("quarantine") or "")
+    ok("CLI 自检 ⑦ 行 19 正向：真 CLI 撤回后，闸门对同一份数据判**零 problem**"
+       "（行已删、留痕七字段齐、产物在隔离区且不在 `runs/`）",
+       problems == [] and len(retr) == 1
+       and not any(r.get("run_id") == rid for r in rows)
+       and q and (agents / q).is_dir() and not run_dir.exists(),
+       f"problems={problems[:1]} retr={len(retr)} quarantine={q!r}")
+
+
 def cli_list_lines(module, limit: int | None = None) -> list[str]:
     """跑一次 `list` 并抓回 stdout 行（用于断言展示层的 unknown 口径）。"""
     import contextlib
@@ -966,12 +1114,19 @@ def exceptions_path(agents_root: Path, policy) -> Path:
 
 def real_data(agents_root: Path, policy) -> int:
     runs = load_runs(agents_root)
+    retractions = load_retractions(agents_root)
     runs_dir = agents_root / "runs"
     exc_path = exceptions_path(agents_root, policy)
     dir_exc, rec_exc = load_exceptions(exc_path)
     print(f"   白名单：{exc_path}{'' if exc_path.is_file() else '（不存在 → 无例外）'}")
+    if retractions:
+        # 撤回是**改判定域**的动作 ⇒ 必须可见（不许静默少一行）
+        named = ", ".join(str(i.get("run_id") or "?") for i in retractions)
+        print(f"   撤回留痕：{len(retractions)} 条（{named}）"
+              f"——每条含 reason/evidence，产物在 quarantine 指向的隔离区")
     problems, warnings, counts = evaluate(policy, runs, runs_dir, dir_exc, rec_exc,
-                                          today=datetime.now(PROJECT_TZ).strftime("%Y-%m-%d"))
+                                          today=datetime.now(PROJECT_TZ).strftime("%Y-%m-%d"),
+                                          retractions=retractions)
     label = "真实账本" if agents_root.resolve() == (ROOT / "agents").resolve() else f"agents 根 {agents_root}"
     return report(policy, runs, runs_dir, problems, warnings, counts, label=label)
 
@@ -1139,14 +1294,99 @@ def selfcheck(policy) -> None:
             rows[review] = row
             target = tmp / tag
             write_fixture_root(target, rows, files)
-            problems, _, _ = evaluate(policy, rows, target / "runs", [], [], today=today)
+            problems, _, _ = evaluate(policy, rows, target / "runs", [], [],
+                                      today=today)
             ok(f"反向对照 ⑭ {label} → FAIL 且点名 {expect}",
                any(p.startswith(f"[{expect}]") or f"[棘轮/{expect}]" in p for p in problems),
                f"problems={problems[:1]}")
 
+        # 行 18：具名豁免的**理由必须落账本**（`degenerate_reason`）。
+        # 变异打在窗口内评审 run 上，且让该行**当前真的退化**（ended_at = started_at）——
+        # 否则 `degenerate_reason_missing` 不该触发
+        # （那正是 run-092 的形态，见 F 组注释）。
+        # 注意：理由**不豁免退化本身**（该行照旧被 `[zero_duration]` 点名）——
+        # 正向样本断的是"本条新判据不点名"，不是"整行零 problem"。
+        reason18 = _exempted_local("probe: 同秒收尾，非真实测量（行 18 正向样本）")
+        for tag, patch, expect, label in _exempted_local([
+            ("r18-ok", {"degenerate_reason": reason18}, None,
+             "declared + 当前退化 + 理由 → 本条不点名"
+             "（且理由不豁免退化本身）"),
+            ("r18-missing", {}, "degenerate_reason_missing",
+             "declared + 当前退化但**缺理由** → FAIL（理由不得只上屏）"),
+        ]):
+            rows, files = fixture("clean")
+            idx = next(i for i, r in enumerate(rows)
+                       if r["run_id"] == FIXTURE_REVIEW_ROW)
+            row = {**rows[idx], "ended_at": rows[idx]["started_at"],
+                   "measurement_source": "declared", "dur_minutes": None,
+                   "measurement_flags": ["zero_duration"], **patch}
+            rows[idx] = row
+            target = tmp / tag
+            write_fixture_root(target, rows, files)
+            problems, _, _ = evaluate(policy, rows, target / "runs", [], [],
+                                      today=today)
+            if expect is None:
+                ok(f"自检 ㉑ 行 18 {label}",
+                   row["ended_at"] == row["started_at"]
+                   and not any(p.startswith("[degenerate_reason_missing]")
+                               for p in problems)
+                   and any(p.startswith("[zero_duration]") for p in problems),
+                   f"problems={problems[:2]}")
+            else:
+                ok(f"反向对照 ㉑ 行 18 {label}",
+                   any(p.startswith(f"[{expect}]") for p in problems),
+                   f"problems={problems[:1]}")
+        rows, files = fixture("clean")
+        idx = next(i for i, r in enumerate(rows) if r["run_id"] == FIXTURE_REVIEW_ROW)
+        rows[idx] = {**rows[idx], "degenerate_reason": reason18}
+        target = tmp / "r18-orphan"
+        write_fixture_root(target, rows, files)
+        problems, _, _ = evaluate(policy, rows, target / "runs", [], [], today=today)
+        ok("反向对照 ㉑ 行 18 无退化标记却带 `degenerate_reason`"
+           " → FAIL（字段与事实不符）",
+           any(p.startswith("[degenerate_reason_orphan]") for p in problems),
+           f"problems={problems[:1]}")
+
+        # 行 19：撤回留痕（`retractions[]`）——删行必须留痕、产物必须保全。
+        # 正向样本走**真 CLI**（`agent-ops.py retract`：写盘全在 CLI 侧，本闸门只读它）
+        # 见 `run_cli_retract_selfcheck()`；下面三条反向对照只改**读入的数据**
+        # （`write_fixture_root(..., retractions=...)` 复用既有写盘点，不新增落点——
+        # `verify_artifact_paths.py` 的动态目标棘轮只许下调）。
+        retr_ok = _exempted_local([{
+            "at": "2026-09-27T00:30:00+00:00", "by": "probe",
+            "run_id": FIXTURE_REVIEW_ROW,
+            "reason": "探针误写入生产账本；正确形态是隔离账本 AGENT_OPS_DIR=%TEMP%",
+            "evidence": "probe-receipt.md",
+            "status_at_retraction": "succeeded",
+            "quarantine": f"runtime/retracted-runs/{FIXTURE_REVIEW_ROW}"}])
+
+        def _retract_case(tag: str, *, keep_row: bool, retr: list[dict]) -> list[str]:
+            rows, files = fixture("clean")
+            if not keep_row:
+                rows = [r for r in rows if r["run_id"] != FIXTURE_REVIEW_ROW]
+                files.pop(FIXTURE_REVIEW_ROW, None)
+            target = tmp / tag
+            write_fixture_root(target, rows, files, retractions=retr)
+            problems, _, _ = evaluate(policy, rows, target / "runs", [], [],
+                                      today=today, retractions=retr)
+            return problems
+
+        pm = _retract_case("r19-live", keep_row=True, retr=retr_ok)
+        ok("反向对照 ㉒ 行 19 已留痕撤回、账本行却还在"
+           " → FAIL（撤回不完整，污染仍在域里）",
+           any("撤回不完整" in p for p in pm), f"problems={pm[:1]}")
+        pm = _retract_case("r19-short", keep_row=False,
+                           retr=_exempted_local([{**retr_ok[0], "reason": "太短"}]))
+        ok("反向对照 ㉒ 行 19 理由 <10 字符 → FAIL（说不清为什么撤回 = 不受控的删除）",
+           any("10" in p and "撤回" in p for p in pm), f"problems={pm[:1]}")
+        pm = _retract_case("r19-noq", keep_row=False, retr=retr_ok)
+        ok("反向对照 ㉒ 行 19 留痕写了隔离路径但该路径不存在 → FAIL（产物没被保全）",
+           any("产物没被保全" in p for p in pm), f"problems={pm[:1]}")
+
         # CLI 侧自检也在本临时目录内（临时目录在 `with` 退出时即被删除 → 必须在块内跑）
         run_cli_selfcheck(tmp)
         run_cli_display_selfcheck(tmp)
+        run_cli_retract_selfcheck(policy, tmp, today=today)
 
 
 def main() -> int:

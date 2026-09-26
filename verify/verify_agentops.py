@@ -1599,28 +1599,32 @@ def main() -> int:
                 _t.sleep(0.004)
 
         def _uc24_attempt(rid: str,
-                          extra: list[str]) -> tuple[subprocess.CompletedProcess, dict]:
+                          extra: list[str],
+                          probe=None) -> tuple[subprocess.CompletedProcess, dict]:
             """造一条"同秒收尾"的 run：`register` → `update` → `finish`。
 
             `register` **不带** `--start`，由 `update` 记起点——这正是 CLI 的正常流程
             （R-001 已更正"update 应拒绝空 started_at"那条错处方），
             所以本夹具复现的是**真实**病根，不是人为注入的时间戳。
+            `probe` 在 `finish` **之前**调用（行 17 用来取"拒前"目录清单）。
             """
             run(["register", "--role", "impact-assessment", "--task", "uc24-degenerate",
                  "--spec", "impact-assessment@1.4.4",
                  "--run-id", rid], base_env, check=True)
             _uc24_align()
             run(["update", rid, "--status", "running"], base_env, check=True)
+            if probe is not None:
+                probe(rid)
             proc = run(["finish", rid, "--status", "succeeded", "--output-chars", "10",
                         *extra], base_env, raw=True)
             return proc, _uc24_row(rid)
 
-        def _uc24_loop(prefix: str, extra: list[str],
-                       want: str) -> tuple[subprocess.CompletedProcess, dict]:
+        def _uc24_loop(prefix: str, extra: list[str], want: str,
+                       probe=None) -> tuple[subprocess.CompletedProcess, dict]:
             """有界重试到"这一轮真的落在退化态"；`want` = `reject` / `allow`。"""
             last = (None, {})
             for i in (1, 2, 3):
-                proc, row = _uc24_attempt(f"{prefix}-{i}", extra)
+                proc, row = _uc24_attempt(f"{prefix}-{i}", extra, probe)
                 last = (proc, row)
                 hit = (proc.returncode != 0 if want == "reject"
                        else proc.returncode == 0 and bool(row.get("measurement_flags")))
@@ -1656,9 +1660,59 @@ def main() -> int:
            row24b.get("measurement_source") == "declared"
            and row24b.get("dur_minutes") is None,
            f"src={row24b.get('measurement_source')} dur={row24b.get('dur_minutes')}")
-        ok("UC-24 正向对照②：具名理由在 stdout 可见（账本不存该字段，故必须上屏）",
+        ok("UC-24 正向对照②：具名理由在 stdout 可见"
+           "（行 18 起**同时**落账本，上屏仍保留）",
            reason24 in (proc24b.stdout + proc24b.stderr),
            f"out={(proc24b.stdout + proc24b.stderr).strip()[-56:]}")
+        # 行 18（2026-09-27 改）：理由**同时落账本**——此前只上屏，事后读账本只有
+        # `declared`+退化标记+null，"为什么不可测"查不到（唯一的解释留在终端输出里）。
+        ok("UC-24 正向对照②（行 18）：具名理由**落账本**"
+           " `degenerate_reason`（逐字等于所传理由）",
+           row24b.get("degenerate_reason") == reason24,
+           f"degenerate_reason={row24b.get('degenerate_reason')!r}")
+        # 口径配对：`degenerate_reason` ↔ `measurement_flags` 必须**逐行配对**
+        # （两份事实来自同一次写入；「有标记无理由」正是行 18 的缺口形态）。
+        # 前置：整本夹具账本里确实存在带退化标记的行（否则本条不作数）。
+        data24 = json.loads(registry.read_text(encoding="utf-8"))
+        paired24 = [(x.get("run_id"), bool(x.get("measurement_flags")),
+                     bool(str(x.get("degenerate_reason") or "").strip()))
+                    for x in data24["runs"]]
+        unpaired24 = [p for p in paired24 if p[1] != p[2]]
+        ok("UC-24（行 18）：夹具账本里 `degenerate_reason`"
+           " ↔ `measurement_flags` 逐行配对"
+           "（前置：确有带退化标记的行；无「有标记无理由」，也无「无标记却有理由」）",
+           not unpaired24 and any(p[1] for p in paired24),
+           f"不配对={unpaired24[:3]} 带标记行数={sum(1 for p in paired24 if p[1])}")
+
+        # 行 17（2026-09-27 改）：守卫拒绝路径**不得留孤儿产物**。
+        # 旧序是"先按字节复制 `--result-file`、后守卫"
+        # ⇒ 被拒后 `runs/<id>/` 多一份产物、
+        # 而账本行仍是 `running`（两边互相矛盾）。反证 = **拒前/拒后目录清单逐项相等**。
+        def _uc24_listing(rid: str) -> list[str]:
+            d = tmp / "runs" / rid
+            if not d.is_dir():
+                return []
+            return sorted(str(p.relative_to(d)) for p in d.rglob("*"))
+
+        report24 = tmp / "uc24-rejected.report.md"
+        report24.write_bytes("| 列 | 值 |\n| a | b |\n".encode("utf-8"))
+        seen24: dict[str, list[str]] = {}
+        proc24d, row24d = _uc24_loop(
+            "run-uc24-orphan", ["--result-file", str(report24)], "reject",
+            probe=lambda rid: seen24.__setitem__(rid, _uc24_listing(rid)))
+        rid24d = str(row24d.get("run_id") or "")
+        out24d = proc24d.stdout + proc24d.stderr
+        ok("UC-24 反向对照④（行 17）前置：该轮**确实是守卫拒绝**"
+           "（FINISH-ERROR + zero_duration）",
+           proc24d.returncode != 0 and "FINISH-ERROR" in out24d
+           and "zero_duration" in out24d,
+           f"rc={proc24d.returncode} out={out24d.strip()[:56]}")
+        ok("UC-24 反向对照④（行 17）：被拒后 `runs/<id>/` **不得新增产物**"
+           "（拒前清单 == 拒后清单 == 空；账本行仍是 running）",
+           seen24.get(rid24d) == [] and _uc24_listing(rid24d) == []
+           and row24d.get("status") == "running",
+           f"runs/{rid24d}/ 拒前={seen24.get(rid24d)} 拒后={_uc24_listing(rid24d)}"
+           f" status={row24d.get('status')!r}")
         proc24c, row24c = _uc24_loop("run-uc24-short",
                                      ["--allow-degenerate",
                                       "--degenerate-reason", "太短"], "reject")
@@ -1670,6 +1724,117 @@ def main() -> int:
         ok("UC-24 反向对照③：仍拒 = 账本未动（该 run 仍 running）",
            row24c.get("status") == "running" and not row24c.get("ended_at"),
            f"status={row24c.get('status')!r} ended_at={row24c.get('ended_at')!r}")
+
+        # UC-25（复盘行 19）：**受控撤回**——误登记 run 的唯一合法删除路径。
+        # 病根：账本原先只能加不能减（手改被 UC-7 的完整性校验拒；`set-started-at` 回填
+        # 时间戳 = 伪造测量值，父代理已否决）
+        # ⇒ 误登记永久污染判定域（实例：探针 `097`~`099`）。
+        # 判据四条，缺一条就不是受控撤回：理由 ≥10 字符 / 留痕 / 只认显式点名的单条 id /
+        # `--evidence` 必须存在；产物移入隔离区（删行不销毁现场）。
+        rid25 = "run-uc25-misregistered"
+
+        def _uc25_files(d: Path) -> list[str]:
+            if not d.is_dir():
+                return []
+            return sorted(str(p.relative_to(d)) for p in d.rglob("*"))
+
+        def _uc25_row(rid: str) -> dict | None:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+            return next((x for x in data["runs"] if x["run_id"] == rid), None)
+
+        def _uc25_retr() -> list[dict]:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+            return data.get("retractions") or []
+
+        run(["register", "--role", "impact-assessment", "--task", "uc25-misregistered",
+             "--spec", "impact-assessment@1.4.4", "--run-id", rid25],
+            base_env, check=True)
+        run(["update", rid25, "--status", "running"], base_env, check=True)
+        rep25 = tmp / "uc25.report.md"
+        rep25.write_bytes("| 探针产物 | 内容 |\n| 097 | 误登记样本 |\n".encode("utf-8"))
+        run(["finish", rid25, "--status", "succeeded", "--output-chars", "10",
+             "--result-file", str(rep25), *DEGEN_FIXTURE_ARGS], base_env, check=True)
+        dir25 = tmp / "runs" / rid25
+        ok("UC-25 前置：该 run 已登记为终态、产物已落 `runs/<id>/`"
+           "（撤回的判据必须真的被触发，否则不作数）",
+           dir25.is_dir() and bool(_uc25_files(dir25)),
+           f"runs/{rid25}/={_uc25_files(dir25)}")
+
+        reason25 = "探针误写入生产账本（UC-25 夹具）：正确形态是隔离账本"
+        for tag, argv25, want in (
+            ("通配/批量 id", ["run-uc25-*", "--reason", reason25,
+                              "--evidence", str(rep25)], "RETRACT-ERROR"),
+            ("过短理由", [rid25, "--reason", "太短", "--evidence", str(rep25)],
+             "RETRACT-ERROR"),
+            ("证据路径不存在", [rid25, "--reason", reason25,
+                                "--evidence", str(tmp / "no-such-evidence.md")],
+             "RETRACT-ERROR"),
+            ("账本里不存在的 run", ["run-uc25-not-registered", "--reason", reason25,
+                                    "--evidence", str(rep25)], "不存在"),
+        ):
+            r = run(["retract", *argv25], base_env, raw=True)
+            blob25 = r.stdout + r.stderr
+            ok(f"UC-25 反向对照：{tag} → 拒绝且**账本未动 / 产物未动**",
+               r.returncode != 0 and want in blob25
+               and _uc25_row(rid25) is not None and _uc25_retr() == []
+               and dir25.is_dir(),
+               f"rc={r.returncode} out={blob25.strip()[:56]}")
+
+        r = run(["retract", rid25, "--reason", reason25,
+                 "--evidence", str(rep25)], base_env, raw=True)
+        ok("UC-25 正向：理由齐全 + 证据存在 + 显式点名 → 撤回成功（rc=0）",
+           r.returncode == 0,
+           f"rc={r.returncode} out={(r.stdout + r.stderr).strip()[:56]}")
+        ok("UC-25 正向：账本行已删、**留痕**在 `retractions[]`"
+           "（run_id/reason/evidence/at/by/"
+           "status_at_retraction/quarantine 七字段齐）",
+           _uc25_row(rid25) is None and len(_uc25_retr()) == 1
+           and not [k for k, v in _uc25_retr()[0].items()
+                    if not str(v or "").strip()]
+           and set(_uc25_retr()[0]) >= {"at", "by", "run_id", "reason", "evidence",
+                                        "status_at_retraction", "quarantine"}
+           and _uc25_retr()[0]["reason"] == reason25
+           and _uc25_retr()[0]["evidence"] == str(rep25),
+           f"retractions={_uc25_retr()}")
+        q25 = tmp / str(_uc25_retr()[0].get("quarantine") or "")
+        moved25 = q25 / "impact-assessment.report.md"
+        same_bytes25 = moved25.is_file() and moved25.read_bytes() == rep25.read_bytes()
+        ok("UC-25 正向：产物**移入隔离区**"
+           "（`runs/<id>/` 不再有它，隔离区拿到逐字节相同的报告）",
+           not dir25.exists() and q25.is_dir() and same_bytes25,
+           f"quarantine={q25} 报告字节一致={same_bytes25}")
+        r = run(["retract", rid25, "--reason", reason25, "--evidence", str(rep25)],
+                base_env, raw=True)
+        ok("UC-25 反向对照：同一 run 再撤回一次 → 拒绝（不重复留痕、不做假痕）",
+           r.returncode != 0 and "已撤回" in (r.stdout + r.stderr)
+           and len(_uc25_retr()) == 1,
+           f"rc={r.returncode} retractions={len(_uc25_retr())}")
+
+        # 引用链保护：被其余 run 的 `scope_source` 引用的 run 不得撤回
+        # （删了它，引用者的 C2 判据会指向不存在的对象 = 把误登记换成真缺陷）。
+        run(["register", "--role", "impact-assessment", "--task", "uc25-cited",
+             "--spec", "impact-assessment@1.4.4", "--run-id", "run-uc25-cited"],
+            base_env, check=True)
+        run(["update", "run-uc25-cited", "--status", "running"], base_env, check=True)
+        run(["finish", "run-uc25-cited", "--status", "succeeded",
+             "--output-chars", "10",
+             *DEGEN_FIXTURE_ARGS], base_env, check=True)
+        run(["register", "--role", "code-review", "--task", "uc25-citer",
+             "--spec", "code-review@1.0.0", "--run-id", "run-uc25-citer",
+             "--scope-source", "impact-assessment:run-uc25-cited"],
+            base_env, check=True)
+        ok("UC-25 前置：账本里确有 run 的 scope_source 引用了待撤回者",
+           "impact-assessment:run-uc25-cited"
+           in json.dumps(_uc25_row("run-uc25-citer") or {}, ensure_ascii=False),
+           f"citer={_uc25_row('run-uc25-citer')}")
+        r = run(["retract", "run-uc25-cited", "--reason", reason25,
+                 "--evidence", str(rep25)],
+                base_env, raw=True)
+        ok("UC-25 反向对照：被 `scope_source` 引用的 run → 拒绝撤回"
+           "（引用链不得被撤回打断）",
+           r.returncode != 0 and "引用" in (r.stdout + r.stderr)
+           and _uc25_row("run-uc25-cited") is not None,
+           f"rc={r.returncode} out={(r.stdout + r.stderr).strip()[:56]}")
 
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))
