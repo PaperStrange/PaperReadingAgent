@@ -64,7 +64,8 @@ from __future__ import annotations
 VERIFY_META = {
     'features': '决策登记册机检（TG-20 ③④⑤）：章节在位 / 条目 8 字段齐全 / '
                 '受控状态词 / 被取代指向存在的条目 / path:line 指针可核 / '
-                '§4.1 引文↔出处逐条核对 / 待回填可见；含 9 条反向对照自检',
+                '§4.1 引文↔出处逐条核对 / 待回填可见；'
+                '反向对照条数见末行 `ALL PASS (N assertions)`',
     'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 5,
     'routes': [], 'requires': ['none'],
 }
@@ -511,7 +512,7 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
 
 
 def selftest() -> int:
-    """9 条反向对照（fixture 写在 `%TEMP%` 的**字面量落点**上，不动仓库文件）。
+    """反向对照（fixture 写在 `%TEMP%` 的**字面量落点**上，不动仓库文件）。
 
     落点一律写成"`Path(tempfile.gettempdir())` +
     字面量"的**单一表达式**（不经变量中转），

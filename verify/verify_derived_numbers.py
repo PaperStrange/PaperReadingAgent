@@ -47,7 +47,7 @@ sha 区间豁免）各一条；条数见末行 `ALL PASS (N assertions)`。
 
 from __future__ import annotations
 
-VERIFY_META = {'features': '派生数字不得手抄：按文件棘轮约束"现测/实测 <数字>"式当期主张（断言数/卡数/文件数/脚本数/字节/C 级条数/棘轮计数）；生成物豁免、上限只减不增、review_by 到期即 FAIL；含 6 条反向对照自检', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 4, 'routes': [], 'requires': ['none']}
+VERIFY_META = {'features': '派生数字不得手抄：按文件棘轮约束"现测/实测 <数字>"式当期主张（断言数/卡数/文件数/脚本数/字节/C 级条数/棘轮计数）；生成物豁免、上限只减不增、review_by 到期即 FAIL；反向对照条数见末行 `ALL PASS (N assertions)`', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 4, 'routes': [], 'requires': ['none']}
 
 import json
 import re
