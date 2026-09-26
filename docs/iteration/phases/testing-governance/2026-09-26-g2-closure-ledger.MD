@@ -38,7 +38,7 @@
 | 10 | 已达成（`28bc182` 标签不再写死条数） | 否 | E7 |
 | 11 | 三处 `.py` docstring 陈旧计数改由现跑派生或删数字；**不得手抄** | 否 | E7 |
 | 12 | 已达成（全量回填完成）；复核＝登记册闸门现跑 | 否 | — |
-| 13 | `started_at is None` 的 `queued` run 不得进"数据被改过"分支，改显式 SKIP；反证＝有 queued run 时整档不得 rc=4 | 否 | E5 |
+| 13 | `started_at is None` 的 `queued` run 不得进"数据被改过"分支，改显式 SKIP；反证＝有 queued run 时整档不得 rc=4 | 否 | E5、E8 |
 | 14 | 二选一：**补记**硬停事实与恢复所需的用户二次确认，或**裁定** S1 条款对关闭期不适用 | **是** | — |
 
 **只有行 14 需要用户裁定。** 其余各行的动作都已可判定，不需要用户先表态。
@@ -57,12 +57,13 @@
 | E5 | 行 13 ↔ `R-001` | 同数据源 `agents/runtime/registry.json` 的 `started_at` 语义：`verify/verify_close_readiness.py:498-502` 用 `run.get("started_at") or ""` 判"数据被改过"；`R-001` 的回填会写 `started_at_backfills` | **同批**，且行 13 判据必须与 `R-001` 的覆盖边界口径一致 | 只改回填不改读取侧 ⇒ **合法回填的 run 被判"数据被改过"**（这正是当前 `run-092` 的处境） |
 | E6 | 行 8 ↔ 全部自检夹具 | `%TEMP%` 根＋各文件字面量目录名：`verify/verify_card_index.py:76`、`verify/verify_close_tax_reading.py:291`、`verify/verify_close_readiness.py:2079` 等 | **同批**（要么统一 `mkdtemp`，要么统一前缀＋进程标识；混用等于没改） | 只改一两个文件 ⇒ 并发下互踩仍在，且更隐蔽 |
 | E7 | 行 10、11 | 同一义务：数字必须由现跑派生、不得手抄；检查器＝`verify/verify_derived_numbers.py`（行 10 已按此改） | **同批** | 手抄新计数 ⇒ `derived_numbers` 自检再红（本会话已两次因自己写死数字被红） |
+| E8 | 行 13 ↔ `R-001` 守卫的**全部夹具调用点** | 共享对象：`started_at` 的**秒级截断**（`_now()`）——`verify/verify_ledger_rounds.py:55` 的 `register --start` 紧邻 `:58` 的 `finish`；`verify/verify_agentops.py` 的 `finish` 夹具；对照 `verify/verify_ledger_measurement.py`（`time.sleep(1.2)` 规避，故不受影响） | 守卫落地前必须**普查调用点**；夹具层显式 `--allow-degenerate` ＋ 理由，**生产层禁用** | 只改授权内的 2 文件就提交 ⇒ `verify_ledger_rounds.py` 当场 rc=1（且是**概率性**红：子代理 `5a221f7c` 实测 12 次探针 10 次命中，约 5/6；**该读数待我独立复核**） |
 
 ## 排序约束（由 B 表推出，不含新信息）
 
 1. **行 7 → 行 2 → 行 3**（E1；行 9 已在行 3 之前完成，E4）。
 2. **行 4、5、6 同批**（E2），且先复核批 7／批 9 未回退（E3）。
-3. **行 13 与 `R-001` 同批**（E5）。
+3. **行 13 与 `R-001` 同批**（E5），且该批**必须包含夹具调用点普查**（E8）——普查是这一批的入场券，不是收尾项。
 4. **行 8 单独一批**（E6 面广，混进别批会被夹带）。
 5. **行 10、11 同批**（E7）。
 6. 行 1、9、10、12 已达成；行 14 待用户裁定。
