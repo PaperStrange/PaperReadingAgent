@@ -40,6 +40,10 @@
 | 12 | 已达成（全量回填完成）；复核＝登记册闸门现跑 | 否 | — |
 | 13 | `started_at is None` 的 `queued` run 不得进"数据被改过"分支，改显式 SKIP；反证＝有 queued run 时整档不得 rc=4 | 否 | E5、E8 |
 | 14 | 二选一：**补记**硬停事实与恢复所需的用户二次确认，或**裁定** S1 条款对关闭期不适用 | **是** | — |
+| 15 | `parse_deepseek` 修好（容忍模型数变化、按 `<tr>` 顺序走、支持中文页"元"金额）＋ 加"抓取为空／价表陈旧 ⇒ FAIL 而非静默跳过"的判据 | 否 | E9 |
+| 16 | ① `prices-derive` 白名单纳入 `_tiers`/`_tier_scheme`；② 按 run 时间戳选档，缺失 ⇒ 高峰 ＋ `tier_assumed`；③ 跨档规则；④ 判据＝"**派生后档位仍在**" | 否 | E9 |
+| 17 | 守卫前移到 `--result-file` 复制之前，或拒绝时回滚产物；反证＝被拒后 `runs/<id>/` 不得新增产物 | 否 | — |
+| 18 | 行内增 `degenerate_reason`（须同步 `verify_ledger_measurement` 字段集口径），或裁定"理由只上屏"并写进口径文档 | 否 | — |
 
 **只有行 14 需要用户裁定。** 其余各行的动作都已可判定，不需要用户先表态。
 
@@ -57,7 +61,8 @@
 | E5 | 行 13 ↔ `R-001` | 同数据源 `agents/runtime/registry.json` 的 `started_at` 语义：`verify/verify_close_readiness.py:498-502` 用 `run.get("started_at") or ""` 判"数据被改过"；`R-001` 的回填会写 `started_at_backfills` | **同批**，且行 13 判据必须与 `R-001` 的覆盖边界口径一致 | 只改回填不改读取侧 ⇒ **合法回填的 run 被判"数据被改过"**（这正是当前 `run-092` 的处境） |
 | E6 | 行 8 ↔ 全部自检夹具 | `%TEMP%` 根＋各文件字面量目录名：`verify/verify_card_index.py:76`、`verify/verify_close_tax_reading.py:291`、`verify/verify_close_readiness.py:2079` 等 | **同批**（要么统一 `mkdtemp`，要么统一前缀＋进程标识；混用等于没改） | 只改一两个文件 ⇒ 并发下互踩仍在，且更隐蔽 |
 | E7 | 行 10、11 | 同一义务：数字必须由现跑派生、不得手抄；检查器＝`verify/verify_derived_numbers.py`（行 10 已按此改） | **同批** | 手抄新计数 ⇒ `derived_numbers` 自检再红（本会话已两次因自己写死数字被红） |
-| E8 | 行 13 ↔ `R-001` 守卫的**全部夹具调用点** | 共享对象：`started_at` 的**秒级截断**（`_now()`）——`verify/verify_ledger_rounds.py:55` 的 `register --start` 紧邻 `:58` 的 `finish`；`verify/verify_agentops.py` 的 `finish` 夹具；对照 `verify/verify_ledger_measurement.py`（`time.sleep(1.2)` 规避，故不受影响） | 守卫落地前必须**普查调用点**；夹具层显式 `--allow-degenerate` ＋ 理由，**生产层禁用** | 只改授权内的 2 文件就提交 ⇒ `verify_ledger_rounds.py` 当场 rc=1（且是**概率性**红：子代理 `5a221f7c` 实测 12 次探针 10 次命中，约 5/6；**该读数待我独立复核**） |
+| E8 | 行 13 ↔ `R-001` 守卫的**全部夹具调用点** | 共享对象：`started_at` 的**秒级截断**（`_now()`）——`verify/verify_ledger_rounds.py:55` 的 `register --start` 紧邻 `:58` 的 `finish`；`verify/verify_agentops.py` 的 `finish` 夹具；对照 `verify/verify_ledger_measurement.py`（`time.sleep(1.2)` 规避，故不受影响） | 守卫落地前必须**普查调用点**；夹具层显式 `--allow-degenerate` ＋ 理由，**生产层禁用** | 只改授权内的 2 文件就提交 ⇒ `verify_ledger_rounds.py` 当场 rc=1（且是**概率性**红：子代理 `5a221f7c` 实测 12 次探针 10 次命中，约 5/6；**父代理独立复核：v2 探针 4/4 命中、另一次 dump 运行 1 次未命中 ⇒ 与"约 5/6"不矛盾，但非等精度复测**） |
+| E9 | 行 15 ↔ 行 16 | 共享对象：**价表形状**。`verify/verify_agentops.py:417-418` 内嵌了**旧表形状的 HTML 副本**并断言旧值 `4.4e-7`；`prices-derive` 的白名单（`scripts/agent-ops.py:1580-1589`）决定 `_tiers` 能否活着派生出去 | **行 15 与行 16 同批** | 只修行 15 不动冻结副本 ⇒ 那段夹具继续按旧表形状判绿（"**闸门全绿而解析器已换掉**"，案例 25 同型）；只修行 16 不加"派生后档位仍在"的断言 ⇒ 档位静默丢失 |
 
 ## 排序约束（由 B 表推出，不含新信息）
 
@@ -67,6 +72,12 @@
 4. **行 8 单独一批**（E6 面广，混进别批会被夹带）。
 5. **行 10、11 同批**（E7）。
 6. 行 1、9、10、12 已达成；行 14 待用户裁定。
+7. **行 15 与行 16 同批**（E9）——改解析器必须同改那段冻结的旧表副本与派生白名单。
+8. 行 17、18 无独立耦合，但两者都改 `cmd_finish` 的**写库语义**，与行 13／`R-001` 的守卫**共享同一条写路径**
+   （`_apply_measurement` → 复制产物 → `_save_registry`）⇒ **并入行 13 那一批**，避免同一路径在 G2 关闭期被改两次。
+
+> **本轮新增 15–18 行的原因**：15/16 由价格表多档改造暴露（并被我独立复现），17/18 由守卫交付回执暴露。
+> 它们**没有被"这次只做报价表"的切片边界挡住**——切片边界是执行口径，不是发现口径。
 
 ## 为什么这张表值得看
 
