@@ -125,6 +125,10 @@
 
 ## 7. 账本时间戳退化：修复方案的**覆盖边界与备案**（用户 2026-09-26 追问后补）
 
+> **本节的正式落点已迁至独立备案档**：[`R-001`](../agents-infra/2026-09-26-residual-risk-register.MD)
+> （用户 2026-09-26 定规："这些备案和事故记录一样需要独立且显式存在"）。
+> **冲突时以备案档为准**；此处保留的是登记当时的原文，后续维护只改 `R-001`。
+
 **起因**：`run-2026-09-26-code-review-092` 的 `started_at == ended_at` 触发
 `verify_ledger_measurement` 的 `zero_duration`（棘轮 3/3 已满）⇒ 套件与 CI 红。
 根因是主代理的操作序列：`register` 漏 `--start` ⇒ `started_at` 空 ⇒
