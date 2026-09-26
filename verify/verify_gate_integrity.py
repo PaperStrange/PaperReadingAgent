@@ -85,6 +85,10 @@ CI_REL = ".github/workflows/ci.yml"
 HOOK_REL = "scripts/hooks/pre-commit"
 COMMITHOOK_REL = "scripts/hooks/commit-msg"
 INSTALLER_REL = "scripts/install-hooks.py"
+# 行 6：**终判层**＝不可跳过的那一层（CI）。本地两层都可能没装 / 被 `--no-verify`
+# 跳过，故"本地终判必须由退出码承载"的落点只能钉在这里；它一旦 `--report-only`，
+# 整条链就没有任何一层在拒绝。
+EXIT_CODE_JUDGE_REL = CI_REL
 PASSED = 0
 
 
@@ -288,33 +292,215 @@ def committed_rebase_problems(committed: dict | None, parent_policy: dict | None
     return problems
 
 
+# 行 4（089 minor）：**命令位置**判定 = 黑名单换成正向结构。
+# 黑名单（见 `_cmd_line` 的 docstring）的失败形态是"**枚举不完**"：少列一种回显/赋值
+# 形态就多一个假绿，而假绿只能等下一次事故来发现。
+# 正向判定走**词元**：把命令行按空白切词，只看**前两个词元**——
+#   ① 首词元是解释器（`python` / `python.exe` / `$py` / `"$py"` / `.venv/Scripts/python.exe`
+#      / `"$py.exe"`）⇒ 次词元必须是守卫脚本；
+#   ② 首词元本身就是守卫脚本路径（CI 真行把 `python` 写在行首、脚本在第二个词元）。
+# 每一步都要求**词元本身**是干净的一整段（见 `_has_cmd_char`）⇒
+#   * `cmd = "structure-guard.py verify --from-git HEAD"`：首词元 `cmd`、次词元 `=`，
+#     都不成立；
+#   * `Write-Output "python … structure-guard.py …"`：首词元含 `"`；
+#   * 行尾注释里的同名字样：`_strip_comment` 已剥掉。
+# 认的是"这条命令会被执行"，不是"这串字出现在文件里"。
+GUARD_SCRIPT = "structure-guard.py"
+GUARD_SUBCOMMAND = "verify"
+# 词元里出现这些字符 ⇒ 它不是一个干净的"命令/解释器/脚本路径"词元。
+NO_CMD_CHAR_RE = re.compile(r"[\"'`=(){}|&;]")
+# **调用点自带的赋值前缀**（钩子模板的第一句就是 `out=$("$py" scripts/… 2>&1)`）：
+# `out=$( … )` 里被执行的是 `$(` 之后的命令，判据必须穿透这一层；
+# 不穿透的话，真实的钩子模板会被判成"没有调用守卫"（假红）。
+ASSIGN_PREFIX_RE = re.compile(r"^\s*[A-Za-z_]\w*=\$\(\s*")
+# 解释器词元（大小写不敏感；必须是**整个词元**）。三种写法都算：
+# `python` / `python3.13` / `python.exe`（`python` 字面量 + 可选版本/后缀）；
+# `$py` / `${PY}`（shell 变量命名，变量名里含 `py`）；
+# `.venv/Scripts/python.exe`（带目录；调用前已按路径末段比较，这里只看末段）。
+# **`cmd` 不是解释器** ⇒ 赋值不会被误认成调用；
+# `Write-Output` 含连字符，被 `[\w${}]*` 挡住，也不会被误认成解释器。
+PY_WORD_RE = re.compile(r"^(?:python[\w.]*|[\w${}]*py)$", re.I)
+# CI 是 YAML：命令可以写成 `run: python …`（键与值同一行）。
+# 这不是"命令名"，是**同一个步骤的写法**；真文件实测：不认它会把 CI 判成没调用。
+# 只认 `run` 这一个键（`cmd = …` 这类赋值不会被误放行）。
+RUN_KEY_RE = re.compile(r"^run\s*:\s*")
+# **回显语句**（它们把命令名当**文本**打印）。黑名单**保留**、但只作用于这一件事：
+# 判"这行是不是回显"。命令位置判定不再依赖黑名单（见上）。
+# 行 6（092 minor）复用同一份判定：`--report-only` 也必须认**命令位置**，
+# 否则新判据会栽在它自己要治的同一种形态上（注释里提一句就假红）。
+# 含 `` ` `` 与 `{`：Python docstring 行（`` `structure-guard.py verify --from-git` ``）、
+# PowerShell 续行/花括号脚本块都是**文本**，不是调用（真文件实测抓到的假绿）。
+ECHO_PREFIXES = ("#", "::", "echo", "Write-Host", "Write-Output",
+                 "Write-Debug", "Write-Verbose", "printf", "`", "{")
+
+
+def _strip_comment(line: str) -> str:
+    """剥掉行尾注释（`#` 起）。
+
+    行 4 的第二半（092 minor）：旧实现只跳**整行**注释 ⇒
+    行尾注释里的同名字样（CI 里 `run: echo x   # structure-guard.py verify …`）
+    照样满足判据。三份层文件的注释一律用 `#`，故这一步够用且方向收紧。
+    """
+    head, sep, _ = line.partition("#")
+    return head if sep else line
+
+
+def _cmd_line(line: str) -> str:
+    """该行在**命令位置**上是什么；不是可执行命令则返回空串。
+
+    与旧实现的差别：旧的是"黑名单跳过 + 其余做子串搜索"（枚举不完 ⇒ 假绿），
+    这里反过来——命令位置只能由"剥注释后**不空**且**不是回显**"给出。
+    """
+    body = _strip_comment(line).strip()
+    if not body or body.startswith(ECHO_PREFIXES):
+        return ""
+    return body
+
+
+def _clean_word(word: str) -> str:
+    """去掉词元两端成对的引号，并校验它是一整段**命令/路径**。
+
+    禁字符只查**末段**（文件名）：`=`、引号、括号出现在**目录**里是合法的
+    （`.venv/Scripts/python.exe` 这类路径带 `/`，而 `/` 不在禁字符表里；
+    但引号/赋值出现在裸词元里就是"这不是一条命令"的信号）。
+    先剥引号再查禁字符：`"$py"` 是干净解释器词元，`W="python` 不是。
+    """
+    core = word.strip("\"'`")
+    if NO_CMD_CHAR_RE.search(re.split(r"[/\\]", core)[-1]):
+        return ""
+    return core
+
+
+def _script_name(word: str) -> str:
+    """词元里的**脚本文件名**（`scripts/structure-guard.py` ⇒ `structure-guard.py`）。
+
+    真调用一律带目录（`scripts/…`），用 `startswith` 比会判成 false（假红）；
+    故按路径末段比。
+    """
+    return re.split(r"[/\\]", word)[-1]
+
+
+def _is_guard_invocation(body: str) -> bool:
+    """一段（已剥注释的）命令行是否**以守卫调用开头**——词元级结构判定。
+
+    只看前两个词元：解释器+脚本，或（无解释器时）脚本自己。这样
+    `cmd = "…"`、`Write-Output "…"`、`echo x # …` 都不会被认成调用，
+    而 `"$py" scripts/structure-guard.py …` 这种带引号/带目录的**真调用**照样认得出
+    （黑名单版漏掉的正是前者，正向判定不得把后者误判成 false）。
+    """
+    m = ASSIGN_PREFIX_RE.match(body)
+    if m:
+        body = body[m.end():]
+    key = RUN_KEY_RE.match(body)                 # YAML：`run: <命令>`
+    if key:
+        body = body[key.end():]
+    words = [w for w in (_clean_word(w) for w in body.split()) if w]
+    if not words:
+        return False
+    if _script_name(words[0]) == GUARD_SCRIPT:
+        return len(words) > 1 and words[1] == GUARD_SUBCOMMAND
+    if not PY_WORD_RE.match(_script_name(words[0])):     # 解释器按末段认
+        return False              # 首词元既不是解释器、也不是守卫脚本
+    return (len(words) > 2 and _script_name(words[1]) == GUARD_SCRIPT
+            and words[2] == GUARD_SUBCOMMAND)
+
+
+def _guard_command_lines(text: str) -> list[str]:
+    """该文件里**真的会执行**守卫的每一行（命令位置 + 结构判定）。
+
+    行 4 的判据本体；行 6 也复用它（同一条"命令位置"语义，两个判据不各判一套）。
+    """
+    return [ln for ln in (_cmd_line(line) for line in text.splitlines())
+            if _is_guard_invocation(ln)]
+
+
 def _invokes_guard(text: str) -> bool:
-    """该文件是否在**命令位置**调用了结构守卫的 git 档
-    （`structure-guard.py verify --from-git`）。
+    """该文件是否在**命令位置**调用了结构守卫的 git 档。
 
     为什么不能只做子串搜索（二查 `run-…-087` major 1 的探针实测）：CI 里那行
     `Write-Host "gate: structure-guard.py verify --from-git …"`
-    的**标签文本本身**就满足子串匹配
-    ⇒ 把真调用删掉、只留标签，判据照样"零问题"。于是"接线判据"守的是一句**注释**，
-    不是一条命令。
-    判据改为：**跳过注释/回显行**（`#`、`Write-Host`、`echo`、`::`
-    标签），再看剩下的行里有没有该调用
-    ——与"守卫必须挂在真函数上"同一族（反例档案例 14）。
+    的**标签文本本身**就满足子串匹配 ⇒ 把真调用删掉、只留标签，判据照样"零问题"。
+    于是"接线判据"守的是一句**注释**，不是一条命令。
+
+    黑名单版（`_invokes_guard:291`，089 minor，G2 行 4）的残留：判据只跳
+    `#`/`Write-Host`/`echo`/`::` **四种行首** ⇒ `Write-Output` 回显、变量赋值
+    （`cmd = "structure-guard.py verify --from-git HEAD"`）、here-string、
+    **行尾注释**四种形态仍可满足它——修前实测四种里有三种假绿（探针见
+    `docs/iteration/phases/testing-governance/2026-09-26-g2-closure-ledger.MD`
+    的实现记录）。现在改成**正向结构判定**：见 `GUARD_CMD_RE` / `_cmd_line`。
     """
-    for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith(("#", "Write-Host", "echo", "::")):
+    return bool(_guard_command_lines(text))
+
+
+def _invokes_report_only(text: str) -> bool:
+    """该文件是否在**命令位置**给守卫传了 `--report-only`（行 6 的检测器）。
+
+    只用 `"--report-only" in text` 会栽在同一种形态上：注释/文档里提一句就假红。
+    故与 `_invokes_guard` 共用"命令位置"语义。
+    """
+    return any("--report-only" in ln for ln in _guard_command_lines(text))
+
+
+def _enforces_exit_code(text: str) -> tuple[bool, bool]:
+    """返回 `(命令位置有几次守卫调用, 其中是否有一次由**退出码**终判)`。
+
+    行 6（复核 `092` minor，E3：批 7／批 9 的**共同残余**）：批 7 把
+    `pre-commit` 改成 `--report-only`（终判压到 `commit-msg`），批 9 修了
+    `structure-guard` 的基线 fail-open——两批都没给"**不许所有层都加
+    `--report-only`**"留判据。三处接线全加上它 = 整条链 fail-open：守卫照样逐条
+    打印 `[FAIL]`，每一处却都 rc=0。
+
+    判据落在**退出码**上：`--report-only` 的语义是"rc 恒 0"（见
+    `structure-guard.py::cmd_verify_git` 的 `report_only` 分支）⇒ "这一段命令
+    由退出码终判"的充要条件是**不带** `--report-only`。
+
+    为什么不是"数一数有几层非 report-only"（台账 A 表行 6 的原始措辞）：后者只数
+    **层数**、不看**退出码**，正好落进 E3 自己写的那条反证——"只数层数、不看退出码
+    ⇒ 又变回 fail-open"。故这里逐**调用**判，并在
+    `unskippable_wiring_problems` 里把"三处合起来至少一次由退出码终判"与
+    "终判层（`EXIT_CODE_JUDGE_REL`）自己不得让出"分别写成判据。
+    """
+    lines = _guard_command_lines(text)
+    return len(lines), any("--report-only" not in ln for ln in lines)
+
+
+def _hooks_from_ast(text: str) -> list[str] | None:
+    """解析 `HOOKS = <字面量>` 的**结构**，取出其中的字符串清单。
+
+    一个**可糊弄的子串**（复核 `run-…-091` minor 2 交付的正则
+    `HOOKS\\s*=\\s*\\((?P<body>[^)]*)\\)`，G2 行 5）会栽在两种形态上：
+      * **假绿**：`# HOOKS = ("pre-commit", "commit-msg")` 注释行照样命中
+        ⇒ 真清单写成 `HOOKS = ()` 时判据仍绿（实测）；
+      * **假红**：`HOOKS = ["pre-commit", "commit-msg"]`（合法 list 形态）
+        不匹配元组正则 ⇒ 判据判 FAIL，而代码没有错（实测）。
+    故改为按 `ast` 取赋值右值里的**字符串元素**（元组/列表都算，不需要求值、
+    **不执行**被测文件）；解析不了（语法错 / 没有这个赋值）交给调用方 fail-closed。
+    """
+    import ast
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return None
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
             continue
-        if re.search(r"structure-guard\.py\s+verify\s+--from-git", stripped):
-            return True
-    return False
-
-
-HOOKS_TUPLE_RE = re.compile(r"HOOKS\s*=\s*\((?P<body>[^)]*)\)", re.S)
+        if not any(isinstance(t, ast.Name) and t.id == "HOOKS"
+                   for t in node.targets):
+            continue
+        value = node.value
+        if isinstance(value, (ast.Tuple, ast.List)):
+            items = value.elts
+        else:
+            items = [value]
+        if not all(isinstance(e, ast.Constant) and isinstance(e.value, str)
+                   for e in items):
+            return None          # 非常量元素 ⇒ 解析不出清单（fail-closed）
+        return [e.value for e in items]
+    return None
 
 
 def _installs_hooks(text: str) -> bool:
-    """安装器的 `HOOKS = (…)` 清单里必须**同时**含 `pre-commit` 与 `commit-msg`。
+    """安装器的 `HOOKS` 清单里必须**同时**含 `pre-commit` 与 `commit-msg`。
 
     修复验证复核 `run-…-091` minor 2 的原始形态：判据只核 `installer.is_file()` 与
     文本含 `--check`，**不核它装哪些钩子** ⇒ 把 `HOOKS = ("pre-commit", "commit-msg")`
@@ -322,12 +508,18 @@ def _installs_hooks(text: str) -> bool:
     全绿。而在 `pre-commit` 改为 `--report-only` 之后，**本地层的终判压在 `commit-msg`
     上**（`pre-commit` 读不到署名 ⇒ 不判）——少了它，本地层对结构删除**既不拦也不判**，
     只剩 CI 一层。这是"模板存在"与"模板会被装上"之间的缺口。
+
+    行 5（复核 `092` minor）：上一版只做到**文本子串层**（正则抓 `HOOKS = (…)` 的
+    括号体再判子串）⇒ 注释一行同名清单即可糊弄。现在解析 `HOOKS` 的**结构**
+    （`_hooks_from_ast`）。解析不出清单时的兜底（旧式 `HOOKS = <变量>`）保持
+    **fail-closed**：判否，不猜。
     """
-    m = HOOKS_TUPLE_RE.search(text)
-    if not m:
-        return False
-    body = m.group("body")
-    return "pre-commit" in body and "commit-msg" in body
+    names = _hooks_from_ast(text)
+    if names is None:
+        m = re.search(r"HOOKS\s*=\s*(?P<rest>[^\n]*)", text)   # 兜底：非字面量形态
+        rest = _strip_comment(m.group("rest")) if m else ""
+        names = re.findall(r"""["']([^"']+)["']""", rest)
+    return "pre-commit" in names and "commit-msg" in names
 
 
 def unskippable_wiring_problems(*, ci: Path, hook: Path, installer: Path,
@@ -354,10 +546,18 @@ def unskippable_wiring_problems(*, ci: Path, hook: Path, installer: Path,
     被该闸门当场判为 2 处动态目标）。
     """
     problems: list[str] = []
+    # 读盘一次、结果留给下面两段判据共用（行 4/5 是结构判定，行 6 要按层核退出码）。
+    def _text(p: Path) -> str:
+        return p.read_text(encoding="utf-8", errors="replace") if p.is_file() else ""
+
+    ci_text = _text(ci)
+    hook_text = _text(hook)
+    chook_text = _text(commithook) if commithook else ""
+    inst_text = _text(installer)
     if not ci.is_file():
         problems.append(f"[不可跳过] {CI_REL} 不存在——"
                         f"结构守卫的不可跳过层只能接在 CI 上（fail-closed）")
-    elif not _invokes_guard(ci.read_text(encoding="utf-8", errors="replace")):
+    elif not _invokes_guard(ci_text):
         problems.append(
             f"[不可跳过] {CI_REL} 里**命令位置**没有 `structure-guard.py verify "
             f"--from-git …`"
@@ -366,7 +566,7 @@ def unskippable_wiring_problems(*, ci: Path, hook: Path, installer: Path,
     if not hook.is_file():
         problems.append(f"[不可跳过] {HOOK_REL} 模板不存在"
                         f"（便利层缺失；CI 层仍在，但本地无即时拦截）")
-    elif not _invokes_guard(hook.read_text(encoding="utf-8", errors="replace")):
+    elif not _invokes_guard(hook_text):
         problems.append(f"[不可跳过] {HOOK_REL} 没有调用与 CI **同一条**判据"
                         f"（两层各判一套＝同一个字段两种读法）")
     # `commit-msg`（修复验证复核 `run-…-089` major ⇒ 二查 087-major-3）：
@@ -377,24 +577,57 @@ def unskippable_wiring_problems(*, ci: Path, hook: Path, installer: Path,
     if not chook.is_file():
         problems.append(f"[不可跳过] {COMMITHOOK_REL} 模板不存在（`pre-commit` 读不到"
                         f"待提交信息里的署名 ⇒ 合法结构删除在本地只能 `--no-verify`）")
-    elif not _invokes_guard(chook.read_text(encoding="utf-8", errors="replace")):
+    elif not _invokes_guard(chook_text):
         problems.append(f"[不可跳过] {COMMITHOOK_REL} 没有调用与 CI **同一条**判据")
-    elif "--ack-file" not in chook.read_text(encoding="utf-8", errors="replace"):
+    elif "--ack-file" not in chook_text:
         problems.append(f"[不可跳过] {COMMITHOOK_REL} 没有把**待提交信息文件**交给判据"
                         f"（缺 `--ack-file` ⇒ 署名形同不存在）")
     if not installer.is_file():
         problems.append(f"[不可跳过] {INSTALLER_REL} 不存在——`.git/hooks/` "
         f"不在版本控制里，"
                         f"没有安装器就只剩『记得手动拷』")
-    elif "--check" not in installer.read_text(encoding="utf-8", errors="replace"):
+    elif "--check" not in inst_text:
         problems.append(f"[不可跳过] {INSTALLER_REL} 缺 `--check` "
         f"档——『装没装』必须可核")
-    elif not _installs_hooks(installer.read_text(encoding="utf-8", errors="replace")):
+    elif not _installs_hooks(inst_text):
         problems.append(
             f"[不可跳过] {INSTALLER_REL} 的 `HOOKS` 清单没有**同时**装 "
             f"`pre-commit` 与 `commit-msg`（复核 `091` minor 2：`pre-commit` 已改为 "
             f"`--report-only`，本地层的**终判整个压在 `commit-msg` 上** ⇒ 少了它，"
             f"本地层对结构删除既不拦也不判，只剩 CI 一层）")
+    # ---- 行 6（092 minor；E3：批 7／批 9 的**共同残余**）--------------------
+    # 批 7 把 `pre-commit` 改成 `--report-only`（终判压到 `commit-msg`），
+    # 批 9 修了 `structure-guard` 的基线 fail-open——**两批都没有给
+    # "不许所有层都加 `--report-only`"留判据**。三处接线全加上它 = 整条链 fail-open：
+    # 守卫逐条打印 `[FAIL]`，而每一处都 rc=0。
+    # 判据分两半（都被反向对照 f′ 覆盖；判据本体 = `_enforces_exit_code`）：
+    #   ① **三处合起来**至少有一次调用由退出码终判（不许"三处全 report-only"）；
+    #   ② 终判层 `EXIT_CODE_JUDGE_REL`（= 不可跳过层 CI）自己不得让出终判。
+    # 单层 report-only 是**合法**的（批 7 就是这么定的：本地早期层只报告、终判上移），
+    # 故判据不禁止任何单独一层，只禁止"**没有任何一处**在拒绝"。
+    layers = ((CI_REL, ci_text), (HOOK_REL, hook_text), (COMMITHOOK_REL, chook_text))
+    report_only_here = [rel for rel, text in layers if _invokes_report_only(text)]
+    if all(text for _, text in layers) and not any(
+            _enforces_exit_code(text)[1] for _, text in layers):
+        problems.append(
+            f"[report-only/终判] {len(layers)} 处接线"
+            f"（{', '.join(rel for rel, _ in layers)}）**全部**带 `--report-only`"
+            f"（现测：{report_only_here}）⇒ 没有任何一处由**退出码**终判，"
+            f"整条链 fail-open：守卫照样逐条打印 `[FAIL]`，三处却都 rc=0。"
+            f"批 7／批 9 改完留下的正是这一格（E3）——本地层终判必须有载体，"
+            f"不得三层全 report-only。")
+    # ② 终判层自己不得让出。为什么单列一条、而不靠 ① 推出：① 是"三处合起来还有
+    # 一处在判"，将来若把终判挂到别处（再加一个本地层）① 仍可能全绿，而
+    # **不可跳过层**已经在只报告——那正是这个 Sprint 要治的"看起来很通过"。
+    calls, enforces = _enforces_exit_code(ci_text)
+    if not ci_text:
+        problems.append(f"[report-only/终判] {CI_REL} 读不到内容 ⇒ 终判层无从判定"
+                        f"（fail-closed，不把『没判』当『通过』）")
+    elif calls and not enforces:
+        problems.append(
+            f"[report-only/终判] 终判层 {EXIT_CODE_JUDGE_REL}（不可跳过层）变成 "
+            f"`--report-only` ⇒ 本地层可能没装、可能被 `--no-verify` 跳过，"
+            f"这一层再只报告就**没有任何一层**在拒绝结构删除——正是行 6 要禁的形态。")
     return problems
 
 
@@ -590,6 +823,9 @@ def selftest() -> int:
                           encoding="utf-8")
     chook_probe.write_text((ROOT / COMMITHOOK_REL).read_text(encoding="utf-8"),
                            encoding="utf-8")
+    # 行 6 的夹具用**仓库真文件**的文本（只读）：前置条件于是是真的。
+    hook_txt = (ROOT / HOOK_REL).read_text(encoding="utf-8")
+    chook_txt = (ROOT / COMMITHOOK_REL).read_text(encoding="utf-8")
     try:
         def _probe_problems() -> list[str]:
             return unskippable_wiring_problems(ci=ci_probe, hook=hook_probe,
@@ -650,6 +886,69 @@ def selftest() -> int:
            "→ FAIL（『模板存在』不等于『会被装上』；本地终判压在它身上）",
            any("HOOKS" in p for p in hooks_problems),
            next((p for p in hooks_problems if "HOOKS" in p), hooks_problems[:1]))
+        # ---- 行 4（`_invokes_guard` 由黑名单改**结构判定**）------------------
+        call_ok = ("python scripts/structure-guard.py verify "
+                   "--from-git $guardBase")
+        ok("行 4 反向对照 f：真调用＋**行尾注释里的同名字样** ⇒ 判有调用（防假红）",
+           _invokes_guard(f"{call_ok}   # 就是这一行 {call_ok}"),
+           f"lines={_guard_command_lines(call_ok)}")
+        ok("行 4 反向对照 g：只剩 `Write-Host` **日志标签** ⇒ 判无调用（087 major 1）",
+           not _invokes_guard(f'Write-Host "{call_ok}"'))
+        ok("行 4 反向对照 h：只剩**行尾注释** ⇒ 判无调用（新洞，修前假绿）",
+           not _invokes_guard(f"run: echo placeholder   # {call_ok}"))
+        ok("行 4 反向对照 i：只剩**变量赋值**（here-string/赋值族） ⇒ 判无调用",
+           not _invokes_guard(f'cmd = "{call_ok}"'))
+        ok("行 4 反向对照 j：`Write-Output` 回显 ⇒ 判无调用（旧黑名单漏掉的别名）",
+           not _invokes_guard(f'Write-Output "{call_ok}"'))
+        ok("行 4 防假红：`--from-git` 后面还有参数`--report-only` 仍算真调用",
+           _invokes_guard(f"{call_ok} --report-only"),
+           f"lines={_guard_command_lines(call_ok + ' --report-only')}")
+        # ---- 行 5（`_installs_hooks` 由文本子串改**解析 HOOKS 结构**）--------
+        ok("行 5 反向对照 k：`HOOKS` 被注释掉、真清单为空元组 ⇒ FAIL"
+           "（修前子串假绿的原形态）",
+           not _installs_hooks("# HOOKS = (\"pre-commit\", \"commit-msg\")\n"
+                               "HOOKS = ()"))
+        ok("行 5 反向对照 l：合法 list 形态 `HOOKS = [...]` 含两名 ⇒ PASS"
+           "（修前元组正则认不出 ⇒ 假红）",
+           _installs_hooks('HOOKS = ["pre-commit", "commit-msg"]'))
+        ok("行 5 反向对照 m：list 里少了 `commit-msg` ⇒ FAIL（合法形态也要判）",
+           not _installs_hooks('HOOKS = ["pre-commit"]'))
+        ok("行 5 反向对照 n：兜底路径（`HOOKS = VARIANT`，值不在同一行）⇒ FAIL，"
+           "不因解析不出而放行",
+           not _installs_hooks('HOOKS = VARIANT["windows"]'))
+        # ---- 行 6（三层全 `--report-only`）---------------------------------
+        # 夹具用**仓库真文件**的文本（不是手写的假层）：前置条件"三处都在命令位置
+        # 调用了守卫"因此是真的，不是判据自证。
+        layers = (("CI", ci_text), ("pre-commit", hook_txt),
+                  ("commit-msg", chook_txt))
+        flags = [(len(_guard_command_lines(t)),
+                  _enforces_exit_code(t)[1]) for _, t in layers]
+        ok("行 6 前置条件：三处接线**都**在命令位置调用了守卫"
+           "（没这个前置，下面的判据等于没触发）",
+           all(n > 0 for n, _ in flags), f"(调用数, 由退出码终判)={flags}")
+        ok("行 6 反向对照 o：仓库现状（`pre-commit` 单层 report-only）⇒ "
+           "**至少一处**由退出码终判 ⇒ 不误报（批 7 的合法形态）",
+           any(enforce for _, enforce in flags),
+           f"(调用数, 由退出码终判)={flags}")
+        all_ro = [_enforces_exit_code(f"{call_ok} --report-only")
+                  for _ in layers]
+        ok("行 6 反向对照 p：三处接线**全**带 `--report-only` ⇒ "
+           "**没有一处**由退出码终判（判据本体的红条件）",
+           not any(enforce for _, enforce in all_ro), f"all={all_ro}")
+        ok("行 6 反向对照 p′：终判层（CI）自己带 `--report-only` ⇒ "
+           "不可跳过层也只剩「上报」",
+           _guard_command_lines(f"{call_ok} --report-only")
+           and _enforces_exit_code(f"{call_ok} --report-only")[1] is False)
+        ok("行 6 反向对照 q：混合（CI 非 report-only、本地层 report-only）⇒ "
+           "判据**不得**报『全 report-only』（防假红）",
+           any(_enforces_exit_code(f"{call_ok} --report-only")[1] is False
+               for _ in layers)
+           and _enforces_exit_code(call_ok)[1] is True)
+        ok("行 6 检测器不认注释：注释里写 `--report-only` 不算 report-only 档"
+           "（否则新判据栽在同一种形态上）",
+           not _invokes_report_only(f"# 本层不用 --report-only\n{call_ok}"))
+        ok("行 6 检测器认命令位置：真调用带 `--report-only` ⇒ 检测器点名",
+           _invokes_report_only(f"{call_ok} --report-only"))
     finally:
         for probe in (ci_probe, hook_probe, inst_probe, chook_probe):
             probe.unlink(missing_ok=True)
