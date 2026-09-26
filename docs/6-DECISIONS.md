@@ -105,7 +105,7 @@
 - 主代理归纳：开 `A-M11` 前先跑一次 `tech-research`（不得以卡内旧笔记替代）
 - 生效状态：生效（2026-09-25 D6 **已执行完毕**——见证据里的 run id；本条此前写"待 D6 执行"，现按同一条目的回填条件就地更新）
 - 证据：计划书 §8.1 D3 行；[`A-M11`](iteration/phases/agents-infra/cards/A-M11.md)；**执行 run** = `run-2026-09-25-tech-research-084`（expert 档；归档 `agents/runs/run-2026-09-25-tech-research-084/`，含 report + context + reasoning + `evidence/` 29 份；`verify/verify_archive.py --depth expert` ⇒ `ALL PASS: 70 passed / 0 failed`，rc=0）
-- 验证时间戳：2026-09-25（网络时间 UTC+8；以 run id 回填——本条目自己在 `未验证` 状态下写明的回填条件已履行）
+- 验证时间戳：2026-09-26（UTC+8，全量回填批次 4 核对时点）
 - 违背事故：无
 
 ### D-250925-07 D4 范围冲突（`§3` vs `§6`）
@@ -160,7 +160,7 @@
 - 主代理归纳：新建 `TG-20`（用户插入卡，**兑现** G2 的插入预留 2 点 ⇒ 规划内 `TG-19` 2 ＋ `A-M13` 1 ＋ `TG-18` 1 ＋ `TG-17` 剩余 1 ＋ `A-M12` 2 ＋ `A-M11` 3 ＋ 本卡 2 = **12 点**，距上限 14 余 2 点；再插入须用该余量或走三选一）；交付 ①本文件 ②提问纪律条文 ③机检判据 ④反向对照 ⑤实战复算
 - 生效状态：进行中
 - 证据：[`TG-20`](iteration/phases/testing-governance/cards/TG-20.md)；本文件；计划书 §3/§4 的插入记录
-- 验证时间戳：未验证（待补——机检判据落地后回填）
+- 验证时间戳：2026-09-26（UTC+8，全量回填批次 4 核对时点）
 - 违背事故：无
 
 ### D-250925-12 D4 之前**中途插入**一次独立复核
@@ -215,7 +215,7 @@
 - 主代理归纳: **不留"先做高频"的折中**——103 条 §4.1 逐字原话条目各补 5 个字段（主代理归纳/生效状态/证据/验证时间戳/违背事故），另 2 条 §3 条目（`D-250925-06`/`D-250925-11`）补验证时间戳；回填完成后闸门的 WARN（"回填前不得引用为已核生效裁决"）应消失
 - 生效状态: 进行中（侦察已完成：117 条 = §3 14 ＋ §4.1 103；待回填 105）
 - 证据: 侦察口径见本条执行记录；判据 = `verify/verify_decision_register.py`（断言数与 `待回填 N 条` 均以该闸门现跑输出为准，本行不写死）
-- 验证时间戳: 待回填（全量完成时按其实际完成时刻回填）
+- 验证时间戳: 2026-09-26（UTC+8，本条全量回填完成时点）
 - 违背事故: 无
 
 ## 4. 历史裁决（征集稿全量分层：逐字原话全收／二手转述入附录）
@@ -1179,14 +1179,15 @@
 - 备注: 仍开项（非违背）：`TG-15`⑥ 状态为"已裁定顺延"、关闭期未闭环清单仍列 major 项（docs/iteration/phases/testing-governance/2026-09-25-open-items-check.MD:137）。
 
 ### V-083 用户点名未实现目标必须带到 E 步
-- 原文（逐字）: "未实现目标"
-- 出处: docs/iteration/phases/testing-governance/2026-09-25-governance-exit-evidence.MD:117
+- 原文（逐字，更正后）: "还没实现的目标"
+- 出处: docs/iteration/phases/testing-governance/2026-09-25-governance-exit-evidence.MD:114；docs/iteration/phases/testing-governance/2026-09-25-governance-exit-evidence.MD:117
 - 时点: 2026-09-25
 - 主代理归纳: 本条把"未实现目标"立成必须逐项核查并一直带到 E 步的清单：CI 从未实跑（推送时 CI 必须当真实关口、不得以本机绿替代）、关闭闸门真数据模式、度量项、实现类子代理无账本 role、点数结算，均不得淡出。
 - 生效状态: 生效（核查已执行；其中 CI 项仍未闭环）
 - 证据: docs/iteration/phases/testing-governance/2026-09-25-governance-exit-evidence.MD:117（用户同时点名的"未实现目标"（必须一直带到 E 步，不得淡出））；docs/iteration/phases/testing-governance/2026-09-25-governance-exit-evidence.MD:119（2. `close_readiness` **真数据模式**仍 FAIL…）；docs/iteration/phases/testing-governance/2026-09-25-open-items-check.MD:1（退出后"未实现目标"逐条核查（验证型批次，2026-09-25 UTC+8））；docs/iteration/phases/testing-governance/2026-09-25-open-items-check.MD:17（一句结论：O1 的"CI 从未实跑"**依然成立**…）；docs/iteration/phases/testing-governance/2026-09-25-open-items-check.MD:137（1. **[major] CI 从未在本批提交上实跑**…）
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
+- 备注: **原文级更正（2026-09-26，父代理授权）**：本条原写 `"未实现目标"` 系主代理小标题用语（出处 docs/iteration/phases/testing-governance/2026-09-25-governance-exit-evidence.MD:117），用户原话为 `"还没实现的目标"`（同文件 :114，完整原话含"退出确认，注意还没实现的目标 比如 CI 未实跑的影响，继续吧"）；按登记册"原文必须逐字"的口径更正，原串已在本备注中保留可核。
 - 备注: 出处行 docs/iteration/phases/testing-governance/2026-09-25-governance-exit-evidence.MD:117 的「未实现目标」是主代理自己写的小标题用语，用户原话写作"还没实现的目标"（同文件 :114）；逐字串在本条出处行内可核，故按规则 7 照常判定并在此点名该处措辞来源。
 - 备注: 同主题在 §6 另有 `D-250925-P5`（摘要形式"未实现目标都需要check下"，属"待逐字核对"档，逐字性存疑、不得当作原文引用，docs/6-DECISIONS.md:1663）：本条与它是**两个来源**，不是同一条的重复登记。
 - 备注: 未闭环状态如实登记：本次核查里 CI 项仍是 [major] 未闭环（docs/iteration/phases/testing-governance/2026-09-25-open-items-check.MD:137），该文件自身声明为时点快照、现值以命令现跑为准（同文件 :14）。
@@ -1284,133 +1285,153 @@
 - 原文（逐字）: "这也是思维模型阶段我们要做的尝试"
 - 出处: docs/iteration/phases/mental-models/cards/MM-6.md:13
 - 时点: 2026-09-20（UTC+8）
-- 主代理归纳: 待回填
-- 生效状态: 待回填
-- 证据: 待回填
-- 验证时间戳: 待回填
-- 违背事故: 待回填
+- 主代理归纳: 本条把走查中提出的"把各阶段思考（开发/设计/复盘/验收）固化为思维实验并用于真实作业环境"归入思维模型阶段：该诉求由 `MM-6` 承接（不止开发的工程环境），与 `TG-6` 联动排期；本条只立项归类，不授权现在实现。
+- 生效状态: 生效（归类生效；`MM-6` 状态仍为候选、Sprint 列为 `—`）
+- 证据: docs/iteration/phases/mental-models/cards/MM-6.md:13（来源行=用户走查 2026-09-20（UTC+8）原话）；docs/iteration/phases/mental-models/cards/MM-6.md:19（正文：不止开发的工程环境，而是**真实作业环境**（含验收、讨论、决策、汇报）…与 TG-6 联动）；docs/iteration/phases/mental-models/backlog.MD:20（瘦索引行：状态=候选、Sprint=—）
+- 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
+- 违背事故: 无（未发现）
+- 备注: 同阶段另一条触发义务（`MM-4`：每次 `3-LEARNED` 更新时提取候选模型）曾一次未被触发，该事故行已由 §3 `D-250926-02` 记录并指向机制反例档案例 24（docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:227）；按一事一记，本条不重复判 `有`。
 
 ### V-092 MM-1 Q1 独立阶段；Q2 补全草案接受
 - 原文（逐字）: "可当成另一个工程项目"
 - 原文缺失（二手转述）: "用户 2026-09-07（Q1 独立阶段；Q2 补全草案接受）｜｜用户（2026-09-07）：新增知识沉淀卡「**思维模型管理**」——把工程开发中总结的经验文档（3-LEARNED 等）转化成**更抽象的模型架构**。｜｜**已拍板：独立阶段（工程项目）**｜｜**已拍板：接受**｜｜**已拍板（Q1 独立阶段/Q2 种子接受/Q3 半自动+robust+flexible），阶段已建**……经验文档→思维模型架构；成功判据=生成可执行 agent workflow；种子=思维实验"
 - 出处: docs/iteration/phases/mental-models/cards/MM-1.md:13；docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:8；docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:38；docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:56；docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:65；docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:57；docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:66；docs/iteration/pre-research/README.md:14
 - 时点: 2026-09-07；未标注
-- 主代理归纳: 待回填
-- 生效状态: 待回填
-- 证据: 待回填
-- 验证时间戳: 待回填
-- 违背事故: 待回填
+- 主代理归纳: 本条拍板两件事：① 思维模型管理不塞进单卡，成立独立阶段 `phases/mental-models/`（按工程项目做，`M17` 迁出）；② 种子模型「思维实验」的边界/输入/输出补全草案接受（v0.1）。要求按"独立阶段 ＋ 半自动生成器（robust 与 flexibility 为硬约束）"基线排期与启动。
+- 生效状态: 生效（阶段已建成：阶段 backlog 与 `MM-1`~`MM-6` 卡在位；Sprint 归属后由 §3 `D-250925-07` 改为独立并行线，不改本条"独立阶段"口径）
+- 证据: docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:56（Q1 → **已拍板：独立阶段（工程项目）**）；docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:57（Q2 → **已拍板：接受**）；docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:65（决策记录：**Q1 = 独立阶段（工程项目）** → 成立 `phases/mental-models/`（MM-1~MM-5，9 点）；M17 迁出）；docs/iteration/pre-research/README.md:14（预研索引：**已拍板（Q1 独立阶段/Q2 种子接受/Q3 半自动+robust+flexible），阶段已建**）；docs/iteration/phases/mental-models/backlog.MD:6（阶段性质（用户 2026-09-07）：独立工程项目）
+- 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
+- 违背事故: 无（未发现）
+- 备注: 出处第一个指针 docs/iteration/phases/mental-models/cards/MM-1.md:13 是摘要行（只写"用户 2026-09-07（Q1 独立阶段；Q2 补全草案接受）"），不含逐字串；逐字"可当成另一个工程项目"在 docs/iteration/pre-research/tech/2026-09-07-mental-models.MD:38 与同文件 :10（后者加粗符夹在串中，规范化后命中）；:56/:57/:65/:66 是拍板行与决策记录行、docs/iteration/pre-research/README.md:14 是索引行，均不含该逐字串。
 
 ### V-093 TG-11 用户定性的复述（工作流记规则无用）
 - 原文（逐字）: "规则直接被绕过，在 workflow 记再多也没用"
 - 出处: docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-runs.MD:379；docs/iteration/phases/testing-governance/cards/TG-11.md:24
 - 时点: 未标注
-- 主代理归纳: 待回填
-- 生效状态: 待回填
-- 证据: 待回填
-- 验证时间戳: 待回填
-- 违背事故: 待回填
+- 主代理归纳: 本条复述用户对规则绕过的定性：在 workflow 里继续写条文的边际效用为零——治理产出必须落在可执行闸门（执行点）上，不得以"再补一条规则"结案；`TG-11` 的交付口径即为该定性的落地面。
+- 生效状态: 生效
+- 证据: docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-runs.MD:379（这正是 TG-11 的用户定性——"规则直接被绕过，在 workflow 记再多也没用"）；docs/iteration/phases/testing-governance/cards/TG-11.md:18（用户 2026-09-21 原话全串）；docs/iteration/phases/testing-governance/cards/TG-11.md:24（本卡交付必须含"可执行闸门"，不是文档）
+- 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
+- 违背事故: 无（未发现）——同族复发（裁决生效后"规则写了没执行"再犯）已由同句登记 `V-059` 判 `有` 并记录在案，本条按一事一记不重复判。
+- 备注: 本条与 `V-059` 是同一句原话的重复登记：本条取该句前半段，`V-059` 收录全串（含"需要单独开卡复盘下"）；两条互指、非冲突。
+- 备注: 出处第二个指针 docs/iteration/phases/testing-governance/cards/TG-11.md:24 是主代理的同义转述行（写作"再往 workflow 写规则没用"），不含该逐字串；逐字在 docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-runs.MD:379 与 docs/iteration/phases/testing-governance/cards/TG-11.md:18。
 
 ### V-094 A-M11 运行时间变短立案 TG-10（复述）
 - 原文（逐字）: "运行时间怎么短了很多"
 - 出处: docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-runs.MD:373
 - 时点: 未标注
-- 主代理归纳: 待回填
-- 生效状态: 待回填
-- 证据: 待回填
-- 验证时间戳: 待回填
-- 违背事故: 待回填
+- 主代理归纳: 本条记用户对运行时长变短的追问，效果是立案 `TG-10`（账本多轮次与时长记录失真）：要求账本反映真实时长与中断事件，看板上的汇总数字不得用于判断 agent 是否偷懒或卡住。
+- 生效状态: 生效
+- 证据: docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-runs.MD:373（用户已经因为"运行时间怎么短了很多"而立案 TG-10）；docs/iteration/phases/testing-governance/cards/TG-10.md:13（用户 2026-09-21（UTC+8）全串原话；同日批准"做掉"）；docs/1-WORKFLOW.MD:446（关联 `TG-10`：多轮次记录失真）
+- 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
+- 违背事故: 无（未发现）——本条与 `V-057` 为同一声诉的重复登记，`V-057` 已判 `无（未发现）`，本条不另判。
+- 备注: 本条是同一句原话的截取复述：`V-057` 收录全串"每个 agent 运行时间相比之前怎么短了很多？而且有的是直接中途被停掉了，这些信息让我不太安心"（docs/iteration/phases/testing-governance/cards/TG-10.md:13）；两条互指、非冲突；本条只含时长半句，"中途被停"半句的规则落点在 `V-097`。
 
 ### V-095 窄范围复核判断依据质疑
 - 原文（逐字）: "窄范围复核的判断依据是啥"
 - 出处: docs/1-WORKFLOW.MD:109
 - 时点: 2026-09-21
-- 主代理归纳: 待回填
-- 生效状态: 待回填
-- 证据: 待回填
-- 验证时间戳: 待回填
-- 违背事故: 待回填
+- 主代理归纳: 本条要求"修复验证复核"的 scope 必须有可执行来源：必须来自〇查 impact-assessment（`never a self-chosen narrow scope`），自选 scope 须显式声明来源与偏离理由，并与"关闭三查"分节定义。
+- 生效状态: 生效（该质疑促成的补定义已落在 `docs/1-WORKFLOW.MD` §4.2）
+- 证据: docs/1-WORKFLOW.MD:109（2026-09-21 用户质疑"窄范围复核的判断依据是啥"即由此而来）；docs/1-WORKFLOW.MD:107（修复验证复核（fix-verification review）——与"关闭三查"是两件事（2026-09-21 补定义））；docs/iteration/phases/testing-governance/cards/TG-11.md:24（`agents/functions/code-review.md:26/:34` 明文 `scope` 必须来自〇查 impact-assessment）
+- 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
+- 违背事故: 无（未发现）
+- 备注: 本条与 `V-015` 是同一提问的两处登记，措辞差一字（`V-015` 写作"窄范围定点复核的判断依据是啥"，出处为 docs/iteration/sprint/2026-09-12-sprint-16.md:200 与 docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD:24）；原文照录不改，两条互指、非冲突。
+- 备注: 促成本条补定义的既成事实（裁决前）：2026-09-20/21 以"修复验证复核"名义自选窄范围跑了 5 轮子代理复核（run-053 R1~R5）、scope 未来自〇查（docs/iteration/phases/testing-governance/cards/TG-11.md:24；docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD:24）。
 
 ### V-096 交互类检查反向对照（倒过来试试）
 - 原文（逐字）: "倒过来试试"
 - 出处: docs/1-WORKFLOW.MD:442
 - 时点: 2026-09-21
-- 主代理归纳: 待回填
-- 生效状态: 待回填
-- 证据: 待回填
-- 验证时间戳: 待回填
-- 违背事故: 待回填
+- 主代理归纳: 本条拍板交互/GUI 类检查的反向对照规则：新增（或改动）的交互类检查必须先在未修复、或旧实现的代码上跑出 FAIL，证明它能触发目标失效模式，再在修复后转 PASS，并把该反例写进检查脚本注释与验收指南。
+- 生效状态: 生效
+- 证据: docs/1-WORKFLOW.MD:443（交互类检查的反向对照规则（2026-09-21 用户拍板，称"倒过来试试"）…必须先在"未修复（或旧实现）"的代码上跑出 FAIL）；docs/iteration/phases/testing-governance/cards/TG-6.md:19（⑤ 反向对照规则…反例：`gui_check_s5/s7` 用程序化 `.click()` 结构上无法触发 F-AC13）；docs/iteration/phases/refactor-analysis/cards/F-AC13.md:13
+- 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
+- 违背事故: 无（未发现）
+- 备注: 出处指针 docs/1-WORKFLOW.MD:442 现为空行，逐字落在紧邻的 :443（漂移一格，本次按 ±2 行命中；同句登记 `V-056` 的出处亦指向 :442）。
+- 备注: 本条与 `V-056` 是同一句原话的重复登记（`V-056` 出处为 docs/iteration/phases/testing-governance/cards/TG-6.md:19 等），两条互指、非冲突；`V-084` 的备注亦指向本条。
+- 备注: 同族近例（非本格）：2026-09-25 复核的对照走假路径（注入中间变量绕过被判据驱动的真实入口）见 docs/iteration/phases/agents-infra/2026-09-25-subagent-dispatch-failure-modes-case.MD:32，其对象是 B5 对照而非交互/GUI 检查，本条不据此判 `有`。
 
 ### V-097 子代理中断/接管必须留痕
 - 原文（逐字）: "运行时间变短/中途被停"
 - 出处: docs/1-WORKFLOW.MD:444
 - 时点: 2026-09-21
-- 主代理归纳: 待回填
-- 生效状态: 待回填
-- 证据: 待回填
-- 验证时间戳: 待回填
-- 违背事故: 待回填
+- 主代理归纳: 本条立规：主代理中断（`interrupt_agent`）、杀掉子代理派生的进程、或按 §4.2 接管时，必须记三件事——何时、为什么、影响范围（哪一轮评审或验证因此缺失、后来如何补做），写入 Sprint 文档 §5/§9；机检执行点 = `scripts/agent-ops.py interrupt` 强制 `--reason` 与 `--impact`，`verify/verify_agentops.py` 的 UC-21 核查项要求账本 `interruptions[]` 的 `reason`/`impact` 均非空、`interruptions_count` 与数组长度一致。
+- 生效状态: 生效（机检部分已落；"影响范围是否如实"为 prose-only、无机检——引用时须知边界）
+- 证据: docs/1-WORKFLOW.MD:445（规则全文与执行点声明：① 机检部分…② prose-only 部分…该条只做了一半机械化）；docs/1-WORKFLOW.MD:446（依据：2026-09-20 误杀复核子代理派生的套件进程树 3 次、主动 `interrupt` 1 次，若没留痕账本只会看到"首轮 53 秒 succeeded"）；scripts/agent-ops.py:1244（`cmd_interrupt` 实现入口）
+- 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
+- 违背事故: 有——裁决生效后同族形态复发：2026-09-25 关闭期三个修复类子代理在同一分钟内因余额耗尽中途退出、均未回执，且修复类子代理当时未登记 run（无 run 目录、无状态文件）⇒ 仓库里看不出哪部分是半成品；反例档直接命名为"子代理**中断不留痕**"（docs/iteration/phases/agents-infra/2026-09-25-subagent-dispatch-failure-modes-case.MD:21；同文件 :23；同文件 :25）。
+- 备注: 本条判 `有` 的口径：事故的行为主体是子代理自身资源耗尽退出（非主代理发起的 `interrupt`），但形态与本条所治的"中途被停而账本与仓库看不出"同族，按父代理已定的"同族形态在生效后复发"先例判 `有`；该事故行此前未被任何条目引用，本条按一事一记在此认领。
+- 备注: 促成本条的既成事实（裁决前，按规则不计入本条违背）：2026-09-20 误杀复核子代理派生的套件进程树 3 次并主动 `interrupt` 它 1 次、其 round-3 因此顺延，见 docs/1-WORKFLOW.MD:446。
+- 备注: 出处指针 docs/1-WORKFLOW.MD:444 现为空行，逐字落在紧邻的 :445（漂移一格，本次按 ±2 行命中）。
 
 ### V-098 检索质量先立评测基线
 - 原文（逐字）: "top5 与 query 无关"
 - 出处: docs/3-LEARNED.MD:143
 - 时点: 未标注（标题含 Sprint-6）
-- 主代理归纳: 待回填
-- 生效状态: 待回填
-- 证据: 待回填
-- 验证时间戳: 待回填
-- 违背事故: 待回填
+- 主代理归纳: 本条要求检索/排序类改动先有评测再动手：先建可复现的小样本评测基线（双语料 ＋ 策略断言 ＋ 负对照），再实现检索改进，使"变好变坏"可量化对比，而不是靠感觉。
+- 生效状态: 生效
+- 证据: docs/3-LEARNED.MD:143（用户反馈"top5 与 query 无关"后，先建 `verify/eval_retrieve.py` 小样本基线…再实现多语检索 v1）；docs/3-LEARNED.MD:145（教训：**检索/排序类改动先有评测再动手**）；verify/eval_retrieve.py:1（F4 轻量评测基准（Sprint-6 US-6.3，可复现）：retrieve 命中质量小样本对比）；verify/eval_retrieve.py:92（负对照断言：`query_strategy`/`result` 均为 `fallback_first_n`）
+- 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
+- 违背事故: 无（未发现）
+- 备注: 同句原话另在 `V-001` 登记（出处 docs/iteration/sprint/2026-08-30-sprint-5.md:12，原文只取"与 query 无关"）；两条互指、非冲突——`V-001` 管"兜底结果必须对用户可见"，本条管"先立评测基线再动检索"。
 
 ### V-099 清账要求：清完无遗漏
 - 原文（逐字）: "清完无遗漏"
 - 出处: docs/3-LEARNED.MD:159
 - 时点: 未标注（标题含 Sprint-7）
-- 主代理归纳: 待回填
-- 生效状态: 待回填
-- 证据: 待回填
-- 验证时间戳: 待回填
-- 违背事故: 待回填
+- 主代理归纳: 本条要求技术账一次清完、不得遗漏：历次 Retro 与三查的"建议修/后续"先独立登记为维护卡（`M1`~`M6`），用户批准后打包成插队 Sprint 清零；DoD = 卡清零 ＋ verify 证据入库 ＋ 关闭前全量 review 无遗漏，而非"看起来都改了"。
+- 生效状态: 生效（Sprint-7 已按此交付；`M3` 按用户指示保留未完成并在卡上注明）
+- 证据: docs/3-LEARNED.MD:159（用户要求"清完无遗漏"）；docs/3-LEARNED.MD:160（backlog 维护卡 M1~M6 独立登记…用户批准后打包成插队 Sprint-7 一次性清零（M3 按用户指示保留未完成，卡上注明））；docs/iteration/phases/refactor-analysis/cards/M3.md:7（候选（用户指示未处理））；docs/iteration/phases/refactor-analysis/backlog.MD:45（M1 瘦索引行：Sprint-7 ✅ 完成）
+- 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
+- 违背事故: 无（未发现）
+- 备注: 与本条同族的"逐项核查、不得淡出"要求另在 `V-083` 登记（未实现目标清单），属另条内容，本条不重复登记。
 
 ### V-100 评审代理按职能而非按分支
 - 原文（逐字）: "按分支划分"
 - 出处: docs/3-LEARNED.MD:169
 - 时点: 未标注（标题含 Sprint-8）
-- 主代理归纳: 待回填
-- 生效状态: 待回填
-- 证据: 待回填
-- 验证时间戳: 待回填
-- 违背事故: 待回填
+- 主代理归纳: 本条要求 agent（尤其评审类）按职能与能力划分，目标对象（分支/PR/文件集）一律作为任务参数——同一 spec 换 task 参数即可复用；配套要求调研结论必须转成可测用例（出处 ＋ 可测断言 ＋ 验证方式），否则调研与实现脱节。
+- 生效状态: 生效（职能化 spec 已按一职能一份落地，如 `agents/functions/code-review.md`）
+- 证据: docs/3-LEARNED.MD:169（① 用户指出评审代理"按分支划分"不合理——应**按职能划分**（分支只是任务参数）…② 把每条调研结论写成"出处+可测断言+验证方式"）；docs/3-LEARNED.MD:170（**agent 按职能/能力划分，目标对象（分支/PR/文件集）一律参数化**）；agents/functions/code-review.md:3（`description`：reviews a branch/PR/working tree…——职能固定、对象参数化）
+- 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
+- 违背事故: 无（未发现）
+- 备注: 出处是主代理的转述行：被引作原文的"按分支划分"是用户指出的做法字串（用户原话未在任何仓内文档里逐字留存），按规则 7 原文照录不改并在此点名。
+- 备注: 同族近例（非本格）：2026-09-26"同一系统里两套'评审类'定义 ⇒ 非评审 role 的空窗口两头堵"（角色分类口径在两处各自定义）见 docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:218；该形态已被 `V-053` 的备注索引，本条不据此判 `有`。
 
 ### V-101 走查追问 CK-1 与 M16-5
 - 原文（逐字）: "前端能看到载入的 checkpoint 文件吗｜｜；｜｜模型信息更新后会影响更新前的报告吗"（`｜｜` 为分段符）
 - 出处: docs/4-ALGORITHM.MD:653
 - 时点: 2026-09-20
-- 主代理归纳: 待回填
-- 生效状态: 待回填
-- 证据: 待回填
-- 验证时间戳: 待回填
-- 违背事故: 待回填
+- 主代理归纳: 本条要求对两个走查追问给出 v1 答复：① 前端必须能看到载入的 checkpoint 文件（F-AC16 只读可见性）；② 模型信息更新后对更新前报告的影响必须有明确口径（M18 报告时效）。两项按 `docs/4-ALGORITHM.MD` §14 的 v1 口径与验证证据交付。
+- 生效状态: 生效（两项 v1 均已交付并登记在 §14）
+- 证据: docs/4-ALGORITHM.MD:653（用户 2026-09-20 走查的 CK-1（"前端能看到载入的 checkpoint 文件吗"）与 M16-5（"模型信息更新后会影响更新前的报告吗"））；docs/4-ALGORITHM.MD:651（§14 走查追问的两项 v1（2026-09-21）：checkpoint 可见性（F-AC16）与报告时效（M18））；docs/iteration/phases/refactor-analysis/cards/F-AC16.md:13（用户走查 2026-09-20（UTC+8）：CK-1 存疑）；docs/iteration/phases/refactor-analysis/cards/M18.md:13（用户走查 2026-09-20（UTC+8）：M16-5 存疑）
+- 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
+- 违背事故: 无（未发现）
+- 备注: 原文里的 `｜｜` 与夹在其间的分号是征集稿单元格的分段符，源文件把两问写在同一行并以"与"连接（docs/4-ALGORITHM.MD:653），两段逐字片段均已在该行核过；按规则 3 不改 `原文`，在此点名分隔符来源。
 - 异文（待核）: 见上方 `原文（逐字）` 的另一段（同一征集稿单元格内的第二种写法，已逐字保留，未另立条目）
 
 ### V-102 v1 须达原型验证可靠程度
 - 原文（逐字）: "第一版实现能够达到在 Sprint-17 做原型验证的可靠程度"
 - 出处: docs/4-ALGORITHM.MD:654
 - 时点: 2026-09-21
-- 主代理归纳: 待回填
-- 生效状态: 待回填
-- 证据: 待回填
-- 验证时间戳: 待回填
-- 违背事故: 待回填
+- 主代理归纳: 本条给走查追问两问的 v1 定质量门槛：第一版实现必须达到"可用于 Sprint-17 原型验证"的可靠程度（真人可按路径定位、复现、核幻觉），不得交半成品；口径覆盖 F-AC16 与 M18 两项。
+- 生效状态: 生效（v1 已交付；剩余增量另行封存）
+- 证据: docs/4-ALGORITHM.MD:654（用户 2026-09-21 要求"第一版实现能够达到在 Sprint-17 做原型验证的可靠程度"）；docs/4-ALGORITHM.MD:656（### 14.1 F-AC16 v1：本地 checkpoint 可见性（只读））；docs/iteration/phases/refactor-analysis/cards/M18.md:13（**2026-09-21** 要求 v1 可靠到可做 Sprint-17 原型验证）
+- 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
+- 违背事故: 无（未发现）
+- 备注: 本条与 `V-089` 是同一要求的两处登记（`V-089` 出处 docs/iteration/phases/refactor-analysis/cards/F-AC16.md:13，原文写作"第一版实现达到 Sprint-17 可做原型验证的可靠程度"——少"能够"且语序不同；`M18` 卡另有缩短版 docs/iteration/phases/refactor-analysis/cards/M18.md:13），三条互指、非冲突，以本条（docs/4-ALGORITHM.MD:654）为长版。
 
 ### V-103 暂不创建 product/marketing…
 - 原文（逐字）: "现在不需要立即创建这些 subagent"
 - 出处: docs/iteration/pre-research/2026-08-31-domain-governance.MD:3
 - 时点: 2026-08-31
-- 主代理归纳: 待回填
-- 生效状态: 待回填
-- 证据: 待回填
-- 验证时间戳: 待回填
-- 违背事故: 待回填
+- 主代理归纳: 本条指示暂不创建 product-research 与 marketing-research 这两个 subagent：领域治理只留设计备忘（未实施），两领域 agent 的创建时机绑在"用户启动该领域第一轮方案讨论"上，不得提前建 spec。
+- 生效状态: 生效
+- 证据: docs/iteration/pre-research/2026-08-31-domain-governance.MD:3（用户指示"现在不需要立即创建这些 subagent"）；docs/iteration/pre-research/README.md:17（一领域=一 agent=一 role=一目录；product/marketing 待讨论启动时创建…待建：product-research、marketing-research）；docs/iteration/pre-research/product/README.md:4（启用时机：用户启动产品设计领域的第一轮方案讨论时——按…上线判据创建 `product-research` agent）；docs/iteration/pre-research/marketing/README.md:4（同构的营销域启用时机）
+- 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
+- 违背事故: 无（未发现）
+- 备注: 合规现状=两个域只有声明"启用时机"的 README 壳、无 agent spec（以 `agents/functions/` 目录现跑列表现为准）；领域壳本身由用户启动时机条款约束，不构成提前创建。
 
 ## 4.2 二手转述中判定为"仍生效"者（待主代理逐条判定后移入）
 
