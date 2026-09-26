@@ -2053,8 +2053,7 @@ def cmd_replay_git() -> int:
            gone.returncode == 1 and "文件消失" in gone.stdout
            and victim in gone.stdout,
            _evidence(gone.stdout + gone.stderr, ["文件消失"]))
-        (mirror / victim).write_text("# 复原\n\n## A\n\n内容\n",
-                                     encoding="utf-8", newline="\n")
+        _write_text(mirror / victim, "# 复原\n\n## A\n\n内容\n")
         _git_commit(mirror, "自检：复原被删文档")
         back2 = _run_cli("verify", "--root", str(mirror), "--from-git", "HEAD")
         ok("git 基线：复原后 rc=0（判决来自删除本身，不是夹具漂移）",
