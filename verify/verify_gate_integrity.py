@@ -310,6 +310,26 @@ def _invokes_guard(text: str) -> bool:
     return False
 
 
+HOOKS_TUPLE_RE = re.compile(r"HOOKS\s*=\s*\((?P<body>[^)]*)\)", re.S)
+
+
+def _installs_hooks(text: str) -> bool:
+    """安装器的 `HOOKS = (…)` 清单里必须**同时**含 `pre-commit` 与 `commit-msg`。
+
+    修复验证复核 `run-…-091` minor 2 的原始形态：判据只核 `installer.is_file()` 与
+    文本含 `--check`，**不核它装哪些钩子** ⇒ 把 `HOOKS = ("pre-commit", "commit-msg")`
+    改成 `HOOKS = ("pre-commit",)`（模板仍在、仍调判据）时四处接线判据
+    全绿。而在 `pre-commit` 改为 `--report-only` 之后，**本地层的终判压在 `commit-msg`
+    上**（`pre-commit` 读不到署名 ⇒ 不判）——少了它，本地层对结构删除**既不拦也不判**，
+    只剩 CI 一层。这是"模板存在"与"模板会被装上"之间的缺口。
+    """
+    m = HOOKS_TUPLE_RE.search(text)
+    if not m:
+        return False
+    body = m.group("body")
+    return "pre-commit" in body and "commit-msg" in body
+
+
 def unskippable_wiring_problems(*, ci: Path, hook: Path, installer: Path,
                                 commithook: Path | None = None) -> list[str]:
     """③ 判据本体（A-M12 ①）：结构守卫的「**不可跳过层**」三处接线必须在位。
@@ -369,6 +389,12 @@ def unskippable_wiring_problems(*, ci: Path, hook: Path, installer: Path,
     elif "--check" not in installer.read_text(encoding="utf-8", errors="replace"):
         problems.append(f"[不可跳过] {INSTALLER_REL} 缺 `--check` "
         f"档——『装没装』必须可核")
+    elif not _installs_hooks(installer.read_text(encoding="utf-8", errors="replace")):
+        problems.append(
+            f"[不可跳过] {INSTALLER_REL} 的 `HOOKS` 清单没有**同时**装 "
+            f"`pre-commit` 与 `commit-msg`（复核 `091` minor 2：`pre-commit` 已改为 "
+            f"`--report-only`，本地层的**终判整个压在 `commit-msg` 上** ⇒ 少了它，"
+            f"本地层对结构删除既不拦也不判，只剩 CI 一层）")
     return problems
 
 
@@ -612,6 +638,18 @@ def selftest() -> int:
            "合法结构删除只能 `--no-verify`）",
            any(COMMITHOOK_REL in p for p in chook_problems),
            next((p for p in chook_problems if COMMITHOOK_REL in p), chook_problems[:1]))
+        # **复核 `091` minor 2 的原始形态**：模板都在、也都调判据，但安装器**不装**
+        # `commit-msg`。而 `pre-commit` 已 report-only ⇒ 终判全压在 `commit-msg` 上
+        # ⇒「模板在版本控制里存在」≠「它会被装上」，这一格此前没有判据。
+        inst_probe.write_text((ROOT / INSTALLER_REL).read_text(encoding="utf-8")
+                              .replace('"commit-msg"', '""'), encoding="utf-8")
+        chook_probe.write_text((ROOT / COMMITHOOK_REL).read_text(encoding="utf-8"),
+                               encoding="utf-8")
+        hooks_problems = _probe_problems()
+        ok("A-M12① 反向对照 e：安装器 `HOOKS` 去掉 `commit-msg`（模板仍在、仍调判据）"
+           "→ FAIL（『模板存在』不等于『会被装上』；本地终判压在它身上）",
+           any("HOOKS" in p for p in hooks_problems),
+           next((p for p in hooks_problems if "HOOKS" in p), hooks_problems[:1]))
     finally:
         for probe in (ci_probe, hook_probe, inst_probe, chook_probe):
             probe.unlink(missing_ok=True)

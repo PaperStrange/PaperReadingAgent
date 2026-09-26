@@ -831,7 +831,7 @@ def _failure_rel(line: str) -> str:
 
 
 def cmd_verify_git(root: Path, from_git: str, ack_base: str = "",
-                   ack_file: str = "") -> int:
+                   ack_file: str = "", report_only: bool = False) -> int:
     """`verify --from-git <rev>`：**不依赖本地快照**的结构守卫（git 当基线）。
 
     判据与快照档**逐条同一套**（`compare()`）：只对丢失/变形报错，新增一律放行；
@@ -843,6 +843,13 @@ def cmd_verify_git(root: Path, from_git: str, ack_base: str = "",
     传入）解析署名。为什么必须有这条路径：`pre-commit` 跑在"提交信息还不存在"的时刻，
     `removal_acks(root, "HEAD", "HEAD")` 的区间恒为空 ⇒ 本地层永远看不到署名，合法的结构
     删除只能 `--no-verify`（修复验证复核 `run-…-089` major）。
+
+    `report_only`（复核 `run-…-091` critical）：只报告、**不终判**（rc 恒 0，
+    除用法/政策类 rc=2）。给 `pre-commit` 用——它跑在提交信息还不存在的时刻，**判不了**
+    "这次删除有没有署名"，于是它对**任何**结构删除都只能报 FAIL；而它的提示又让用户
+    "写署名后重试"，那句提示在真 `git commit` 下**永远不可执行**（写进信息的署名，本层
+    读不到；读得到署名的 `commit-msg` 又轮不到跑）⇒ 合法删除被本层永久卡死，只剩
+    `--no-verify`。**终判交给 `commit-msg`（信息齐）与 CI，本层只做早期可见。**
     """
     sha = resolve_rev(root, from_git)
     if not sha:
@@ -875,7 +882,8 @@ def cmd_verify_git(root: Path, from_git: str, ack_base: str = "",
         return 2
     print(f"structure-guard verify（git 基线）：root={root} baseline={from_git}"
           f"（解析为 {sha[:12]}，{len(baseline)} 文件；署名扫描范围 "
-          f"{base_for_ack}..HEAD）")
+          f"{base_for_ack}..HEAD）"
+          + ("　【report-only 档：本层不终判】" if report_only else ""))
     coverage_report(root)
     current: dict[str, dict] = {}
     for rel in rels:
@@ -904,6 +912,20 @@ def cmd_verify_git(root: Path, from_git: str, ack_base: str = "",
         print(f"  [修改] {line}")
     for line in kept:
         print(f"  [FAIL] {line}")
+    if kept and report_only:
+        # 本层**判不了**：署名写在提交信息里，而本层的调用点（pre-commit）根本没有它。
+        # 所以这里既不 rc=1（会把合法删除永久卡死），也不打印 PASS 横幅（会冒充通过）。
+        print(f"\nSTRUCTURE REPORT-ONLY（{len(kept)} 项丢失/变形待判；署名删除 "
+              f"{len(signed)} 项 / 修改 {len(modifications)} 项 / "
+              f"新增 {len(additions)} 项）")
+        print("本层**不是通过、也不是失败**：`pre-commit` 跑在提交信息还不存在的时刻，"
+              "读不到 `Structure-Removal:` 署名 ⇒ 终判交给 `commit-msg` 钩子"
+              "（它由 git 传入待提交信息，跑同一条判据）与 CI（不可跳过层）。")
+        print("若上面的 `[FAIL]` 里确有**有意**的删除：请把 "
+              "`Structure-Removal: <路径> :: <理由≥10 字符>` 写进**提交信息**；"
+              "未署名的删除会在 `commit-msg` 层被拒绝；"
+              "`--no-verify` 改不了 CI 的结论。")
+        return 0
     if kept:
         print(f"\nSTRUCTURE FAIL（{len(kept)} 项丢失/变形；署名删除 {len(signed)} 项 / "
               f"修改 {len(modifications)} 项 / 新增 {len(additions)} 项）")
@@ -1903,6 +1925,26 @@ def cmd_replay_git() -> int:
            bad2.returncode == 1 and all(m in bad2.stdout for m in markers2),
            _evidence(bad2.stdout + bad2.stderr, markers2))
 
+        # `--report-only`（复核 `run-…-091` critical）：`pre-commit` 跑在提交信息
+        # 还不存在的时刻 ⇒ 它判不了"这次删除有没有署名"，于是不许终判（rc=0 只报告）；
+        # 终判交给 `commit-msg`（拿到待提交信息）与 CI。三条：正例 + 两条反向对照。
+        ro = _run_cli("verify", "--root", str(mirror), "--from-git", "HEAD~1",
+                      "--report-only")
+        ok("git 基线：**同一处无署名删除**在 `--report-only` 档 ⇒ rc=0 且打印 "
+           "REPORT-ONLY 横幅与 [FAIL] 行、**不打印** PASS/FAIL 横幅",
+           ro.returncode == 0 and "STRUCTURE REPORT-ONLY" in ro.stdout
+           and all(m in ro.stdout for m in markers2)
+           and "STRUCTURE PASS" not in ro.stdout
+           and "STRUCTURE FAIL" not in ro.stdout,
+           _evidence(ro.stdout + ro.stderr, ["STRUCTURE REPORT-ONLY"]))
+        ok("反向对照：同一棵树上**去掉** `--report-only` ⇒ rc=1（没把判据关掉）",
+           _run_cli("verify", "--root", str(mirror),
+                    "--from-git", "HEAD~1").returncode == 1)
+        ro_bad = _run_cli("verify", "--root", str(mirror), "--from-git",
+                          "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef", "--report-only")
+        ok("反向对照：`--report-only` **不吞**用法/政策类错误（坏修订仍 rc=2）",
+           ro_bad.returncode == 2, f"rc={ro_bad.returncode}")
+
         markers3 = _damage_r1_3(mirror)
         rel_bad = markers3[0].split(":")[0]
         _git_commit(mirror, "自检：坏署名（理由过短）",
@@ -1947,6 +1989,10 @@ def main() -> int:
     parser.add_argument("--ack-file", default="",
                         help="额外从该文件解析 `Structure-Removal:` 署名（`commit-msg` "
                              "钩子把待提交信息文件以 `$1` 传进来）")
+    parser.add_argument("--report-only", action="store_true",
+                        help="只报告不终判（rc 恒 0，除用法/政策类 rc=2）——给 "
+                             "`pre-commit` 用：该钩子跑在提交信息还不存在的时刻，"
+                             "读不到署名，判不了『这次删除有没有署名』")
     parser.add_argument("--replay", action="store_true",
                         help="用 5 类真实 R1 输入 + 4 类 F2 反向对照 + 3 类 H1 就地改写对照"
                              " + 3 类 T1 表格对照在 %%TEMP%% 副本上复跑自检")
@@ -1983,7 +2029,8 @@ def main() -> int:
             out = _resolve_json(args.out) if args.out else ROOT / SNAPSHOT_REL
             return cmd_snapshot(root, out)
         if args.from_git:
-            return cmd_verify_git(root, args.from_git, args.ack_base, args.ack_file)
+            return cmd_verify_git(root, args.from_git, args.ack_base, args.ack_file,
+                                  args.report_only)
         baseline = _resolve_json(args.baseline) if args.baseline else ROOT / SNAPSHOT_REL
         return cmd_verify(root, baseline)
     except PolicyError as exc:  # 政策数据缺失/非法 → fail-closed（rc=2，与"验出丢失"的 rc=1 区分）

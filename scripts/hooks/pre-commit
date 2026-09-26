@@ -9,7 +9,14 @@
 # 本次 push 的提交范围喂给同一条判据）；钩子是**便利层**：它可能没装、可能被 `--no-verify`
 # 跳过。两层都用同一条命令、同一个判据，不做两套。
 #
-# 退出码语义（与脚本一致）：0=通过 1=有丢失/变形 2=用法或政策错误。非 0 一律**拒绝提交**。
+# **本钩子只报告、不终判**（`--report-only`；修复验证复核 `run-…-091` critical）：
+# 它跑在"提交信息还不存在"的时刻，而"这次结构删除有没有署名"的答案**只写在提交信息里**
+# ⇒ 它读不到署名，只能对**任何**删除报 FAIL；而它当时的提示恰恰是"写署名后重试"——
+# 那句话在真 `git commit` 下**永远不可执行**：写进信息的署名本层读不到，读得到署名的
+# `commit-msg` 又轮不到跑 ⇒ 合法的结构删除被本层永久卡死，只剩 `--no-verify`。
+# 终判因此交给 `commit-msg`（git 把待提交信息以 `$1` 传给它，判据同一条）与 CI。
+#
+# 退出码语义（与脚本一致）：0=通过/仅报告 1=有丢失/变形 2=用法或政策错误。非 0 一律**拒绝提交**。
 set -u
 
 root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
@@ -23,16 +30,16 @@ py=".venv/Scripts/python.exe"
 # 首次提交（还没有 HEAD）时跳过：没有基线可比，且这不是"丢失"。
 git rev-parse --verify -q HEAD >/dev/null 2>&1 || exit 0
 
-out=$("$py" scripts/structure-guard.py verify --from-git HEAD 2>&1)
+out=$("$py" scripts/structure-guard.py verify --from-git HEAD --report-only 2>&1)
 rc=$?
 if [ "$rc" -ne 0 ]; then
-  echo "STRUCTURE-GUARD：提交被拒（结构守卫 rc=$rc）" >&2
+  echo "STRUCTURE-GUARD：提交被拒（结构守卫 rc=$rc；rc=2 = 用法/政策错误，如坏基线或坏署名）" >&2
   echo "$out" | tail -n 20 >&2
   echo "" >&2
   echo "修法：① 补回被删的标题/锚点行/单元格（\`git show HEAD:<文件>\` 看原样）；" >&2
   echo "      ② 若这是**有意的**结构删除，在提交信息里写一行署名后重试：" >&2
   echo "         Structure-Removal: <相对路径> :: <理由≥10 字符>" >&2
-  echo "      （具名事件——CI 用同一判据复核；不要用 --no-verify 绕过。）" >&2
+  echo "      （署名由 commit-msg 钩子与 CI 复核；不要用 --no-verify 绕过。）" >&2
   exit 1
 fi
 exit 0
