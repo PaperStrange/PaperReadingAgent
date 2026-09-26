@@ -947,6 +947,73 @@ def cmd_set_output_chars(args: argparse.Namespace) -> None:
     print(f"output_chars updated {args.run_id}: {old} -> {new} (backfills={len(trail)})")
 
 
+def cmd_set_started_at(args: argparse.Namespace) -> None:
+    """受控回填：修正**已收尾** run 的 `started_at`（不得用手估值冒充测量）。
+
+    **要解决的是什么**：`verify/verify_ledger_measurement.py` 判 `[zero_duration]`
+    （`started_at == ended_at` ⇒ "未测得被写成零耗时"）与 `[missing_timestamp]`。
+    真实事故：`run-2026-09-26-code-review-092` —— `register` 漏 `--start` ⇒ `started_at`
+    为空 ⇒ `update --status running` 把它置为"此刻" ⇒ `finish` 在同一秒写 `ended_at`。
+    而 `started_at` 只在 `register --start` / `update` 当时可写，**已收尾的 run 没有合法
+    修复路径** ⇒ 闸门报的问题不可修 = 永久红（同 `set-output-chars` 的形态）。
+
+    **覆盖边界（`2026-09-26-g2-close-retro.MD` §7 已备案，引用时不得省略）**：
+    本命令是**修复工具、不是预防机制**——它解决"有真值可回填"的场景（如上例），
+    **不解决**"run 从未起跑（真值 = 未知）"、"时钟/时区不一致"，且它**自身**能写出
+    "可信但为假"的测量（现有闸门只判合理、判不了真实）。故：
+
+    约束（比 `set-output-chars` 更严——**必须有证据**）：
+      * `--at` 必须是**带时区**的 ISO8601，且**不得晚于 `ended_at`、不得晚于现在**；
+      * `--evidence <path>` **必须存在**（如 `agents/runs/<id>/` 的产物文件）——
+        证据是"这个时刻从哪来"的可核凭据；拿不出证据就**不得回填**（不知道就写不知道）；
+      * `--reason` ≥ 10 字符（谁测的、怎么测的、依据哪条发现）；
+      * 值有变化才追加 `started_at_backfills[]{at, by, old, new, evidence, reason}`；
+        同值回填不改库、不留痕（假留痕比无留痕更坏）。
+    """
+    from datetime import datetime, timezone
+
+    data = _load_registry()
+    r = _find_run(data, args.run_id)
+    raw = (args.at or "").strip()
+    try:
+        new_dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        raise SystemExit("SET-STARTED-AT-ERROR: --at 必须是 ISO8601（如 "
+                         "2026-09-26T05:07:00+00:00）") from None
+    if new_dt.tzinfo is None:
+        raise SystemExit("SET-STARTED-AT-ERROR: --at 必须带时区"
+                         "（本仓曾因 UTC / UTC+8 混写而误读时刻）")
+    new = new_dt.astimezone(timezone.utc).isoformat()
+    ended = r.get("ended_at")
+    if ended:
+        end_dt = datetime.fromisoformat(str(ended).replace("Z", "+00:00"))
+        if new_dt > end_dt:
+            raise SystemExit(f"SET-STARTED-AT-ERROR: --at 晚于 ended_at（{ended}）"
+                             f"——先核对证据")
+    if new_dt > datetime.now(timezone.utc):
+        raise SystemExit("SET-STARTED-AT-ERROR: --at 是未来时刻（不写未来时间戳）")
+    ev = (args.evidence or "").strip()
+    if not ev:
+        raise SystemExit("SET-STARTED-AT-ERROR: 必须给 --evidence <path>——"
+                         "回填值必须来自可核凭据（产物 mtime / 作业日志），"
+                         "拿不出证据就不得回填")
+    if not Path(ev).exists():
+        raise SystemExit(f"SET-STARTED-AT-ERROR: --evidence 指向的路径不存在：{ev}")
+    reason = (args.reason or "").strip()
+    if len(reason) < 10:
+        raise SystemExit("回填必须给 --reason（≥10 字符）：怎么测的、依据哪条发现")
+    old = r.get("started_at")
+    if old == new:
+        print(f"set-started-at {args.run_id}: 已是 {new}（无变化，未追加留痕）")
+        return
+    r["started_at"] = new
+    trail = r.setdefault("started_at_backfills", [])
+    trail.append({"at": _now(), "by": args.by or "main-agent", "old": old, "new": new,
+                  "evidence": ev, "reason": reason})
+    _save_registry(data)
+    print(f"started_at updated {args.run_id}: {old} -> {new} (backfills={len(trail)})")
+
+
 def cmd_mark_produced(args: argparse.Namespace) -> None:
     """受控标注：把某条 run 如实标成**产出型 run**（D0-3(a)，`TG-17` ⑤ 的实例）。
 
@@ -1562,6 +1629,20 @@ def main() -> int:
                    help="回填理由（≥10 字符）：谁测的、怎么测的、依据哪条审核发现")
     p.add_argument("--by", default="main-agent")
 
+    p = sub.add_parser("set-started-at",
+                       help="2026-09-26 关闭期：受控回填已收尾 run 的 started_at"
+                            "（时间戳写坏 ⇒ zero_duration/missing_timestamp；"
+                            "**必须有 --evidence**，覆盖边界见 G2 复盘 §7）")
+    p.add_argument("run_id")
+    p.add_argument("--at", required=True,
+                   help="真实开始时刻（带时区的 ISO8601；不得晚于 ended_at / 现在）")
+    p.add_argument("--evidence", required=True,
+                   help="可核凭据路径（必须存在）：产物 mtime / 作业日志——"
+                        "拿不出证据就不得回填")
+    p.add_argument("--reason", required=True,
+                   help="回填理由（≥10 字符）：谁测的、怎么测的、依据哪条发现")
+    p.add_argument("--by", default="main-agent")
+
     p = sub.add_parser("set-anchor",
                        help="审核 N5/F1 + B2：受控回填已登记 run 的覆盖窗口端点 "
                             "coverage_anchor / covers_through（必须给理由）")
@@ -1640,6 +1721,7 @@ def main() -> int:
         "set-sprint": cmd_set_sprint,
         "set-result-files": cmd_set_result_files,
         "set-output-chars": cmd_set_output_chars,
+    "set-started-at": cmd_set_started_at,
         "mark-produced": cmd_mark_produced,
     }[args.cmd](args)
     return 0
