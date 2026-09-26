@@ -209,6 +209,189 @@ def _duration_minutes(start: str, end: str) -> float | None:
         return None
 
 
+# ------------------------------------------------ 价表多档：按时段选档（TG-20 行 16）
+# 真源 = docs/iteration/phases/agents-infra/2026-09-26-price-tier-spec.MD
+# （§3.1 选档 / §3.2 时间戳缺失 / §3.3 跨档时间加权）。
+# 档位窗口**不写死在这里**：取 `scraped.<provider>._peak_windows`（政策/数据化，
+# §6 政策数据化）——写死一份就等于同一概念两处定义（3-LEARNED 1.62）。
+_TIER_PEAK = "peak"
+_TIER_OFF = "off_peak"
+_TIER_MIXED = "mixed"
+_TIER_FLAT = "flat"
+_WEEKDAY_KEYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
+def _parse_ts(value: object) -> datetime | None:
+    """ISO-8601 → 带时区的 datetime；`None`/空/不可解析 → None（调用方按缺失处理）。"""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip())
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+
+
+def _hm_minutes(text: object) -> int | None:
+    """`"09:00"` → 540；非法 → None（fail-closed，绝不当成 0）。"""
+    if not isinstance(text, str) or ":" not in text:
+        return None
+    try:
+        hh, mm = (int(x) for x in text.split(":", 1))
+    except ValueError:
+        return None
+    return hh * 60 + mm if 0 <= hh <= 24 and 0 <= mm < 60 else None
+
+
+def peak_windows_from_prices(prices: dict) -> tuple[list, str] | None:
+    """从价表取 `(_peak_windows, 时区名)`；无该元数据 → None（= 不按档计费）。"""
+    for prov in (prices.get("scraped") or {}).values():
+        if not isinstance(prov, dict):
+            continue
+        windows = prov.get("_peak_windows")
+        if isinstance(windows, list) and windows:
+            return windows, str(prov.get("_tier_timezone") or "Asia/Shanghai")
+    return None
+
+
+# 价表**顶层**的多档键（白名单）。`prices-derive` 重建顶层 dict——不列在这里的新顶层键
+# 会被**静默丢弃**（spec §4 红字 A），故这里有两条纪律：
+#   ① 已知的多档键逐键列出（转发时也 print，让"活着派生出去"可观测）；
+#   ② 出现**未入册**的顶层下划线键时**报警**（不静默丢、也不静默过）。
+# 只认下划线前缀（`currency` 这类历史误用形态报警只会变噪音，见 4-ALGORITHM.MD:627）。
+_TOP_LEVEL_TIER_KEYS = ("_tiers", "_tier_scheme", "_tier_timezone", "_peak_windows",
+                        "_off_peak_windows")
+_TIER_SCHEME_SINGLE = "single_tier"
+
+
+def top_level_tier_keys(prices: dict) -> list[str]:
+    """价表里出现的顶层多档键（按白名单顺序，实测存在才算）。"""
+    return [k for k in _TOP_LEVEL_TIER_KEYS if k in prices]
+
+
+def unregistered_top_level_keys(prices: dict) -> list[str]:
+    """顶层里**未入册**的下划线键——它们在 `prices-derive` 重建顶层时会被丢掉。"""
+    known = {"auto", "manual", "scraped", "meta", *_TOP_LEVEL_TIER_KEYS}
+    return sorted(k for k in prices if k.startswith("_") and k not in known)
+
+
+def tier_scheme_of(prices: dict) -> dict[str, str]:
+    """每个 scraped provider 的档位方案（`_tier_scheme`，缺失按 `single_tier` 记）。"""
+    out: dict[str, str] = {}
+    for name, prov in (prices.get("scraped") or {}).items():
+        if isinstance(prov, dict):
+            out[name] = str(prov.get("_tier_scheme") or _TIER_SCHEME_SINGLE)
+    return out
+
+
+def _window_index(windows: list) -> dict[str, list[tuple[int, int]]] | None:
+    """窗口清单 → `{星期键: [(起, 止) 分钟]}`；形状非法 → None（调用方按缺失处理）。
+
+    形状非法必须与"窗口为空"区分开：`[]` 是合法的"全时段空闲"，
+    而**拼错/读不到**必须 fail-closed 成"按高峰计"（§3.2 的保守方向）。
+    """
+    index: dict[str, list[tuple[int, int]]] = {}
+    for win in windows:
+        if not isinstance(win, dict):
+            return None
+        start, end = _hm_minutes(win.get("start")), _hm_minutes(win.get("end"))
+        days = win.get("days")
+        if start is None or end is None or not isinstance(days, list) or not days:
+            return None
+        if not set(days) <= set(_WEEKDAY_KEYS):
+            return None
+        for day in days:
+            index.setdefault(day, []).append((start, end))
+    return index
+
+
+def is_peak_at(stamp: datetime, windows: list, tzname: str) -> bool:
+    """§3.1：`Asia/Shanghai` 周一至周五 `09:00-12:00`／`14:00-18:00` ⇒ 高峰。
+
+    **区间左闭右开**（09:00 整高峰、12:00 整空闲）；其余（周末、午间、夜间）⇒ 空闲。
+    """
+    from zoneinfo import ZoneInfo
+
+    local = stamp.astimezone(ZoneInfo(tzname))
+    index = _window_index(windows)
+    if index is None:
+        return True  # 窗口读不出来 ⇒ 保守按高峰（fail-closed，不许静默变便宜）
+    minutes = local.hour * 60 + local.minute
+    day = _WEEKDAY_KEYS[local.weekday()]
+    return any(start <= minutes < end for start, end in index.get(day, []))
+
+
+def _peak_seconds(start: datetime, end: datetime, windows: list, tzname: str) -> float:
+    """§3.3：与高峰窗口重叠的墙钟秒数（按分钟切步，与窗口边界同精度）。"""
+    total = (end - start).total_seconds()
+    if total <= 0:
+        return 0.0
+    hit = 0.0
+    cursor = start
+    while cursor < end:
+        nxt = min(cursor + timedelta(minutes=1), end)
+        if is_peak_at(cursor, windows, tzname):
+            hit += (nxt - cursor).total_seconds()
+        cursor = nxt
+    return hit
+
+
+def peak_frac_for(run: dict, windows: list, tzname: str) -> float | None:
+    """run 的高峰时间占比；`None` = §3.2 的"时间戳缺失"（调用方按高峰计并标记）。
+
+    三种情形必须分开（否则会把"量不出来"当成"量出来是高峰"）：
+      * 任一端点缺失/不可解析 ⇒ `None`（§3.2：拿不到真值，按高峰 + `tier_assumed`）；
+      * 时长为 0（`started_at == ended_at`，同秒收尾）⇒ **按起点那一刻判档**：
+        这是"零长度的 run 落在哪一档"，**不是**"时间戳缺失"（本仓同秒收尾很常见，
+        一律按高峰会把夜间 run 重新算成 2 倍——正是本卡要修的那个偏差）；
+      * 末态早于起点（时钟退化）⇒ `None`（负时长排不出区间，按高峰并标记）。
+    """
+    start, end = _parse_ts(run.get("started_at")), _parse_ts(run.get("ended_at"))
+    if start is None or end is None:
+        return None
+    if end == start:
+        return 1.0 if is_peak_at(start, windows, tzname) else 0.0
+    if end < start:
+        return None
+    total = (end - start).total_seconds()
+    return round(_peak_seconds(start, end, windows, tzname) / total, 6)
+
+
+def _tiered(prices: dict, tier: str) -> dict | None:
+    """`_tiers.<tier>` 四键齐全才认（缺键 = 数据不全 ⇒ 退回扁平键，不静默补 0）。"""
+    tiers = prices.get("_tiers")
+    block = tiers.get(tier) if isinstance(tiers, dict) else None
+    if not isinstance(block, dict):
+        return None
+    keys = ("input_cost_per_token", "output_cost_per_token",
+            "cache_read_input_token_cost", "cache_creation_input_token_cost")
+    return block if all(k in block for k in keys) else None
+
+
+def _blend(a: dict, b: dict, frac_a: float) -> dict:
+    """逐键线性混合（`frac_a` = 取 a 档的占比）——§3.3 的 `usage × [frac×价]`。"""
+    return {k: (a.get(k) or 0) * frac_a + (b.get(k) or 0) * (1 - frac_a) for k in a}
+
+
+def _tier_prices(prices: dict, frac: float | None) -> tuple[dict, str, float | None]:
+    """`(计费用的四键价, 档位标签, peak_frac)`。
+
+    无 `_tiers` ⇒ 扁平键原样 + `flat`（该模型就是单档，**不**假装分过档）；
+    `frac` 为 None ⇒ §3.2 的"时间戳缺失"（调用方按高峰计价并打 `tier_assumed`）；
+    否则 §3.3：`peak_frac` ∈ (0,1) 时逐键时间加权。
+    """
+    peak, off = _tiered(prices, _TIER_PEAK), _tiered(prices, _TIER_OFF)
+    if peak is None or off is None:
+        return prices, _TIER_FLAT, None
+    if frac is None:
+        return peak, _TIER_PEAK, None
+    if frac >= 1.0:
+        return peak, _TIER_PEAK, frac
+    if frac <= 0.0:
+        return off, _TIER_OFF, frac
+    return _blend(peak, off, frac), _TIER_MIXED, frac
+
+
 # ------------------------------------------------ TG-13：账本『测量化』
 # （来源/退化/unknown）
 
@@ -471,24 +654,48 @@ def _fx_usd_cny() -> float:
 
 def _estimate_cost(entry: dict) -> dict:
     """UC-4：usage x 价表；无 usage 用 chars/4 兜底；无价表标 pending_price。
-    输出单位 = CNY（USD 单价 × meta.fx_usd_cny 换算，用户决策 2026-08-30）。"""
+    输出单位 = CNY（USD 单价 × meta.fx_usd_cny 换算，用户决策 2026-08-30）。
+
+    TG-20 行 16：**按 run 自身的时间戳选档**（spec §3）——价表的扁平键镜像高峰，
+    夜间/周末的 run 若继续用它就是约 2 倍高估（本次要修的钱的问题）。
+    """
     usage = entry.get("usage") or {}
     model = entry.get("model") or ""
     prices = _prices_for(model)
     if not prices:
-        return {"total": None, "currency": "CNY", "estimated": True, "pending_price": True, "model": model}
+        return {"total": None, "currency": "CNY", "estimated": True,
+                "pending_price": True, "model": model}
+    meta: dict = {}
+    tariff, tier, frac = prices, _TIER_FLAT, None
+    windows = peak_windows_from_prices(_load_prices())
+    if windows is not None:
+        frac = peak_frac_for(entry, windows[0], windows[1])
+        tariff, tier, frac = _tier_prices(prices, frac)
+        if tier == _TIER_FLAT:
+            # 该模型没有 _tiers（如 dashscope/openrouter 段）：单档价，如实标 flat
+            meta["tier"] = _TIER_FLAT
+        else:
+            meta["tier"] = tier
+            if frac is None:
+                # §3.2：时间戳缺失 ⇒ 按高峰计 + 可见标记（不得静默挑便宜的档）
+                meta["tier_assumed"] = True
+            elif 0.0 < frac < 1.0:
+                # §3.3：跨档 ⇒ 记录分摊比例（可复算：读者据它复核 total）
+                meta["peak_frac"] = frac
+    q = tariff.get
+    cr, cw = q("cache_read_input_token_cost"), q("cache_creation_input_token_cost")
     cost = {
-        "input": (usage.get("input_tokens") or 0) * (prices.get("input_cost_per_token") or 0),
-        "output": (usage.get("output_tokens") or 0) * (prices.get("output_cost_per_token") or 0),
-        "cache_read": (usage.get("cache_read_tokens") or 0) * (prices.get("cache_read_input_token_cost") or 0),
-        "cache_write": (usage.get("cache_write_tokens") or 0) * (prices.get("cache_creation_input_token_cost") or 0),
+        "input": (usage.get("input_tokens") or 0) * (q("input_cost_per_token") or 0),
+        "output": (usage.get("output_tokens") or 0) * (q("output_cost_per_token") or 0),
+        "cache_read": (usage.get("cache_read_tokens") or 0) * (cr or 0),
+        "cache_write": (usage.get("cache_write_tokens") or 0) * (cw or 0),
     }
     estimated = False
     if not any(usage.values()):
         ic = entry.get("input_chars") or 0
         oc = entry.get("output_chars") or 0
-        cost["input"] = (ic / _CHARS_PER_TOKEN) * (prices.get("input_cost_per_token") or 0)
-        cost["output"] = (oc / _CHARS_PER_TOKEN) * (prices.get("output_cost_per_token") or 0)
+        cost["input"] = (ic / _CHARS_PER_TOKEN) * (q("input_cost_per_token") or 0)
+        cost["output"] = (oc / _CHARS_PER_TOKEN) * (q("output_cost_per_token") or 0)
         estimated = True
     fx = _fx_usd_cny()
     # review 修正（Sprint-9 三查 P1）：分项同样 ×fx 转 CNY，
@@ -496,7 +703,7 @@ def _estimate_cost(entry: dict) -> dict:
     # 口径不一致）
     cny = {k: round(v * fx, 8) for k, v in cost.items()}
     return {**cny, "total": round(sum(cny.values()), 8), "currency": "CNY",
-            "estimated": estimated, "pending_price": False, "model": model}
+            "estimated": estimated, "pending_price": False, "model": model, **meta}
 
 
 def parse_scope_ref(source: str, prefixes: tuple[str, ...]) -> str | None:
@@ -1571,8 +1778,20 @@ def cmd_parse_report(args: argparse.Namespace) -> None:
     print(f"--- parsed {len(items)} findings ---")
 
 
+# `prices-derive` 重建 `auto` 段时逐键白名单。**每加一个 `auto` 键都要在这里登记**：
+# 未登记的键会在下次派生时**静默消失**（本键集过去只覆盖 5 个扁平价键，
+# 多档落地时正是靠这张表决定"派生后档位还在不在"——spec §4 红字 A / 台账 E9）。
+_AUTO_KEY_WHITELIST = ("max_input_tokens", "input_cost_per_token",
+                       "output_cost_per_token", "cache_read_input_token_cost",
+                       "cache_creation_input_token_cost", "_tiers", "_tier_scheme")
+
+
 def _derive_prices(args: argparse.Namespace | None = None) -> None:
-    """UC-10：从 litellm 捆绑价表派生 prices.json（人工覆盖段保留）。"""
+    """UC-10：从 litellm 捆绑价表派生 prices.json（人工覆盖段保留）。
+
+    TG-20 行 16：派生**不得丢档**。三条守卫见 `_AUTO_KEY_WHITELIST`、
+    `top_level_tier_keys` 与末尾的"派生后档位仍在"自检。
+    """
     prices = _load_prices()
     auto = {}
     litellm_json = None
@@ -1585,19 +1804,32 @@ def _derive_prices(args: argparse.Namespace | None = None) -> None:
         table = json.loads(litellm_json.read_text(encoding="utf-8"))
         for model in ("gpt-4o-mini", "text-embedding-3-large"):
             src = table.get(model, {})
-            auto[model] = {k: src.get(k) for k in
-                           ("max_input_tokens", "input_cost_per_token", "output_cost_per_token",
-                            "cache_read_input_token_cost", "cache_creation_input_token_cost")}
+            auto[model] = {k: src.get(k) for k in _AUTO_KEY_WHITELIST}
     else:
         print("WARN: 未找到 litellm 价表，仅保留人工覆盖段")
+    # 顶层多档键：入册的逐键转发；未入册的**点名报警**（不静默丢）
     out = {"auto": auto, "manual": prices.get("manual", {}),
            "scraped": prices.get("scraped", {}),  # M9：派生不丢弃官网抓取段
            "meta": prices.get("meta", {"currency": "USD", "fx_usd_cny": 7.2})}
+    carried = top_level_tier_keys(prices)
+    for key in carried:
+        out[key] = prices[key]
+    lost = unregistered_top_level_keys(prices)
+    if lost:
+        print(f"WARN: 顶层未入册的键 {lost} —— `prices-derive` 重建顶层时"
+              "**丢弃**它们。请加进 `_TOP_LEVEL_TIER_KEYS`（多档）或挪进对应段内。")
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     with _prices_lock():  # 035：与 fetch-prices --apply 互斥
         # write_bytes：LF 字节写盘（1.47——文本模式在 Windows 会把 \n 翻成 \r\n）
         PRICES_PATH.write_bytes(json.dumps(out, ensure_ascii=False, indent=2).encode("utf-8"))
-    print(f"prices.json 已派生：auto={sorted(auto)} manual={sorted(out['manual'])}")
+    # 落盘后**回读**：判据 = "派生后档位仍在"（不是"我以为我写对了"）
+    scheme = tier_scheme_of(_load_prices())
+    two_tier = sorted(k for k, v in scheme.items() if v != _TIER_SCHEME_SINGLE)
+    print(f"prices.json 已派生：auto={sorted(auto)} manual={sorted(out['manual'])}"
+          f" top_level_tier_keys={sorted(carried)}"
+          f" two_tier_providers={two_tier}")
+    if lost:
+        print("WARN: 派生完成，但有未入册顶层键被丢弃（见上）——档位可能已不完整")
 
 
 def main() -> int:

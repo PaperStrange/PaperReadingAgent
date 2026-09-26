@@ -410,3 +410,104 @@ parse_deepseek(zh-cn page) -> 0 models: {}
   未 `git add` / `commit` / `push`。
 * **因此**：§3.2 的 `tier_assumed`、§3.3 的时间加权分摊、红字 A 的白名单同步、红字 B 的解析器修复
   **都还是设计，不是实现**——本 spec 是它们的落点，不是它们已完成的证据。
+
+---
+
+## 8. 实现记录（2026-09-27，行 15 ＋ 行 16 同批落地）
+
+> 本节由**实现批**追加，**不改写**上面任何既有章节。上表仍是"改造前的诊断"，
+> 本节是"改造后的事实"。台账
+> `docs/iteration/phases/testing-governance/2026-09-26-g2-closure-ledger.MD` 的 **E9**
+> 要求行 15 与行 16 同批——本批同时改了 `scripts/fetch-prices.py`、
+> `scripts/agent-ops.py`、`verify/verify_agentops.py`。
+
+### 8.1 落地清单（按文件）
+
+| 文件 | 落地的规格条款 | 关键实现 |
+|---|---|---|
+| `scripts/agent-ops.py` | §3.1／§3.2／§3.3、§4 红字 A | `peak_windows_from_prices`（窗口**从价表读**，不写死在代码里）、`is_peak_at`、`peak_frac_for`、`_tier_prices`、`_estimate_cost` 选档；`prices-derive` 白名单加 `_tiers`/`_tier_scheme` + 顶层多档键转发 + 未入册顶层键 WARN |
+| `scripts/fetch-prices.py` | §4 红字 B、§6 未决点 3 | `parse_deepseek` 按 `<tr>` 平铺重写：模型数从表头读出（不再要求 3）、金额同时认 `$` 与 `元`、**同页抓两档**；`_provider_meta()` 随抓取写回 `_peak_windows`/`_tier_timezone`；`merge()` 并回解析器不产出的元数据键；`judge_scrape()` 把"抓空／价表过旧"变成出声的 WARN（`--check` 下 FAIL） |
+| `verify/verify_agentops.py` | 台账 E9 | `:386` 那份**旧表形状冻结副本**换成现行表形状并改断言；新增 `price_shape_problems()` 形状契约、E9 反向对照、"派生后档位仍在"判据 |
+| `agents/runtime/prices.json` | — | **未改**（本批一行都没动它；下节"改前 vs 改后"用的是 HEAD 版脚本，不是旧价表） |
+
+### 8.2 复现命令（每条都已现跑，读数以命令输出为准）
+
+```console
+# 解析器：两个官方页都能解析出 2 模型 × 2 档（英文页 $ / 中文页 元）
+$ .venv\Scripts\python.exe scripts\fetch-prices.py --check
+
+# 选档规则边界 + 反证（在闸门内，离线，固定时刻夹具）
+$ .venv\Scripts\python.exe verify\verify_agentops.py
+
+# 改前 vs 改后：同一 run 行喂给 HEAD 版与被改版 `_estimate_cost`
+$ git show HEAD:scripts/agent-ops.py   # 改前实现
+$ .venv\Scripts\python.exe scripts\agent-ops.py finish <run_id> --status succeeded --usage-in 4000 --usage-out 500
+```
+
+### 8.3 改前 vs 改后（真入口：真 CLI ＋ 真账本行）
+
+同一 usage（`input=4000, output=500, cache_read=2000`）、同一时间戳
+（`2026-09-26T16:30:35+00:00` ＝ UTC+8 `2026-09-27 Sun 00:30:35`，**周末 ⇒ 空闲档**），
+分别喂给 HEAD 版与被改版 `_estimate_cost`：
+
+| 实现 | `total`（CNY） | `tier` |
+|---|---|---|
+| 改前（`git show HEAD:scripts/agent-ops.py`） | `0.01208124` | （无该字段） |
+| 改后（worktree） | `0.0060408` | `off_peak` |
+
+⇒ 夜间 run 的成本估算**减半**，正是本卡要修的那个 2 倍偏差。
+
+**真 CLI 验收（`register --start` → `finish`）**：`run-2026-09-27-impact-assessment-098`
+的 `cost_est.tier = "off_peak"`、`total = 0.0060408`；同一 usage 的
+`run-2026-09-27-impact-assessment-097`（改后代码遇到"同秒收尾"时的中间态）为
+`tier="peak"` + `tier_assumed=true`。两条 run 的 `started_at` 都**确实落在空闲窗口内**
+（闸门里有这条前置断言）。
+
+### 8.4 规格含糊／待补（**实现时未自作主张的部分**）
+
+1. **§3.2 的"时间戳缺失"不等于"时长为 0"。** 本仓 `register --start` 后同秒收尾很常见
+   （`_now()` 秒级截断 ⇒ `started_at == ended_at`）。若把这种 run 也按 §3.2 当"缺失"，
+   夜间 run 会被重新算成 2 倍——与 §3.1"按 run 自身时间戳选档"冲突。
+   实现取**起点那一刻判档**（零长度 run 落在哪一档），只在端点**真的缺失/不可解析**
+   或末态早于起点（时钟退化）时才 `tier_assumed`。**这条是规格没写、必须由人确认的口径**。
+2. **跨档 run 的 `cost_est.tier` 取值未定。** §3.3 只给了金额算式，没说标签写什么。
+   实现写 `"mixed"` 并附 `peak_frac`（可复算），但**规格未授权该取值**。
+3. **没有档位数据的模型标 `tier: "flat"`**（dashscope/openrouter 段仍是单档）。
+   规格未规定这种 run 的标签；不标的话"用没用档位"在账本里看不出来。
+4. **红字 A 的作用域比原文更窄（实测）**：`_AUTO_KEY_WHITELIST` 决定 `auto` 段**有哪些键**，
+   而**值是 litellm 表给的**——litellm 没有 `_tiers` ⇒ `auto` 里的 `_tiers` 只能是 `null`。
+   白名单同步只能保证"将来 litellm 若给出档位，派生不会丢"；**真正让档位活着的是
+   `scraped` 段整段带过**。`auto` 段要承载档位，需要另给它一个真源（未做，未定由谁供）。
+5. **§6 未决点 5 的换算口径未改**：中文页 `元` 仍按 `meta.fx_usd_cny`（`_DS_CNY` 缺省 7.2）
+   换算，**没有**改用官方英文页的 USD 展示值。
+6. **`fetch-prices --apply` 现在会写回档位元数据**（`_provider_meta`）。这是本批新增的写盘面：
+   它把 §1 里"数据先行、代码随后"的窗口关闭了，但也意味着**下一次 `--apply` 会重写
+   `scraped.deepseek` 的元数据块**（官网脚注逐字串以代码为真源）。这一点本 spec 原文未预见。
+
+### 8.5 明确**未做**（越界声明）
+
+* 未改 `paper-qa-script/app/usage.py`：它的 `cost_cny()` 仍读扁平键（= 高峰镜像）。
+  litellm 回调**不带 run 时间戳**，那里"按 run 选档"没有输入；夜间批次的成本在那条链路上
+  仍偏保守（高估）。**这是已知的、具名的缺口**，不是本批能靠改价表解决的。
+* 未编码中国法定节假日（§6 未决点 1 原样保留）：节假日白天仍判高峰 ⇒ 高估（保守侧）。
+* 未改 `agents-dashboard/**`（文案仍只说一组单价）、未改 `docs/4-ALGORITHM.MD`／
+  `agents/README.md` 的口径段（他人并发写的文件）。
+* 未 `git add`／`commit`／`push`。
+
+## 附录 R｜§8.4 三处口径空白的裁定（父代理 2026-09-27，**裁定即规格**）
+
+实现批把三处规格没写的地方交回裁定。以下为裁定结论，**实现批的处置全部采纳**：
+
+1. **"时间戳缺失" ≠ "时长为 0"**：`register --start` 后同秒收尾在本仓极常见（`_now()` 秒级截断 ⇒
+   `started_at == ended_at`）。**裁定：零时长不是"缺失"**，取**起点那一刻**判档（起点是真实观测），
+   `tier_assumed` **只在端点真的缺失/不可解析、或末态早于起点时才置位**。
+   **理由**：若按 §3.2 字面把同秒当"缺失"，夜间 run 会被重新按高峰计 ⇒ **与 §3.1 冲突并重新引入约 2 倍高估**，
+   即本次要修的那个 bug。**该裁定优先于 §3.2 的字面读法。**
+2. **跨档 run 的标签**：**采纳 `tier: "mixed"` ＋ `peak_frac`（0~1，可复算）**。
+   **理由**：跨档必须可审计——只给金额无法回答"用了多少高峰"，而 `peak_frac` 让金额可复算
+   （验收实测 `peak_frac == 0.5` 且金额 = 0.5×高峰＋0.5×空闲，逐位一致）。
+3. **无档位数据的模型标 `tier: "flat"`**：**采纳**。
+   **理由**：不标则"这条 run 到底用没用档位"在账本里看不出；标了才能在下游区分"单档供应商"与"漏了档位数据"。
+
+**其余三处（红字 A 作用域、`--apply` 写 `_provider_meta`、换算口径未改）不当场改规格**：
+前两处是实测事实与新增写盘面，已由实现批写入 §8 实现记录；第三处维持 `¥ ÷ meta.fx_usd_cny`（见未决点 5 的父代理裁定）。

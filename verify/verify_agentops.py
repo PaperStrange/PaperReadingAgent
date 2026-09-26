@@ -29,10 +29,12 @@ VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1~UC-19（离线
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -50,6 +52,20 @@ PROBE_SPECS = ("tg15-probe-role.md", "tg15-undeclared-role.md")
 # **不是**为了让夹具变绿而放宽守卫：守卫的拒绝路径由 UC-24 三条反向对照真跑。
 DEGEN_FIXTURE_REASON = "fixture: 同秒收尾，非真实测量（R-001）"
 DEGEN_FIXTURE_ARGS = ("--allow-degenerate", "--degenerate-reason", DEGEN_FIXTURE_REASON)
+
+# UC-20（行 16）选档夹具用的**固定时刻**（UTC 写法；UTC+8 = Asia/Shanghai）；
+# 2026-09-28 是周一：
+#   OFF  = 00:30Z→00:35Z = 08:30→08:35 CST → 高峰前（空闲）；
+#   PEAK = 02:00Z→02:05Z = 10:00→10:05 CST → 上午高峰窗口内；
+#   SPAN = 03:00Z→05:00Z = 11:00→13:00 CST → 前 1h 高峰 + 后 1h 空闲（§3.3 跨档）。
+# 固定值而不是 `now()`：判据必须**可复跑**（用当前时刻的闸门会在白天自己变红）。
+_SH = timezone(timedelta(hours=8))
+ISO_OFF_PEAK = "2026-09-28T00:30:00+00:00"
+ISO_OFF_END = "2026-09-28T00:35:00+00:00"
+ISO_PEAK = "2026-09-28T02:00:00+00:00"
+ISO_PEAK_END = "2026-09-28T02:05:00+00:00"
+ISO_SPAN_START = "2026-09-28T03:00:00+00:00"
+ISO_SPAN_END = "2026-09-28T05:00:00+00:00"
 
 sys.path.insert(0, str(ROOT))
 
@@ -132,6 +148,46 @@ def ok(name: str, cond: bool, detail: str = "") -> None:
     assert cond, f"{name} FAIL: {detail}"
     PASSED += 1
     print(f"PASS: {name} {detail}")
+
+
+def price_shape_problems(frozen: dict, real: dict) -> list[str]:
+    """冻结副本解析结果 ↔ 真实价表模型的**形状契约**（纯函数，反向对照直接驱动）。
+
+    判据只有三条，都是"改了一边没改另一边"**必然**踩到的：
+      * 模型集（名字＋个数）——页面换模型/改列数时两侧立刻分叉；
+      * 每模型的两档键都在（`_tiers.peak` / `_tiers.off_peak`）——掉档位即分叉；
+      * 两档的四键**键集**相同。
+    值只比一条**本仓不变量**：扁平键 == `_tiers.peak`（镜像高峰）。
+    官方单价本身不比——它随调价变，比它等于把闸门变成"价格没变"的哨兵。
+
+    别名条目（真实价表里的 `_alias_of`，如 `deepseek-v4-flash`）**不参与**：
+    页面不会列出别名，把它们算进"模型集"就是把本仓的别名约定当成官方形状。
+    """
+    problems: list[str] = []
+    real = {k: v for k, v in real.items()
+            if not (isinstance(v, dict) and v.get("_alias_of"))}
+    if set(frozen) != set(real):
+        problems.append(f"模型集不同：副本={sorted(frozen)} 真实={sorted(real)}")
+    for name in sorted(set(frozen) & set(real)):
+        tiers, ftiers = real[name].get("_tiers"), frozen[name].get("_tiers")
+        if not isinstance(tiers, dict) or not isinstance(ftiers, dict):
+            got = f"副本={type(ftiers).__name__} 真实={type(tiers).__name__}"
+            problems.append(f"{name}: 缺 _tiers（{got}）")
+            continue
+        if set(tiers) != set(ftiers):
+            problems.append(f"{name}: 档位键不同 副本={sorted(ftiers)}"
+                            f" 真实={sorted(tiers)}")
+            continue
+        for tier in sorted(tiers):
+            if set(tiers[tier]) != set(ftiers[tier]):
+                problems.append(f"{name}.{tier}: 四键集不同 副本={sorted(ftiers[tier])}"
+                                f" 真实={sorted(tiers[tier])}")
+        cost_keys = ("input_cost_per_token", "output_cost_per_token",
+                     "cache_read_input_token_cost", "cache_creation_input_token_cost")
+        flat = {k: real[name].get(k) for k in cost_keys}
+        if any(v is not None for v in flat.values()) and flat != tiers.get("peak"):
+            problems.append(f"{name}: 扁平键未镜像 _tiers.peak（本仓不变量）")
+    return problems
 
 
 def _window_problems(run: dict) -> list[str]:
@@ -414,24 +470,28 @@ def main() -> int:
         r = run(["list"], base_env, check=True)
         ok("UC-12 并发后完整性有效", r.returncode == 0, "list 加载通过完整性校验")
 
-        # UC-13（M9）：fetch-prices 解析器（deepseek 表格 / openrouter JSON）
-        # + 合并与优先级
+        # UC-13（M9 / TG-20 行 15+16）：fetch-prices 解析器（deepseek / openrouter）
+        # + 合并与优先级 + **价表形状契约**（台账 E9：这段 HTML 是旧表形状的冻结副本）
         spec_fp = importlib.util.spec_from_file_location("fetch_prices", ROOT / "scripts" / "fetch-prices.py")
         fp = importlib.util.module_from_spec(spec_fp)
         assert spec_fp.loader is not None
         spec_fp.loader.exec_module(fp)
+        # 冻结副本 = **现行官网表形状**（2 模型 / 每资源两档 / 12 金额，`<tr>` 平铺）：
+        # 旧副本是"3 模型 + 18 个 `$`"，而 2026-09-26 起官网是 2 模型 / 12 金额 ⇒ 解析器
+        # 恒返回 `{}`（红字 B）。副本不改就等于"闸门全绿而解析器已换成永不命中的那个"。
         deepseek_html = (
-            '<table><tr><td colspan="3" style="text-align:center">MODEL</td>'
-            "<td>deepseek-v4-flash</td><td>deepseek-v4-pro</td><td>deepseek-v4-flash-vision-exp</td></tr>"
-            '<tr><td rowspan="6">PRICING</td><td rowspan="2">1M INPUT TOKENS<br>(CACHE HIT)</td>'
-            "<td>OFF-PEAK</td><td>$0.007</td><td>$0.022</td><td>$0.007</td></tr>"
-            "<tr><td>PEAK</td><td>$0.014</td><td>$0.044</td><td>$0.014</td></tr>"
-            '<tr><td rowspan="2">1M INPUT TOKENS<br>(CACHE MISS)</td>'
-            "<td>OFF-PEAK</td><td>$0.22</td><td>$0.66</td><td>$0.22</td></tr>"
-            "<tr><td>PEAK</td><td>$0.44</td><td>$1.32</td><td>$0.44</td></tr>"
+            '<table><tr><td colspan="3">MODEL</td>'
+            "<td>deepseek-flash (1)</td><td>deepseek-v4-pro</td></tr>"
+            '<tr><td rowspan="6">PRICING (2)</td>'
+            '<td rowspan="2">1M INPUT TOKENS (CACHE HIT)</td>'
+            "<td>OFF-PEAK</td><td>$0.003</td><td>$0.022</td></tr>"
+            "<tr><td>PEAK</td><td>$0.006</td><td>$0.044</td></tr>"
+            '<tr><td rowspan="2">1M INPUT TOKENS (CACHE MISS)</td>'
+            "<td>OFF-PEAK</td><td>$0.15</td><td>$0.66</td></tr>"
+            "<tr><td>PEAK</td><td>$0.3</td><td>$1.32</td></tr>"
             '<tr><td rowspan="2">1M OUTPUT TOKENS</td>'
-            "<td>OFF-PEAK</td><td>$0.66</td><td>$1.98</td><td>$0.66</td></tr>"
-            "<tr><td>PEAK</td><td>$1.32</td><td>$3.96</td><td>$1.32</td></tr></table>Concurrency 10"
+            "<td>OFF-PEAK</td><td>$0.6</td><td>$1.98</td></tr>"
+            "<tr><td>PEAK</td><td>$1.2</td><td>$3.96</td></tr></table>Concurrency 10"
         )
         ds = fp.parse_deepseek(deepseek_html)
 
@@ -451,11 +511,27 @@ def main() -> int:
            and any(isinstance(h, fp._SafeRedirectHandler) for h in _opener.handlers),
            f"mro={[c.__name__ for c in fp._SafeRedirectHandler.__mro__[:3]]}")
 
-        ok("UC-13 deepseek 表格解析（PEAK 口径）",
-           "deepseek-v4-flash" in ds
-           and abs(ds["deepseek-v4-flash"]["input_cost_per_token"] - 4.4e-7) < 1e-12
-           and abs(ds["deepseek-v4-flash"]["output_cost_per_token"] - 1.32e-6) < 1e-12,
-           f"flash={ds.get('deepseek-v4-flash')}")
+        # 期望值 = 冻结副本页面的**产品价格**（USD/1M → USD/token，round 10）：
+        # 0.3/1e6=3e-7、1.2/1e6=1.2e-6、0.006/1e6=6e-9、0.15/1e6=1.5e-7、0.6/1e6=6e-7。
+        # 这些字面量是**防"改副本不改解析器"**的锚点：换了列序/列数这里立刻红。
+        dsfl = ds.get("deepseek-flash", {})
+        ok("UC-13 deepseek 表格解析（2 模型 / 12 金额，模型数动态读出）",
+           sorted(ds) == ["deepseek-flash", "deepseek-v4-pro"],
+           f"models={sorted(ds)}")
+        ok("UC-13 PEAK 列（cache-miss input=3e-7、output=1.2e-6、cache-hit=6e-9）",
+           abs(dsfl.get("input_cost_per_token", 0) - 3e-7) < 1e-12
+           and abs(dsfl.get("output_cost_per_token", 0) - 1.2e-6) < 1e-12
+           and abs(dsfl.get("cache_read_input_token_cost", 0) - 6e-9) < 1e-12,
+           f"flash={dsfl}")
+        ok("UC-13 OFF-PEAK 列（off=peak/2）",
+           abs(dsfl["_tiers"]["off_peak"]["input_cost_per_token"] - 1.5e-7) < 1e-12
+           and abs(dsfl["_tiers"]["off_peak"]["output_cost_per_token"] - 6e-7) < 1e-12,
+           f"off={dsfl.get('_tiers', {}).get('off_peak')}")
+        dspeak = dsfl.get("_tiers", {}).get("peak", {})
+        ok("UC-13 同页同时抓出两档（旧实现只留 peak 三项，档位靠人手补）",
+           dspeak.get("input_cost_per_token") == dsfl.get("input_cost_per_token")
+           and sorted(dsfl.get("_tiers", {})) == ["off_peak", "peak"],
+           f"tiers={sorted(dsfl.get('_tiers', {}))}")
         orjson = '{"data":[{"id":"openai/gpt-4o-mini","pricing":{"prompt":"1.5e-7","completion":"6e-7"}}]}'
         orr = fp.parse_openrouter(orjson)
         ok("UC-13 openrouter JSON 解析",
@@ -473,13 +549,50 @@ def main() -> int:
            f"dsc={dsc}")
         merged = fp.merge(
             {"auto": {"a": {"input_cost_per_token": 1e-6}}, "manual": {"m": None}, "meta": {"fx_usd_cny": 7.2}},
-            {"deepseek": {"models": {"deepseek-v4-flash": ds["deepseek-v4-flash"]}}},
+            {"deepseek": {"models": {"deepseek-flash": ds["deepseek-flash"]}}},
         )
         ok("UC-13 merge 保留 auto/manual/meta 且新增 scraped",
            merged["auto"]["a"]["input_cost_per_token"] == 1e-6 and "m" in merged["manual"]
            and merged["meta"]["fx_usd_cny"] == 7.2
-           and "deepseek-v4-flash" in merged["scraped"]["deepseek"]["models"],
+           and "deepseek-flash" in merged["scraped"]["deepseek"]["models"],
            "merge 结构")
+        # 解析器不产出的元数据键必须**并回**（否则抓一次就抹掉选档依据 `_peak_windows`）
+        old_prov = {"models": {"old": {"input_cost_per_token": 1e-9}},
+                    "_peak_windows": [{"days": ["Mon"]}],
+                    "_flat_key_policy": "keep me"}
+        kept = fp.merge({"scraped": {"deepseek": old_prov}},
+                        {"deepseek": {"models": {"n": {}}}})
+        kept_ds = kept["scraped"]["deepseek"]
+        ok("UC-13 merge 并回解析器不产出的元数据（`_peak_windows` 不会被抓取抹掉）",
+           kept_ds.get("_peak_windows") == old_prov["_peak_windows"]
+           and kept_ds.get("_flat_key_policy") == "keep me"
+           and "n" in kept_ds["models"],
+           f"keys={sorted(kept_ds)}")
+
+        # UC-13b（**台账 E9 的入场券**）：冻结副本的**形状契约**——它产出的形状必须与
+        # 仓库真实价表一致，否则"改了真表而冻结副本没改"就是全绿而口径已分叉。
+        prices_path = ROOT / "agents" / "runtime" / "prices.json"
+        real = json.loads(prices_path.read_text(encoding="utf-8"))
+        real_deepseek = (real.get("scraped") or {}).get("deepseek") or {}
+        real_ds = real_deepseek.get("models") or {}
+        if not real_ds:
+            raise AssertionError("判据未被触发：真实价表缺 scraped.deepseek.models")
+        ok("E9 冻结副本形状 == 真实价表形状（模型名/模型数/档位键逐项）",
+           price_shape_problems(ds, real_ds) == [],
+           f"副本={sorted(ds)} 真实={sorted(real_ds)}")
+        win_ok = bool(real_deepseek.get("_peak_windows")
+                      and real_deepseek.get("_tier_timezone"))
+        ok("E9 真实价表的两档窗口元数据在（选档代码的真源）", win_ok,
+           "scraped.deepseek._peak_windows / _tier_timezone")
+        # 反向对照：**前置条件必须真的发生**——先把"真表形状"打散成旧表形状，
+        # 证明契约确实会 FAIL 并点名（不是只会说 PASS）。判不出差异 ⇒ 本条不作数。
+        drifted = {k: v for k, v in real_ds.items() if k != "deepseek-v4-pro"}
+        drifted["deepseek-flash"] = {k: v for k, v in real_ds["deepseek-flash"].items()
+                                     if k != "_tiers"}
+        hit = price_shape_problems(ds, drifted)
+        ok("E9 反向对照：真表被改成旧形状（少一个模型 + 掉档位键）⇒ 契约 FAIL 并点名",
+           hit and "模型集不同" in hit[0] and any("_tiers" in p for p in hit),
+           f"problems={hit}")
         # 优先级：manual 非 null 覆盖 scraped；
         # manual null → scraped 兜底（进程内重载 module 以改
         # AGENT_OPS_DIR）
@@ -499,6 +612,203 @@ def main() -> int:
         ok("UC-13 manual null → scraped 兜底",
            ao2._prices_for("m") is not None and ao2._prices_for("m")["input_cost_per_token"] == 1e-9,
            "scraped fallback")
+
+        # UC-20（TG-20 行 16）：**按 run 自身时间戳选档**（spec §3）。三条反证 +
+        # 一条"真入口"（真实账本行），每条都**先断言前置条件确实发生**（机制案例 26）。
+        # 夹具价表：四键价 + 两档（off = peak/2）。期望值全部由它推出，不手抄。
+        pk = {"input_cost_per_token": 2.5e-7, "output_cost_per_token": 1e-6,
+              "cache_read_input_token_cost": 5e-9,
+              "cache_creation_input_token_cost": 2.5e-7}
+        off = {"input_cost_per_token": 1.25e-7, "output_cost_per_token": 5e-7,
+               "cache_read_input_token_cost": 2.5e-9,
+               "cache_creation_input_token_cost": 1.25e-7}
+        weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+        tier_prices = {
+            "meta": {"fx_usd_cny": 7.2},
+            "scraped": {"deepseek": {
+                "_tier_scheme": "two_tier",
+                "_tier_timezone": "Asia/Shanghai",
+                "_peak_windows": [
+                    {"days": weekdays, "start": "09:00", "end": "12:00"},
+                    {"days": weekdays, "start": "14:00", "end": "18:00"},
+                ],
+                "models": {"deepseek-v4-flash": {
+                    "max_input_tokens": 128000, **pk,
+                    "_tiers": {"peak": pk, "off_peak": off},
+                }},
+            }},
+        }
+        tier_root = tmp / "tier"
+        (tier_root / "runtime").mkdir(parents=True, exist_ok=True)
+        tier_prices_path = tier_root / "runtime" / "prices.json"
+        tier_prices_path.write_text(json.dumps(tier_prices, ensure_ascii=False),
+                                    encoding="utf-8")
+        tier_env = {**base_env, "AGENT_OPS_DIR": str(tier_root)}
+        os.environ["AGENT_OPS_DIR"] = str(tier_root)
+
+        spec_ao_tier_mod = importlib.util.spec_from_file_location("agent_ops3", CLI)
+        ao_tier_mod = importlib.util.module_from_spec(spec_ao_tier_mod)
+        assert spec_ao_tier_mod.loader is not None
+        spec_ao_tier_mod.loader.exec_module(ao_tier_mod)
+        tier = ao_tier_mod.peak_windows_from_prices(tier_prices)
+        ok("UC-20 前置①：选档窗口元数据来自价表（不是代码里写死）",
+           tier is not None and tier[1] == "Asia/Shanghai" and len(tier[0]) == 2,
+           f"windows={tier}")
+
+        # 反证①：**空闲时段**的 run ⇒ 必须按 off_peak 计价，且前置条件（时间戳确实落在
+        # 窗口外）先被断言——落在窗口内的话这条不作数。
+        off_row = {"model": "deepseek-v4-flash", "usage": {"input_tokens": 1000},
+                   "started_at": ISO_OFF_PEAK, "ended_at": ISO_OFF_END}
+        off_at = ao_tier_mod._parse_ts(ISO_OFF_PEAK)
+        assert off_at is not None
+        off_cst = off_at.astimezone(_SH).strftime("%a %H:%M")
+        ok("UC-20 反证①前置：该 run 的时间戳**确实落在空闲窗口内**",
+           ao_tier_mod.is_peak_at(off_at, tier[0], tier[1]) is False
+           and ao_tier_mod.peak_frac_for(off_row, tier[0], tier[1]) == 0.0,
+           f"{ISO_OFF_PEAK[11:16]}Z → UTC+8 {off_cst} 非高峰")
+        off_cost = ao_tier_mod._estimate_cost(off_row)
+        ok("UC-20 反证①：空闲时段 run 按 off_peak 计价（1e3 × 1.25e-7 × 7.2 = 9e-4）",
+           off_cost.get("tier") == "off_peak" and abs(off_cost["total"] - 9e-4) < 1e-12,
+           f"tier={off_cost.get('tier')} total={off_cost['total']}"
+           f"（高峰价会是 {2 * off_cost['total']}）")
+
+        # 反证②：**时间戳缺失** ⇒ 按高峰计 + `tier_assumed`（不得静默挑便宜的档）
+        no_ts = ao_tier_mod._estimate_cost({"model": "deepseek-v4-flash",
+                                    "usage": {"input_tokens": 1000},
+                                    "started_at": None, "ended_at": None})
+        ok("UC-20 反证②：时间戳缺失 ⇒ peak 计价 1.8e-3 **且** 带 tier_assumed",
+           no_ts.get("tier") == "peak" and no_ts.get("tier_assumed") is True
+           and abs(no_ts["total"] - 1.8e-3) < 1e-12,
+           f"tier={no_ts.get('tier')} assumed={no_ts.get('tier_assumed')}"
+           f" total={no_ts['total']}")
+        ok("UC-20 反证②前置：缺时间戳时**不会**被算成空闲（若被算成空闲则本条不作数）",
+           no_ts["total"] == 2 * off_cost["total"] and no_ts.get("peak_frac") is None,
+           f"peak={no_ts['total']} off={off_cost['total']}")
+
+        # 反证③：跨档 run（周一 11:00→13:00 CST）= 高峰 1h + 空闲 1h ⇒ §3.3 时间加权
+        span = {"model": "deepseek-v4-flash", "usage": {"input_tokens": 1000},
+                "started_at": ISO_SPAN_START, "ended_at": ISO_SPAN_END}
+        ok("UC-20 反证③前置：该 run **确实跨越**档位边界（peak_frac=0.5，不是 0 或 1）",
+           ao_tier_mod.peak_frac_for(span, tier[0], tier[1]) == 0.5,
+           f"peak_frac={ao_tier_mod.peak_frac_for(span, tier[0], tier[1])}")
+        span_cost = ao_tier_mod._estimate_cost(span)
+        ok("UC-20 反证③：跨档按时间加权（0.5×1.8e-3 + 0.5×9e-4 = 1.35e-3，§3.3 一致）",
+           span_cost.get("tier") == "mixed" and span_cost.get("peak_frac") == 0.5
+           and abs(span_cost["total"] - 1.35e-3) < 1e-12,
+           f"tier={span_cost.get('tier')} frac={span_cost.get('peak_frac')}"
+           f" total={span_cost['total']}")
+
+        # 真入口：**真实账本行**（含其真实历史时间戳，逐字取自 registry.json）走同一条
+        # `_estimate_cost`——这条就是"夜间不再按高峰计费"的机器判据（同一行、同一 usage，
+        # 旧代码按扁平高峰键 = 2 倍）。CLI 侧的可见性另在交付回执里用真 run 演示。
+        reg_path = ROOT / "agents" / "runtime" / "registry.json"
+        real_reg = json.loads(reg_path.read_text(encoding="utf-8"))
+        ref_rows = [x for x in real_reg.get("runs", [])
+                    if x.get("model") and x.get("started_at")
+                    and x.get("ended_at") and x.get("usage")]
+        win = (tier[0], tier[1])
+
+        def frac_of(row: dict) -> float | None:
+            """该 run 的高峰时间占比（None = 端点缺失/退化）。"""
+            return ao_tier_mod.peak_frac_for(row, win[0], win[1])
+
+        ref = next((x for x in ref_rows if frac_of(x) == 0.0), None)
+        if ref is None:
+            raise AssertionError("判据未被触发：真实账本缺'时间戳落在空闲窗口'的 run"
+                                 f"（可判定 {len(ref_rows)} 条）⇒ 真入口判据不作数")
+        gold = ao_tier_mod._estimate_cost(ref)
+        # 高峰口径 = 旧行为（扁平键镜像高峰）：用同一价表算出**对照量**，不手抄数字
+        peak_cost = ao_tier_mod._estimate_cost({**ref, "started_at": ISO_PEAK,
+                                        "ended_at": ISO_PEAK_END})
+        ok("UC-20 真入口前置：该真实 run 的时间戳**确实落在空闲窗口内**",
+           ao_tier_mod.peak_frac_for(ref, tier[0], tier[1]) == 0.0,
+           f"{ref['run_id']} started_at={ref['started_at']}")
+        peak_total = peak_cost["total"]
+        ok("UC-20 真入口：真实账本行按 off_peak 计价（对照：同一行按高峰口径是 2 倍）",
+           gold.get("tier") == "off_peak"
+           and abs(gold["total"] * 2 - peak_total) < 1e-12,
+           f"{ref['run_id']} off={gold['total']} peak={peak_total} "
+           f"usage={ref.get('usage')}")
+        del ref, peak_cost, peak_total, ref_rows, real_reg
+
+        # E9 的**主判据**（红字 A）：派生**不得丢档**——白名单若不同步，`prices-derive`
+        # 一跑档位就没了，而"我这次写对了"不是判据。反向对照：把注册表摘掉（= 白名单不
+        # 同步的等价物）后同一断言必须 FAIL——先证明它咬得住，再说它绿。
+        tpath = tmp / "tier" / "runtime" / "prices.json"
+        r = run(["prices-derive"], tier_env, check=True)
+        after = json.loads(tpath.read_text(encoding="utf-8"))
+        prov = (after.get("scraped") or {}).get("deepseek") or {}
+        prov_keys = ("_tier_scheme", "_tier_timezone", "_peak_windows")
+        model_keys = ("_tiers",)
+        models_of = (prov.get("models") or {})
+        flash_tiers = (models_of.get("deepseek-v4-flash") or {}).get("_tiers") or {}
+        flash_keys = sorted((models_of.get("deepseek-v4-flash") or {}))
+        ok("E9 派生后档位仍在（provider 元数据 + 模型 `_tiers` 一个不少）",
+           all(k in prov for k in prov_keys)
+           and all(k in flash_keys for k in model_keys),
+           f"派生后 provider keys={sorted(prov)} model keys={flash_keys}")
+        ok("E9 派生后模型档位未被重建抹掉（`_tiers.off_peak` 逐键相等）",
+           (models_of.get("deepseek-v4-flash") or {}).get("_tiers") ==
+           tier_prices["scraped"]["deepseek"]["models"]["deepseek-v4-flash"]["_tiers"],
+           f"off_peak={flash_tiers.get('off_peak')}")
+        ok("E9 派生后选档仍可用（`peak_windows_from_prices` 读得到窗口）",
+           ao_tier_mod.peak_windows_from_prices(after) is not None,
+           f"keys={sorted(prov)}")
+        # 反向对照前置：真造出"白名单不同步"的实现（临时副本，**不动仓库文件**）。
+        # 摘掉 `_tiers, _tier_scheme` 这一行 ⇒ 等价于"多档落地时没同步白名单"。
+        # 判据的**作用域**要写准：它管 `auto` 段的重建。`scraped` 段是整段带过的，
+        # 故先证明"档位一旦落到 `auto` 就被白名单决定生死"，再证明"白名单摘掉即丢档"。
+        clone = tmp / "clone"
+        (clone / "scripts").mkdir(parents=True, exist_ok=True)
+        src_txt = CLI.read_text(encoding="utf-8")
+        # 用正则匹配（不写死缩进/折行）：重排白名单时这条反向对照必须**还能造出前置**，
+        # 否则它会以"判据未被触发"红掉——那正是本仓"夹具随被测代码漂移"的形态。
+        pat = re.compile(r'^[ \t]*"cache_creation_input_token_cost",'
+                         r' "_tiers", "_tier_scheme"\)[ \t]*$', re.M)
+        hits = pat.findall(src_txt)
+        if len(hits) != 1:
+            raise AssertionError(f"判据未被触发：白名单声明行命中 {len(hits)} 次")
+        clone_cli = clone / "scripts" / "agent-ops.py"
+        clone_cli.write_text(pat.sub(")", src_txt), encoding="utf-8")
+
+        def derive_with(cli_path: Path) -> subprocess.CompletedProcess:
+            """跑一次 `prices-derive`（副本 REPO_ROOT 在 %TEMP% ⇒ 显式 PYTHONPATH）。"""
+            env = {**tier_env, "PYTHONPATH": str(ROOT)}
+            return subprocess.run([sys.executable, str(cli_path), "prices-derive"],
+                                  capture_output=True, text=True, encoding="utf-8",
+                                  errors="replace", env=env)
+
+        # `auto` 段是**从 litellm 表重建**的，故用 litellm 里确有的模型（`gpt-4o-mini`）
+        # 承载档位：在它的 `auto` 条目上挂一份 `_tiers`，再看派生后它还在不在。
+        # 这正是红字 A 说的形态——"把 deepseek 价移到 auto 段即丢档"。
+        src_flash = tier_prices["scraped"]["deepseek"]["models"]["deepseek-v4-flash"]
+        seed_entry = {k: v for k, v in src_flash.items() if k != "max_input_tokens"}
+        tier_seed = dict(seed_entry["_tiers"])
+        seeded = json.loads(tpath.read_text(encoding="utf-8"))
+        seeded["auto"] = {**seeded.get("auto", {}),
+                          "gpt-4o-mini": {**seed_entry, "_tiers": tier_seed}}
+        tpath.write_text(json.dumps(seeded, ensure_ascii=False), encoding="utf-8")
+        auto_now = lambda: (json.loads(tpath.read_text(encoding="utf-8")).get("auto")  # noqa: E731
+                            or {}).get("gpt-4o-mini") or {}
+        r_bad = derive_with(clone_cli)
+        bad_auto = auto_now()
+        bad_out = (r_bad.stdout + r_bad.stderr).strip()[-80:]
+        ok("E9 反向对照：白名单不同步 ⇒ `auto` 段的档位**真被丢弃**（前置条件发生）",
+           r_bad.returncode == 0 and bad_auto.get("input_cost_per_token") is not None
+           and "_tiers" not in bad_auto,
+           f"rc={r_bad.returncode} auto 键={sorted(bad_auto)} out={bad_out}")
+        tpath.write_text(json.dumps(seeded, ensure_ascii=False), encoding="utf-8")
+        r_good = derive_with(CLI)
+        good_auto = auto_now()
+        # 白名单的**作用域**（实测）：它决定 `auto` 段**有哪些键**，值取自 litellm 表。
+        # litellm 表没有 `_tiers` ⇒ 这里只能是 `None`（键被保住、值取不到）。
+        # ⇒ 红字 A 的修法只能作用在 `scraped` 段；`auto` 段承载档位需另供真源。
+        ok("E9 对照：同步白名单 ⇒ `auto` 段**保留 `_tiers` 键**（值取自 litellm）",
+           r_good.returncode == 0 and "_tiers" in good_auto
+           and good_auto["_tiers"] is None,
+           f"rc={r_good.returncode} auto keys={sorted(good_auto)}")
+
+        run(["prices-derive"], tier_env, check=True)  # 恢复夹具（不留半态给后续用例）
 
         # UC-14（TG-11，Sprint-17）：评审类 run 的 scope 来源闸门（fail-closed，
         # 机器可验）
