@@ -258,10 +258,163 @@ def close_step_order(policy: AgentPolicy) -> tuple[str, int, set[str], set[str]]
 SPRINT_ID_RE = re.compile(r"[Ss]print[-\s]?0*(\d+)")
 
 
+# 台账 E1 / 行 7：归一化本身是**生产逻辑**（写入侧 `scripts/agent-ops.py`
+# 的同名函数，位点用 `git grep -n "def _norm_sprint"` 现跑定位，不写死行号：
+# 行号会随切线位移）。本闸门**不得导入它**——判据导入被测实现就不再是判据。
+# 同义性改由**一致性向量**守：向量表在本档（唯一权威），两侧各自解析同一张表。
+SPRINT_VECTOR_SPEC = ("docs/iteration/phases/testing-governance/"
+                      "2026-09-26-sprint-id-normalization-spec.MD")
+
+
+def _vec_value(cell: str) -> object:
+    """向量表哨兵 → Python 值：`(null)` → None、`(empty)` → 空串。"""
+    if cell == "(null)":
+        return None
+    return "" if cell == "(empty)" else cell
+
+
+def _spec_lines() -> list[str]:
+    """本档的行（不存在 ⇒ 空表，调用方判 FAIL）。"""
+    path = ROOT / SPRINT_VECTOR_SPEC
+    if not path.is_file():
+        return []
+    return path.read_text(encoding="utf-8").splitlines()
+
+
+def _col_index(head: list[str], name: str) -> int:
+    """表头里定位列名。
+
+    表头单元格可能写成行内代码（`` `sprint` ``）——先剥反引号再比；
+    缺列返回 -1（调用方判 FAIL，不靠写死列号兜底）。
+    """
+    cells = [c.strip("`") for c in head]
+    return cells.index(name) if name in cells else -1
+
+
+def _is_data_row(cells: list[str]) -> bool:
+    """数据行判据：去掉对齐符后**还有内容**。
+
+    注意不能用 `set(joined) > set("-: ")`——`>` 是**真超集**判定，
+    而分隔行 `['---','---','---']` 与 `set("-: ")` 恰好相等 ⇒ 数据行会被静默丢掉。
+    """
+    return bool(set("".join(cells)) - set("-: "))
+
+
+def _table_slice(lines: list[str], section: str) -> list[list[str]]:
+    """取 `section` 之后的第一张表 → 逐行单元格（表头行、分隔行都在内）。
+
+    列位一律由**表头行**定位，不在数据行里找列名——
+    否则"给表加一列"会变成静默错位而非响亮失败。
+    """
+    hits = [i for i, line in enumerate(lines) if section in line]
+    if not hits:
+        return []
+    out: list[list[str]] = []
+    for line in lines[hits[0] + 1:]:
+        line = line.strip()
+        if not line.startswith("|"):
+            if out:
+                break
+            continue
+        if line.endswith("|"):
+            out.append([c.strip() for c in line[1:-1].split("|")])
+    return out
+
+
+def _vector_table(section: str, column: str = "输入"
+                  ) -> list[tuple[str, object, object]] | None:
+    """从本档解析一致性向量表 → `(id, 输入值, 期望值)`。
+
+    表 C（语义层）的输入列是 `sprint`，调用方显式传 `column="sprint"`
+    ——**不要**靠 section 文本猜列名（`"### 4.3 表 C"` 里没有"语义"二字，
+    猜错会静默取不到列，而不是响亮失败）。
+    缺表、缺列、无数据行 ⇒ None（调用方判 FAIL，不放行）。
+    两侧脚本各自解析**同一张表**，故"同输入"由构造保证，不靠人抄两遍。
+    """
+    raw_cells = _table_slice(_spec_lines(), section)
+    if not raw_cells:
+        return None
+    head = raw_cells[0]
+    i_id, i_in, i_want = (_col_index(head, k) for k in ("id", column, "期望值"))
+    if min(i_id, i_in, i_want) < 0:
+        return None
+    rows = [(c[i_id].strip("`"), _vec_value(c[i_in].strip("`")),
+             _vec_value(c[i_want].strip("`")))
+            for c in raw_cells[1:]
+            if len(c) > max(i_id, i_in, i_want) and _is_data_row(c)]
+    return rows or None
+
+
+def _vector_extra(section: str, column: str) -> list[object] | None:
+    """取某张向量表的一列（表 C 的第 3 列 `task_id`）。缺表/缺列 ⇒ None。"""
+    raw_cells = _table_slice(_spec_lines(), section)
+    if not raw_cells:
+        return None
+    i_col = _col_index(raw_cells[0], column)
+    if i_col < 0:
+        return None
+    out = [_vec_value(c[i_col].strip("`")) for c in raw_cells[1:]
+           if len(c) > i_col and _is_data_row(c)]
+    return out or None
+
+
+def _drift_pattern() -> str:
+    """反证用的"看似合理的收紧"模式（数字宽度限 4 位），只用于敏感度自检。"""
+    return SPRINT_ID_RE.pattern.replace("0*(\\d+)", "0*(?:0*)(\\d{0,4})")
+
+
+def _sprint_vector_problems() -> list[str]:
+    """向量守卫：本闸门对同一组输入必须与**规范期望值**同结论。
+
+    含**敏感度反证**（台账"向量必须有牙"）：把归一模式按 `_drift_pattern()` 收紧后
+    重跑，至少**一个**输入的结论必须改变。一个都没变 ⇒ 判 FAIL：本次一致不作数。
+    """
+    rows = _vector_table("### 4.1 表 A") or []
+    rows += _vector_table("### 4.2 表 B") or []
+    if not rows:
+        return [f"向量表缺失或不可解析：{SPRINT_VECTOR_SPEC}（判据未被触发 ⇒ 不作数）"]
+    problems = [f"向量 {rid}: 输入 {raw!r} 期望 {want!r}，实测 {_norm_sprint(raw)!r}"
+                for rid, raw, want in rows if _norm_sprint(raw) != want]
+    if not any(want is not None for _, _, want in rows):
+        problems.append("向量一个接受例都没有 ⇒ 前置条件不成立 ⇒ 本次一致性不作数")
+    drift = re.compile(_drift_pattern())
+    changed = sum((drift.search(t).group(1) if drift.search(t)
+                   else (drift.fullmatch(t).group(1) if drift.fullmatch(t) else None))
+                  != want for _, raw, want in rows for t in [str(raw or "").strip()])
+    if not changed:
+        problems.append("向量对该漂移不敏感（收紧正则后无一例改变结论）"
+                        " ⇒ 本次一致不作数")
+    problems += _sprint_semantic_problems()
+    return problems
+
+
+def _sprint_semantic_problems() -> list[str]:
+    """表 C：读取侧**语义层**（`sprint` 字段缺失时回退 `task_id`）必须与期望同结论。
+
+    只测归一函数不测这条回退，等于没测"判定域是从哪来的"。
+    """
+    section = "### 4.3 表 C"
+    rows = _vector_table(section, "sprint") or []
+    tasks = _vector_extra(section, "task_id") or []
+    if not rows or len(rows) != len(tasks):
+        return [f"语义层向量缺失/列不齐：{SPRINT_VECTOR_SPEC}（判据未被触发 ⇒ 不作数）"]
+    problems = []
+    for (rid, sprint, want), task in zip(rows, tasks):
+        run = {"run_id": "vector", "sprint": sprint, "task_id": task}
+        got = run_sprint_identity(run)
+        if got != want:
+            problems.append(f"语义向量 {rid}: sprint={sprint!r} task_id={task!r} "
+                            f"期望 {want!r}，实测 {got!r}")
+    return problems
+
+
 def _norm_sprint(value: object) -> str | None:
     """把 Sprint 标识归一成**纯编号字符串**。
 
     例：`"Sprint-18"` / `"18"` / `"018"` → `"18"`。
+
+    **本函数是判据侧的独立镜像**，与写入侧同义但**不导入**它（台账 E1 / 行 7）；
+    两者的同义性由 `_sprint_vector_problems()` 用一致性向量守。
     """
     text = str(value or "").strip()
     if not text:
@@ -2091,6 +2244,27 @@ def _selfcheck() -> int:
        probe2.returncode == 0 and "SKIP[ledger-absent]" in blob
        and "EVIDENCE:" not in blob and "CLOSE-READINESS PASS" not in blob,
        f"rc={probe2.returncode} out={blob.strip()[:120]}")
+
+    # ---- 台账 E1 / 行 7：一致性向量（唯一权威 = 本档 §4）------------------
+    # 本闸门**不导入**写入侧实现；两侧各自解析本档同一张向量表。
+    rows = (_vector_table("### 4.1 表 A") or []) + (_vector_table("### 4.2 表 B") or [])
+    ok("E1 向量表可解析（缺表 = 判据未被触发 ⇒ 立即 FAIL，不放行）",
+       bool(rows), f"{len(rows)} 行 <- {SPRINT_VECTOR_SPEC}")
+    probs = _sprint_vector_problems()
+    ok("E1 归一化一致性向量：全部输入与规范期望值同结论",
+       not probs, f"{len(rows)} 行 problems={probs[:1]}")
+    # 反证（台账"向量必须有牙"）：把模式按 _drift_pattern() 收紧后，
+    # 至少一个输入的结论必须改变；一个都没变 ⇒ 判 FAIL。
+    drift = re.compile(_drift_pattern())
+    changed = sum((drift.search(t).group(1) if drift.search(t)
+                   else (drift.fullmatch(t).group(1) if drift.fullmatch(t) else None))
+                  != want for _, raw, want in rows for t in [str(raw or "").strip()])
+    ok("E1 反证：收紧归一模式后向量结论必须改变（不敏感 ⇒ 本次一致不作数）",
+       changed > 0, f"changed={changed} 例")
+    sem = _vector_table("### 4.3 表 C", "sprint") or []
+    ok("E1 语义层向量（sprint 缺失时回退 task_id）可解析", bool(sem), f"{len(sem)} 行")
+    ok("E1 语义层一致性向量：域派生与规范期望值同结论",
+       not _sprint_semantic_problems(), f"{len(sem)} 行")
 
     real = registry_path()
     if real.exists():

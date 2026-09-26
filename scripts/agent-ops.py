@@ -576,8 +576,14 @@ def _validate_scope(args: argparse.Namespace, data: dict) -> tuple[str, str | No
 def _norm_sprint(value: object) -> str | None:
     """Sprint 标识归一成**纯编号字符串**（`"Sprint-18"` / `"18"` / `"018"` → `"18"`）。
 
-    与 `verify/verify_close_readiness.py::_norm_sprint` **同一口径**——M-A 判定域
-    派生要按它比较；两处各写一套的话，"回填进得去、闸门认不出"就会重现。
+    **本函数是这条口径的唯一写入侧实现**（台账 E1 / 行 7）。读取侧
+    `verify/verify_close_readiness.py` 保留**独立**镜像——
+    判据导入被测实现就不成其为判据；两者的同义性由**一致性向量**守：
+    向量表在 `docs/iteration/phases/testing-governance/`
+    `2026-09-26-sprint-id-normalization-spec.MD`，两侧各自解析同一张表。
+    位点一律用 `git grep -n "def _norm_sprint"` **现跑定位**，不写死行号
+    （行号会随切线位移）。改这里的语义必须同改镜像与向量表，否则
+    `verify/verify_close_readiness.py` 对同一文档会给出**不同的域**。
     """
     text = str(value or "").strip()
     if not text:

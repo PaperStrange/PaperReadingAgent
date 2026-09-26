@@ -65,6 +65,45 @@ if hasattr(sys.stdout, "reconfigure"):
 
 PASSED = 0
 
+# 台账 E1 / 行 7：归一化是**生产逻辑**，本文件是写入侧的真入口测试
+# （`register --sprint` / `set-sprint`）。一致性向量表在 spec（唯一权威），
+# 与读取侧 `verify_close_readiness.py` 解析**同一张表**——两侧不共用实现、
+# 只共用输入与期望值，这样"判据不导入被测实现"与"两侧同输入同输出"同时成立。
+SPRINT_VECTOR_SPEC = ROOT / ("docs/iteration/phases/testing-governance/"
+                             "2026-09-26-sprint-id-normalization-spec.MD")
+
+
+def _vec_value(cell: str) -> object:
+    """向量表哨兵 → Python 值：`(null)` → None、`(empty)` → 空串。"""
+    if cell == "(null)":
+        return None
+    return "" if cell == "(empty)" else cell
+
+
+def _spec_vector(section: str) -> list[tuple[str, object, object]]:
+    """从 spec 解析 `(id, 输入, 期望值)`；列位由**表头行**定位。
+
+    读不到 → 抛（调用方判 FAIL）：判据未被触发时**不得**当通过。
+    """
+    lines = SPRINT_VECTOR_SPEC.read_text(encoding="utf-8").splitlines()
+    hits = [i for i, line in enumerate(lines) if section in line]
+    if not hits:
+        raise AssertionError(f"向量表缺该节：{section}")
+    rows: list[list[str]] = []
+    for line in lines[hits[0] + 1:]:
+        line = line.strip()
+        if not line.startswith("|"):
+            if rows:
+                break
+            continue
+        if line.endswith("|"):
+            rows.append([c.strip() for c in line[1:-1].split("|")])
+    head = [c.strip("`") for c in rows[0]]
+    i_id, i_in, i_want = (head.index(k) for k in ("id", "输入", "期望值"))
+    return [(c[i_id].strip("`"), _vec_value(c[i_in].strip("`")),
+             _vec_value(c[i_want].strip("`")))
+            for c in rows[1:] if set("".join(c)) - set("-: ")]
+
 
 def run(args: list[str], env: dict, check: bool = False, raw: bool = False) -> subprocess.CompletedProcess:
     """跑一次 CLI。
@@ -1107,6 +1146,57 @@ def main() -> int:
         ok("UC-22 锁覆盖：写命令必须仍在 `@_with_registry_lock` 内（装饰器不得被挤开）",
            probe.stdout.strip() == "",
            f"未加锁={probe.stdout.strip()!r} rc={probe.returncode}")
+
+        # ---- 台账 E1 / 行 7：写入侧真入口对一致性向量的结论 ------------------
+        # 向量表在 spec（与读取侧同一张表）。本块把每个输入喂给**真 CLI**
+        # （`set-sprint`），断言"接受/拒绝 + 落库值"逐条与规范期望一致。
+        # 为什么必须在这里：判定域由读取侧按同一口径派生，写入侧若与它分叉，
+        # 就是台账 E1 反证列的形态（写进去的读不出来）——闸门侧自比查不出这一条。
+        vector = _spec_vector("### 4.1 表 A")
+        reason_e1 = "E1 向量：真 CLI 接受后落库值必须逐字节等于规范期望值"
+        run(["register", "--role", "impact-assessment", "--task", "e1-sprint-vector",
+             "--spec", "impact-assessment@1.4.4", "--run-id", "run-e1-vector"],
+            base_env, check=True)
+
+        def _sprint_of() -> object:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+            row = next(x for x in data["runs"] if x["run_id"] == "run-e1-vector")
+            return row.get("sprint")
+
+        # 变量名必须**全文件唯一**：`verify_artifact_paths.py` 的写盘目标分解器
+        # 按**名字**收集 `Assign`（不分作用域），同名多处赋值会分解失败 ⇒
+        # 该文件"动态目标"计数 +1（本块曾用 `bad`，与 UC-1 的 `bad` 撞名而踩中）。
+        sprint_bad: list[str] = []
+        accepts = rejects = 0
+        sprint_before: object = _sprint_of()
+        for rid, raw, want in vector:
+            # 拒绝分支的不变式是"**落库值不被改动**"——不是"落库值为空"：
+            # 前一条合法向量可能已经写过值，拿 `is None` 判会把正常拒绝误报成改动。
+            r = run(["set-sprint", "run-e1-vector", "--sprint", str(raw),
+                     "--reason", f"E1 一致性向量 {rid}：真入口结论比对"],
+                    base_env, raw=True)
+            blob = r.stdout + r.stderr
+            got = _sprint_of()
+            if want is None:
+                rejects += 1
+                if r.returncode == 0 or "SPRINT-ID-ERROR" not in blob:
+                    sprint_bad.append(f"{rid}: 期望拒绝，rc={r.returncode}")
+                elif got != sprint_before:
+                    sprint_bad.append(f"{rid}: 拒绝却改动了落库值"
+                                      f" {sprint_before!r} -> {got!r}")
+            else:
+                accepts += 1
+                if r.returncode != 0:
+                    sprint_bad.append(f"{rid}: 期望接受，rc={r.returncode} "
+                                      f"{blob.strip()[:40]}")
+                elif got != want:
+                    sprint_bad.append(f"{rid}: 落库 {got!r} != 期望 {want!r}")
+            sprint_before = got
+        ok(reason_e1, not sprint_bad,
+           f"{len(vector)} 行 bad={sprint_bad[:2] or '[]'}")
+        # 前置条件：两个分支都**真的**被走到（造不出反例就是判据没被触发）。
+        ok("E1 向量：接受与拒绝两个分支都真被走到（否则本次结论不作数）",
+           accepts > 0 and rejects > 0, f"接受 {accepts} 例 / 拒绝 {rejects} 例")
 
         # UC-23（P1 独立复核整改）：`result_files` 的**受控回填**。
         # 病根（2026-09-25 实测事故）：`finish --result-file` 是收尾**当时**唯一写入口，
