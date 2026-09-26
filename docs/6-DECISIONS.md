@@ -250,7 +250,7 @@
 - 时点: 未标注
 - 主代理归纳: 本条要求检索结果不得把"与 query 无关"的兜底结果当正常命中呈现：BM25 零命中回退取索引前 N 个文件时必须在输出显式标记 `result=fallback_first_n`（选择逻辑对用户可见），并补多语检索降零命中。
 - 生效状态: 生效
-- 证据: docs/4-ALGORITHM.MD:377；docs/3-LEARNED.MD:143
+- 证据: docs/4-ALGORITHM.MD:377；docs/3-LEARNED.MD:143；paper-qa-script/app/orchestration.py:686；verify/eval_retrieve.py:92
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
 
@@ -302,7 +302,7 @@
 - 时点: 2026-09-12
 - 主代理归纳: 本条指示按既定排期开工 Sprint-16（数据准确性 + 成本韧性 + 调研工作流深化），前置条件为 Sprint-15 已于 2026-09-10 用户验收通过并关闭。
 - 生效状态: 生效
-- 证据: docs/iteration/ROADMAP.MD:13
+- 证据: docs/iteration/ROADMAP.MD:13；docs/iteration/sprint/2026-09-12-sprint-16.md:3
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
 - 备注: 同一 Sprint 后于 2026-09-21 被用户裁定 HOLD（原三查结论需在后续改动落地后重跑），见 docs/iteration/sprint/2026-09-12-sprint-16.md:291；本条系"开工指示"、已履行，未被取代。
@@ -321,7 +321,7 @@
 - 原文（逐字）: "**没验收前不要提PR**"
 - 出处: docs/iteration/sprint/2026-09-12-sprint-16.md:279；docs/iteration/sprint/2026-09-12-sprint-16.md:67；docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD:67；docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD:25
 - 时点: 2026-09-12
-- 主代理归纳: 本条禁止在用户走查验收通过之前创建任何 PR（含以"提前验证 CI"为由）；CI 校验改走 windows 分支 push 触发，或经用户同意后再建 PR。
+- 主代理归纳: 本条禁止在用户走查验收通过之前创建任何 PR（含以"提前验证 CI"为由）；CI 校验改走 windows 分支 push 触发，或经用户同意后再建 PR。注：本规则仓内自认无机器闸门，现有执行点仅为 §3.4 规范条文，属"仅文字、无可执行执行点"。
 - 生效状态: 生效
 - 证据: docs/1-WORKFLOW.MD:52
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
@@ -400,7 +400,8 @@
 - 生效状态: 生效
 - 证据: docs/1-WORKFLOW.MD:109；docs/1-WORKFLOW.MD:121
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
-- 违背事故: 有——该质疑所指的违规既成事实：5 轮"修复验证复核"scope 全为自选、无来源声明，且三查跑过后另有 26 个提交落地致覆盖实质失效：docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD:24；docs/iteration/sprint/2026-09-12-sprint-16.md:212
+- 违背事故: 无（未发现）——本条生效后未发现新的违背；
+- 备注: 促成本条裁决的既成事实（5 轮"修复验证复核"scope 全为自选、无来源声明，且三查跑过后另有 26 个提交落地致覆盖实质失效）见 docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD:24；docs/iteration/sprint/2026-09-12-sprint-16.md:212。
 
 ### V-016 要求按紧急度排序卡片
 - 原文（逐字）: "按你的紧急度标准排序给卡片排个序"
@@ -410,7 +411,8 @@
 - 生效状态: 生效
 - 证据: docs/iteration/sprint/2026-09-12-sprint-16.md:127；docs/iteration/sprint/2026-09-12-sprint-16.md:150
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
-- 违背事故: 有——排序初版遗漏 `TG-6`（主代理自认"属我的错"，2026-09-21 补录为 P1 / 14.5）：docs/iteration/sprint/2026-09-12-sprint-16.md:150
+- 违背事故: 无（未发现）——本条生效后未发现新的违背；
+- 备注: 促成本条裁决的既成事实（紧急度排序初版遗漏 `TG-6`，主代理自认"属我的错"，2026-09-21 补录为 P1 / 14.5）见 docs/iteration/sprint/2026-09-12-sprint-16.md:150。
 
 ### V-017 指出架构卡未进排序
 - 原文（逐字）: "一张卡对应一个独立文档的架构卡没在排序里"
@@ -420,7 +422,8 @@
 - 生效状态: 生效
 - 证据: docs/iteration/sprint/2026-09-12-sprint-16.md:149；docs/iteration/sprint/2026-09-12-sprint-16.md:151
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
-- 违背事故: 有——排序初版未收录该架构卡（本条原话即用户当场指出该遗漏），修订时补记 `TG-14` 等：docs/iteration/sprint/2026-09-12-sprint-16.md:149
+- 违背事故: 无（未发现）——本条生效后未发现新的违背；
+- 备注: 促成本条裁决的既成事实（排序初版未收录"一张卡对应一个独立文档"的架构卡，本条原话即用户当场指出该遗漏，修订时补记 `TG-14` 等）见 docs/iteration/sprint/2026-09-12-sprint-16.md:149。
 
 ### V-018 叫停跨卡接口"写死"
 - 原文（逐字）: "任何涉及写死的操作都需要注意下，**这个需要再研究才能决定**｜｜**任何涉及写死的操作都需要注意下，这个需要再研究才能决定**"（`｜｜` 为分段符）
@@ -548,7 +551,7 @@
 - 证据: docs/iteration/sprint/2026-09-21-sprint-17.md:274；docs/iteration/sprint/2026-09-21-sprint-17.md:308
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
-- 备注: ①以"CI #207 红 → 修 → #208 绿"兑现（docs/iteration/sprint/2026-09-21-sprint-17.md:276）。
+- 备注: ①以"CI #207 红 → 修 → #208 绿"兑现（docs/iteration/sprint/2026-09-21-sprint-17.md:276-277）。
 
 ### V-030 合并并备 Plan B
 - 原文（逐字）: "合并，同时做好合并冲突的 Plan B 准备"
