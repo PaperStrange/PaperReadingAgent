@@ -80,6 +80,12 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 PASSED = 0
+# M-B（`TG-19` 反空转不变式）：**真账本**判据"没执行"的具名原因。
+# 空 = 真账本判据真的跑过；非空 = 本环境没有账本。
+# 它决定**最终判决行**的措辞：有 SKIP 时不得打印 `ALL PASS` 横幅
+# （口径同 `verify_card_index.py::verdict_line` 的判决行单一真源）。
+SKIPPED: list[str] = []
+LEDGER_REL = "agents/runtime/registry.json"
 
 # 台账 E1 / 行 7：归一化是**生产逻辑**，本文件是写入侧的真入口测试
 # （`register --sprint` / `set-sprint`）。一致性向量表在 spec（唯一权威），
@@ -148,6 +154,48 @@ def ok(name: str, cond: bool, detail: str = "") -> None:
     assert cond, f"{name} FAIL: {detail}"
     PASSED += 1
     print(f"PASS: {name} {detail}")
+
+
+def real_ledger_path() -> Path:
+    """**真实**账本路径（区别于 `AGENT_OPS_DIR` 下的夹具账本）。"""
+    return ROOT / LEDGER_REL
+
+
+def read_real_ledger(path: Path) -> dict | None:
+    """读真账本：**文件不存在** → `None`；坏账本 → 抛（fail-closed）。
+
+    两种"没有"必须分开（口径同 `verify_ledger_measurement.py`）：
+      * 不存在 = 本环境没有账本可比（fresh clone：`.gitignore` 忽略
+        `agents/runtime/*` ⇒ CI 全新 checkout 必然没有）；
+      * 存在但 JSON 非法 / 顶层结构非法 = **真缺陷** ⇒ 照旧抛出。
+
+    返回 `None` 是**唯一**的 SKIP 条件（调用方转 `skip_ledger_absent`）。
+    """
+    if not path.is_file():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or not isinstance(data.get("runs"), list):
+        raise AssertionError(f"真账本结构非法（顶层须含 runs 数组）：{path}")
+    return data
+
+
+def skip_ledger_absent(criterion: str) -> None:
+    """账本不存在 ⇒ 显式 SKIP：上屏点名、**不计入 `PASSED`**、判决行可见。"""
+    reason = f"{criterion}（ledger=absent (SKIP)）"
+    if reason not in SKIPPED:
+        SKIPPED.append(reason)
+    print(f"SKIP[ledger-absent] {criterion}：{LEDGER_REL} 不存在"
+          f"（fresh clone：`.gitignore` 忽略 `agents/runtime/*`）"
+          f"⇒ 该判据只在本机/有账本的环境执行——**本行不是 PASS**")
+
+
+def verdict_line(assertions: int, skipped: list[str]) -> str:
+    """最终判决行（**单一真源**：SKIP 优先于 PASS，二者互斥）。"""
+    if skipped:
+        return (f"AGENTOPS SKIP[ledger-absent]（{len(skipped)} 条真账本判据未执行"
+                f"：{'；'.join(skipped)}）——非账本判据 {assertions} 条已验，"
+                f"**本档不是通过**")
+    return f"ALL PASS ({assertions} assertions)"
 
 
 def price_shape_problems(frozen: dict, real: dict) -> list[str]:
@@ -698,38 +746,49 @@ def main() -> int:
            f"tier={span_cost.get('tier')} frac={span_cost.get('peak_frac')}"
            f" total={span_cost['total']}")
 
-        # 真入口：**真实账本行**（含其真实历史时间戳，逐字取自 registry.json）走同一条
-        # `_estimate_cost`——这条就是"夜间不再按高峰计费"的机器判据（同一行、同一 usage，
-        # 旧代码按扁平高峰键 = 2 倍）。CLI 侧的可见性另在交付回执里用真 run 演示。
-        reg_path = ROOT / "agents" / "runtime" / "registry.json"
-        real_reg = json.loads(reg_path.read_text(encoding="utf-8"))
-        ref_rows = [x for x in real_reg.get("runs", [])
-                    if x.get("model") and x.get("started_at")
-                    and x.get("ended_at") and x.get("usage")]
-        win = (tier[0], tier[1])
+        # 真入口：**真实账本行**（含其真实历史时间戳，逐字取自 registry.json）
+        # 走同一条 `_estimate_cost`——这条就是"夜间不再按高峰计费"的机器判据
+        # （同一行、同一 usage，旧代码按扁平高峰键 = 2 倍）。
+        # CLI 侧的可见性另在交付回执里用真 run 演示。
+        # C5（2026-09-25）：真账本被 `.gitignore` 忽略 ⇒ 全新 clone 必然没有它。
+        # 旧实现直接 `read_text` ⇒ **崩在断言之前**，offline 套件在 CI 恒红
+        # （实测 CI run 36420448108 第 7 步 `SUITE FAILED (1/26)`）。
+        # 现按 `verify_ledger_measurement.py` / `verify_close_readiness.py`
+        # 的同一口径：**缺账本 → 显式 SKIP（上屏、不计入断言计数、
+        # 判决行可见）**；**存在但坏 → 照旧 fail-closed**（见 `read_real_ledger`）。
+        real_reg = read_real_ledger(real_ledger_path())
+        if real_reg is None:
+            skip_ledger_absent("UC-20 真入口（真实账本行按 off_peak 计价）")
+        else:
+            ref_rows = [x for x in real_reg.get("runs", [])
+                        if x.get("model") and x.get("started_at")
+                        and x.get("ended_at") and x.get("usage")]
+            win = (tier[0], tier[1])
 
-        def frac_of(row: dict) -> float | None:
-            """该 run 的高峰时间占比（None = 端点缺失/退化）。"""
-            return ao_tier_mod.peak_frac_for(row, win[0], win[1])
+            def frac_of(row: dict) -> float | None:
+                """该 run 的高峰时间占比（None = 端点缺失/退化）。"""
+                return ao_tier_mod.peak_frac_for(row, win[0], win[1])
 
-        ref = next((x for x in ref_rows if frac_of(x) == 0.0), None)
-        if ref is None:
-            raise AssertionError("判据未被触发：真实账本缺'时间戳落在空闲窗口'的 run"
-                                 f"（可判定 {len(ref_rows)} 条）⇒ 真入口判据不作数")
-        gold = ao_tier_mod._estimate_cost(ref)
-        # 高峰口径 = 旧行为（扁平键镜像高峰）：用同一价表算出**对照量**，不手抄数字
-        peak_cost = ao_tier_mod._estimate_cost({**ref, "started_at": ISO_PEAK,
-                                        "ended_at": ISO_PEAK_END})
-        ok("UC-20 真入口前置：该真实 run 的时间戳**确实落在空闲窗口内**",
-           ao_tier_mod.peak_frac_for(ref, tier[0], tier[1]) == 0.0,
-           f"{ref['run_id']} started_at={ref['started_at']}")
-        peak_total = peak_cost["total"]
-        ok("UC-20 真入口：真实账本行按 off_peak 计价（对照：同一行按高峰口径是 2 倍）",
-           gold.get("tier") == "off_peak"
-           and abs(gold["total"] * 2 - peak_total) < 1e-12,
-           f"{ref['run_id']} off={gold['total']} peak={peak_total} "
-           f"usage={ref.get('usage')}")
-        del ref, peak_cost, peak_total, ref_rows, real_reg
+            ref = next((x for x in ref_rows if frac_of(x) == 0.0), None)
+            if ref is None:
+                raise AssertionError(
+                    "判据未被触发：真实账本缺'时间戳落在空闲窗口'的 run"
+                    f"（可判定 {len(ref_rows)} 条）⇒ 真入口判据不作数")
+            gold = ao_tier_mod._estimate_cost(ref)
+            # 高峰口径 = 旧行为（扁平键镜像高峰）：同一价表算出**对照量**，不手抄数字
+            peak_cost = ao_tier_mod._estimate_cost(
+                {**ref, "started_at": ISO_PEAK, "ended_at": ISO_PEAK_END})
+            ok("UC-20 真入口前置：该真实 run 的时间戳**确实落在空闲窗口内**",
+               ao_tier_mod.peak_frac_for(ref, tier[0], tier[1]) == 0.0,
+               f"{ref['run_id']} started_at={ref['started_at']}")
+            peak_total = peak_cost["total"]
+            ok("UC-20 真入口：真实账本行按 off_peak 计价"
+               "（对照：同一行按高峰口径是 2 倍）",
+               gold.get("tier") == "off_peak"
+               and abs(gold["total"] * 2 - peak_total) < 1e-12,
+               f"{ref['run_id']} off={gold['total']} peak={peak_total} "
+               f"usage={ref.get('usage')}")
+            del ref, peak_cost, peak_total, ref_rows, real_reg
 
         # E9 的**主判据**（红字 A）：派生**不得丢档**——白名单若不同步，`prices-derive`
         # 一跑档位就没了，而"我这次写对了"不是判据。反向对照：把注册表摘掉（= 白名单不
@@ -1069,15 +1128,12 @@ def main() -> int:
         # 在 CI 恒红（实测 run #207 第 7 步：`SUITE FAILED (1/24): verify_agentops.py`）
         # 。
         # 现按 `verify_ledger_measurement.py` / `verify_close_readiness.py` 的同一口径：
-        # **缺账本 → 显式 SKIP（理由上屏，且不打印 PASS——"跳过"不得冒充"通过"）**；
-        # **存在但坏 → 照旧 fail-closed**（下面读文件/解析失败会真抛）。
-        real_registry = ROOT / "agents" / "runtime" / "registry.json"
-        if not real_registry.is_file():
-            print(f"SKIP[ledger-absent] M-g 账本 run_id ↔ agents/runs/* 目录名一致性："
-                  f"{real_registry} 不存在（fresh clone；registry.json 被 .gitignore 忽略）"
-                  f"→ 该判据只在本机/有账本的环境执行。**本行不是 PASS**。")
+        # **缺账本 → 显式 SKIP（上屏、不计入断言计数、判决行可见）**；
+        # **存在但坏 → 照旧 fail-closed**（读文件/解析失败会真抛）。
+        real_ledger = read_real_ledger(real_ledger_path())
+        if real_ledger is None:
+            skip_ledger_absent("M-g 账本 run_id ↔ agents/runs/* 目录名一致性")
         else:
-            real_ledger = json.loads(real_registry.read_text(encoding="utf-8"))
             ledger_ids = {str(r.get("run_id") or "") for r in real_ledger.get("runs", [])}
             exc_file = ROOT / "agents" / "policy" / "run-dir-exceptions.json"
             exc = json.loads(exc_file.read_text(encoding="utf-8")) if exc_file.is_file() else {}
@@ -1856,7 +1912,40 @@ def main() -> int:
            == {p.name: p.read_bytes() for p in FUNCTIONS.glob("*.md")},
            f"{len(list(FUNCTIONS.glob('*.md')))} 份逐字节一致")
 
-        print(f"\nALL PASS ({PASSED} assertions)")
+        # M-B（`TG-19` 反空转不变式）：判决行**单一真源**，SKIP 不得冒充通过。
+        # 反向对照：直接驱动 `verdict_line` 的三种形态，否则下次改文案又会
+        # 悄悄改回"SKIP 之后照样 `ALL PASS`"。
+        _sk = ["UC-20 真入口（ledger=absent (SKIP)）"]
+        ok("M-B 判决行：SKIP 档**不含** PASS 字样、且点名 `ledger=absent (SKIP)`",
+           "PASS" not in verdict_line(7, _sk)
+           and "ledger=absent (SKIP)" in verdict_line(7, _sk)
+           and verdict_line(7, _sk).startswith("AGENTOPS SKIP[ledger-absent]"))
+        ok("M-B 判决行：无 SKIP 时才是 `ALL PASS` 横幅（二者互斥）",
+           verdict_line(7, []) == "ALL PASS (7 assertions)")
+        # 窄化反向对照（夹具落在 %TEMP%，本脚本不往仓库写文件）：
+        # SKIP **只**认"文件不存在"；账本存在但坏/结构非法必须 fail-closed。
+        probe_dir = tmp / "ledger-probe"
+        probe_dir.mkdir()
+        ok("M-B 窄化：路径不存在 ⇒ None（这是**唯一**的 SKIP 触发条件）",
+           read_real_ledger(probe_dir / "nope.json") is None)
+        bad_json = probe_dir / "bad-json.json"
+        bad_json.write_text("{not json", encoding="utf-8")
+        bad_shape = probe_dir / "bad-shape.json"
+        bad_shape.write_text('{"runs": {}}', encoding="utf-8")
+        good = probe_dir / "ok.json"
+        good.write_text('{"runs": []}', encoding="utf-8")
+        caught: list[str] = []
+        for bad_case in (bad_json, bad_shape):
+            try:
+                read_real_ledger(bad_case)
+            except (AssertionError, ValueError):
+                caught.append(bad_case.name)
+        ok("M-B 窄化：账本存在但 JSON 非法 / 顶层缺 runs ⇒ **抛**（不得 SKIP）",
+           len(caught) == 2, f"抛出={caught}")
+        ok("M-B 窄化：账本存在且合法 ⇒ 真读（不误判为缺失）",
+           read_real_ledger(good) == {"runs": []})
+
+        print(f"\n{verdict_line(PASSED, SKIPPED)}")
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
