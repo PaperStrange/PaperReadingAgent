@@ -48,7 +48,7 @@ Sprint-17（治理批 G1）
 |---|---|---|
 | 自举前 fail-fast | `verify/e2e_common.py::port_selfcheck()`（`start_backend()` 第一行调用；`verify_local_dir.py` 也显式调一次） | 端口被占 → `RuntimeError`，**在拉子进程之前**抛出，消息含三件可操作信息：端口号 / 占用进程（PID+镜像名）/ 怎么释放或改端口 |
 | 不静默复用 | `wait_healthy()` 只保留"健康探测"职责，归属校验上移到自举前 | 旧行为（只探端口不校验归属）已消除；dev 后端在跑时脚本**不再复用**它 |
-| 端口可配置 | `PORT = int(os.environ["PAPERQA_VERIFY_PORT"] or 8787)` | 报错文案里给的"改用其它端口"提示**真的生效**（否则是空头支票） |
+| 端口可配置 | 后端在 `__main__` 读 `PAPERQA_VERIFY_PORT`（缺省 8787，`backend/main.py`）；自检侧 `PORT = env or alloc_port()`（`bind(0)` run 级分配，2026-09-28 落地） | 报错文案里给的「改用其它端口」提示**真的生效**（`14603c2` 前它是空头支票：文档写了、代码不读）；**8787 仍在自检列**（占用即 fail-fast，不静默换端口） |
 | 反向对照（本脚本内 4 条断言） | `verify/verify_local_dir.py::port_selfcheck_conflict_assertions()` | 自己起监听占住 8787 → 子进程 rc=1 且点名端口+PID+释放/改端口提示；释放后同一路径 rc=0；预检通过路径不留监听 |
 
 **② 离线开关（可核）**：唯一实现 `verify/outbound_guard.py`（脚本侧）+ `paper-qa-script/app/offline_guard.py`（后端侧最小只读实现）；政策数据 `agents/policy.json::offline_switch`（开关名 `PAPERQA_OFFLINE` / 真值表 / 拒绝文案 / 退出码 / HF 离线变量）；**优先级 env > 政策 `enabled`**。四个外呼入口在**发请求之前**被拒绝（`scripts/fetch-prices.py`、`scripts/refresh-providers.py`、`scripts/agent-ops.py fetch-spec`、`paper-qa-script/app/engine.py` 的模型 API）；`verify/e2e_common.py` 在开关开启时注入 `HF_HUB_OFFLINE`/`TRANSFORMERS_OFFLINE`。断言 = `verify/verify_agentops.py` **UC-19（12 条）**：三入口拒绝 + 反向对照（关闭时不误拒）+ 取值拼错 fail-closed + env 覆盖政策 + 政策面单独生效 + 两侧实现一致。
