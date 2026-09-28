@@ -4,9 +4,9 @@
 - config 步**恒显式**携带 provider/api_base/model/vision_model/embedding——缺失 provider 或
   vision_model 时 vision 会回落默认服务商（3-LEARNED 1.46），基座从构造上杜绝该漂移。
 - 所有写盘一律二进制（3-LEARNED 1.47：Windows 文本模式写盘会静默翻译换行）。
-- **自举前端口自检（TG-8）**：`start_backend` 在拉起子进程**之前**先探测端口（8787 后端、
-  5173 前端 dev）——被占用即 **fail-fast 并点名**（哪个端口、占用进程 PID/镜像名、怎么释放或改端口），
-  **绝不静默复用**别人的服务（旧行为见 `wait_healthy` 的历史注释）。
+- **自举前端口自检（TG-8）**：`start_backend` 在拉起子进程**之前**先探测端口（本 run 的
+  后端端口 / 8787 / 5173 前端 dev）——占用即 **fail-fast 并点名**（端口、占用进程
+  PID/镜像名、怎么释放或改端口），**绝不静默复用**别人的服务（见 `wait_healthy`）。
 - 本文件是库而非测试，不参与覆盖矩阵收集（无 VERIFY_META）。
 """
 from __future__ import annotations
@@ -21,16 +21,34 @@ from pathlib import Path
 
 import httpx
 
-PORT = int(os.environ.get("PAPERQA_VERIFY_PORT", "8787"))
-# TG-8①：端口**可配置**（报告里给出的"改用其它端口"提示必须真的生效——否则提示是空头支票）。
-# 默认 8787 来自 `paper-qa-script/.../backend/main.py:252` 的 uvicorn 端口常量；改端口时两处都要改
-# （前端 dev 端口不在此列：Vite 默认 5173，本仓库 vite.config.mjs 未写死）。
+def alloc_port() -> int:
+    """run 级端口分配：向内核要一个**当前空闲**的端口（`bind(0)` → 读回 → 立即释放）。
+
+    为什么不是"从 8787 往上找第一个空闲端口"：那是**先探测后使用**，探测与实际绑定之间
+    有窗口，并发实例可能挑中同一个端口（行 24 的共享对象就是这么来的）。`bind(0)` 由
+    内核分配，天然不重复；若分配与实际绑定之间被第三方抢走，自举前的 `port_selfcheck`
+    会**明确失败并点名**（既不复用别人的服务，也不静默换一个）。
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+DEFAULT_PORT = 8787  # `backend/main.py:252` 的 uvicorn 常量（dev/生产默认端口）
+# TG-8①：端口**可配置**（"改用其它端口"的提示必须真的生效——否则是空头支票），
+# 且 `PAPERQA_VERIFY_PORT` 同时决定**后端子进程**的端口（见下方 `_BACKEND_BOOT`）。
+# 行 24：**默认端口改为 run 级分配**——固定端口是并发实例的共享对象（实测：两实例同跑，
+# 后到者要么自检失败、要么自举不出后端而**静默连上前一个实例的后端**）。
+# 前端 dev 端口不在此列（Vite 默认 5173，本仓库未写死）。
+_PORT_ENV = os.environ.get("PAPERQA_VERIFY_PORT", "").strip()
+PORT = int(_PORT_ENV) if _PORT_ENV else alloc_port()
 #
-# `BACKEND_PORTS` = 自举后端时**必须空着**的端口。前端 dev（Vite 默认 5173）一起查的理由是套件的
-# `gui` 档会同时占用两者（run_suite.py:197 的提示），而 dev 前端在跑时后端自举常常"看起来能跑"
-# ——实际前端连的是 dev 后端（2026-09-20 走查：后端两次消失即该形态）。
-# 顺序上 8787 在前：它是本基座直接依赖的服务，先报它信息量最大。
-BACKEND_PORTS = (PORT, 5173)
+# `BACKEND_PORTS` = 自举后端时**必须空着**的端口：本 run 的 `PORT` 在最前（本次要绑它，
+# 先报它信息量最大）；8787 仍在列 = dev 后端的默认落点，占用即 fail-fast（不静默复用）；
+# 前端 dev（Vite 默认 5173）一起查的理由是套件的 `gui` 档会同时占用两者
+# （run_suite.py:197），而 dev 前端在跑时后端自举常常"看起来能跑"——实际前端连的是
+# dev 后端（2026-09-20 走查：后端两次消失即该形态）。
+BACKEND_PORTS = (PORT, DEFAULT_PORT, 5173)
 # 占用进程查询命令行（Windows 自带；本仓库仅面向 Windows，见 1-WORKFLOW §2 双轨约定）。
 _PORT_OWNER_CMD = "Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue"
 
@@ -80,6 +98,12 @@ def _apply_offline_env() -> dict:
         return {}
 
 
+# 端口怎么传给后端子进程：**环境变量**——`main.py` 的 `__main__` 读 `PAPERQA_VERIFY_PORT`
+# （缺省 8787；该覆盖曾是"文档写了但代码不读"的死信，2026-09-28 `14603c2` 落地）。
+# 这里不动 argv：真入口仍是 `python main.py`，端口由**生产侧自己**解析，于是"改用其它端口"
+# 的提示端到端生效（TG-8①/TG-8.md:51 的判据），也不会自造一套与生产不一致的启动方式。
+# 生产侧哪天不再读该变量，失败形态是**响亮**的：后端绑 8787、`wait_healthy(PORT)` 超时
+# 返回 False（不会静默连错端口）。
 def start_backend(backend_path: Path, server_log: Path, root: Path) -> subprocess.Popen:
     # TG-8①：**先自检端口，再拉进程**——占用即明确报错并给出可操作提示（不复用、不换端口）。
     port_selfcheck(BACKEND_PORTS)
@@ -93,7 +117,8 @@ def start_backend(backend_path: Path, server_log: Path, root: Path) -> subproces
             cwd=str(root),
             stdout=fh,
             stderr=subprocess.STDOUT,
-            env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
+            env={**os.environ, "PAPERQA_VERIFY_PORT": str(PORT),
+                 "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
         )
     finally:
         fh.close()
@@ -176,13 +201,14 @@ def port_selfcheck(ports=BACKEND_PORTS) -> None:
     ]
     for port, owner in busy:
         lines.append(f"  · 端口 {port}：被 {owner} 占用")
-    alt = (int(ports[0]) + 100) if ports else 0
+    alt = DEFAULT_PORT + 100
     lines += [
         "  解决方式（二选一）：",
         "    ① 释放端口：停掉上面的进程（如 dev 后端 `Ctrl+C`，或 `Stop-Process -Id <PID>`）后重跑；",
-        f"    ② 改用其它端口：设环境变量 `PAPERQA_VERIFY_PORT={alt}` 后重跑（本基座的 `PORT` 即读它），",
-        "       并同步改后端 uvicorn 端口（paper-qa-script/reactflow-paperqa-prototype/backend/main.py:252；"
-        "前端 dev 端口用 `npm run dev -- --port <端口>`，Vite 默认 5173 未在本仓库 vite.config.mjs 里写死）。",
+        f"    ② 改用其它端口：设 `PAPERQA_VERIFY_PORT={alt}` 后重跑",
+        "（本基座的 `PORT` 读它、`start_backend` 也按它拉起后端 ⇒ 端到端生效，",
+        "不必再改 main.py:252；前端 dev 端口用 `npm run dev -- --port <端口>`，",
+        "Vite 默认 5173 未在本仓库 vite.config.mjs 里写死）。",
     ]
     raise RuntimeError("\n".join(lines))
 

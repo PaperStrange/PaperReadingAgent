@@ -27,7 +27,9 @@ VERIFY_META = {
 }
 
 import asyncio
+import atexit
 import importlib.util
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -62,6 +64,32 @@ MODEL = "openai/deepseek-v4-flash"
 # `HEAD`**：本卡提交之后 `git show HEAD:…` 会拿到改后版本 ⇒「夜间减半」的对照自我作废。
 BEFORE_REV = "1ed6f937396eb81e7fc6a9e40d87fbdd139fa926"
 USAGE_REL = "paper-qa-script/app/usage.py"
+# 行 25：改前实现的**run 级**载体目录（原实现只建不回收：每跑一次 %TEMP% 多一个
+# `g2l20-before-*`）。模块级赋值一次 ⇒ 落点可静态判定（动态目标棘轮只认这个形态）；
+# 回收 = `atexit` 兜底 + `main()` 正常出口显式 `reclaim_before_dir()`。
+_BEFORE_DIR = Path(tempfile.mkdtemp(prefix="g2l20-before-"))
+
+
+def reclaim_before_dir(attempts: int = 6) -> None:
+    """回收 run 级载体目录（行 25）。**必须重试**：一次性 `rmtree(ignore_errors=True)`
+    会**静默半途而废**（实测：满套件并发跑的那一轮 %TEMP% 里留下 `g2l20-before-*`）。
+    失败即 **WARN**（`ignore_errors=False` 才看得见），不假装删干净了。
+    """
+    for i in range(attempts):
+        if not _BEFORE_DIR.exists():
+            return
+        try:
+            shutil.rmtree(_BEFORE_DIR)
+            return
+        except OSError as exc:
+            if i == attempts - 1:
+                print(f"WARN: 载体目录未能删净（已重试 {attempts} 次）：{_BEFORE_DIR}"
+                      f"（{type(exc).__name__}: {exc}）——残留会占用磁盘")
+            else:
+                time.sleep(0.2 * (i + 1))
+
+
+atexit.register(reclaim_before_dir)
 
 
 def _cst(*parts: int) -> datetime:
@@ -93,7 +121,7 @@ def _load_before():
                           capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0, f"git show 失败：{proc.stderr.strip()}"
     assert "_tiers" not in proc.stdout, f"{BEFORE_REV} 里有 `_tiers` ⇒ 钉错 revision"
-    probe = Path(tempfile.mkdtemp(prefix="g2l20-before-")) / "usage_before.py"
+    probe = _BEFORE_DIR / "usage_before.py"
     probe.write_bytes(proc.stdout.encode("utf-8"))  # write_bytes：不引入 CRLF
     spec = importlib.util.spec_from_file_location("usage_before", probe)
     mod = importlib.util.module_from_spec(spec)
@@ -527,6 +555,7 @@ def main() -> int:
     sync_after = [x for x in (getattr(litellm, "success_callback", None) or []) if x is U.hook_success]
     ok("⑥ prune_litellm_callbacks() 之后用量回调仍挂载（抗裁剪）", len(sync_after) == 1, f"hits={len(sync_after)}")
 
+    reclaim_before_dir()  # 行 25：回收 run 级载体目录（重试 + 失败即 WARN）
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
 

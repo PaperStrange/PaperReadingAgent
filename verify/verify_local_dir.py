@@ -10,6 +10,7 @@ from __future__ import annotations
 VERIFY_META = {'features': 'F-AC3 引擎接线实证：临时目录 paper_directory → load_index → retrieve 候选来自该目录（免密：注入占位 key，链路无 LLM 调用）', 'tier': 'offline', 'providers': [], 'est_seconds': 90, 'est_cost_cny': 0, 'routes': ['/api/new_session', '/api/run_step'], 'requires': ['self-boots-backend']}
 
 import asyncio
+import atexit
 import os
 import shutil
 import sys
@@ -29,6 +30,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from verify.e2e_common import (  # noqa: E402
     PORT,
+    alloc_port,
     port_in_use,
     port_selfcheck,
     start_backend,
@@ -37,7 +39,36 @@ from verify.e2e_common import (  # noqa: E402
 )
 
 BACKEND = ROOT / "paper-qa-script" / "reactflow-paperqa-prototype" / "backend" / "main.py"
-SERVER_LOG = ROOT / "verify" / "verify_local_dir_server.log"
+# 行 24：后端日志落 `%TEMP%` 的 **run 级唯一目录**（原来是仓库内固定名
+# `verify/verify_local_dir_server.log`）。它是并发实例之间的**第二个共享对象**：
+# `start_backend` 以 "w" 打开，后跑的实例会**截断**正在跑的那个实例的日志，而失败归因
+# （`wait_healthy` 打印的就是它）因此指向别人的后端。回收 = `atexit` 兜底 + 正常出口显式
+# `rmtree`；两处目标都是下面这个模块级常量 ⇒ 落点可静态判定（不顶破动态目标棘轮）。
+LOG_DIR = Path(tempfile.mkdtemp(prefix="verify_local_dir_log-"))
+SERVER_LOG = LOG_DIR / "server.log"
+
+
+def reclaim_log_dir(attempts: int = 6) -> None:
+    """回收 run 级日志目录（行 24）。**必须重试**：后端子进程退出后句柄还压着文件
+    0.1~2s（高负载下更久），一次性 `rmtree(ignore_errors=True)` 会**静默半途而废**
+    ——实测留下带 `server.log` 的空目录（正是本函数存在的理由）。
+    失败即**打印 WARN**（`ignore_errors=False` 才看得见），不假装删干净了。
+    """
+    for i in range(attempts):
+        if not LOG_DIR.exists():
+            return
+        try:
+            shutil.rmtree(LOG_DIR)
+            return
+        except OSError as exc:
+            if i == attempts - 1:
+                print(f"WARN: 日志目录未能删净（已重试 {attempts} 次）：{LOG_DIR}"
+                      f"（{type(exc).__name__}: {exc}）——残留会占用磁盘")
+            else:
+                time.sleep(0.2 * (i + 1))
+
+
+atexit.register(reclaim_log_dir)
 SRC_PDF = ROOT / "data" / "pdf" / "PaperQA2.pdf"
 
 PASSED = 0
@@ -100,11 +131,15 @@ def port_selfcheck_conflict_assertions() -> dict:
     listener.listen(1)
     pid = os.getpid()
     try:
-        occupied = run_child("start", {})
+        # 行 24：`PORT` 是**本 run 分配**的，子进程必须被告知同一端口——否则子进程
+        # 自己分配一个空闲端口，"父进程占着 PORT"这条对照就不成立（断言恒真 = 假绿）。
+        occupied = run_child("start", {"PAPERQA_VERIFY_PORT": str(PORT)})
         # 释放端口 → 同一路径通过。子进程用 `PAPERQA_VERIFY_PORT` 抬高端口（本基座的 `PORT` 读它），
         # 且**必须在子进程里读**：写死在生成代码里的端口号会忽略该环境变量（实测就是这样，
         # 于是"释放后通过"恒失败——断言自身的假红）。
-        free = run_child("preflight-only", {"PAPERQA_VERIFY_PORT": str(PORT + 100)})
+        # 行 24：改用**分配到的空闲端口**（原写 `PORT + 100`；`PORT` 现在随机，+100 可能
+        # 真被占 ⇒ 断言自身的假红）。
+        free = run_child("preflight-only", {"PAPERQA_VERIFY_PORT": str(alloc_port())})
     finally:
         listener.close()
 
@@ -124,12 +159,15 @@ def port_selfcheck_conflict_assertions() -> dict:
 async def main() -> int:
     import httpx
 
+    # 行 24：先报本 run 的身份——并发实例的失败归因靠它（谁用哪个端口、日志落在哪）
+    print(f"[run] PORT={PORT} LOG={SERVER_LOG}")
+
     # ── TG-8①：自举前端口自检（**可核断言，含反向对照**） ────────────────────────────────
     # 事故形态（卡文正文）：`wait_healthy` 只探测端口、不校验"服务是不是自己启的" → dev 后端在跑时
     # 脚本会**静默复用它**并施加 parse/embed 负载；反之套件也会抢占/顶掉 dev 后端。
     # 修法判据 = 自举前 fail-fast 并点名（端口 / 占用进程 / 怎么释放或改端口），**不复用、不换端口**。
     # 本函数的 daemon 线程只活到 `main()` 返回（`asyncio.run` 之后进程即退出），故不会留下监听。
-    port_selfcheck((PORT,))  # ⑤c：真实仓库端口此刻确为空（占用即在此 fail-fast）
+    port_selfcheck((PORT,))  # ⑤c：本 run 分到的端口此刻确为空（占用即在此 fail-fast）
     conflicts = port_selfcheck_conflict_assertions()
     ok("⑤ 端口被占用时自举**明确失败**并点名：不发子进程、不静默复用（反向对照 / 修复前此断言不成立）",
        conflicts["fail_fast"], conflicts["detail_fail"])
@@ -225,6 +263,7 @@ async def main() -> int:
         # 抽成 `rmtree_robust(tmp)` 之类的公共函数：一旦目标成了**函数参数**，`verify_artifact_paths.py`
         # 的分解器就判它"动态目标"并顶破 `e2e_common.py` 的棘轮上限（实测过一次，闸门是对的）。
         stop_backend(server, False)
+        reclaim_log_dir()  # 行 24：回收 run 级日志目录（重试 + 失败即 WARN）
         if _enrich_backup is None:
             os.environ.pop("PAPERQA_NO_MEDIA_ENRICHMENT", None)
         else:

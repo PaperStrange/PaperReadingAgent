@@ -24,9 +24,11 @@ Run: .venv\\Scripts\\python.exe verify\\verify_runner.py
 from __future__ import annotations
 VERIFY_META = {'features': 'TG-5 分层 runner + 定时底座：offline/gui/network 分层 + fail-closed + 三态预算闸门 + due 判定 + 成本回填 + 状态文件 fail-closed（TG-7）', 'tier': 'offline', 'providers': [], 'est_seconds': 60, 'est_cost_cny': 0, 'routes': [], 'requires': []}
 
+import atexit
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -111,6 +113,9 @@ def write_fixture(
 
 def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="verify_runner_"))
+    # 行 25：本目录此前**从不回收**（每跑一次 %TEMP% 多一个 `verify_runner_*` 目录）。
+    # 回收 = `atexit` 兜底 + 正常出口显式回收（下方 `ALL PASS` 之前那段重试循环）。
+    atexit.register(shutil.rmtree, tmp, ignore_errors=True)
     fixture = tmp / "fixture"
     fixture.mkdir()
     marker_pass = tmp / "pass.marker"
@@ -410,6 +415,21 @@ def main() -> int:
        all(_meta_rejects(v) for v in (float("nan"), float("inf"), float("-inf"))),
        f"nan={_meta_rejects(float('nan'))} inf={_meta_rejects(float('inf'))} -inf={_meta_rejects(float('-inf'))}")
 
+    # 行 25：回收 run 级夹具目录——**重试 + 失败即 WARN**。一次性
+    # `rmtree(ignore_errors=True)` 会**静默半途而废**（实测：满套件并发跑的那一轮
+    # %TEMP% 里留下 `verify_runner_*`）。目标仍是本地 `tmp`（可静态判定，不顶破棘轮）。
+    for _attempt in range(6):
+        if not tmp.exists():
+            break
+        try:
+            shutil.rmtree(tmp)
+            break
+        except OSError as exc:
+            if _attempt == 5:
+                print(f"WARN: 夹具目录未能删净（已重试 6 次）：{tmp}"
+                      f"（{type(exc).__name__}: {exc}）——残留会占用磁盘")
+            else:
+                time.sleep(0.2 * (_attempt + 1))
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
 
