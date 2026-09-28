@@ -1,0 +1,24 @@
+{
+  "_comment": "成本预算（2026-09-28 立；用户要求：压派单数量与主代理输出量，且策略必须可验证且可持久化）。度量仪 = scripts/spend-report.py --check；读数一律以现跑为准，本文件只放预算不放读数。数值依据见 docs/1-WORKFLOW.MD §6 第 17 条的基线段落。",
+  "currency": "CNY",
+  "baseline": {
+    "measured_at": "2026-09-28",
+    "note": "基线（当日现跑读数，用于对照，不作为判据）：派单会话约 20 个；主代理 output 约 99.5K token；当日全账户约 19.7 元。历史峰值 09-25 约 221 元/日。",
+    "dispatched_sessions_per_day": 20,
+    "main_output_tokens_per_day": 99533,
+    "all_sessions_cny_per_day": 19.67
+  },
+  "budget": {
+    "dispatched_sessions_per_day": 6,
+    "main_output_tokens_per_day": 50000,
+    "all_sessions_cny_per_day": 12.0
+  },
+  "main_sessions": [
+    "session-d6abecbf-80cb-4dcf-8461-d92f13c48a68"
+  ],
+  "_main_sessions_note": "只统计这些会话的 output（＝本回合主代理自己的产出）。不写进脚本：会话 id 属数据，换会话只改本文件。基线 2026-09-28：本会话 output 约 99.5K token（当日现跑读数）⇒ 预算取其半。",
+  "targets": {
+    "cut_ratio_vs_baseline": 0.5,
+    "verified_by": "scripts/spend-report.py --check 的次日读数与 baseline 对比；读数写入当轮汇报或复盘（带时点锚）"
+  }
+}
