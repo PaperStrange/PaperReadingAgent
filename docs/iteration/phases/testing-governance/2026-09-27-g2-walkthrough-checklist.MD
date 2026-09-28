@@ -30,7 +30,7 @@
 
 | 证据 | 位置 |
 |---|---|
-| 本地全量闸门 | `.venv\Scripts\python.exe verify\run_suite.py --tier offline` → 末行 `SUITE PASSED (26 scripts)` |
+| 本地全量闸门 | `.venv\Scripts\python.exe verify\run_suite.py --tier offline` → 末行 `SUITE PASSED (26 scripts)` （2026-09-27 时点读数，以现跑末行为准） |
 | CI（**只对 HEAD 有效**） | GitHub Actions 上 **HEAD 那一笔**的 conclusion；更早的提交多为 `cancelled`（并发取消），**不代表通过** |
 | 关闭税机读读数 | `verify\verify_close_tax_reading.py --sprint docs\iteration\sprint\2026-09-25-sprint-18.md` |
 | 账本 | `agents/runtime/registry.json`（**不在版本库**，`.gitignore:38`）＝ 本机运行态 |
@@ -43,7 +43,7 @@
 cd D:\All-Downloads\PaperReading\PaperReading-Windows
 .venv\Scripts\python.exe verify\run_suite.py --tier offline
 ```
-看末行是不是 `SUITE PASSED (26 scripts)`。**任何 FAILED 都请记下脚本名**，它对应 §5 的某一行。
+看末行是不是 `SUITE PASSED (26 scripts)`。**任何 FAILED 都请记下脚本名**，它对应 §5 的某一行。 （2026-09-27 时点读数，以现跑末行为准）
 
 **第 2 步｜看"钱"那一条（你最该看的）**
 夜间成本过去被按高峰价高估约 2 倍。现在两条计价链路都按调用/run 自己的时刻选档：
@@ -65,7 +65,7 @@ cd D:\All-Downloads\PaperReading\PaperReading-Windows
 
 | 读数 | 期望 |
 |---|---|
-| 套件末行 | `SUITE PASSED (26 scripts)` |
+| 套件末行 | `SUITE PASSED (26 scripts)` （2026-09-27 时点读数，以现跑末行为准） |
 | 关闭税 | 机读行给出 `code_major / code_critical / doc_items` ＋ 来源 run（**M1 上限 ≤2/≤3 未达标，见 §5**） |
 | 登记册 | `ALL PASS`，含 `entries=` / `quotes_checked=` / `quotes_drift=` 三项读数 |
 | 账本闸门 | `verify_ledger_measurement.py` → 本机 PASS（**前提：账本存在**；CI 上账本不存在，见 §5 第 3 条） |
