@@ -247,6 +247,22 @@ async def run_step(req: StepRequest) -> StepResponse:
 
 
 if __name__ == "__main__":
+    import os
+
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=8787)
+    # 端口可由环境变量覆盖（G2 行 24）：验证脚本用 `PAPERQA_VERIFY_PORT` 让**每个 run 用不同端口**，
+    # 从而消除"两个实例抢 8787"的并发互踩。缺省仍是 8787，向后兼容。
+    # 注意：这里**不做**"被占用就静默换端口"——占用即失败是本仓 TG-8① 的 fail-fast 要求。
+    _raw_port = os.environ.get("PAPERQA_VERIFY_PORT", "").strip()
+    if _raw_port:
+        try:
+            _port = int(_raw_port)
+        except ValueError:
+            raise SystemExit(f"PAPERQA_VERIFY_PORT 不是合法整数：{_raw_port!r}")
+        if not (1 <= _port <= 65535):
+            raise SystemExit(f"PAPERQA_VERIFY_PORT 越界（应 1..65535）：{_port}")
+    else:
+        _port = 8787
+
+    uvicorn.run(app, host="127.0.0.1", port=_port)
