@@ -50,7 +50,13 @@ agents/policy.json`
 
 from __future__ import annotations
 
-VERIFY_META = {'features': '闸门可信度：-O/PYTHONOPTIMIZE 守卫行在位（含真实 -O 探针必须红）+ 棘轮上限与 git HEAD 逐项比较（只许下调、上调即 FAIL）+ review_by 必填未过期 + 未覆盖闸门逐条 WARN；含 7 条反向对照自检', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 6, 'routes': [], 'requires': ['none']}
+VERIFY_META = {'features': '闸门可信度：-O/PYTHONOPTIMIZE 守卫行在位'
+                          '（含真实 -O 探针必须红）+ 棘轮上限与 git HEAD 逐项比较'
+                          '（只许下调、上调即 FAIL）+ review_by 必填未过期 '
+                          '+ 未覆盖闸门逐条 WARN；'
+                          '反向对照条数见末行 `ALL PASS (N assertions)`',
+               'tier': 'offline', 'providers': [], 'est_cost_cny': 0,
+               'est_seconds': 6, 'routes': [], 'requires': ['none']}
 
 import json
 import re
@@ -324,14 +330,12 @@ PY_WORD_RE = re.compile(r"^(?:python[\w.]*|[\w${}]*py)$", re.I)
 # 这不是"命令名"，是**同一个步骤的写法**；真文件实测：不认它会把 CI 判成没调用。
 # 只认 `run` 这一个键（`cmd = …` 这类赋值不会被误放行）。
 RUN_KEY_RE = re.compile(r"^run\s*:\s*")
-# **回显语句**（它们把命令名当**文本**打印）。黑名单**保留**、但只作用于这一件事：
-# 判"这行是不是回显"。命令位置判定不再依赖黑名单（见上）。
-# 行 6（092 minor）复用同一份判定：`--report-only` 也必须认**命令位置**，
+# 行 22②（G2 关闭）：**回显动词清单已删除**。它的方向是"默认放行"——只有命中
+# 清单的行才被当作文本跳过，未列入者（`Out-Host`／`Out-File`）照样冒充接线（探针
+# 实测：`Out-Host("python … structure-guard.py verify …")` 修前判"有调用"）。
+# 现在反过来：见 `_cmd_head` —— 首词元必须**正向**是解释器或守卫脚本，否则该行
+# 没有命令位置。行 6（092 minor）复用同一份判定：`--report-only` 也认命令位置，
 # 否则新判据会栽在它自己要治的同一种形态上（注释里提一句就假红）。
-# 含 `` ` `` 与 `{`：Python docstring 行（`` `structure-guard.py verify --from-git` ``）、
-# PowerShell 续行/花括号脚本块都是**文本**，不是调用（真文件实测抓到的假绿）。
-ECHO_PREFIXES = ("#", "::", "echo", "Write-Host", "Write-Output",
-                 "Write-Debug", "Write-Verbose", "printf", "`", "{")
 
 
 def _strip_comment(line: str) -> str:
@@ -343,18 +347,6 @@ def _strip_comment(line: str) -> str:
     """
     head, sep, _ = line.partition("#")
     return head if sep else line
-
-
-def _cmd_line(line: str) -> str:
-    """该行在**命令位置**上是什么；不是可执行命令则返回空串。
-
-    与旧实现的差别：旧的是"黑名单跳过 + 其余做子串搜索"（枚举不完 ⇒ 假绿），
-    这里反过来——命令位置只能由"剥注释后**不空**且**不是回显**"给出。
-    """
-    body = _strip_comment(line).strip()
-    if not body or body.startswith(ECHO_PREFIXES):
-        return ""
-    return body
 
 
 def _clean_word(word: str) -> str:
@@ -378,6 +370,41 @@ def _script_name(word: str) -> str:
     故按路径末段比。
     """
     return re.split(r"[/\\]", word)[-1]
+
+
+def _cmd_head(word: str) -> bool:
+    """首词元是否**本身就是一条命令**（解释器或守卫脚本）——行 22② 的默认判红门。
+
+    修前形态（探针实测有假绿）：不在 `ECHO_PREFIXES` 里的词元一律算"命令位置"，
+    而**含 `(`／`|` 等字符的首词元被静默丢弃** ⇒ 后面的词元移位成首词元，于是
+    `Out-Host("python … structure-guard.py verify …")` 判成"有调用"。现在反过来：
+    首词元必须被**正向**认成解释器（`PY_WORD_RE`，按路径末段）或守卫脚本本身；
+    认不出 ⇒ 该行没有命令位置（未知形态不再默认放行）。
+    双引号是 shell 引用真命令（`"$py" scripts/…`）⇒ 先剥；反引号不剥
+    （markdown 代码跨度/PS 转义是**文本**，不是命令位置）。
+    """
+    core = _script_name(word.strip('"'))
+    if not core:
+        return False
+    return core == GUARD_SCRIPT or bool(PY_WORD_RE.match(core))
+
+
+def _cmd_line(line: str) -> str:
+    """该行**命令位置**上真正会被执行的那段；不是命令则返回空串。
+
+    行 22②：**默认判红**。剥掉行尾注释、赋值前缀（`out=$(…`）与 YAML `run:` 键
+    之后，首词元必须过 `_cmd_head` —— 没有"回显动词清单"这回事，未知形态一律
+    判"没有命令"（旧实现的清单方向相反：不在清单里就默认放行）。
+    """
+    body = _strip_comment(line).strip()
+    if not body:
+        return ""
+    m = ASSIGN_PREFIX_RE.match(body) or RUN_KEY_RE.match(body)
+    if m:
+        body = body[m.end():].strip()
+    if not body or not _cmd_head(body.split()[0]):
+        return ""
+    return body
 
 
 def _is_guard_invocation(body: str) -> bool:
@@ -427,7 +454,9 @@ def _invokes_guard(text: str) -> bool:
     （`cmd = "structure-guard.py verify --from-git HEAD"`）、here-string、
     **行尾注释**四种形态仍可满足它——修前实测四种里有三种假绿（探针见
     `docs/iteration/phases/testing-governance/2026-09-26-g2-closure-ledger.MD`
-    的实现记录）。现在改成**正向结构判定**：见 `GUARD_CMD_RE` / `_cmd_line`。
+    的实现记录）。现在改成**正向结构判定**：见 `_cmd_head` / `_cmd_line`
+    （行 22② 起 `_cmd_line` 会先剥赋值/`run:` 前缀，故本函数里的同名前缀处理只是
+    让它自带完整语义——两层用同两条正则，不各判一套）。
     """
     return bool(_guard_command_lines(text))
 
@@ -522,6 +551,69 @@ def _installs_hooks(text: str) -> bool:
     return "pre-commit" in names and "commit-msg" in names
 
 
+def _option_in_guard_call(text: str, opt: str) -> bool:
+    """`opt` 是不是**守卫调用**里的一个**带参**选项（命令位置 + 词元级取参）。
+
+    行 4 同族：认的是"这条被执行的命令真的带着这个参数"，不是"这串字出现在文件里"。
+    只扫 `_guard_command_lines`（真调用行）⇒ 注释、回显、`Write-Host` 标签里的
+    同名字样一律不算；`--opt VALUE` 与 `--opt=VALUE` 两种写法都认。
+    判"**存在一次**带参出现"（裸 `--opt` 收尾不算）——同名的裸写作不掩盖真参数。
+    """
+    for line in _guard_command_lines(text):
+        words = line.split()
+        for i, word in enumerate(words):
+            if word == opt:
+                if i + 1 < len(words) and _clean_word(words[i + 1]):
+                    return True
+            elif word.startswith(f"{opt}=") and _clean_word(word[len(opt) + 1:]):
+                return True
+    return False
+
+
+def _cli_surface(text: str) -> tuple[set[str], set[str]] | None:
+    """安装器 CLI 的**结构面**：`add_argument` 注册的选项集 + 被读取的属性名集。
+
+    用 `ast`（同 `_hooks_from_ast` 一族）：不执行被测文件、注释与字符串冒充不了
+    "注册"。解析不出（语法错）→ `None`，调用方 fail-closed。
+    """
+    import ast
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return None
+    options: set[str] = set()
+    attrs: set[str] = set()
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "add_argument"):
+            for arg in node.args:
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    options.add(arg.value)
+        elif isinstance(node, ast.Attribute):
+            attrs.add(node.attr)
+    return options, attrs
+
+
+def _check_ok(text: str, opt: str, *, cli: bool = False) -> bool:
+    """`opt` 是否**结构上**真的接线（行 22①）：裸文本出现不算。
+
+    修前形态 = `f"{opt}" not in text`：注释里写一行字面即可满足——探针实测两处
+    都假绿（`commit-msg` 的真参数被拿掉、`installer` 的 `add_argument("--check")`
+    被拿掉，只要留一句注释，判据报零问题）。载体由调用方点名，两种结构不互相顶替：
+      * `cli=False`（`commit-msg` 的 `--ack-file`）：必须是**守卫调用**里的带参选项
+        （`_option_in_guard_call`，行 4 同一份"命令位置"语义）；
+      * `cli=True`（安装器的 `--check`）：`ast` 里**注册**（`add_argument`）且**被
+        读取**（`args.check`）的 CLI 档——声明了却没人读的选项不是"档"。
+    """
+    if not cli:
+        return _option_in_guard_call(text, opt)
+    surface = _cli_surface(text)
+    if surface is None:
+        return False                 # 解析不出 ⇒ 判否，不猜（fail-closed）
+    options, attrs = surface
+    return opt in options and opt.lstrip("-").replace("-", "_") in attrs
+
+
 def unskippable_wiring_problems(*, ci: Path, hook: Path, installer: Path,
                                 commithook: Path | None = None) -> list[str]:
     """③ 判据本体（A-M12 ①）：结构守卫的「**不可跳过层**」三处接线必须在位。
@@ -579,16 +671,18 @@ def unskippable_wiring_problems(*, ci: Path, hook: Path, installer: Path,
                         f"待提交信息里的署名 ⇒ 合法结构删除在本地只能 `--no-verify`）")
     elif not _invokes_guard(chook_text):
         problems.append(f"[不可跳过] {COMMITHOOK_REL} 没有调用与 CI **同一条**判据")
-    elif "--ack-file" not in chook_text:
-        problems.append(f"[不可跳过] {COMMITHOOK_REL} 没有把**待提交信息文件**交给判据"
-                        f"（缺 `--ack-file` ⇒ 署名形同不存在）")
+    elif not _check_ok(chook_text, "--ack-file"):
+        problems.append(f"[不可跳过] {COMMITHOOK_REL} 的守卫调用没有把**待提交信息"
+                        f"文件**交给判据（`--ack-file <文件>` 必须出现在命令位置的"
+                        f"调用里；注释/回显里的同名字样不算）⇒ 署名形同不存在")
     if not installer.is_file():
         problems.append(f"[不可跳过] {INSTALLER_REL} 不存在——`.git/hooks/` "
         f"不在版本控制里，"
                         f"没有安装器就只剩『记得手动拷』")
-    elif "--check" not in inst_text:
-        problems.append(f"[不可跳过] {INSTALLER_REL} 缺 `--check` "
-        f"档——『装没装』必须可核")
+    elif not _check_ok(inst_text, "--check", cli=True):
+        problems.append(f"[不可跳过] {INSTALLER_REL} 没有真的 `--check` 档"
+                        f"（`add_argument(\"--check\", …)` 注册且被读取；注释里写一行"
+                        f"字面不算）——『装没装』必须可核")
     elif not _installs_hooks(inst_text):
         problems.append(
             f"[不可跳过] {INSTALLER_REL} 的 `HOOKS` 清单没有**同时**装 "
@@ -886,6 +980,38 @@ def selftest() -> int:
            "→ FAIL（『模板存在』不等于『会被装上』；本地终判压在它身上）",
            any("HOOKS" in p for p in hooks_problems),
            next((p for p in hooks_problems if "HOOKS" in p), hooks_problems[:1]))
+        # ---- 行 22①（`_check_ok`：裸文本出现 → 结构判定）---------------------
+        # 两处都从**仓库真文件**的文本出发（前置条件因此是真的）：真接线拿掉、
+        # 只在注释里留字面 ⇒ 修前 `f"{opt}" not in text` 报零问题（探针实测假绿）。
+        real_chook = (ROOT / COMMITHOOK_REL).read_text(encoding="utf-8")
+        mut_chook = real_chook.replace(' --ack-file "$msgfile"', "")
+        mut_chook = mut_chook.replace(
+            "out=$(", "# 本钩子用 --ack-file（注释，不是参数）\nout=$(", 1)
+        chook_probe.write_text(mut_chook, encoding="utf-8")
+        ack_problems = _probe_problems()
+        ok("行 22① 反向对照 r：`commit-msg` 的真参数被拿掉、只剩注释里的 "
+           "`--ack-file` ⇒ FAIL（裸文本出现不算接线）",
+           '--ack-file "$msgfile"' not in mut_chook
+           and any("--ack-file" in p for p in ack_problems),
+           next((p for p in ack_problems if "--ack-file" in p), ack_problems[:1]))
+        chook_probe.write_text(real_chook, encoding="utf-8")
+        # 安装器：`add_argument("--check", …)` 是**真档**；注释里写一行字面不算。
+        # 变体保留 `args.check` 的**读取**（只删注册）⇒ 判据必须两条都核。
+        real_inst = (ROOT / INSTALLER_REL).read_text(encoding="utf-8")
+        mut_inst = real_inst.replace(
+            'ap.add_argument("--check", action="store_true",',
+            '# 本脚本有 --check 档（注释，不是真选项）\nap.add_argument("--nope",')
+        inst_probe.write_text(mut_inst, encoding="utf-8")
+        check_problems = _probe_problems()
+        ok("行 22① 反向对照 s：安装器的 `--check` 只剩注释、`args.check` 仍在 "
+           "⇒ FAIL（注册 + 读取才算档）",
+           'add_argument("--check",' not in mut_inst
+           and any("--check" in p for p in check_problems),
+           next((p for p in check_problems if "--check" in p), check_problems[:1]))
+        inst_probe.write_text(real_inst, encoding="utf-8")
+        hook_probe.write_text(hook_txt, encoding="utf-8")   # b 的反向对照到此收工
+        ok("行 22 夹具复原：两处真文件文本复原后接线判据回到零问题（防夹具自伤）",
+           _probe_problems() == [], f"problems={_probe_problems()[:1]}")
         # ---- 行 4（`_invokes_guard` 由黑名单改**结构判定**）------------------
         call_ok = ("python scripts/structure-guard.py verify "
                    "--from-git $guardBase")
@@ -903,6 +1029,25 @@ def selftest() -> int:
         ok("行 4 防假红：`--from-git` 后面还有参数`--report-only` 仍算真调用",
            _invokes_guard(f"{call_ok} --report-only"),
            f"lines={_guard_command_lines(call_ok + ' --report-only')}")
+        # ---- 行 22②（`ECHO_PREFIXES` 回显动词清单 → **默认判红**）------------
+        # 清单的方向相反：**不在清单里**的动词照样冒充接线（探针实测 z1/z2 假绿）。
+        # 新实现不看动词清单，只看**首词元**是否被正向认成命令。
+        ok("行 22② 反向对照 z1：`Out-Host(\"python … verify …\")`（首词元含 `(` "
+           "被静默丢弃 ⇒ 守卫脚本成了首词元）⇒ 判无调用",
+           not _invokes_guard(f'Out-Host("{call_ok}")'))
+        ok("行 22② 反向对照 z2：表格单元格里的同名字样（首词元 `|` 被丢弃）"
+           "⇒ 判无调用",
+           not _invokes_guard(f"| `{call_ok}` | 说明 |"))
+        ok("行 22② 不回归：行首是代码跨度或花括号块（旧清单里的两项）仍判无调用",
+           not _invokes_guard(f"`{call_ok}`")
+           and not _invokes_guard(f"{{ {call_ok} }}"))
+        ok("行 22② 防假红：三种真调用形态（引号解释器／无解释器／带目录解释器）"
+           "都判有调用",
+           _invokes_guard('out=$("$py" scripts/structure-guard.py verify '
+                          '--from-git HEAD --report-only 2>&1)')
+           and _invokes_guard("scripts/structure-guard.py verify --from-git HEAD")
+           and _invokes_guard(".venv/Scripts/python.exe scripts/structure-guard.py "
+                              "verify --from-git HEAD"))
         # ---- 行 5（`_installs_hooks` 由文本子串改**解析 HOOKS 结构**）--------
         ok("行 5 反向对照 k：`HOOKS` 被注释掉、真清单为空元组 ⇒ FAIL"
            "（修前子串假绿的原形态）",
