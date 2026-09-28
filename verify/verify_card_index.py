@@ -49,6 +49,7 @@ TG-14 的解法是"**一卡一文件 + backlog 退化为瘦索引**"，而这类
 from __future__ import annotations
 VERIFY_META = {'features': 'TG-14④ 卡索引 lint：索引↔卡文件一一对应 / 卡号↔文件名一致 / 必备节 / Sprint 不得复制卡正文 / 表格结构 / 状态三处一致（卡↔索引↔Sprint 看板）/ 卡库存基线 totals 与 card-inventory 实测一致；反向对照条数见末行 `ALL PASS (N assertions)`', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 6, 'routes': [], 'requires': ['none']}
 
+import atexit
 import json
 import shutil
 import re
@@ -68,12 +69,15 @@ if hasattr(sys.stdout, "reconfigure"):
 
 PHASES = ROOT / "docs" / "iteration" / "phases"
 SPRINT_DIR = ROOT / "docs" / "iteration" / "sprint"
-# fixture 落点用**模块级常量**（`Path(tempfile.gettempdir()) / …`）：
-# `verify_artifact_paths.py`
-# 的动态目标棘轮要求"落点可静态判定"——把 fixture 路径挂在函数参数（`base`）
-# 下会被判成动态目标
-# 而顶破它自己的上限（实测 4 > 2）。落点仍是 `%TEMP%`，语义不变。
-FIXTURE_DIR = Path(tempfile.gettempdir()) / "verify_card_index_fixture"
+# fixture 落点用**模块级常量**（下行那个 `mkdtemp` 结果，本文件只赋值一次）：
+# `verify_artifact_paths.py` 的动态目标棘轮要求"落点可静态判定"——把 fixture
+# 路径挂在函数参数（`base`）下会被判成动态目标而顶破它自己的上限（实测 4 > 2）。
+# 行 8：落点改为 **run 级唯一目录**（`mkdtemp`）——原实现是 `%TEMP%` 下的固定名，
+# 并发实例的 `rmtree(base)` + 重建会删掉本实例正在读写的夹具（实测两真实例同跑
+# ⇒ 反向对照"假绿"与 `PermissionError`）。回收：`atexit` 兜底整目录 `rmtree`
+# （`selfcheck` 的正常出口另有一次显式回收；只有被强杀才可能留下一个目录）。
+FIXTURE_DIR = Path(tempfile.mkdtemp(prefix="verify_card_index_fixture-"))
+atexit.register(shutil.rmtree, FIXTURE_DIR, ignore_errors=True)
 
 # 判据参数一律来自政策数据（不得写死在本文件——实测被
 # verify_no_policy_hardcode.py 判为 R1）
@@ -717,6 +721,7 @@ def selfcheck(check_real: bool = True) -> int:
         print("提示：迁移已完成 ⇒ 默认档与 `--check --strict` 同判；不得靠降档换绿。")
         return 1
     ok("真数据（默认档 = strict）通过", True, "索引↔卡文件一一对应 / 必备节 / 正文分离")
+    shutil.rmtree(FIXTURE_DIR, ignore_errors=True)   # 行 8：显式回收 run 级夹具目录
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
 

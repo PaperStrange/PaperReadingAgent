@@ -71,9 +71,11 @@ Sprint 身份推不出、该 Sprint 在账本里没有作用域 run、或窗口�
 from __future__ import annotations
 VERIFY_META = {'features': 'TG-15 关闭前置闸门：C1 声明完备 / C2 指涉可核（含 A-M13 的"全账本 role 必有 spec"封闭世界）/ C3 覆盖闭环（锚点→域右端每提交有归属），需求全来自 fanout.json + spec frontmatter；含变异用例自 fanout 自动生成的反向对照；M-A（TG-19）：判定域必须由**被判定物**派生（Sprint 身份 + 该 Sprint 的作用域 run + 该 Sprint 的最后一条覆盖 run 作右端），域不可派生时退出码 4（domain-unavailable）且不产出结论；A-M13④：§9 在飞宽限内只提示不判（口径同 ledger_measurement.in_flight）', 'tier': 'offline', 'providers': [], 'est_seconds': 15, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
 
+import atexit
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -1462,6 +1464,9 @@ def _selfcheck() -> int:
     global _FIXTURE_POLICY
 
     tmp = Path(tempfile.mkdtemp(prefix="verify_close_readiness_"))
+    # 行 8 顺带收口：本目录此前**从不回收**（实测 %TEMP% 里积了同前缀目录一批，
+    # 每跑一次套件多一个）。回收 = 结尾显式 `rmtree` + `atexit` 兜底。
+    atexit.register(shutil.rmtree, tmp, ignore_errors=True)
     policy = _load_fixture_policy(tmp)
     _FIXTURE_POLICY = policy  # `_att()` 默认带上它（B3 按 run 类别判空窗口）
     runs = _fixture_runs()
@@ -2271,14 +2276,19 @@ def _selfcheck() -> int:
     # 的分支（main）上，子进程拿到的是 `rc=2 Sprint 文档不存在` ⇒
     # 自检自己红，而判据本身没坏）。
     # 这里现写一份最小 Sprint 文档到 `%TEMP%`，两个分支都能跑同一条判据。
-    (Path(tempfile.gettempdir()) / "close-readiness-selftest-sprint.md").write_text(
+    # 行 8：载体改动 **run 级唯一目录**（`mkdtemp`）——原实现是 `%TEMP%` 下的固定名
+    # `close-readiness-selftest-sprint.md`，并发实例互相覆盖同名文件（实测单实例
+    # 一次就覆盖掉别的进程种下的同名残留）。回收：结尾显式 `rmtree` + `atexit` 兜底。
+    close_sprint_root = Path(tempfile.mkdtemp(prefix="close-readiness-selftest-"))
+    atexit.register(shutil.rmtree, close_sprint_root, ignore_errors=True)
+    (close_sprint_root / "sprint.md").write_text(
         "# Sprint fixture\n\n"
         "三查锚点: b6198f5180561868e07989e6689185199f439d76\n\n"
         "## 9. 关闭三查\n\n| run_id | role |\n|---|---|\n",
         encoding="utf-8")
     probe2 = subprocess.run(
         [sys.executable, str(Path(__file__).resolve()), "--sprint",
-         str(Path(tempfile.gettempdir()) / "close-readiness-selftest-sprint.md")],
+         str(close_sprint_root / "sprint.md")],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
         env={**os.environ, "AGENT_OPS_DIR": str(empty_ops)})
     blob = probe2.stdout + probe2.stderr
@@ -2286,6 +2296,9 @@ def _selfcheck() -> int:
        probe2.returncode == 0 and "SKIP[ledger-absent]" in blob
        and "EVIDENCE:" not in blob and "CLOSE-READINESS PASS" not in blob,
        f"rc={probe2.returncode} out={blob.strip()[:120]}")
+    # 行 8：回收本轮的两个 run 级目录（Sprint 载体 + 空账本目录）
+    shutil.rmtree(close_sprint_root, ignore_errors=True)
+    shutil.rmtree(empty_ops, ignore_errors=True)
 
     # ---- 台账 E1 / 行 7：一致性向量（唯一权威 = 本档 §4）------------------
     # 本闸门**不导入**写入侧实现；两侧各自解析本档同一张向量表。
@@ -2312,6 +2325,7 @@ def _selfcheck() -> int:
     if real.exists():
         warn("真数据模式未在自检中执行（需 `--sprint <当前 Sprint 文档>`）",
              f"账本 {len(load_runs(real))} 条：{real}")
+    shutil.rmtree(tmp, ignore_errors=True)   # 行 8：回收本函数的 run 级夹具目录
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
 

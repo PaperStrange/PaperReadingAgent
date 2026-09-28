@@ -68,9 +68,10 @@ NUMBERED_RE = re.compile(r"^\d+\.\s")
 HEADING_RE = re.compile(r"^##\s+(?P<title>.+?)\s*$")
 KEYS = ("code_major", "code_critical", "doc_items")
 
-# 夹具落点**必须可静态判定**（`verify_artifact_paths.py` 的政策）：写盘目标一律用
-# "`Path(tempfile.gettempdir())` + 字面量段"写成一条表达式——**不经过变量/参数/模块常量**
-# 中转，否则会被判"动态目标"（新脚本出现动态目标即 FAIL；2026-09-25 实测踩过两次）。
+# 夹具落点**必须可静态判定**（`verify_artifact_paths.py` 的政策）：落点写成
+# "`Path(tempfile.mkdtemp(...))` 的**单次局部赋值** + 字面量段"（行 8 起改为唯一名，
+# 并发不互踩）。挂函数参数/argv 会被判"动态目标"（新脚本出现即 FAIL；2026-09-25
+# 实测踩过两次）；同一名字多处赋值也会判不动，故全文只赋值一次。
 
 PASSED = 0
 
@@ -288,21 +289,25 @@ DOC_RPT = """# doc-audit report (fixture)
 
 def selftest() -> int:
     """夹具自检：派生口径 + 声明比对 + 五条反向对照（改数字/缺键/增删发现/节外行/报告缺失）。"""
-    shutil.rmtree(Path(tempfile.gettempdir()) / "close-tax-fixture", ignore_errors=True)
+    # 行 8：夹具落点 = **run 级唯一目录**（`mkdtemp`）。原实现写死
+    # `%TEMP%/close-tax-fixture`：并发实例一开跑就 `rmtree` 掉该目录，
+    # 本实例写到一半的夹具随之消失（实测两真实例同跑 ⇒ PermissionError）。
+    # 回收语义：`finally` 里显式 `rmtree`（`mkdtemp` 不自动回收）。
+    tax_root = Path(tempfile.mkdtemp(prefix="close-tax-fixture-"))
     try:
-        # 写盘目标一律写成**单条表达式**（`Path(tempfile.gettempdir())` + 字面量段）：
-        # 中间不落局部变量，闸门才能静态判定落点（见本文件顶部注释）。
-        (Path(tempfile.gettempdir()) / "close-tax-fixture" / "runs"
+        # 落点写成"单条表达式"（`tax_root` + 字面量段）：`tax_root` 是 `mkdtemp`
+        # 的直接结果且全文只赋值一次，闸门才判得动落点（见本文件顶部注释）。
+        (tax_root / "runs"
          / "run-2026-01-01-code-review-001").mkdir(parents=True)
-        (Path(tempfile.gettempdir()) / "close-tax-fixture" / "runs"
+        (tax_root / "runs"
          / "run-2026-01-01-code-review-001" / "code-review.report.md").write_text(
             CODE_RPT, encoding="utf-8")
-        (Path(tempfile.gettempdir()) / "close-tax-fixture" / "runs"
+        (tax_root / "runs"
          / "run-2026-01-01-doc-audit-002").mkdir(parents=True)
-        (Path(tempfile.gettempdir()) / "close-tax-fixture" / "runs"
+        (tax_root / "runs"
          / "run-2026-01-01-doc-audit-002" / "doc-audit.report.md").write_text(
             DOC_RPT, encoding="utf-8")
-        runs = Path(tempfile.gettempdir()) / "close-tax-fixture" / "runs"
+        runs = tax_root / "runs"
         declared = {"code_major": 2, "code_critical": 0, "doc_items": 3,
                     "runs": ["run-2026-01-01-code-review-001",
                              "run-2026-01-01-doc-audit-002"]}
@@ -325,7 +330,7 @@ def selftest() -> int:
         bumped = CODE_RPT.replace(
             "\n## One-line summary",
             "\n- **major** `a.py:9`: 新增的一条 major\n\n## One-line summary")
-        (Path(tempfile.gettempdir()) / "close-tax-fixture" / "runs"
+        (tax_root / "runs"
          / "run-2026-01-01-code-review-001" / "code-review.report.md").write_text(
             bumped, encoding="utf-8")
         actual2, _ = derive(declared["runs"], runs_dir=runs)
@@ -335,13 +340,13 @@ def selftest() -> int:
            f"actual2={actual2}")
         # （本条反向对照的由来：我第一版把新增行写在 `## One-line summary` **之后**，
         #   派生值没变——那不是工具坏了，而是**节外行不计**。把它固化成边界断言。）
-        (Path(tempfile.gettempdir()) / "close-tax-fixture" / "runs"
+        (tax_root / "runs"
          / "run-2026-01-01-code-review-001" / "code-review.report.md").write_text(
             CODE_RPT + "\n- **major** `a.py:9`: 节外的一行\n", encoding="utf-8")
         actual3, _ = derive(declared["runs"], runs_dir=runs)
         ok("反向对照 C2：graded **节外**的 `- **major**` 不计（口径按节切）",
            actual3["code_major"] == 2, f"actual3={actual3}")
-        (Path(tempfile.gettempdir()) / "close-tax-fixture" / "runs"
+        (tax_root / "runs"
          / "run-2026-01-01-code-review-001" / "code-review.report.md").write_text(
             CODE_RPT, encoding="utf-8")
         # 未发现 critical 的说明行不计（否则离线档会凭空多一条）
@@ -378,7 +383,7 @@ def selftest() -> int:
         ok("反向对照 E：来源 run 的报告不存在 ⇒ 具名问题（不得把'查不到'算成 0）",
            any("不存在" in p for p in missing), f"problems={missing[:1]}")
     finally:
-        shutil.rmtree(Path(tempfile.gettempdir()) / "close-tax-fixture", ignore_errors=True)
+        shutil.rmtree(tax_root, ignore_errors=True)
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
 

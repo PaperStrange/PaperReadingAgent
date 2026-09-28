@@ -60,6 +60,7 @@ VERIFY_META = {'features': '闸门可信度：-O/PYTHONOPTIMIZE 守卫行在位'
 
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -903,13 +904,15 @@ def selftest() -> int:
             globals()["GUARD_REQUIRED"], globals()["GUARD_LINE"] = saved_list, saved_line
     # A-M12 ① 反向对照：把"不可跳过层"的三处接线分别拿掉 ⇒ 必须逐条 FAIL；
     # 原样 ⇒ PASS（防假红）。用 `%TEMP%` 里的**真文件副本**做，不动仓库文件。
-    # 落点一律写成"`Path(tempfile.gettempdir())` + 字面量"的**单一表达式**：
-    # 不经变量中转，满足 `verify_artifact_paths.py` 的静态可判定要求
-    # （第一版把落点交给变量，被该闸门当场判为 2 处动态目标 ⇒ 记入本批自检的价值）。
-    ci_probe = Path(tempfile.gettempdir()) / "gate-integrity-unskippable-ci.yml"
-    hook_probe = Path(tempfile.gettempdir()) / "gate-integrity-unskippable-pre-commit"
-    inst_probe = Path(tempfile.gettempdir()) / "gate-integrity-unskippable-installer.py"
-    chook_probe = Path(tempfile.gettempdir()) / "gate-integrity-unskippable-commit-msg"
+    # 行 8：落点 = **run 级唯一目录**（`mkdtemp`）里的四个探针——原实现是 `%TEMP%`
+    # 下的固定文件名，并发实例会互相覆盖/删掉对方的探针（`finally` 里的 `unlink`
+    # 更是直接删别人的）。`gate_root` 是 `mkdtemp` 的直接结果且只赋值一次，
+    # 仍满足 `verify_artifact_paths.py` 的静态可判定要求（挂参数会被判动态目标）。
+    gate_root = Path(tempfile.mkdtemp(prefix="gate-integrity-unskippable-"))
+    ci_probe = gate_root / "ci.yml"
+    hook_probe = gate_root / "pre-commit"
+    inst_probe = gate_root / "installer.py"
+    chook_probe = gate_root / "commit-msg"
     ci_probe.write_text((ROOT / CI_REL).read_text(encoding="utf-8"), encoding="utf-8")
     hook_probe.write_text((ROOT / HOOK_REL).read_text(encoding="utf-8"),
                           encoding="utf-8")
@@ -1095,8 +1098,8 @@ def selftest() -> int:
         ok("行 6 检测器认命令位置：真调用带 `--report-only` ⇒ 检测器点名",
            _invokes_report_only(f"{call_ok} --report-only"))
     finally:
-        for probe in (ci_probe, hook_probe, inst_probe, chook_probe):
-            probe.unlink(missing_ok=True)
+        # 行 8：整目录回收（含四个探针；`ignore_errors` 与旧实现的 unlink 同口径）
+        shutil.rmtree(gate_root, ignore_errors=True)
 
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0

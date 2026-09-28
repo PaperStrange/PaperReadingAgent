@@ -70,7 +70,9 @@ VERIFY_META = {
     'routes': [], 'requires': ['none'],
 }
 
+import atexit
 import re
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -512,14 +514,35 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
 
 
 def selftest() -> int:
-    """反向对照（fixture 写在 `%TEMP%` 的**字面量落点**上，不动仓库文件）。
+    """反向对照（fixture 写在 `%TEMP%` 的 **run 级唯一目录**里，不动仓库文件）。
 
-    落点一律写成"`Path(tempfile.gettempdir())` +
-    字面量"的**单一表达式**（不经变量中转），
+    落点 = `Path(tempfile.mkdtemp(...))` 的**单次局部赋值** `reg_root` + 字面量段，
     满足 `verify_artifact_paths.py` 对新脚本写盘目标的静态可判定要求——第一版用
     `tmp / REGISTER_REL` 与 `src.parent.mkdir()`，被该闸门当场判 FAIL 2 处。
+    行 8 起不用固定名：原实现是 `%TEMP%/decision-register-selftest.md` 与 `-repo`，
+    并发实例会互相覆盖文本、共用同一个 fixture git 仓库（实测两真实例同跑 ⇒ 各判红
+    1 条反向对照）。回收：`_reclaim()` 显式回收 + `atexit` 兜底；夹具里是真 git
+    仓库、`.git/objects` 是只读文件，故先清只读位（裸 `rmtree` 实测残留 24 个）。
     引文/指针的**读**仍打真仓库文件（`docs/6-DECISIONS.md:1`：标题行稳定、内容可核）。
     """
+    reg_root = Path(tempfile.mkdtemp(prefix="decision-register-selftest-"))
+
+    def _reclaim() -> None:
+        """行 8：回收 run 级夹具目录。
+
+        `.git/objects` 在 Windows 上是**只读**文件 ⇒ 裸 `rmtree` 会半途而废
+        （实测残留 24 个目录），故先清只读位再删。写成**无参嵌套函数**而不是
+        `reclaim(root)`：`verify_artifact_paths.py` 对"落点是函数参数"的写盘目标
+        判动态目标（该文件不在棘轮上限表内 ⇒ 一处就 FAIL），内联/闭包才是可静态判定的。
+        """
+        for stale in reg_root.rglob("*"):
+            try:
+                stale.chmod(0o700)
+            except OSError:
+                pass
+        shutil.rmtree(reg_root, ignore_errors=True)
+
+    atexit.register(_reclaim)
     # 引文与出处的对照源：用**真仓库文件**里稳定存在的一行（标题行），避免夹具自身漂移
     quote_src = "docs/6-DECISIONS.md:1"
 
@@ -545,10 +568,8 @@ def selftest() -> int:
         return "\n".join(body) + "\n"
 
     def run(text: str) -> dict:
-        (Path(tempfile.gettempdir())
-         / "decision-register-selftest.md").write_text(text, encoding="utf-8")
-        return check_register(
-            ROOT, doc=Path(tempfile.gettempdir()) / "decision-register-selftest.md")
+        (reg_root / "selftest.md").write_text(text, encoding="utf-8")
+        return check_register(ROOT, doc=reg_root / "selftest.md")
 
     clean = run(build({}))
     ok("反向对照 e 干净 fixture（8 字段齐 + 引文与出处相符）→ 零 problem（防假红）",
@@ -587,26 +608,26 @@ def selftest() -> int:
     # ⇒ `path_in_head()` 为真、工作区没有 ⇒ 必须 FAIL（真入口、真
     # git，不注入中间变量）。
     import subprocess as _sp
-    repo = str(Path(tempfile.gettempdir()) / "decision-register-selftest-repo")
+    repo = str(reg_root / "repo")
     _sp.run(["git", "init", "-q", repo], capture_output=True)
-    (Path(tempfile.gettempdir()) / "decision-register-selftest-repo" / "docs").mkdir(
+    (reg_root / "repo" / "docs").mkdir(
         parents=True, exist_ok=True)
-    (Path(tempfile.gettempdir()) / "decision-register-selftest-repo" / "docs"
+    (reg_root / "repo" / "docs"
      / "gone.md").write_text("line 1\nline 2\n", encoding="utf-8")
     # 登记册**自身**也要有一份被提交过（供 c3 测"登记册被删"）
-    (Path(tempfile.gettempdir()) / "decision-register-selftest-repo"
+    (reg_root / "repo"
      / "register.md").write_text(build({}), encoding="utf-8")
     _sp.run(["git", "-C", repo, "add", "-A"], capture_output=True)
     _sp.run(["git", "-C", repo, "-c", "user.name=t",
              "-c", "user.email=t@example.invalid",
              "commit", "-q", "-m", "fixture"], capture_output=True)
-    (Path(tempfile.gettempdir()) / "decision-register-selftest-repo" / "docs"
+    (reg_root / "repo" / "docs"
      / "gone.md").unlink()
-    (Path(tempfile.gettempdir()) / "decision-register-selftest.md").write_text(
+    (reg_root / "selftest.md").write_text(
         build({"原文": '"line 1"', "出处": "docs/gone.md:1", "证据": "docs/gone.md:1"}),
         encoding="utf-8")
     deleted = check_register(
-        Path(repo), doc=Path(tempfile.gettempdir()) / "decision-register-selftest.md")
+        Path(repo), doc=reg_root / "selftest.md")
     ok("反向对照 c2 路径在 `HEAD` 里存在、工作区被删 ⇒ FAIL（『被删』与『分支差异』"
        "必须分开）",
        any("被删" in p for p in deleted["problems"]),
@@ -614,7 +635,7 @@ def selftest() -> int:
     # 反向对照 c3（**修复验证复核 `run-…-089` major 1d(b)**）：登记册**自身**在 HEAD 里
     # 存在、工作区被删 ⇒ 必须 FAIL（首版对此走"具名 SKIP rc=0"，
     # 方向与同批指针判据相反）。
-    (Path(tempfile.gettempdir()) / "decision-register-selftest-repo"
+    (reg_root / "repo"
      / "register.md").unlink()
     reg_deleted = check_register(Path(repo), rel="register.md")
     ok("反向对照 c3 登记册自身被删（HEAD 里有）⇒ FAIL，而不是 SKIP",
@@ -725,6 +746,7 @@ def selftest() -> int:
        drift["problems"] == [] and drift["stats"].get("quotes_drift", 0) >= 1
        and any("实际命中" in w for w in drift["warns"]),
        f"drift={drift['stats'].get('quotes_drift')} warns={drift['warns'][:1]}")
+    _reclaim()   # 行 8：显式回收 run 级夹具目录（异常路径由 `atexit` 兜底）
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
 
