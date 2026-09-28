@@ -29,7 +29,7 @@
 | `gui_check_s5.mjs` | 自动重跑 config / retrieve 双模式标记 / 复制报错按钮 / 计时冻结 | gui | — | 40s | ¥0 | — | playwright, servers |
 | `gui_check_s7.mjs` | 多节点并发计时显示 + 完成后冻结 | gui | — | 60s | ¥0 | — | playwright, servers |
 | `verify_agent.py` | Agent 流程（fake agent）+ 翻译接口 | network | deepseek | 60s | ¥0.3 | /api/translate_preview, /api/run_step | keys, network, index |
-| `verify_agentops.py` | AgentOps 账本 CLI 用例断言 UC-1~UC-19（离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库，UC-19=TG-8 离线开关：三入口拒绝+反向对照+配置面+两侧一致） | offline | — | 20s | ¥0 | — | none |
+| `verify_agentops.py` | AgentOps 账本 CLI 用例断言 UC-1 起（**编号区间与条数以末行 `ALL PASS (N assertions)` 现跑为准，勿在本串写死**；离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库，UC-19=TG-8 离线开关：三入口拒绝+反向对照+配置面+两侧一致） | offline | — | 20s | ¥0 | — | none |
 | `verify_archive.py` | M16 调研归档完整性校验：report/context/reasoning/evidence 契约 + 证据索引表双向交叉引用（限定 §7 索引表区间、大小写不敏感；fail-closed） | offline | — | 5s | ¥0 | — |  |
 | `verify_artifact_paths.py` | TG-9 产物目录约定闸门：脚本源码的写盘目标必须落在已忽略目录或 %TEMP%（政策 artifact_paths 驱动）+ 忽略根双向差集（须真被 .gitignore 忽略、确有其行、确有代码在用）+ 动态目标棘轮（新文件必须可静态判定）+ 反向对照（注入写仓库根 → rc=1 点名；默认落点实测 git status 干净） | offline | — | 10s | ¥0 | — | git |
 | `verify_card_index.py` | TG-14④ 卡索引 lint：索引↔卡文件一一对应 / 卡号↔文件名一致 / 必备节 / Sprint 不得复制卡正文 / 表格结构 / 状态三处一致（卡↔索引↔Sprint 看板）/ 卡库存基线 totals 与 card-inventory 实测一致；反向对照条数见末行 `ALL PASS (N assertions)` | offline | — | 6s | ¥0 | — | none |
@@ -47,7 +47,7 @@
 | `verify_embed_load.py` | parse_chunk_embed 三种模式：run/load 同会话/load 新会话（embed 缓存） | network | deepseek | 90s | ¥0.3 | /api/run_step | keys, network |
 | `verify_f12_preview_res.py` | F-AC12 预览清晰度实证：1.0 缩放渲染，PNG 宽度 ≥500px（旧 0.45 为 ~268px） | offline | — | 10s | ¥0 | — | none |
 | `verify_freshness.py` | M18 v1 报告时效检测：fresh/stale/suspect 三态规则 + CLI 契约（--check/--only/重定向）+ 偏移时间解析 + 容错（离线合成 fixture） | offline | — | 8s | ¥0 | — | none |
-| `verify_gate_integrity.py` | 闸门可信度：-O/PYTHONOPTIMIZE 守卫行在位（含真实 -O 探针必须红）+ 棘轮上限与 git HEAD 逐项比较（只许下调、上调即 FAIL）+ review_by 必填未过期 + 未覆盖闸门逐条 WARN；含 7 条反向对照自检 | offline | — | 6s | ¥0 | — | none |
+| `verify_gate_integrity.py` | 闸门可信度：-O/PYTHONOPTIMIZE 守卫行在位（含真实 -O 探针必须红）+ 棘轮上限与 git HEAD 逐项比较（只许下调、上调即 FAIL）+ review_by 必填未过期 + 未覆盖闸门逐条 WARN；反向对照条数见末行 `ALL PASS (N assertions)` | offline | — | 6s | ¥0 | — | none |
 | `verify_index_health.py` | 索引一致性三重探针 + 损坏自愈（合成六形态，离线） | offline | — | 20s | ¥0 | — | none |
 | `verify_ledger_measurement.py` | TG-13 账本测量化闸门：口径可核（dur/rounds/unknown 来自 policy）+ 账本↔agents/runs 双向一致（白名单须有 reason 且只减不增）+ 时间戳退化（相同/0.00/整十分钟/负值/缺失）+ rounds vs 报告轮次 + 终态已写回+ measurement_source/dur_minutes 契约（含行 18：declared 且仍退化 ⇒ 行内必须有 degenerate_reason）+ 行 19 撤回留痕（retractions[] 齐备/撤回后不得复活/隔离区在）+ 历史棘轮（计数上限 + review_by）+ CLI 写入侧自检（finish/round 标注退化、list 显示 unknown） | offline | — | 14s | ¥0 | — | none |
 | `verify_ledger_rounds.py` | TG-10 账本多轮次记录：round 追加（终态可用）/首轮快照保留/产出累加/累计时长/中断事件（round --interrupted 与 interrupt）/list 展示/非法 run 拒绝（离线） | offline | — | 8s | ¥0 | — | none |

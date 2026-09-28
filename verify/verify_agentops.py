@@ -25,7 +25,7 @@ clobber（一方删掉另一方正在用的探针 → 两边都 rc=1，
 """
 
 from __future__ import annotations
-VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1~UC-19（离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库，UC-19=TG-8 离线开关：三入口拒绝+反向对照+配置面+两侧一致）', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 20, 'routes': [], 'requires': ['none']}
+VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1 起（**编号区间与条数以末行 `ALL PASS (N assertions)` 现跑为准，勿在本串写死**；离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库，UC-19=TG-8 离线开关：三入口拒绝+反向对照+配置面+两侧一致）', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 20, 'routes': [], 'requires': ['none']}
 
 import json
 import os
