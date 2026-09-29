@@ -151,11 +151,12 @@ def port_in_use(port: int, host: str = "127.0.0.1") -> bool:
     return False
 
 
-def port_owner(port: int, timeout_s: int = 15) -> str:
-    """查出占用 `port` 的进程（`PID=… 镜像名=…`；查不到就如实说"查不到"）。
+def list_owner_pids(port: int, timeout_s: int = 15) -> list[str]:
+    """查监听 `port` 的进程 PID 列表（查不到 = 空列表，不臆测）。
 
-    限制（如实标注）：`Get-NetTCPConnection` 需要提权才能看到**其它用户**的进程名；
-    本机开发场景（同一用户）可用。查不到时仍给出"怎么自己查"的命令，不假装知道。
+    限制（如实标注）：`Get-NetTCPConnection` 对**系统保留区间**里被占用的端口
+    （Hyper-V／WinNAT 的 excluded port range）可能查不到任何属主——此时返回空列表，
+    由调用方按"无属主"形态处理（见 `port_owner` / `port_selfcheck` 的②）。
     """
     query = _PORT_OWNER_CMD.format(port=int(port))
     try:
@@ -165,11 +166,22 @@ def port_owner(port: int, timeout_s: int = 15) -> str:
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=timeout_s, check=False,
         )
-        pids = [p.strip() for p in (proc.stdout or "").splitlines() if p.strip().isdigit()]
+        return [p.strip() for p in (proc.stdout or "").splitlines() if p.strip().isdigit()]
     except (OSError, subprocess.SubprocessError):
-        pids = []
+        return []
+
+
+def port_owner(port: int, timeout_s: int = 15) -> str:
+    """查出占用 `port` 的进程（`PID=… 镜像名=…`；查不到就如实说"查不到"）。
+
+    限制（如实标注）：`Get-NetTCPConnection` 需要提权才能看到**其它用户**的进程名；
+    本机开发场景（同一用户）可用。查不到时仍给出"怎么自己查"的命令，不假装知道——
+    返回文本以 `查不到占用进程（可自行运行：` 开头即"无属主"形态，`port_selfcheck`
+    据此分流（**单一真源**：这个前缀同时是渲染分支与断言分支的依据）。
+    """
+    pids = list_owner_pids(port, timeout_s)
     if not pids:
-        return f"查不到占用进程（可自行运行：{query}）"
+        return f"查不到占用进程（可自行运行：{_PORT_OWNER_CMD.format(port=int(port))}）"
     names = []
     for pid in pids[:4]:
         try:
@@ -189,18 +201,42 @@ def port_owner(port: int, timeout_s: int = 15) -> str:
 def port_selfcheck(ports=BACKEND_PORTS) -> None:
     """自举前端口自检（TG-8①）：任一端口被占用 → **fail-fast 并点名**（不静默复用、不换端口）。
 
-    报错内容必须包含三件可操作信息（本卡判据）：① **哪个端口**；② **被哪个进程占用**；
-    ③ **怎么改 / 怎么释放**。失败形态是 `RuntimeError`（调用方未捕获 → 进程退出码非 0），
-    且**在拉子进程之前**抛出：不会留下"半自举"的后端进程。
+    判据分**两类**，各自要求**具名**的可操作信息（2026-09-30 补充；**未弱化**：两类都
+    fail-fast、都不复用、都不换端口，且两份文案都出自本函数这一处真源）：
+
+      * **① 可归属占用**（查得到 PID／镜像名）：**照旧**要求三件齐全——
+        端口号 ＋ 占用进程 ＋ 怎么改/怎么释放；
+      * **② 无属主占用**（查询无 PID／镜像名，含**系统保留区间**）：**显式说明这一类**
+        （"被占用但查询不到属主进程：可能落在系统保留区间 excluded port range"）
+        并给出"怎么查保留区间／怎么改端口"。为什么不照旧强制要 PID：CI（Windows runner）
+        实测端口确实被占、却查不到属主 ⇒ 旧判据把**不存在的信息**当必要条件，是一条
+        从未被反向驱动过的隐含假设（"占用者一定可归属"）。
+
+    失败形态是 `RuntimeError`（调用方未捕获 → 进程退出码非 0），且**在拉子进程之前**
+    抛出：不会留下"半自举"的后端进程。
     """
     busy = [(p, port_owner(p)) for p in ports if port_in_use(p)]
     if not busy:
         return
+    noowner_mark = "查不到占用进程（可自行运行："
     lines = [
         "ERR: 端口自检失败——以下端口已被占用，本脚本**不会复用**它（TG-8①：占用即 fail-fast，不静默换端口）：",
     ]
     for port, owner in busy:
-        lines.append(f"  · 端口 {port}：被 {owner} 占用")
+        if owner.startswith(noowner_mark):
+            lines.append(f"  · 端口 {port}：**无属主**——{owner}")
+            lines.append("    ⇒ 该端口**被占用但查询不到属主进程**（无 PID／镜像名）：可能落在"
+                         "**系统保留区间**（excluded port range，Hyper-V／WinNAT 预留），"
+                         "或属主属于其它用户／需提权才可见。")
+        else:
+            lines.append(f"  · 端口 {port}：被 {owner} 占用")
+    if any(owner.startswith(noowner_mark) for _, owner in busy):
+        lines += [
+            "  无属主占用的查法与处理：",
+            "    · 查系统保留区间：`netsh int ipv4 show excludedportrange protocol=tcp`"
+            "（在列 = 系统预留、非本机进程占用，杀进程无用）；",
+            "    · 在列或仍查不到属主 ⇒ 走下面 ② 换端口（或由管理员调整保留区间）；",
+        ]
     alt = DEFAULT_PORT + 100
     lines += [
         "  解决方式（二选一）：",

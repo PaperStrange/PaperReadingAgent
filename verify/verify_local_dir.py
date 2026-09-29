@@ -3,11 +3,13 @@
 临时目录放入 PaperQA2.pdf → 真实后端 config(local, paper_directory=临时目录) →
 load_index(build) → retrieve → 断言候选路径来自临时目录（证明前端改路径后索引真实生效）。
 全程本地（st- 向量），零 API 成本。
+另含 TG-8① 端口自检两类反向对照：① 可归属占用 ⇒ 三件可操作信息齐全；② 无属主占用
+（查询无 PID／镜像名，含系统保留区间）⇒ 文案显式说明这一类。
 
 Run: .venv\\Scripts\\python.exe verify\\verify_local_dir.py
 """
 from __future__ import annotations
-VERIFY_META = {'features': 'F-AC3 引擎接线实证：临时目录 paper_directory → load_index → retrieve 候选来自该目录（免密：注入占位 key，链路无 LLM 调用）', 'tier': 'offline', 'providers': [], 'est_seconds': 90, 'est_cost_cny': 0, 'routes': ['/api/new_session', '/api/run_step'], 'requires': ['self-boots-backend']}
+VERIFY_META = {'features': 'F-AC3 引擎接线实证：临时目录 paper_directory → load_index → retrieve 候选来自该目录（免密：注入占位 key，链路无 LLM 调用）；TG-8① 端口自检两类反向对照（① 可归属占用 ⇒ 端口+PID+释放/改端口三件齐全；② 无属主占用 ⇒ 文案具名说明"被占用但查询不到属主进程／系统保留区间"）', 'tier': 'offline', 'providers': [], 'est_seconds': 90, 'est_cost_cny': 0, 'routes': ['/api/new_session', '/api/run_step'], 'requires': ['self-boots-backend']}
 
 import asyncio
 import atexit
@@ -32,11 +34,22 @@ from verify.e2e_common import (  # noqa: E402
     PORT,
     alloc_port,
     port_in_use,
+    port_owner,
     port_selfcheck,
     start_backend,
     stop_backend,
     wait_healthy,
 )
+
+# 占用进程**查不到**时 `port_owner` 返回文本的开头（`e2e_common.port_owner` 那处是唯一真源）：
+# 本脚本靠它判定"② 无属主占用"这一形态，并据此核错文案里的具名说明。
+PORT_NOOWNER_MARK = "查不到占用进程（可自行运行："
+# ② 档注入的哨兵值：子进程回显成 `STUB=<值>`，父进程只认这个值 ⇒ 外层环境里的同名变量
+# 伪造不了这一档（单一真源，改一处即两处同步）。
+OWNERLESS_STUB = "control-not-inherited"
+# 接缝自核用的**原始**查询函数引用（在子脚本做任何替换之前捕获；子脚本据此自陈
+# `STUBPATCHED=`——见 `SELFCHECK_CHILD`）。
+_ORIG_PORT_OWNER = port_owner
 
 BACKEND = ROOT / "paper-qa-script" / "reactflow-paperqa-prototype" / "backend" / "main.py"
 # 行 24：后端日志落 `%TEMP%` 的 **run 级唯一目录**（原来是仓库内固定名
@@ -86,7 +99,26 @@ def ok(name: str, cond: bool, detail: str = "") -> None:
 SELFCHECK_CHILD = (
     "import os, sys\n"
     "sys.path.insert(0, {root})\n"
+    "import importlib\n"
+    "import verify.e2e_common as _ec\n"
+    # 子脚本的"原始查询函数"基准：**本进程内重载一次基座**取装载的属性。为什么不从父进程
+    # `.format()` 注入：函数的 `repr()` 不是合法 Python（实测 SyntaxError ⇒ 子脚本 rc=1
+    # 但**一条判据都没跑**）。必须先 `import … as _ec` 再 `from … import`：反过来会在本进程
+    # 全局里另建 `port_owner` 同名绑定，它不随 `_ec.port_owner` 被替换。
+    "_ORIG_OWNER = importlib.reload(_ec).port_owner\n"
     "from verify.e2e_common import PORT, port_selfcheck, start_backend\n"
+    # 反向对照开关（TG-8①）：把**占用进程查询**换成"查不到"的实现。要覆盖的第二形态是
+    # "**被占却查不到属主**"（CI 实测：端口落在 Hyper-V/WinNAT 的**系统保留区间**，已占用但
+    # 无属主进程），而"自己 bind 一个 socket"永远查得到**自己的** PID ⇒ 该形态无法用真实占用
+    # 造出来，只能替换查询函数（stub-ROOT-C）。占用探测 / fail-fast / 文案渲染全部照旧；
+    # ✱ stub 返回值必须与生产同形（`查不到占用进程（可自行运行：…）`）——`port_selfcheck`
+    # 按此前缀选"无属主"分支并渲染具名说明。⚠️ 上面的 `from … import port_owner` 陷阱实测让
+    # stub 静默失效（读回真实 PID）：子脚本只按**模块属性** `_ec.port_owner` 取查询函数。
+    # 不设该变量 = 'none' ⇒ 生产路径行为完全不变（未知值按 'missing' 处理）。
+    "if os.environ.get('PAPERQA_VERIFY_OWNER_STUB', 'none').strip().lower() != 'none':\n"
+    "    _ec.port_owner = lambda port: (\n"
+    "        '查不到占用进程（可自行运行：Get-NetTCPConnection -LocalPort '\n"
+    "        + str(port) + ' -State Listen）')\n"
     "if sys.argv[1] == 'preflight-only':\n"
     "    print('CHILD-PORT', PORT)\n"
     "    port_selfcheck((PORT,))\n"
@@ -97,10 +129,24 @@ SELFCHECK_CHILD = (
     "except Exception as exc:\n"
     "    print('PRECHECK-FAILED', type(exc).__name__)\n"
     "    print(exc)\n"
+    # 自陈本进程里查询函数的**实际形状**（三条独立通道）：`CHILD-OWNERLESS=` 该端口此刻是不是
+    # 无属主形态；`STUBPATCHED=` 接缝是否生效；`STUB=` 回显收到的取值。为什么不由父进程自己查：
+    # 父进程就是占用者，它的结果与"子进程是哪一档"无关——拿它当自核**恒真**＝假绿。
+    # ⚠️ 自陈行的**名字**必须与父进程 detail 的标签不同：原用 `OWNERLESS= True` 做子串，而
+    # detail 里有中文标签『子进程自陈无属主=True』⇒ 一条断言在两个命名空间找同一个串，父进程
+    # 那半边恒真、自核形同虚设（本自核抓出来的）。`STUB=` 让父进程**只认自己注入的哨兵值**
+    # （`control-not-inherited`）：外层环境恰好设了同名变量时对照不会被伪装成有效（实测：忘了
+    # 清 shell 环境，四个档全串成 stub 档）。
+    "    print('CHILD-OWNERLESS=', _ec.port_owner(PORT).startswith(\n"
+    "        '查不到占用进程（可自行运行：'))\n"
+    "    print('STUBPATCHED=', _ec.port_owner is not _ORIG_OWNER)\n"
+    "    print('STUB=', os.environ.get('PAPERQA_VERIFY_OWNER_STUB', ''))\n"
     "    raise SystemExit(1)\n"
     "print('PRECHECK-PASSED')\n"
     "raise SystemExit(0)\n"
 )
+# 接缝自核用的**原始**查询函数引用（在任何替换之前捕获）。
+_ORIG_PORT_OWNER = port_owner
 
 
 def port_selfcheck_conflict_assertions() -> dict:
@@ -111,6 +157,10 @@ def port_selfcheck_conflict_assertions() -> dict:
     证明不了"入口进程确实失败了"，也证明不了"没留下半自举的子进程"。
     **子脚本以内联 `-c` 传入、不落盘**（TG-9 产物落点约定 + 本文件动态目标棘轮：多一个
     `write_text(动态路径)` 就会顶破上限；内联脚本文本不产生任何写盘目标）。
+
+    2026-09-30 补充（CI 红 `含占用PID=False` 的修法）：占用分**两类**，各自真驱动——① 真实占用
+    （本进程自己 bind）⇒ 要求三件信息齐全；② 查询无属主（stub 子进程的占用进程查询，见
+    `SELFCHECK_CHILD`）⇒ 要求文案具名说明这一类。
     """
     import socket
     import subprocess
@@ -134,6 +184,11 @@ def port_selfcheck_conflict_assertions() -> dict:
         # 行 24：`PORT` 是**本 run 分配**的，子进程必须被告知同一端口——否则子进程
         # 自己分配一个空闲端口，"父进程占着 PORT"这条对照就不成立（断言恒真 = 假绿）。
         occupied = run_child("start", {"PAPERQA_VERIFY_PORT": str(PORT)})
+        # ② 无属主占用：只把**占用进程查询**换成"查不到"，占用本身仍是真的（listener 还在）；
+        # 注入的是**本档哨兵**（不给通用值）：外层环境恰好设了同名变量也伪造不了这一档
+        # （父进程只认它自己注入的 `OWNERLESS_STUB`）。
+        ownerless = run_child("start", {"PAPERQA_VERIFY_PORT": str(PORT),
+                                        "PAPERQA_VERIFY_OWNER_STUB": OWNERLESS_STUB})
         # 释放端口 → 同一路径通过。子进程用 `PAPERQA_VERIFY_PORT` 抬高端口（本基座的 `PORT` 读它），
         # 且**必须在子进程里读**：写死在生成代码里的端口号会忽略该环境变量（实测就是这样，
         # 于是"释放后通过"恒失败——断言自身的假红）。
@@ -144,14 +199,44 @@ def port_selfcheck_conflict_assertions() -> dict:
         listener.close()
 
     out_occ = (occupied.stdout or "") + (occupied.stderr or "")
+    out_noowner = (ownerless.stdout or "") + (ownerless.stderr or "")
     out_free = (free.stdout or "") + (free.stderr or "")
     return {
         "fail_fast": occupied.returncode != 0 and "PRECHECK-PASSED" not in out_occ,
         "pass_when_free": free.returncode == 0 and "PRECHECK-PASSED" in out_free,
-        "actionable": all(t in out_occ for t in (str(PORT), f"PID={pid}", "释放端口", "改用其它端口")),
+        # ① 可归属占用（照旧，**未弱化**）：端口号 ＋ PID ＋ 释放/改端口提示，缺一即 FAIL。
+        "actionable_attributable": all(t in out_occ for t in (str(PORT), f"PID={pid}",
+                                                             "释放端口", "改用其它端口")),
+        # ② 无属主占用：要求**具名说明这一类**，不强制要求一个并不存在的 PID。逐字核的短语＝渲染
+        # 真源 `e2e_common.port_selfcheck` 的文案（是**查询不到属主进程**，不是"查不到属主进程"
+        # ——后者只是前者的子串；实测因这一字之差撞过一次假红）。
+        "actionable_ownerless": all(t in out_noowner for t in (
+            str(PORT), PORT_NOOWNER_MARK, "被占用但查询不到属主进程",
+            "系统保留区间", "excluded port range", "改用其它端口")),
+        # 夹具自核（**三条独立通道**，都读子进程 stdout 的自陈行）：该档在子进程里确实是无属主
+        # 形态、接缝确实生效、且收到本档注入的哨兵；缺任一条 ⇒ ②退化成①的重复或 stub 静默失效
+        # ＝假绿。三个标记只出现在子进程输出里（名字与下面的中文标签刻意不同）。
+        "ownerless_stub_live": all(t in out_noowner for t in ("CHILD-OWNERLESS= True",
+                                                              "STUBPATCHED= True",
+                                                              f"STUB= {OWNERLESS_STUB}")),
+        "ownerless_stub_real_owner": f"PID={pid}" in out_occ,
         "detail_fail": f"rc={occupied.returncode} out={out_occ.strip().splitlines()[:2]}",
-        "detail_actionable": (f"含端口={str(PORT) in out_occ} 含占用PID={f'PID={pid}' in out_occ} "
-                              f"含释放提示={'释放端口' in out_occ} 含改端口提示={'改用其它端口' in out_occ}"),
+        "detail_attributable": (f"含端口={str(PORT) in out_occ} "
+                                f"含占用PID={f'PID={pid}' in out_occ} "
+                                f"含释放提示={'释放端口' in out_occ} "
+                                f"含改端口提示={'改用其它端口' in out_occ}"),
+        "detail_ownerless": (
+            f"rc={ownerless.returncode} 含端口={str(PORT) in out_noowner} "
+            f"含『无属主』={PORT_NOOWNER_MARK in out_noowner} "
+            f"含无属主说明={'被占用但查询不到属主' in out_noowner} "
+            f"含reserved={'系统保留区间' in out_noowner}／"
+            f"{'excluded port range' in out_noowner} "
+            f"含改端口={'改用其它端口' in out_noowner} "
+            f"含假PID={f'PID={pid}' in out_noowner} "
+            f"子进程自陈={'CHILD-OWNERLESS= True' in out_noowner} "
+            f"接缝生效={'STUBPATCHED= True' in out_noowner} "
+            f"哨兵回显={f'STUB= {OWNERLESS_STUB}' in out_noowner} "
+            f"①档含本进程PID={f'PID={pid}' in out_occ}"),
         "detail_free": f"rc={free.returncode} out={out_free.strip()[:80]}",
     }
 
@@ -165,14 +250,26 @@ async def main() -> int:
     # ── TG-8①：自举前端口自检（**可核断言，含反向对照**） ────────────────────────────────
     # 事故形态（卡文正文）：`wait_healthy` 只探测端口、不校验"服务是不是自己启的" → dev 后端在跑时
     # 脚本会**静默复用它**并施加 parse/embed 负载；反之套件也会抢占/顶掉 dev 后端。
-    # 修法判据 = 自举前 fail-fast 并点名（端口 / 占用进程 / 怎么释放或改端口），**不复用、不换端口**。
+    # 修法判据 = 自举前 fail-fast 并点名，**不复用、不换端口**；文案分两类（都 fail-fast）。
     # 本函数的 daemon 线程只活到 `main()` 返回（`asyncio.run` 之后进程即退出），故不会留下监听。
     port_selfcheck((PORT,))  # ⑤c：本 run 分到的端口此刻确为空（占用即在此 fail-fast）
     conflicts = port_selfcheck_conflict_assertions()
     ok("⑤ 端口被占用时自举**明确失败**并点名：不发子进程、不静默复用（反向对照 / 修复前此断言不成立）",
        conflicts["fail_fast"], conflicts["detail_fail"])
-    ok("⑤ 错误信息含三件可操作信息：端口号 + 占用进程（PID/镜像名）+ 怎么改/怎么释放",
-       conflicts["actionable"], conflicts["detail_actionable"])
+    # 2026-09-30：原**一条**"三件可操作信息"断言（隐含"占用者一定可归属"）拆成下面两条——不是
+    # 放宽：① 的判据逐字保留，② 覆盖 CI 新暴露的"被占却查不到属主"形态（旧判据在那一支要求
+    # 一个**并不存在**的 PID ⇒ 判红）。
+    ok("⑤① 可归属占用（查得到 PID/镜像名）：端口号 + 占用进程 + 怎么改/怎么释放，缺任一即 FAIL",
+       conflicts["actionable_attributable"], conflicts["detail_attributable"])
+    ok("⑤② 无属主占用（查询无 PID/镜像名，含系统保留区间）：文案**显式说明这一类**"
+       "（『被占用但查询不到属主进程』＋『系统保留区间/excluded port range』）"
+       "＋改端口提示——不强制一个并不存在的 PID",
+       conflicts["actionable_ownerless"], conflicts["detail_ownerless"])
+    ok("⑤②-夹具自核：无属主对照里**确实没有** PID/镜像名（查询被替换成空实现）"
+       "——否则这条对照会退化成①的重复",
+       conflicts["ownerless_stub_live"] and conflicts["ownerless_stub_real_owner"],
+       f"无属主档含『查不到占用进程』={conflicts['ownerless_stub_live']} "
+       f"同一端口真实查询可归属={conflicts['ownerless_stub_real_owner']}")
     ok("⑤ 释放端口后同一路径**通过**（证明失败来自占用本身，而非『预检恒失败』）",
        conflicts["pass_when_free"], conflicts["detail_free"])
     ok("⑤ 预检通过路径**不留下任何监听**（未产生半自举进程 / 未占住端口）",
