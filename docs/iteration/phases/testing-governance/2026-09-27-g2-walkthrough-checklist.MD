@@ -9,7 +9,7 @@
 |---|---|
 | 分支 / 仓库 | `windows` / `PaperReading-Windows`（remote `PaperStrange/PaperReadingAgent`） |
 | 关闭标准 | **零未闭环项**（G2、G3 均按此；`docs/6-DECISIONS.md::D-250926-06`，2026-09-27 你再次确认） |
-| 发现项总账 | 复盘 §5，共 **25 行**（行号即权威；本清单不复制描述） |
+| 发现项总账 | 复盘 §5，共 **51 行**（行号即权威；本清单不复制描述）。**2026-09-29 扩容**：原 25 行 ＋ 本批把关闭三查的 26 条发现逐条落表（行 26–51） |
 | 计划内交付 | D1–D6（12 点）＋ 插入 `TG-20`（2 点）＝ 14/14 |
 | `windows→main` PR | **未创建**（按你的规矩：走查验收通过前不建） |
 
@@ -17,14 +17,14 @@
 
 | # | 文件 | 为什么看它 |
 |---|---|---|
-| 1 | [G2 复盘](D:\All-Downloads\PaperReading\PaperReading-Windows\docs\iteration\phases\testing-governance\2026-09-26-g2-close-retro.MD) | **§5 未闭环项总账**（25 行，每行有来源与状态）；§4 是与你对话的逐字纪要 |
-| 2 | [闭环台账](D:\All-Downloads\PaperReading\PaperReading-Windows\docs\iteration\phases\testing-governance\2026-09-26-g2-closure-ledger.MD) | A 表＝每行的**关闭动作**；B 表＝**耦合边**（谁和谁必须同批改） |
-| 3 | [残余风险备案](D:\All-Downloads\PaperReading\PaperReading-Windows\docs\iteration\phases\agents-infra\2026-09-26-residual-risk-register.MD) | `R-001`~`R-003`：方案覆盖不到的边界 |
-| 4 | [派单反例档](D:\All-Downloads\PaperReading\PaperReading-Windows\docs\iteration\phases\agents-infra\2026-09-25-subagent-dispatch-failure-modes-case.MD) | 案例 1–11（含**我自己的**事故：混提交、文字承诺、派单未登记 run） |
-| 5 | [机制反例档](D:\All-Downloads\PaperReading\PaperReading-Windows\docs\iteration\phases\agents-infra\2026-09-25-gate-mechanism-failure-modes-case.MD) | 案例 1–26（含**假绿**、影响面漏普查、口径造出的假结论） |
-| 6 | [G1↔G2 对照](D:\All-Downloads\PaperReading\PaperReading-Windows\docs\iteration\phases\agents-infra\2026-09-26-g1-vs-g2-close-comparison.MD) | 收口时长的**活跃口径**对照（旧 6.4× 已作废，改判约 1.5×，区间 1.1×~5.0×） |
-| 7 | [价表 spec](D:\All-Downloads\PaperReading\PaperReading-Windows\docs\iteration\phases\agents-infra\2026-09-26-price-tier-spec.MD) | 两档计价、时段窗口、未决点、`fx` 裁定 |
-| 8 | [087 处置取证](D:\All-Downloads\PaperReading\PaperReading-Windows\docs\iteration\phases\testing-governance\2026-09-26-087-minor-5-9-disposition-spec.MD) | 行 2/3 的原始 finding 逐字出处 |
+| 1 | [G2 复盘](2026-09-26-g2-close-retro.MD) | **§5 未闭环项总账**（51 行，每行有来源与状态；行 26–51 为 2026-09-29 三查发现落表）；§4 是与你对话的逐字纪要 |
+| 2 | [闭环台账](2026-09-26-g2-closure-ledger.MD) | A 表＝每行的**关闭动作**；B 表＝**耦合边**（谁和谁必须同批改） |
+| 3 | [残余风险备案](../agents-infra/2026-09-26-residual-risk-register.MD) | `R-001`~`R-003`：方案覆盖不到的边界 |
+| 4 | [派单反例档](../agents-infra/2026-09-25-subagent-dispatch-failure-modes-case.MD) | 案例 1–11（含**我自己的**事故：混提交、文字承诺、派单未登记 run） |
+| 5 | [机制反例档](../agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD) | 案例 1–26（含**假绿**、影响面漏普查、口径造出的假结论） |
+| 6 | [G1↔G2 对照](../agents-infra/2026-09-26-g1-vs-g2-close-comparison.MD) | 收口时长的**活跃口径**对照（旧 6.4× 已作废，改判约 1.5×，区间 1.1×~5.0×） |
+| 7 | [价表 spec](../agents-infra/2026-09-26-price-tier-spec.MD) | 两档计价、时段窗口、未决点、`fx` 裁定 |
+| 8 | [087 处置取证](2026-09-26-087-minor-5-9-disposition-spec.MD) | 行 2/3 的原始 finding 逐字出处 |
 
 ## 2. 验收面（你手上要有哪些可核读数）
 
@@ -54,9 +54,9 @@ cd D:\All-Downloads\PaperReading\PaperReading-Windows
 **判据**：夜间跑的 run 应出现 `off_peak`；**没有时间戳**的 run 应是 `peak` ＋ `tier_assumed=True`（不得静默挑便宜的档）。
 
 **第 3 步｜看关闭账有没有糊（5 分钟）**
-- 打开[复盘 §5](D:\All-Downloads\PaperReading\PaperReading-Windows\docs\iteration\phases\testing-governance\2026-09-26-g2-close-retro.MD)：**每行的"状态"栏**应只有三种：`已修`（带提交 sha）、`已达成`、`已由用户裁定处置`（含你给的单次豁免）。
-- **若有"未修/未闭环"**，那就是还没到零未闭环项。
-- 打开[闭环台账 B 表](D:\All-Downloads\PaperReading\PaperReading-Windows\docs\iteration\phases\testing-governance\2026-09-26-g2-closure-ledger.MD)：看有没有"两条发现必须同批、却分批做了"的情况。
+- 打开[复盘 §5](2026-09-26-g2-close-retro.MD)：**每行的"状态"栏**取值（2026-09-29 起）：`已修`（带提交 sha 或本批工作区改动）、`部分`、`未修`、`只报`（含原因）、`已达成`、`已由用户裁定处置`（含你给的单次豁免）。**`只报` 不等于豁免**——它只表示"本轮不修且给了原因"，按 `D-250926-06` 的"零未闭环项"口径**仍计入**关闭判定。
+- **若有"未修/只报/未闭环"**，那就是还没到零未闭环项。
+- 打开[闭环台账 B 表](2026-09-26-g2-closure-ledger.MD)：看有没有"两条发现必须同批、却分批做了"的情况。
 
 **第 4 步｜看我不打算让你发现的东西**
 直接跳到 §5。
@@ -76,12 +76,12 @@ cd D:\All-Downloads\PaperReading\PaperReading-Windows
 2. **R1（文件丢失/内容被吞）关闭期复现 3–6 次**（同型在 G1 记 7 次、家族累计约 11 次）。这是本仓最老的问题，**G2 没有解决它**，只加了守卫。
 3. **CI 曾红而本地绿**：`1e8bae0`／`3e4b649`／`43a65e2` 三笔 CI `failure`，根因是 **`agents/runtime/registry.json` 不在版本库**，而部分判据读真实账本 ⇒ 全新克隆上失败。**当前状态：修复在跑**（要求先在真 `git clone` 里复现、修成"账本不存在 ⇒ 显式 SKIP 且不冒充 PASS"）。**走查时请确认这一条已落地，否则"CI 绿"不能算数。**
 4. **`agents/runtime/**` 不在版本库**：账本、价格抓取产物、隔离区都是本机态。⇒ **CI 无法复核与账本相关的任何结论**；这是结构性的，不是本次引入。
-5. **行 24／25 未修（正在修）**：固定端口 8787 导致套件内偶发失败；两个脚本每次运行泄漏一个 `%TEMP%` 目录（其中 `verify_usage.py` 那条**是我自己引入的**）。
+5. **行 24／25 的状态以复盘 §5 为准（本清单不复制状态）**：固定端口 8787 导致套件内偶发失败；两个脚本每次运行泄漏一个 `%TEMP%` 目录（其中 `verify_usage.py` 那条**是我自己引入的**）。**2026-09-29 提示（本批新发现，未擅自改状态）**：两条的"关闭所需动作"已分别有落地提交——`14603c2`（生产侧：真后端读 `PAPERQA_VERIFY_PORT`）与 `86625c7f37`（夹具侧：run 级端口 ＋ 夹具回收）——而 §5 的状态列截至 2026-09-29 **仍写"未修"**；走查前请先裁定状态是否应改（见本批交付的未决点，含"反证未由本批复跑"的边界）。
 6. **行 14 是"你单次豁免"，不是"已修"**：S1 档要求的硬停与二次确认在 G2 关闭期确实没执行（`D-250926-05` 里"违背事故"栏如实记为"有"）。
 7. **我今天问重复了一个问题**：DoD(M1) 与零未闭环谁优先——`D-250926-06` 里已经写过，我却又问了一遍。走查时若发现类似"已定的事再问一次"，请直接打断我。
 8. **走查清单本身没被任何闸门检查**：它是给人看的，如果它与 §5/台账不一致，**以那两处为准**。
 
 ## 6. 走查之后的岔路
 
-- 若你在 §5 里认可"零未闭环项"已达成（即 §5 第 3、5 条落地后）⇒ 我可以**按你的指示**准备 `windows→main` 的 PR（**不会自行创建**）。
+- 若你在 §5 里认可"零未闭环项"已达成（即 §5 第 3、5 条落地，**且 2026-09-29 新增的行 26–51 里的 `未修`／`部分`／`只报` 项经你逐条裁定**）⇒ 我可以**按你的指示**准备 `windows→main` 的 PR（**不会自行创建**）。
 - 若你认为还有该挡关闭的项 ⇒ 请直接点名行号，我按台账 A 表给关闭动作，不再自定口径。

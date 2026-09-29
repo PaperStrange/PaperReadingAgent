@@ -116,4 +116,56 @@ Sprint-16 新增（分层 runner 与门禁）：
 .\.venv\Scripts\python.exe .\scripts\scheduled-tasks.py --list # 定时任务与到期状态（prices/nightly-suite/providers）
 ```
 
+## 故障排查
+
+> 本节的定位是 readme-completeness 的第 ④ 类（前三类＝启动命令／脚本用途表／配置·tier·预算，见上）。两条都是**本仓实测发生过**的形态，不写"通用建议"。
+
+### 1. 端口被占用：`PAPERQA_VERIFY_PORT` 覆盖法
+
+**症状**：脚本以「端口自检失败——以下端口已被占用，本脚本**不会复用**它」终止；或后端自举后健康探测异常。
+
+**机制（判据在代码里，不是约定）**：自举前 `port_selfcheck` 会检查 `(本 run 的 PORT, 8787, 5173)` 三处（`verify/e2e_common.py::BACKEND_PORTS`），占用即 **fail-fast 并点名**占用进程（`Get-NetTCPConnection -LocalPort <port> -State Listen`），**绝不静默复用别人的服务、也不静默换一个端口**（TG-8①）。
+
+**处置（二选一）**：
+
+```powershell
+# ① 释放端口（推荐：先看清占用者是谁，再决定停不停）
+Get-NetTCPConnection -LocalPort 8787 -State Listen | Select-Object LocalPort, OwningProcess
+Stop-Process -Id <PID>            # 例：dev 后端 Ctrl+C，或停掉上一轮残留的实例
+
+# ② 改用其它端口（运行时覆盖，端到端生效）
+$env:PAPERQA_VERIFY_PORT = "8887"
+.\.venv\Scripts\python.exe .\verify\verify_local_dir.py
+```
+
+**该覆盖由谁读**：`verify/e2e_common.py` 的 `_PORT_ENV`（决定基座 `PORT` 与后端子进程端口）＋ 真后端 `paper-qa-script/reactflow-paperqa-prototype/backend/main.py` 的 `__main__` 分支（缺省 `8787`，向后兼容；**非法整数／越界一律 `SystemExit`**，不做"占用就换端口"）。
+
+> **⚠️ 这条覆盖曾经是一封"死信"（本仓"文档承诺 > 实现"的现成实例，值得记住判法）**：README/TG-8① 早就写了"可改用其它端口"，而 `backend/main.py` 当时**根本不读**这个环境变量 ⇒ 提示是一张空头支票，照它做不会生效。落地修复 = 提交 **`14603c2`**（提交信息自陈"documented override was a dead letter"，并由**真启动探针**验证），随后 `bf41d200` 把 README/TG-8 的措辞跟到实现。**判法**：凡"文档说可以这样绕"的提示，只有**跑一次真入口**才能证明它活着——读代码不算（本仓的"证据四件套"要求的就是这个）。
+>
+> **已知边界**：该覆盖只在 `__main__` 分支生效，import 式启动（如 `uvicorn main:app`）读不到它——若将来出现第二种启动方式，需要另接（原 finding 见 G2 复盘 §5 行 44）。
+
+### 2. 套件内偶发失败、单跑必过
+
+**症状**：`run_suite.py --tier offline`（或其它档）里有脚本 FAIL，可你**单独**跑同一条命令却 PASS；重跑一次又可能变绿。
+
+**判读顺序（先取证，再重跑——重跑会把现场洗掉）**：
+
+1. **先单独重跑失败的那一条**（`.\.venv\Scripts\python.exe .\verify\<脚本>.py`）。单跑 PASS ⇒ 基本可排除脚本自身缺陷，问题在**共享资源**。
+2. **首查端口互踩**（本仓最常见的一类）。固定端口是并发实例的**共享对象**：两个实例同跑时，后到者要么自检失败、要么自举不出后端而**静默连上前一个实例的后端**（后者更坏——它会让一个实例把负载打到别人的服务上）。现状：`verify/e2e_common.py` 的默认端口已改为 **run 级分配**（`alloc_port()` 向内核 `bind(0)` 要一个当前空闲端口，避免"先探测后使用"的竞态），`verify/verify_local_dir.py` 等共享同一基座。
+3. **取证命令**（保留为故障记录，别只重跑）：
+
+```powershell
+# 端口占用清单（自检点名用的就是这条）
+Get-NetTCPConnection -LocalPort 8787 -State Listen -ErrorAction SilentlyContinue |
+    Select-Object LocalPort, OwningProcess
+# 套件/脚本产物与日志（已忽略目录，出问题先留档再重跑）
+Get-ChildItem .\verify\*.log, .\verify\suite_result.json -ErrorAction SilentlyContinue
+```
+
+4. **复现"该失败"而不是掩盖它**：占住端口再跑，**必须**看到自检点名并拒绝（rc≠0），而不是"悄悄换个端口照跑"；释放后重跑应 PASS。若占住端口仍 PASS，那是判据坏了——按机制缺陷留档（`agents-infra` 机制反例档），不要当噪声。
+
+**历史形态（G2 复盘 §5 行 24，已按行 24 的关闭动作处置）**：`verify/verify_local_dir.py` 的共享对象曾是**固定端口 8787**（写成 `verify/e2e_common.py` 的常量）＋仓库内的 `verify/verify_local_dir_server.log` ⇒ 套件内偶发失败、单跑必过。
+
+**同族的其它共享资源**（同一判读顺序适用）：`%TEMP%` 下**固定名**夹具目录（两个会话互踩）与**只建不回收**的夹具目录（每跑一次多一个）——两条分别对应复盘 §5 行 8 与行 25，关闭动作与反证都写在那两行里。
+
 已知差异：graphviz 已自动发现（冒烟第 7 项扫描常见安装目录）；仅当系统完全未安装 Graphviz 时才报 `ExecutableNotFound`（可选安装，见 `docs/3-LEARNED.MD` 验证记录）。
