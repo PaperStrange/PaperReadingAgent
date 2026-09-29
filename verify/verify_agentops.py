@@ -261,13 +261,14 @@ def verdict_exit(skipped: list[str]) -> int:
         所以套件**本来就**会判红——但它给的是"SKIP 冒充通过"这条红，
         而不是"该判据在本分支未执行"这条红。**两处口径不一致本身就是缺陷**。
 
-    为什么是 3（而不是照抄 `verify_close_readiness.py` 的 rc=0）：
-      `verify_close_readiness.py` 的"账本缺失 ⇒ 显式 SKIP（rc=0）"是**数据不可得**档
-      （换台机器/关闭期就能补跑，且它不是自陈"条数见末行"的脚本，故套件对它没有
-      判决句判据）。本处是**分支差异**档，而本脚本**自陈**了条数 ⇒ 套件判据②盯的就是它。
-      本仓对"判据没被执行就不算通过"既有的**非零**先例是 `rc=3`：
+    为什么是 3（而不是照抄 `verify_close_readiness.py` 当年的 rc=0）：
+      本仓对"判据没被执行就不算通过"既有的**非零**先例就是 `rc=3`：
       `scripts/spend-report.py`（复盘 §5 行 40）与 `agents/spend-budget.json --check`
       （行 37）的 SKIP 档一律 rc=3。故这里沿用 3，让两个通道同口径。
+      **2026-09-30 本批**：`verify_close_readiness.py` 的 SKIP 档（同族第二处、
+      absent 侧实测的既有实例）也已按这里的同一真源做法收紧为 rc=3——
+      它的 `verdict_line`／`verdict_exit` 与判决行同源，"判决行说不是通过、
+      退出码说成功"这一形态在本仓**不再有任何在册实例**。
 
     **不是放宽判据**：这是把"退 0"收紧成"退 3"；真判据一条不少跑（windows 上
     spec 在位 ⇒ `skipped` 为空 ⇒ 照旧 rc=0 ＋ `ALL PASS`）。

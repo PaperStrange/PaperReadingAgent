@@ -62,6 +62,10 @@ real-data 模式 N = 实际执行过的判据条数，由各判据自身登记�
 
 **退出码**：0=通过；1=检出违规/自检断言未通过（逐条点名）；2=fail-closed 无法判定
 （Sprint 文档不存在、政策/覆盖例外表非法，或**断言被 `-O`/`PYTHONOPTIMIZE=1` 剥离**）；
+**3=SKIP**（`TG-19` M-B，2026-09-30 本批起）：走了 SKIP 档（账本不存在／向量表 spec
+不在本分支）⇒ 末行是 `CLOSE-READINESS SKIP[<分类>]…本档不是通过` 横幅，
+**退出码与判决行同口径**（`verdict_line`／`verdict_exit` 同一真源）——
+修前是"判决行说不是通过、退出码说成功"的两通道矛盾；
 **4=domain-unavailable**（M-A，`TG-19`）：**判定域无法由被判定物派生**——
 Sprint 身份推不出、该 Sprint 在账本里没有作用域 run、或窗口被次序判据弃用。
 退出码 4 时**不产出判定结论**：findings 即使上屏也只作**诊断**
@@ -127,10 +131,45 @@ DOMAIN_UNAVAILABLE_EXIT = 4
 # M-B（`TG-19` 反空转不变式）：本轮**是否走了 SKIP 档**。SKIP 不是成功 ⇒
 # 不打印机读证据行（`EVIDENCE:` 只属于"判据真的跑过且通过"），见 `main()`。
 _RUN_STATE: dict[str, bool] = {"skipped": False}
+# M-B 第二半（2026-09-30 本批）：SKIP 档的**退出码 ＝ 3**，与判决行同口径。
+# 修前两档都是 `rc=0 ＋ SKIP 横幅` ⇒ 判决行说"不是通过"、退出码说"成功"，
+# 只看 rc 的消费方（CI 步骤／`run_suite.py`）读成通过。取 3 与同族非零先例同码：
+# `verify_agentops.py::SKIP_EXIT`／`scripts/spend-report.py`／`run_suite.REFUSE_EXIT`。
+# **不是放宽判据**：真判据一条不少跑，只是把"退 0"收紧成"退 3"。
+SKIP_EXIT = 3
 # 自检侧的分支差异 SKIP（`spec=absent-on-branch`）：向量表 spec 落在 windows-only
 # 子树 ⇒ main 上这几条判据**无从执行**。口径与 `verify_agentops.py::SKIPPED` 一致：
-# 上屏点名、判决行**不得**打印 `ALL PASS`（SKIP 与 PASS 互斥，防"跳过冒充通过"）。
+# 上屏点名、判决行**不得**打印 `ALL PASS`。**退出码走 `verdict_exit`（同一真源）**。
 SELF_SKIPPED: list[str] = []
+
+
+def verdict_line(skipped: list[str], assertions: int) -> str:
+    """判决行**单一真源**（三处共用：自检末行、缺账本档末行、退出码）。
+
+    两个通道不许互相矛盾（`TG-19` M-B）：有 SKIP ⇒ 判决行说"**本档不是通过**"，
+    退出码由 `verdict_exit` 同口径给出。横幅形态与 `verify_agentops.py::verdict_line`
+    **逐字同构**（`<NAME> SKIP[<分类>]…本档不是通过`）——`run_suite.py::skip_verdict`
+    两通道判据（rc=3 ＋ 末行命中该形态）认的就是它。分类**从 skip 原因派生**：
+    spec 不在本分支 ⇒ `spec-absent-on-branch`；其余（本档只有缺账本）⇒ `ledger-absent`。
+    """
+    cats = ("spec-absent-on-branch"
+            if any("spec=absent-on-branch" in s for s in skipped) else "ledger-absent")
+    if not skipped:
+        # 零 SKIP ⇒ 与既有形态**逐字一致**的 `ALL PASS`（成功路径不许被本函数改口径）。
+        return f"ALL PASS ({assertions} assertions)"
+    return (f"CLOSE-READINESS SKIP[{cats}]（{len(skipped)} 条判据未执行"
+            f"：{'；'.join(skipped)}）——其余 {assertions} 条已验，**本档不是通过**")
+
+
+def verdict_exit(skipped: list[str]) -> int:
+    """最终**退出码**（与 `verdict_line` 同一真源：SKIP 与 PASS 互斥）。
+
+    为什么是 3：判决行已经写"本档不是通过"，而修前 `return 0` ⇒ 两个通道矛盾；
+    套件的第三态判据要的正是**两通道同时**说"不是通过"（`run_suite.py::skip_verdict`：
+    rc=3 ＋ 末行是具名横幅，缺一不可），故这里把 rc 对齐到 3。
+    真判据全跑过（`skipped` 为空）⇒ 照旧 0 ＋ `ALL PASS` 横幅。
+    """
+    return SKIP_EXIT if skipped else 0
 
 
 def skip_spec_absent(criterion: str) -> None:
@@ -1435,10 +1474,14 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
             print("CLOSE-READINESS FAIL（1 项）：")
             print(f"  - [linkage] §9 表行结构非法（第 {row['line']} 行）：{row['text'][:60]}")
             return 1
-        print(f"CLOSE-READINESS SKIP（账本缺失档，**不是通过**）：{path.name}"
-              f"（run 表 {len(sprint['rows'])} 行，"
+        print(f"CLOSE-READINESS SKIP 档读数：{path.name}（run 表 "
+              f"{len(sprint['rows'])} 行，"
               f"锚点 {str(sprint.get('anchor'))[:8]}；账本相关判据未执行）")
-        return 0
+        # 判决行必须落在**末行**：`run_suite.py::skip_verdict` 的判决行通道读末行，
+        # 横幅后面再挂一句话会让两通道对不上（实测形态见本档 §5）。
+        print(verdict_line(["C1/需求、linkage、C3 覆盖归属（ledger=absent (SKIP)）"],
+                           len(sprint["rows"])))
+        return verdict_exit(["ledger-absent"])
 
     # ---- M-A（`TG-19`）：**判定域必须由被判定物派生** ------------------------------
     # 原口径：作用域 run 取"全账本最新一条"，于是下一个 Sprint 的 kickoff 〇查一登记，
@@ -2401,10 +2444,32 @@ def _selfcheck() -> int:
         capture_output=True, text=True, encoding="utf-8", errors="replace",
         env={**os.environ, "AGENT_OPS_DIR": str(empty_ops)})
     blob = probe2.stdout + probe2.stderr
+    last2 = [ln.rstrip() for ln in blob.splitlines() if ln.strip()][-1:]
+    # 行 34 的第二半（2026-09-30 本批）：判决行与**退出码**必须**两通道同口径**
+    # （rc=3 ＋ 末行具名横幅）。修前是 `rc=0` ⇒ 判决行说"不是通过"、退出码说成功，
+    # 只看 rc 的消费方（CI 步骤／`run_suite.py`）读成通过。这里按
+    # `run_suite.py::skip_verdict` 的**同一判据**复算（横幅形态 ＋ rc 缺一不可），
+    # 而不是只断言含某子串。
     ok("M-B 反向对照：账本缺失 ⇒ 输出 SKIP 且**不打印** EVIDENCE 行（跳过不得冒充通过）",
-       probe2.returncode == 0 and "SKIP[ledger-absent]" in blob
+       probe2.returncode == SKIP_EXIT and "SKIP[ledger-absent]" in blob
        and "EVIDENCE:" not in blob and "CLOSE-READINESS PASS" not in blob,
        f"rc={probe2.returncode} out={blob.strip()[:120]}")
+    ok("行 34 ②：SKIP 档**两通道同口径**——rc=3 ＋ 末行是 `SKIP[…]…本档不是通过` 横幅"
+       "（套件第三态判据认的就是这一形态；rc=0 的组合会被判『SKIP 冒充通过』）",
+       probe2.returncode == SKIP_EXIT and bool(last2)
+       and last2[0].startswith("CLOSE-READINESS SKIP[")
+       and "本档不是通过" in last2[0],
+       f"last={last2[0][:90] if last2 else '（无输出行）'}")
+    # 判决行／退出码**同一真源**（纯函数直接驱动）：有 SKIP ⇒ 横幅不含 `ALL PASS`
+    # 且退出码非 0；无 SKIP ⇒ 两者同时回到成功侧。
+    _sk = ["E1 向量表可解析（spec=absent-on-branch (SKIP)）"]
+    ok("行 34 ②：`verdict_line`／`verdict_exit` 同源——SKIP 档判决行无 `ALL PASS`"
+       "且退出码非 0；无 SKIP 档两者同时回成功侧",
+       not verdict_line(_sk, 7).startswith("ALL PASS")
+       and "spec-absent-on-branch" in verdict_line(_sk, 7)
+       and verdict_exit(_sk) == SKIP_EXIT and verdict_exit([]) == 0
+       and verdict_line([], 7).startswith("ALL PASS (7 assertions)"),
+       f"skip_rc={verdict_exit(_sk)} pass_rc={verdict_exit([])}")
     # 行 8：回收本轮的两个 run 级目录（Sprint 载体 + 空账本目录）
     shutil.rmtree(close_sprint_root, ignore_errors=True)
     shutil.rmtree(empty_ops, ignore_errors=True)
@@ -2455,12 +2520,11 @@ def _selfcheck() -> int:
     if SELF_SKIPPED:
         # M-B：SKIP 不是成功 ⇒ **不打印 `ALL PASS` 横幅**（口径同
         # `verify_agentops.py::verdict_line`：二者互斥，跳过不得冒充通过）。
-        print(f"\nCLOSE-READINESS SKIP[spec-absent-on-branch]（{len(SELF_SKIPPED)} 条"
-              f"判据未执行：{'；'.join(SELF_SKIPPED)}）——其余 {PASSED} 条已验，"
-              f"**本档不是通过**")
-        return 0
+        # 判决行与退出码同源（`verdict_line` / `verdict_exit`）。
+        print(f"\n{verdict_line(SELF_SKIPPED, PASSED)}")
+        return verdict_exit(SELF_SKIPPED)
     print(f"\nALL PASS ({PASSED} assertions)")
-    return 0
+    return verdict_exit([])
 
 
 def main() -> int:
@@ -2482,12 +2546,8 @@ def main() -> int:
         print(f"CLOSE-READINESS FAIL（自检断言未通过）：{exc}")
         return 1
     if rc == 0:
-        if SELF_SKIPPED:
-            print(f"EVIDENCE: verify_close_readiness.py assertions={PASSED} rc=0 "
-                  f"mode=selfcheck skipped={len(SELF_SKIPPED)}")
-        else:
-            print(f"EVIDENCE: verify_close_readiness.py assertions={PASSED} rc=0 "
-                  f"mode=selfcheck")
+        print(f"EVIDENCE: verify_close_readiness.py assertions={PASSED} rc=0 "
+              f"mode=selfcheck")
     return rc
 
 

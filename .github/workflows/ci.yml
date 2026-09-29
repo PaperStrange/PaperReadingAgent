@@ -63,7 +63,83 @@ jobs:
           # TG-5（Sprint-16）：改为经分层 runner 跑 **整个 offline 档**（按 VERIFY_META.tier 自动选择，
           # fail-closed：任一脚本失败即整体失败）——修复此前"新增 offline 脚本忘记登记进 CI"的覆盖缺口
           # （Sprint-15 的 local_dir/f12_preview 与 Sprint-16 的 archive/checkpoint/providers/runner 均因此未进 CI）。
-          python verify/run_suite.py --tier offline
+          # === CI-SKIP-GATE-BEGIN ===
+          # 父代理 2026-09-30 裁定（口径①）：**CI 接受第三态**——CI 的全新 checkout 里
+          # `agents/runtime/registry.json` 必然不存在（`.gitignore` 忽略），账本类判据
+          # 于是永远走具名 SKIP ⇒ 套件在 CI 上**必然** rc=3，而 `$ErrorActionPreference="Stop"`
+          # ＋`$PSNativeCommandUseErrorActionPreference=$true` 会把它当失败（假红：没有一条真判据失败）。
+          # **硬约束：绝不允许只看 rc=3**——`run_suite.py::REFUSE_EXIT` 也是 3（预算超限／
+          # 非有限预估＝**拒绝启动**，该分支根本不执行任何脚本），裸接受 3 会把真拒绝吞掉。
+          # 故本步只认**判决行形态**（零失败 ＋ 有 skipped 时套件末行的唯一形态；单一真源＝
+          # `run_suite.py::suite_verdict_line`）：末行是
+          # `SUITE PASSED (25 scripts, 1 skipped): verify_agentops.py[ledger-absent] …`
+          # 且退出码为 0。反向对照（真驱动，见 run 回执）：真失败（rc=1）仍判红；裸 rc=3
+          # （REFUSE_EXIT 形态，末行是 `REFUSED: …`）仍判红；只有"零失败 ＋ 有 skipped"放行。
+          # 仓内先例＝本文件 structure-guard 段的"具名跳过 → 显式打印『不是通过』＋ 显式归零"。
+          #
+          # 先关掉原生命令的终止语义：要拿到**输出**与**退出码**再判（`try/finally` 结尾复位）。
+          # 不这么做的话 `$PSNativeCommandUseErrorActionPreference=$true` 会在 rc≠0 时抛，
+          # 捕获与判定都到不了。捕获的 stderr 一并 `Write-Host` 上屏（日志可见性不降级）。
+          $suiteSkipExit = 3
+          $suitePassPrefix = 'SUITE PASSED ('
+          # `$` 锚点**故意不用**（2026-09-30 本批实测）：套件末行以 CJK 全角 `）` 收尾
+          # （`…（rc=3）`），ASCII 的 `$` 之前那条 `\)$` 会让它恒不命中——门就地恒红。
+          # 形态锚在**前半段**（`PASSED` ＋ 脚本数 ＋`, N skipped):` ＋ 具名 `name[分类]`），
+          # 尾部的说明文字不参与判定（它随文案变，不是判据）。
+          $suiteSkippedRe = '^SUITE PASSED \(\d+ scripts, \d+ skipped\): \S+\[[^\]]+\](, \S+\[[^\]]+\])*'
+          $suiteOut = @()
+          $suiteRc = 0
+          try {
+            $PSNativeCommandUseErrorActionPreference = $false
+            $suiteOut = @(python verify/run_suite.py --tier offline 2>&1 | ForEach-Object { "$_" })
+            $suiteRc = $LASTEXITCODE
+          } finally {
+            $PSNativeCommandUseErrorActionPreference = $true
+          }
+          $suiteOut | ForEach-Object { Write-Host $_ }
+          $suiteLast = if ($suiteOut.Count) { ([string]$suiteOut[-1]).Trim() } else { "" }
+          $suiteShapeOk = $suiteLast.StartsWith($suitePassPrefix) `
+            -and ($suiteLast -match $suiteSkippedRe)
+          # 放行条件＝**两通道同时**（缺一不可，且**都不看 rc=0**）：
+          #   ① 判决行通道：末行是 `SUITE PASSED (… skipped)` 形态 ⇒ 零失败 ＋ 有具名 SKIP；
+          #   ② 退出码通道：rc = **3**（套件在"无失败但有 skipped"时的退出码，
+          #      单一真源＝`run_suite.py::SKIP_EXIT`）。
+          # 为什么 rc 必须**是 3**而不是 0：套件的三态是 rc=0 = 全绿、rc=3 = 有判据未执行、
+          # rc=1 = 有失败。要求 rc=0 会让这条放行分支**永远不可能命中**（本批首版实测：
+          # A3 用例 `acc=False` 而 `match=True sw=True rc=3` ⇒ 门仍判红，放行逻辑形同不存在）。
+          # 反向对照：rc=1（真失败）与 rc=3 但**形态不符**（`REFUSE_EXIT` = 拒绝启动）都走不到这里。
+          $suiteSkipAccepted = $suiteShapeOk -and ($suiteRc -eq $suiteSkipExit)
+          if ((-not $suiteSkipAccepted) -and ($suiteRc -eq $suiteSkipExit)) {
+            Write-Host 'Offline verify suite：rc=3 且**不是** `SUITE PASSED (… skipped)` 形态 ⇒ 判红。'
+            Write-Host '  具名 SKIP 档一定是"rc=3 ＋ 末行打 `本档不是通过` 横幅"两通道齐备，'
+            Write-Host '  故只有上面的形态走放行分支；本处不是它。'
+            Write-Host '  rc=3 的另一形态是 `REFUSE_EXIT`：预算超限／非有限预估＝**拒绝启动**。'
+            Write-Host '  该分支不执行任何脚本——裸接受 3 会把它吞掉，故不放行。'
+            Write-Host "  末行现读：$suiteLast"
+            throw 'run_suite.py rc=3 但不是具名 SKIP 的放行形态 ⇒ 本步失败（拒绝启动不得伪装成跳过）'
+          }
+          if ($suiteSkipAccepted) {
+            Write-Host 'Offline verify suite：**零失败 ＋ 有具名 SKIP** ⇒ 本步放行（显式说明，非静默）。'
+            Write-Host '  **账本类判据未执行、本档不是通过**：全新 checkout 没有'
+            Write-Host '  `agents/runtime/registry.json`（`.gitignore` 忽略）⇒ 依赖账本的判据'
+            Write-Host '  （agentops 的 `ledger=absent`、close-readiness 的账本档）无从执行；'
+            Write-Host '  退出码 3 的语义是『没有失败，但有判据未执行』。'
+            Write-Host "  未执行项见上屏 `skipped` 档点名：$suiteLast"
+          } elseif ($suiteRc -ne 0) {
+            # 放行分支**已在上面判完**（具名 SKIP 的三通道全对齐才走得到这里）。
+            Write-Host "Offline verify suite：rc=$suiteRc ⇒ 本步失败（fail-closed）。"
+            throw "run_suite.py --tier offline rc=$suiteRc"
+          } else {
+            # rc=0 且**不是**具名 SKIP 形态 ⇒ 末行**必然**是逐字 `SUITE PASSED (N scripts)`；
+            # 不是它说明形态与退出码两条通道互相矛盾 ⇒ fail-closed，不静默放行。
+            $suitePlainPass = $suiteLast -match '^SUITE PASSED \(\d+ scripts\)$'
+            if (-not $suitePlainPass) {
+              Write-Host 'Offline verify suite：rc=0 但末行既不是 `SUITE PASSED (… skipped)` 形态、'
+              Write-Host "  也不是逐字 `SUITE PASSED (N scripts)`（末行现读：$suiteLast）⇒ 判红。"
+              throw 'run_suite.py rc=0 但末行形态不可核（两通道矛盾）'
+            }
+          }
+          # === CI-SKIP-GATE-END ===
           # 矩阵防漂移必须独立执行（verify_matrix.py 自身不参与 tier 选择）
           python verify/verify_matrix.py check
 

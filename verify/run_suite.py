@@ -129,9 +129,12 @@ VERDICT_TAIL_LINES = 6          # 判决句必须落在输出的**末尾这几�
 #      `verify_agentops.py::verdict_line`）。
 # 两通道只满足其一的都**不是** SKIP —— 这正是"假 SKIP 不得归入 skipped"的反向对照目标：
 #   * rc=3 却无具名横幅：**照旧按失败计**（否则任何脚本退 3 就能溜出 PASS/FAIL 记账）；
-#   * 有具名横幅却 rc≠3：两通道互相矛盾 ⇒ **不**归入 skipped，上屏 WARN（它与
-#     `verify_close_readiness.py` 的 rc=0 档同形态：那是既有实现，本批不擅自改判，
-#     只让它可见——改判要动那个脚本的退出码，属另一批）。
+#   * 有具名横幅却 rc≠3：两通道互相矛盾 ⇒ **不**归入 skipped，上屏 WARN。
+#     **2026-09-30 本批已把仅有的那一处实例修掉**：`verify_close_readiness.py` 的
+#     SKIP 档原为 `rc=0 ＋ SKIP 横幅`（既上屏"不是通过"、退出码又说成功），
+#     现按 `verify_agentops.py` 的同一真源做法对齐到 rc=3
+#     （`verdict_line`／`verdict_exit`：判决行与退出码同源）。
+#     本 WARN 分支**保留**：它盯的是"将来新出现的同形态脚本"，不因修完一处就撤掉。
 SKIP_EXIT = 3    # 与 `verify_agentops.py::SKIP_EXIT` / `spend-report` 同码
 SKIP_NOT_PASS_MARK = "本档不是通过"
 SKIP_BANNER_RE = re.compile(r"^\S+ SKIP\[(?P<cat>[^\]]+)\]")
