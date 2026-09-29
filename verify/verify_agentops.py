@@ -914,6 +914,43 @@ def main() -> int:
 
         run(["prices-derive"], tier_env, check=True)  # 恢复夹具（不留半态给后续用例）
 
+        # 行 32（复核 `run-…-104` minor 7）：`--apply` 档必须把判据**编码成退出码**。
+        # 装置：**真子进程**跑真 `main()`（真 `judge_scrape`、真写盘路径），唯一被替换的是
+        # **网络边界** `_fetch`（外部服务 ⇒ 用"空页"当夹具）；`AGENT_OPS_DIR` 隔离到
+        # `%TEMP%` ⇒ 仓库真价表 `agents/runtime/prices.json` **不被碰**。
+        # 修前形态：同一装置 rc=0（`strict` 只绑 `args.check`）⇒ 价表静默停在旧截面。
+        probe32_dir = tmp / "row32-agents"
+        probe32_dir.mkdir(parents=True, exist_ok=True)
+        sw32 = _POLICY.offline_switch
+        driver32 = (
+            "import importlib.util, sys\n"
+            "spec = importlib.util.spec_from_file_location('fp_probe', sys.argv[1])\n"
+            "m = importlib.util.module_from_spec(spec)\n"
+            "spec.loader.exec_module(m)\n"
+            "m._fetch = lambda url, timeout=30: ''\n"   # 空页 ⇒ 三个来源各解析出 0 个模型
+            "sys.argv = ['fetch-prices.py', '--apply']\n"
+            "print('PROBE_RC=%d' % m.main())\n")
+        r32 = subprocess.run(
+            [sys.executable, "-c", driver32, str(ROOT / "scripts" / "fetch-prices.py")],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+            env={**base_env, "AGENT_OPS_DIR": str(probe32_dir),
+                 str(sw32["env_var"]): str(sw32["env_false_values"][0])})
+        out32 = r32.stdout + r32.stderr
+        rc32 = [ln for ln in out32.splitlines() if ln.startswith("PROBE_RC=")]
+        ok("行 32 真入口：`--apply` + 三来源全抓空 ⇒ rc=1 并点名 FAIL"
+           "（修前同一装置 rc=0：判据在写盘档无声）",
+           rc32 == ["PROBE_RC=1"] and "FAIL: --apply 档" in out32,
+           f"{rc32} out={out32.strip().splitlines()[-1][:80]}")
+        ok("行 32 反向对照：写盘路径**不变**（fail-safe——价表照旧落盘、成功来源为空、"
+           "真价表不被碰）",
+           (probe32_dir / "runtime" / "prices.json").exists()
+           and "scraped providers: []" in out32,
+           f"隔离价表={(probe32_dir / 'runtime' / 'prices.json').exists()}")
+        ok("行 32 纯函数：两个档共用同一判据（`args_strict_fail(True, […])` ⇒ True；"
+           "`strict=False` ⇒ False）",
+           fp.args_strict_fail(True, ["deepseek"])
+           and not fp.args_strict_fail(False, ["deepseek"]))
+
         # UC-14（TG-11，Sprint-17）：评审类 run 的 scope 来源闸门（fail-closed，
         # 机器可验）
         # 反向对照：本块断言在**未修复**实现上必须不成立（旧 CLI

@@ -2372,6 +2372,12 @@ def _selfcheck() -> int:
     # 判据三条：输出含 `SKIP[ledger-absent]`、**不含** `EVIDENCE:`（机读证据行不得由"跳过"产生）、
     # 且不得出现 `CLOSE-READINESS PASS`。
     empty_ops = Path(tempfile.mkdtemp(prefix="verify_close_readiness_noop_"))
+    # 行 33（复核 `run-…-104` minor 8）：本夹具此前**只有**结尾的显式 `rmtree`，
+    # 而同函数的另两个夹具（`tmp`、`close_sprint_root`）都另有 `atexit` 兜底 ⇒
+    # 本函数里任一 `ok()` 判红（`ok()` 是 `assert`，异常直接冒泡）都会跳过结尾回收，
+    # 在 `%TEMP%` 留下永久残留——与行 25「每跑一次多一个目录」同族。
+    # 现在两条路径齐备：`atexit` 兜底 ＋ 正常出口显式回收（函数末尾两行）。
+    atexit.register(shutil.rmtree, empty_ops, ignore_errors=True)
     # 载体必须**自带**、不能写死 windows-only 的 Sprint 文档（二查 `run-…-088` critical
     # 3：
     # 第一版写死 `docs/iteration/sprint/2026-09-21-sprint-17.md` ⇒ 在没有

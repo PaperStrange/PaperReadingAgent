@@ -322,11 +322,20 @@ NO_CMD_CHAR_RE = re.compile(r"[\"'`=(){}|&;]")
 ASSIGN_PREFIX_RE = re.compile(r"^\s*[A-Za-z_]\w*=\$\(\s*")
 # 解释器词元（大小写不敏感；必须是**整个词元**）。三种写法都算：
 # `python` / `python3.13` / `python.exe`（`python` 字面量 + 可选版本/后缀）；
-# `$py` / `${PY}`（shell 变量命名，变量名里含 `py`）；
+# `$py` / `${PY}` / `$py.exe`（shell 变量命名，变量名里含 `py`；**必须带 `$`**）；
+# `py`（Windows 启动器，裸词只此一个）；
 # `.venv/Scripts/python.exe`（带目录；调用前已按路径末段比较，这里只看末段）。
 # **`cmd` 不是解释器** ⇒ 赋值不会被误认成调用；
 # `Write-Output` 含连字符，被 `[\w${}]*` 挡住，也不会被误认成解释器。
-PY_WORD_RE = re.compile(r"^(?:python[\w.]*|[\w${}]*py)$", re.I)
+#
+# **行 30（复核 `run-…-104` minor 5）**：旧式 `^(?:python[\w.]*|[\w${}]*py)$` 的**第二支**
+# 是"任何以 `py` 结尾的裸词"⇒ 解释器判定取决于**词尾字母**而不是结构：
+# 探针实测 `copy` / `happy` 判 True（而 `empty` / `apply` 判 False ⇒ 同一类词两个读数）。
+# 后果是一条 `copy scripts/structure-guard.py verify …` 会被整条认成
+# "解释器 ＋ 守卫脚本 ＋ verify"（假绿就是判据被一行无关的 `copy` 满足）。
+# 现在：裸词只认 `python*` 与 `py`，变量形态一律要求 `$`。
+PY_WORD_RE = re.compile(
+    r"^(?:python[\w.]*|py|\$\{?[\w${}]*py[\w${}]*\}?(?:\.exe)?)$", re.I)
 # CI 是 YAML：命令可以写成 `run: python …`（键与值同一行）。
 # 这不是"命令名"，是**同一个步骤的写法**；真文件实测：不认它会把 CI 判成没调用。
 # 只认 `run` 这一个键（`cmd = …` 这类赋值不会被误放行）。
@@ -1137,6 +1146,30 @@ def selftest() -> int:
            _invokes_guard('out=$("$py" scripts/structure-guard.py verify '
                           '--from-git HEAD --report-only 2>&1)')
            and _invokes_guard("scripts/structure-guard.py verify --from-git HEAD")
+           and _invokes_guard(".venv/Scripts/python.exe scripts/structure-guard.py "
+                              "verify --from-git HEAD"))
+        # ---- 行 30（复核 `run-…-104` minor 5）：`PY_WORD_RE` 的**词边界** --------------
+        # 修前形态（探针实测）：第二支 `[\w${}]*py` 认"任何以 `py` 结尾的裸词"，
+        # 于是下面的 `copy` / `happy` 两行判"有调用"（`empty` / `apply` 判无 ——
+        # 读数由**词尾字母**决定而不是结构）。
+        ok("行 30 反向对照 x1：`copy scripts/structure-guard.py verify …`"
+           "（首词元以 `py` 结尾、但不是解释器）⇒ 判无调用（修前判有调用）",
+           not _invokes_guard("copy scripts/structure-guard.py verify --from-git HEAD"),
+           f"lines={_guard_command_lines('copy scripts/structure-guard.py verify --from-git HEAD')}")
+        ok("行 30 反向对照 x2：`happy …` 同形 ⇒ 判无调用；且 `copy` / `happy` / "
+           "`empty` / `apply` 四个裸词**一律**不认（读数不再取决于词尾字母）",
+           not _invokes_guard("happy scripts/structure-guard.py verify --from-git HEAD")
+           and [PY_WORD_RE.match(w) for w in ("copy", "happy", "empty", "apply")]
+           == [None, None, None, None])
+        ok("行 30 防假红：六种**真解释器形态**（`$py` / `${PY}` / `$py.exe` / `py` / "
+           "`python.exe` / `python3.13`）仍被认成解释器；带引号变量与带目录解释器的"
+           "真调用仍判有调用",
+           all(PY_WORD_RE.match(w) for w in
+               ("$py", "${PY}", "$py.exe", "py", "python.exe", "python3.13"))
+           and _invokes_guard('out=$("$py" scripts/structure-guard.py verify '
+                              '--from-git HEAD 2>&1)')
+           and _invokes_guard('"$py.exe" scripts/structure-guard.py verify '
+                              '--from-git HEAD')
            and _invokes_guard(".venv/Scripts/python.exe scripts/structure-guard.py "
                               "verify --from-git HEAD"))
         # ---- 行 5（`_installs_hooks` 由文本子串改**解析 HOOKS 结构**）--------

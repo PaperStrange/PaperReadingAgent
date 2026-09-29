@@ -124,41 +124,115 @@
 | 21 | `scripts/hooks/pre-commit` **成功路径的 `exit 0` 是常量**，不是守卫的退出码；文件注释却写「非 0 一律拒绝提交」⇒ 「本地层由退出码承载」目前**不是字面事实** | 行 6 批实测暴露（父代理受理） | **已修**（本批，父代理独立复核）：尾行改为 `exit $rc`——本层 rc **就是**守卫的 rc；**并保留 `--report-only`**（本层只报告不终判，没被改成强制拒绝）。`verify_gate_integrity.py` 断言 43→50 PASS、`verify_matrix.py check` OK。**交付过程如实记录**：该批**中途失败、未交回执**，四条修法由父代理在工作区逐条核实（`exit $rc` 在位、`_check_ok` 已重写、`:53` 的「7 条」已清、编译 rc=0）后才收下 |
 | 22 | **同族残留两处**：① `_check_ok`（安装器 `--check`／`commit-msg` 的 `--ack-file`）仍是**裸文本出现**判定；② `ECHO_PREFIXES` 仍是**回显动词清单**，未列入者（如 `Out-Host`）仍可冒充接线 | 行 4/5 批自报残留 | **已修**（同批，父代理独立复核）：① `_check_ok` 由裸文本改为**结构判定**（docstring 写明修前形态「注释里写一行字面即可满足」并点名两处假绿）；② 命令位置判定改为**默认判红**，`ECHO_PREFIXES` 只用于识别回显、不再承担接线判定 |
 | 23 | **改了 SSOT 却漏收尾动作**：`df5fd73` 与行 20 批分别改了 `verify_ledger_measurement.py`／`verify_usage.py` 的 `VERIFY_META` **却没重新 `derive`** ⇒ `TEST-MATRIX.MD` 与脚本元数据漂移、`verify_matrix.py check` **rc=1 而无人发现** | 行 11 批实测发现（并顺带修好） | 已修（`b271606`）＋**立规**：凡改 `VERIFY_META`，**同一批必须 `derive` 并给出 `check` 末行**，否则把红留给下一个人 |
-| 24 | `verify/verify_local_dir.py` 的共享对象是**固定端口 8787**（`verify/e2e_common.py:24`）＋仓库内 `verify/verify_local_dir_server.log` ⇒ **套件内偶发失败、单跑必过** | 行 8 批实测并**明确判定不归行 8**（该脚本修前就已是 `mkdtemp`；批方没有假装修好一个不存在的洞） | 未修（关闭动作＝端口改 run 级分配或先探测空闲端口＋日志落 `%TEMP%`；反证＝并发两实例跑该脚本不复现失败） |
-| 25 | **夹具目录只建不回收**：`verify/verify_usage.py:96`（`g2l20-before-*`，**由行 20 批引入**）与 `verify/verify_runner.py:113`（`verify_runner_*`）实测**每跑一次各 +1 个 `%TEMP%` 目录**（名字唯一⇒非互踩位点，属资源泄漏） | 行 8 批实测 | 未修（关闭动作＝纳入回收或改 `TemporaryDirectory`；反证＝连跑 N 轮后前缀净增为 0） |
+| 24 | `verify/verify_local_dir.py` 的共享对象是**固定端口 8787**（`verify/e2e_common.py:24`）＋仓库内 `verify/verify_local_dir_server.log` ⇒ **套件内偶发失败、单跑必过** | 行 8 批实测并**明确判定不归行 8**（该脚本修前就已是 `mkdtemp`；批方没有假装修好一个不存在的洞） | **已修**（`14603c2`：生产侧端口读 env ＋ `86625c7`：夹具侧 run 级端口）。**举证方＝父代理（派单方）**，逐字：亲跑反证＝**3 轮 × 两实例并发、rc 全 0、`ALL PASS (7 assertions)`、8787 全程无人监听**（原记关闭动作＝端口改 run 级分配或先探测空闲端口＋日志落 `%TEMP%`） |
+| 25 | **夹具目录只建不回收**：`verify/verify_usage.py:96`（`g2l20-before-*`，**由行 20 批引入**）与 `verify/verify_runner.py:113`（`verify_runner_*`）实测**每跑一次各 +1 个 `%TEMP%` 目录**（名字唯一⇒非互踩位点，属资源泄漏） | 行 8 批实测 | **已修**（`86625c7`：`mkdtemp` 回收）。**举证方＝父代理（派单方）**，逐字：亲量连跑两轮 `g2l20-before-*`／`verify_runner_*` **净增 0**，两脚本 `ALL PASS (61/46)`（原记关闭动作＝纳入回收或改 `TemporaryDirectory`） |
 | 17 | 守卫**拒绝路径会留孤儿产物**：`--result-file` 的按字节复制发生在守卫之前 ⇒ 被拒后 `runs/<id>/` 多一份产物而账本行仍是 `running` | 守卫交付回执 ⑤2（父代理知悉，未擅动） | **已修**（`df5fd73`）：产物复制推迟到守卫之后（新 `_copy_result_file`）；真入口＝拒前/拒后 `runs/<id>/` 清单两侧均空、账本行仍 `running` |
 | 18 | 具名豁免的**理由文本未落账本**：行内只记 `measurement_flags=['zero_duration']` 与 `measurement_source='declared'`，理由只上屏（**父代理独立探针 v2 实测**） | 同上；回执 ⑤1 的表述须更正（"未落账本"只对**理由文本**成立，豁免事实**有**落库） | **已修**（`df5fd73`）：裁定选项①，CLI 放行时写 `degenerate_reason`（原话）＋闸门两条判据。**现跑抓到的更正**：判据须用**重算 flags** 而非行内存储的 `measurement_flags`，否则会把「受控回填修好起点、行内标记陈旧」的 `092` 追溯判红 |
 | 26 | major：`verify_close_readiness.py` 的"未起跑 ⇒ 显式 SKIP"只看 `started_at` 可解析性、**不看 `status`** ⇒ "终态 run 的时间戳坏掉"被当成"未起跑"静默剔除（2026-09-29 于 `bf41d200` 现跑探针：`problems=[]`、窗口照常推导、整档不 rc=4），而同一函数对**候选作用域 run** 的坏时间戳是 fail-closed 的 ⇒ 自相矛盾 | 二查 windows `code-review-104` major 1 | **已修**（`a3a3f25`）：新增 `_terminal_statuses()`，终态＋坏时间戳改判具名数据缺陷；防假红＝`queued`＋同一坏时间戳仍 SKIP |
 | 27 | major：`retract --evidence` 用 `Path(ev).exists()` ⇒ **目录也算凭据**，且留痕七字段**无任何 hash** ⇒ 证据事后可任意改写／删除而留痕看不出来（生产账本已有 3 条真实留痕，其 `evidence` 指向仍在版本库、仍可编辑的复盘档） | 二查 windows `code-review-104` major 2 | **已修**（`a3a3f25`）：改 `is_file()` ＋ 留痕记 `evidence_sha256`；改写证据后 CLI 报"与留痕记录不一致"并拒绝 |
 | 28 | major：`_retract_cited_by` 只普查 `scope_source` 一个字段，而 `result_files` 同样逐行承载 run 引用（探针：79 行含 `runs\<run_id>\…` 形态）；且"先撤引用者、再撤被引用者"可绕过（探针 `rc=0`）⇒ 引用链保护只是**快照检查**、不是不变式 | 二查 windows `code-review-104` major 3 | **已修**（`a3a3f25`）：引用面改为数据驱动（`result_files` 一并查）；该时序路径现被 CLI 拒绝 |
 | 29 | major：`_enforces_exit_code` 判的是"存在一次不带 `--report-only` 的调用"，**从未看退出码有没有被传递** ⇒ 捕获后追加 `\|\| true`（吞码）与 `python … ; rc=$?`（丢弃）两种形态**全部**判 True（假绿）；三层当前恰好都没踩中 ⇒ 属**判据强度**缺口而非现行事故 | 二查 windows `code-review-104` major 4 | **已修**（`a3a3f25`）：升级为退出码结构判定；两种吞码形态现判 False，三种正确传递形态仍判 True |
-| 30 | minor：`PY_WORD_RE` 第二支 `[\w${}]*py` 匹配**任何以 `py` 结尾的词**（`copy`／`happy` 判 True，`empty`／`apply` 判 False —— 读数取决于词尾字母而不是结构）⇒ `copy scripts/structure-guard.py verify …` 被判成"解释器 ＋ 守卫脚本 ＋ verify" | 二查 windows `code-review-104` minor 5 | **未修**：报告自述"Fix this round: yes"，但 `a3a3f25` 未改该常量；2026-09-29 现跑仍为 `^(?:python[\w.]*\|[\w${}]*py)$` |
-| 31 | minor：`peak_windows()` 与 `peak_windows_from_prices()` 按"第一个 `scraped.*` 命中"**全局**取窗口再套到所有模型；今天恰因只有 `deepseek` 带 `_peak_windows` 而等价于正确口径（成本结论正确）⇒ 属**数据巧合**而非结构保证 | 二查 windows `code-review-104` minor 6 | **未修**：报告判"口径已具名、当前数据下零偏差；宜在下一个价表批随 provider 扩容一起改" |
-| 32 | minor：`--apply` 下抓空只 `print WARN`、**不编码成退出码**（`judge_scrape` 的 `strict` 只绑 `args.check`）⇒ "价表是否有效"只能靠人读日志，而 CI 只认退出码 | 二查 windows `code-review-104` minor 7 | **未修**：报告判属可观测性增强；`--check` 档已提供机读出口 |
-| 33 | minor：`empty_ops` 夹具**无 `atexit` 兜底**（同函数另两个夹具 `tmp`／`close_sprint_root` 都有）⇒ 该处断言失败提前 return 时永久残留 `%TEMP%`——正是行 25"每跑一次多一个目录"的同族落点 | 二查 windows `code-review-104` minor 8 | **未修**：`a3a3f25` 未加；2026-09-29 现跑该函数只注册了两处 `atexit` |
-| 34 | nit：本批把多处 `VERIFY_META['features']` 里写死的"含 N 条反向对照"改成"见末行"，方向正确，但**无判据要求 `--selftest` 确实跑到末行判决句** ⇒ 删掉一批自检不会让任何闸门变红（只会让 N 变小，而 N 已不被任何地方钉住） | 二查 windows `code-review-104` nit 9 | **只报**（原因：报告明写"那是新判据，不在本批应当顺手做"）；方向＝把断言数纳入 `verify_derived_numbers.py` 的棘轮 |
+| 30 | minor：`PY_WORD_RE` 第二支 `[\w${}]*py` 匹配**任何以 `py` 结尾的词**（`copy`／`happy` 判 True，`empty`／`apply` 判 False —— 读数取决于词尾字母而不是结构）⇒ `copy scripts/structure-guard.py verify …` 被判成"解释器 ＋ 守卫脚本 ＋ verify" | 二查 windows `code-review-104` minor 5 | **已修**（本批工作区改动，`verify/verify_gate_integrity.py`）：裸词只认 `python*`／`py`，变量形态**必须带 `$`**（`$py`／`${PY}`／`$py.exe`）。**反向对照 3 条**（真 `_invokes_guard`）：`copy`／`happy` 修前判 True → 修后判无调用；`copy`／`happy`／`empty`／`apply` 四词读数一律 False（不再由词尾字母决定）；6 种真解释器形态（含 `"$py"` 与 `.venv/Scripts/python.exe`）**不回归**。`verify_gate_integrity.py --selftest` 断言 **56 → 59**、`ALL PASS (59 assertions)`（2026-09-29 现跑） |
+| 31 | minor：`peak_windows()` 与 `peak_windows_from_prices()` 按"第一个 `scraped.*` 命中"**全局**取窗口再套到所有模型；今天恰因只有 `deepseek` 带 `_peak_windows` 而等价于正确口径（成本结论正确）⇒ 属**数据巧合**而非结构保证 | 二查 windows `code-review-104` minor 6 | **未修**（改选档口径要**同改两侧**：`scripts/agent-ops.py` ＋ `paper-qa-script/app/usage.py`，后者在**本批授权写入集之外**；单改一侧会破 `verify_usage.py` ⑪14 的镜像一致性判据）⇒ **已给出待裁定建议 `P1`**（§5.2；代价＝放行 `paper-qa-script/**` 一处并重估该文件自检） |
+| 32 | minor：`--apply` 下抓空只 `print WARN`、**不编码成退出码**（`judge_scrape` 的 `strict` 只绑 `args.check`）⇒ "价表是否有效"只能靠人读日志，而 CI 只认退出码 | 二查 windows `code-review-104` minor 7 | **已修**（本批工作区改动，`scripts/fetch-prices.py`）：`--apply` 与 `--check` 共用 strict 判据并把 rc 带回（修前写盘后恒 `return 0`）；**反证＝真子进程跑真 `main()`**（只替换网络边界 `_fetch`、数据目录 `AGENT_OPS_DIR` 隔离到 `%TEMP%`）：修前 rc=0 → 修后 rc=1，写盘仍 fail-safe、真价表未被碰；**永久判据**落 `verify/verify_agentops.py`（3 条，断言 156 → 159） |
+| 33 | minor：`empty_ops` 夹具**无 `atexit` 兜底**（同函数另两个夹具 `tmp`／`close_sprint_root` 都有）⇒ 该处断言失败提前 return 时永久残留 `%TEMP%`——正是行 25"每跑一次多一个目录"的同族落点 | 二查 windows `code-review-104` minor 8 | **已修**（本批工作区改动，`verify/verify_close_readiness.py`）：`empty_ops` 增 `atexit` 兜底（该夹具命中数 3 → 4）。**反证＝异常路径构造**（真子进程：建目录 → 注册 → 抛异常 ⇒ 退出后残留 0；同装置去掉注册 ⇒ 残留 1）。**局限如实记**：未构造"真 selftest 中途判红"的复现（见§5.3 未做项） |
+| 34 | nit：本批把多处 `VERIFY_META['features']` 里写死的"含 N 条反向对照"改成"见末行"，方向正确，但**无判据要求 `--selftest` 确实跑到末行判决句** ⇒ 删掉一批自检不会让任何闸门变红（只会让 N 变小，而 N 已不被任何地方钉住） | 二查 windows `code-review-104` nit 9 | **只报**（原因：报告明写"那是新判据，不在本批应当顺手做"；方向＝把断言数纳入 `verify_derived_numbers.py` 的棘轮）⇒ **已给出待裁定建议 `P2`**（§5.2：与行 39 合并裁定——条数**随分支变**，全局"只减不增"上限会在 main 上假红） |
 | 35 | critical：`verify_decision_register.py` 在 main 上**套件必然超时**——登记册 1248 个指针里 1106 个指向 windows-only 的 `docs/iteration/**`（2026-09-29 现跑计数），旧实现对每个指针 spawn 两次 `git ls-tree`；模拟 main 实测约 173s，越过 CI 路径的 80s 上限 ⇒ 精确复现 `TIMEOUT`、`exit=124` | 二查 main `code-review-105` critical 1 | **已修**（`a3a3f25`）：目录前缀短路缓存（**存在方向不缓存**，判据强度未改）；镜像 main 实测 173.1s → 2.8–2.9s |
 | 36 | critical：`verify_agentops.py` 读 windows-only 的 sprint-id 向量 spec 时抛**未捕获** `FileNotFoundError` ⇒ 脚本直接崩（rc=1）；同族第二处＝`verify_close_readiness.py` 的 E1 向量表判 `FAIL: 0 行` ⇒ **两条独立的 CI 变红路径** | 二查 main `code-review-105` critical 2 | **已修**（`a3a3f25`）：两处改具名 `SKIP[spec-absent-on-branch]`（**不是通过**）；spec 在位时照旧真判 |
 | 37 | major：`agents/spend-budget.json` 写死**某一台开发机的 DSH 会话 id**，换机器／克隆即不匹配 ⇒ 规则 17 的"主代理 output／日"读数**静默变 0**而 `--check` 照常判 `OK`（假绿）；该文件在 `origin/main` 上不存在 ⇒ 本批把它**新增进 main** | 二查 main `code-review-105` major 3 | **已修**（`a3a3f25`）：id 不存在时改 `[SKIP]` ＋ rc=3 ＋"**不是通过**"上屏，且 SKIP 优先于 OVER |
 | 38 | major：`VERIFY_META.est_seconds` 是**分支无关常量**，而实测耗时随分支差 110 倍 ⇒ 同一份判据在一个分支绿、另一个分支红（同机同 venv 同树，差别只在 `docs/iteration/**` 是否存在 ⇒ 不是"机器慢"） | 二查 main `code-review-105` major 4 | **已修**（`a3a3f25`）：`run_suite.py` 增 `BRANCH_EST_OVERRIDES`（两侧都是实测值）；**未上调任何 timeout 常量**（那是放宽判据） |
-| 39 | minor：分支感知口径**语义正确但漏了成本面**——当前 1106 个指针指向 windows-only 子树（2026-09-29 现跑），每新增一个同形态指针都会线性放大 | 二查 main `code-review-105` minor 5 | **部分**：`a3a3f25` 落了"前缀短路 ＋ 计数上屏"；报告要的"未核指针数**棘轮上限**（只减不增）"**未做** |
-| 40 | minor：`agents/spend-budget.json` 把**预算值**与**基线读数**放在同一文件，而该文件注释自述"只放预算不放读数"；`targets.verified_by` 声称"次日读数与 baseline 对比"，而 `--check` 实际只做 `got <= cap`、**不比对 baseline** ⇒ 声明了机制而机制不存在 | 二查 main `code-review-105` minor 6 | **未修**：报告给二选一（让 `--check` 真比对 ／ 改成与实现相符的措辞），本批未动 |
-| 41 | minor：`zstandard` 是 `scripts/spend-report.py` 的**运行依赖**，而 `requirements.txt` 与 `requirements-windows.txt` **均无它** ⇒ 换机器上该仪器以 `exit 2` 退出，且报错文案写"仓库 .venv 已装"（在这份清单下不成立） | 二查 main `code-review-105` minor 7 | **未修**：2026-09-29 现跑两个依赖文件仍无 `zstandard` |
-| 42 | minor：本地 `main` 落后 `origin/main` 三个提交；本次评审判据一律取 `origin/main` 故不受影响，但任何以本地 main 为基准的 diff 会得出**过期结论** | 二查 main `code-review-105` minor 8 | **未修**：本批未 `git fetch`、未改动本地分支（不在本批处置范围） |
-| 43 | nit：`paper-qa-script/app/usage.py` 与 `scripts/agent-ops.py` **有意镜像两份**选档口径（SSOT 上已具名的技术债；有 `verify_usage.py` 一致性测试兜底） | 二查 main `code-review-105` nit 9 | **只报**（原因：报告自判"风险可接受；加档位／改窗口时必须同改两处"） |
-| 44 | nit：`PAPERQA_VERIFY_PORT` 覆盖**只在 `__main__` 分支生效**，import 式启动（如 `uvicorn main:app`）读不到它；实现本身 fail-fast 合规 | 二查 main `code-review-105` nit 10 | **只报**（原因：报告判"若未来有第二种启动方式需另接"）；本批只做该覆盖的**文档侧**收尾（见行 47） |
-| 45 | critical：`impact-assessment.report.md` 的**模块归并表五处计数全部与 `git diff --numstat` 现跑不符**，且是**混基线复合体**——声称值相加 38 ≠ 33 个文件；`.github` 行逐字等于被弃用的超集基线 `958c739878..bf41d200` 的读数。**此即 `impact-assessment-103` 报告自身的 critical ①** | 一查 `doc-audit-104` critical 1（对象＝〇查 `impact-assessment-103` 报告 `:80-98`） | **未修**：`agents/runs/**` 属 `.gitignore` 忽略域、不在本批授权写入集 ⇒ **不代改他人报告**；下游以本行 ＋ `doc-audit-104` 的现跑读数为准 |
-| 46 | critical：同报告 `:198-244` 的"必含：本次变更面（33 文件）"清单含 **5 个基线内既有文件**（`agents/obligations.json`、`agents/runtime/prices.json`、`g1-vs-g2-close-comparison.MD`、`residual-risk-register.MD`、`governance-batch-plan-G2.MD`；`git cat-file -e 18f2274:<path>` 现跑 rc=0 全部命中），且 2 处 `(新增)` 错标。**此即 `impact-assessment-103` 报告自身的 critical ②** | 一查 `doc-audit-104` critical 2（对象＝同报告 `:198-244`） | **未修**：同上（写入集外）；下游按 `doc-audit-104` 的现跑读数纠偏，**不按该清单** |
+| 39 | minor：分支感知口径**语义正确但漏了成本面**——当前 1106 个指针指向 windows-only 子树（2026-09-29 现跑），每新增一个同形态指针都会线性放大 | 二查 main `code-review-105` minor 5 | **部分**：`a3a3f25` 落了"前缀短路 ＋ 计数上屏"；报告要的"未核指针数**棘轮上限**（只减不增）"**未做** ⇒ **已给出待裁定建议 `P2`**（§5.2：该计数**随分支变**——windows ≈ 0、main ≈ 1106，全局"只减不增"会把"新增指向 `docs/iteration/**` 的**合法**指针"判红；须先裁定是限**条数**还是限**成本面**） |
+| 40 | minor：`agents/spend-budget.json` 把**预算值**与**基线读数**放在同一文件，而该文件注释自述"只放预算不放读数"；`targets.verified_by` 声称"次日读数与 baseline 对比"，而 `--check` 实际只做 `got <= cap`、**不比对 baseline** ⇒ 声明了机制而机制不存在 | 二查 main `code-review-105` minor 6 | **未修**（该文件在 `agents/**` ＝**本批授权写入集之外**）⇒ **已给出待裁定建议 `P3`**（§5.2：二选一——`--check` 真比对 baseline ／ 改成与实现相符的措辞；两者都要动 `agents/spend-budget.json`） |
+| 41 | minor：`zstandard` 是 `scripts/spend-report.py` 的**运行依赖**，而 `requirements.txt` 与 `requirements-windows.txt` **均无它** ⇒ 换机器上该仪器以 `exit 2` 退出，且报错文案写"仓库 .venv 已装"（在这份清单下不成立） | 二查 main `code-review-105` minor 7 | **未修**（两个依赖文件在**仓根** ＝授权写入集之外；2026-09-29 现跑仍无 `zstandard`）⇒ **已给出待裁定建议 `P4`**（§5.2：补一行并重估 `.venv` 安装面） |
+| 42 | minor：本地 `main` 落后 `origin/main` 三个提交；本次评审判据一律取 `origin/main` 故不受影响，但任何以本地 main 为基准的 diff 会得出**过期结论** | 二查 main `code-review-105` minor 8 | **未修**（属分支状态动作，非文件写入）⇒ **已给出待裁定建议 `P5`**：现跑复核 `git rev-list --count main..origin/main` = **3**（`main`=8e9b5ee、`origin/main`=bc31219，2026-09-29 现跑）；修法＝`git fetch` ＋ 快进本地 `main`（本批**不得**做分支动作） |
+| 43 | nit：`paper-qa-script/app/usage.py` 与 `scripts/agent-ops.py` **有意镜像两份**选档口径（SSOT 上已具名的技术债；有 `verify_usage.py` 一致性测试兜底） | 二查 main `code-review-105` nit 9 | **只报**（原因：报告自判"风险可接受；加档位／改窗口时必须同改两处"）⇒ **已给出待裁定建议 `P6`**（§5.2：⑪14 **已在值域兜底**——窗口来源／8 个边界／5 个跨档向量逐条同值；缺口只在**结构面**。建议接受为具名技术债，或新增"键消费面一致"判据） |
+| 44 | nit：`PAPERQA_VERIFY_PORT` 覆盖**只在 `__main__` 分支生效**，import 式启动（如 `uvicorn main:app`）读不到它；实现本身 fail-fast 合规 | 二查 main `code-review-105` nit 10 | **只报**（原因：报告判"若未来有第二种启动方式需另接"）；本批只做该覆盖的**文档侧**收尾（见行 47）⇒ 功能侧改法在 `paper-qa-script/**`（授权写入集外）⇒ **并入待裁定建议 `P1`** |
+| 45 | critical：`impact-assessment.report.md` 的**模块归并表五处计数全部与 `git diff --numstat` 现跑不符**，且是**混基线复合体**——声称值相加 38 ≠ 33 个文件；`.github` 行逐字等于被弃用的超集基线 `958c739878..bf41d200` 的读数。**此即 `impact-assessment-103` 报告自身的 critical ①** | 一查 `doc-audit-104` critical 1（对象＝〇查 `impact-assessment-103` 报告 `:80-98`） | **未修**：`agents/runs/**` 属 `.gitignore` 忽略域、不在本批授权写入集 ⇒ **不代改他人报告**；下游以本行 ＋ `doc-audit-104` 的现跑读数为准 ⇒ **已给出待裁定建议 `P7`**（并入行 46；§5.2 附 2026-09-29 复算：`18f2274e..bf41d200` ＝ **33** 文件、被弃用的超集 `958c739878..bf41d200` ＝ **47** 文件） |
+| 46 | critical：同报告 `:198-244` 的"必含：本次变更面（33 文件）"清单含 **5 个基线内既有文件**（`agents/obligations.json`、`agents/runtime/prices.json`、`g1-vs-g2-close-comparison.MD`、`residual-risk-register.MD`、`governance-batch-plan-G2.MD`；`git cat-file -e 18f2274:<path>` 现跑 rc=0 全部命中），且 2 处 `(新增)` 错标。**此即 `impact-assessment-103` 报告自身的 critical ②** | 一查 `doc-audit-104` critical 2（对象＝同报告 `:198-244`） | **未修**：同上（写入集外）；下游按 `doc-audit-104` 的现跑读数纠偏，**不按该清单** ⇒ **已给出待裁定建议 `P7`**（§5.2：代改他人报告 vs 让 `103` 重跑） |
 | 47 | major：`verify/README.md` **缺 readme-completeness 第 ④ 类"故障排查"整类**（四类缺一即 must-fix）；2026-09-29 现跑该文件唯一标题在 `:1`、三个关键词（故障／排查／troubleshoot）零命中 | 一查 `doc-audit-104` major 3 | **已修**（本批工作区改动）：新增 `## 故障排查`，覆盖 `PAPERQA_VERIFY_PORT` 覆盖法与"套件内偶发失败／单跑必过"两类真故障 |
-| 48 | major：`docs/1-WORKFLOW.MD:403` 的**日期口径 R2 规则无机检**（`verify/` 与 `scripts/` 全仓零实现；同名命中判的是**账本 run 的日期**，与文档日期无关）⇒ 该规则 `unverifiable`；2026-09-29 逐文件比对，本批变更的 13 个 `.MD` 里 7 个超阈而无闸门会报 | 一查 `doc-audit-104` major 4 | **未修**：按报告建议**登记为 G3 未闭环项**（见本档 §6 第 6 条）；**本批明确不实现新闸门** |
+| 48 | major：`docs/1-WORKFLOW.MD:403` 的**日期口径 R2 规则无机检**（`verify/` 与 `scripts/` 全仓零实现；同名命中判的是**账本 run 的日期**，与文档日期无关）⇒ 该规则 `unverifiable`；2026-09-29 逐文件比对，本批变更的 13 个 `.MD` 里 7 个超阈而无闸门会报 | 一查 `doc-audit-104` major 4 | **已修**（本批工作区改动，父代理裁定选②＝**就地降级声明**）：规则**同一条内**（`docs/1-WORKFLOW.MD:403`，就地追加、**不新增行** ⇒ 登记册 `path:line` 指针零漂移）已明写"本条口径当前无任何机检实现，属**未验证口径**，已登记为 G3 未闭环项（复盘 §6）"并记代价；**未实现新闸门**（父代理裁定）；§6 第 6 条指针已同步。规则原文一个字未改 |
 | 49 | minor：`2026-09-27-g2-walkthrough-checklist.MD` 有 10 处 Markdown 链接写成本机绝对路径（本机 10/10 可解析 ⇒ "在本机能用、出本机即死"：其它克隆根、GitHub 渲染、WSL 全断） | 一查 `doc-audit-104` minor 5 | **已修**（本批）：10 处改仓内相对路径，逐个 `Test-Path` 现跑解析通过 |
 | 50 | minor：`docs/1-WORKFLOW.MD` §6 **缺编号 `15.`**（13→16 跳号），全仓无任何说明 | 一查 `doc-audit-104` minor 6 | **已修**（本批）：在 `16.` 前插入具名"编号空缺"行；`git log -S'15. **'` 现跑 0 命中 ⇒ **从未有过第 15 条、非删除** ⇒ `:420` 的 `Structure-Removal:` 具名署名**不适用**；**不重编号**（理由见该行） |
-| 51 | nit：`docs/6-DECISIONS.md::D-250926-06` 与 `-07` 条目 ID 内嵌日期为 `0926`，而正文生效时点为 `2026-09-27`（仅 ID 与生效日不同日） | 一查 `doc-audit-104` nit 7 | **只报**（原因：报告自判"按现体例可接受，记 nit 供后续命名参考"） |
+| 51 | nit：`docs/6-DECISIONS.md::D-250926-06` 与 `-07` 条目 ID 内嵌日期为 `0926`，而正文生效时点为 `2026-09-27`（仅 ID 与生效日不同日） | 一查 `doc-audit-104` nit 7 | **只报**（原因：报告自判"按现体例可接受，记 nit 供后续命名参考"）⇒ **已给出待裁定建议 `P8`**（§5.2：两条的 `时点` 字段已各自写明 `2026-09-27（UTC+8）`，即生效日**有执行点**；改 ID 的代价＝全仓按条目号引用的改写。建议维持现状并只登记体例） |
 
 > **本表扩容与取值口径（2026-09-29 现跑，本批）**：本表共 **51 行**（原 25 行 ＋ 本批新增 26 行：行 26–34 ＝ `code-review-104` 的 4 major ＋ 4 minor ＋ 1 nit，行 35–44 ＝ `code-review-105` 的 2 critical ＋ 2 major ＋ 4 minor ＋ 2 nit，行 45–51 ＝ `doc-audit-104` 的 2 critical ＋ 2 major ＋ 2 minor ＋ 1 nit）。
 > **行 45／46 即 `impact-assessment-103` 报告自身的两条 critical**——它们与一查 `doc-audit-104` 的 critical 1／2 是**同一发现的两个视角**（发现者＝一查，对象＝〇查报告），故合并为**两行而不是四行**（同一事实不得两处各写一份）。
-> **状态栏取值**：`已修`（带提交 sha 或本批工作区改动）／`部分`／`未修`／`只报`（含原因）。已修 ＝ 行 26–29、35–38、47、49、50；部分 ＝ 行 39；未修 ＝ 行 30–33、40–42、45、46、48；只报 ＝ 行 34、43、44、51。
-> **`只报` 不是豁免**：它只表示"本轮不修且给了原因"，按 `D-250926-06` 的"零未闭环项"口径**仍计入**关闭判定；行 48 已按报告建议登记为 G3 未闭环项。
+> **状态栏取值（2026-09-29 处置批现跑；逐行处置表见 §5.1）**：`已修`（带提交 sha 或本批工作区改动）／`部分`／`未修`／`只报`（含原因）。**行 26–51 现分布**＝已修 **15**（行 26–30、32、33、35–38、47–50）／部分 **1**（行 39）／未修 **6**（行 31、40–42、45、46）／只报 **4**（行 34、43、44、51）。**全表 51 行**＝已修 **32** ／ 部分 **2**（行 3、39）／ 未修 **12**（行 2、4–6、11、13、31、40–42、45、46）／ 只报 **4**（行 34、43、44、51）／ 已由用户裁定豁免 **1**（行 14）。
+> **`只报`／`未修`／`部分` 都不是豁免**：按 `D-250926-06` 的"零未闭环项"口径**仍计入**关闭判定。其中行 31、34、39–46、51 已逐条给出**待裁定处置建议**（`P1`–`P8`，见§5.2：行号 ＋ 建议处置 ＋ 代价）——**"已给出建议"与"已处置"是两件事**：建议只是把选择摆到用户面前，**出列仍须用户逐条裁定**（该读法同 §5 表头："本表行全部计入未闭环，除非该行已由用户裁定处置"）。
+> **行 48 的残留义务已具名转移**：R2 日期口径**仍属未验证口径**（父代理 2026-09-29 裁定选②＝就地降级、不实现新闸门）⇒ 强制力恢复的义务落在 **G3 第 6 条**（见下），本表行按"已按裁定执行"记为已修。
+
+### 5.1 行 26–51 逐行处置表（本批工作区改动；行 24／25 为父代理裁定项）
+
+> **本小节是 §5 行 26–51 的逐行处置记录**（**状态仍以 §5 表为唯一真源**，本小节只记"做了什么、依据是什么、剩什么要人裁定"）。
+> **执行 run**：`run-2026-09-29-implementation-108`（role `implementation`；覆盖锚点与覆盖上界均由派单方 brief 给定，两者同为 `18f2274e`，与该 role 的 `coverage_window: none` 声明一致）。
+> **授权写入集**：`docs/**`、`verify/**`、`scripts/**`；**未碰** `paper-qa-script/**`、仓根依赖清单、`agents/**`；**未做** `git add`／`commit`／`push`；探针全部落 `%TEMP%`。
+> **两条已定裁定（派单方，照做）**：① 行 24／25 由**父代理（派单方）**举证、状态翻已修（**反证不是本批跑的**，署名见 §5 对应行）；② `docs/1-WORKFLOW.MD` 的日期口径 R2 规则**就地降级声明**（选②），**不实现新闸门**。
+
+| 行 | 修前状态 | 本批动作 | 依据（可复跑） |
+|---|---|---|---|
+| 24 | 未修 | 状态翻**已修**（举证方＝父代理，逐字写入 §5） | `14603c2`（生产侧端口读 env）＋ `86625c7`（夹具侧 run 级端口）；父代理亲跑：3 轮 × 两实例并发、rc 全 0、`ALL PASS (7 assertions)`、**8787 全程无人监听**（2026-09-29 派单方读数，本批未复跑） |
+| 25 | 未修 | 状态翻**已修**（举证方＝父代理，逐字写入 §5） | `86625c7`（`mkdtemp` 回收）；父代理亲量：连跑两轮 `g2l20-before-*`／`verify_runner_*` **净增 0**、两脚本 `ALL PASS (61/46)`（2026-09-29 派单方读数，本批未复跑） |
+| 26 | 已修 | **未动**（前批 `a3a3f25` 已修，本批只按 §5 核对状态） | §5 原文；`a3a3f25` |
+| 27 | 已修 | **未动**（同上） | §5 原文；`a3a3f25` |
+| 28 | 已修 | **未动**（同上） | §5 原文；`a3a3f25` |
+| 29 | 已修 | **未动**（同上） | §5 原文；`a3a3f25` |
+| 30 | 未修 | **修**：`verify/verify_gate_integrity.py` 的 `PY_WORD_RE` 收词边界（裸词只认 `python*`／`py`，变量形态必须带 `$`）＋ 3 条反向对照 | 修前 `copy`／`happy` 判「有调用」→ 修后判无调用；`copy`／`happy`／`empty`／`apply` 四词读数一律 False；6 种真解释器形态不回归；`--selftest` 断言 56 → 59、`ALL PASS (59 assertions)`（2026-09-29 现跑） |
+| 31 | 未修 | **不修**（要同改 `paper-qa-script/app/usage.py`，授权集外）⇒ 待裁定 `P1` | §5 行 31；`verify/verify_usage.py` ⑪14 镜像判据（单改一侧即破） |
+| 32 | 未修 | **修**：`scripts/fetch-prices.py` 的 `--apply` 档把判据编进退出码（写盘仍 fail-safe）＋ `verify/verify_agentops.py` 3 条永久判据 | 真子进程跑真 `main()`、只替换网络边界 `_fetch`、`AGENT_OPS_DIR` 隔离到 `%TEMP%`：**修前 rc=0 → 修后 rc=1**（2026-09-29 现跑）；`verify_agentops.py --selftest` 断言 156 → 159、`ALL PASS (174 assertions)`（2026-09-29 现跑） |
+| 33 | 未修 | **修**：`verify/verify_close_readiness.py` 的 `empty_ops` 夹具增 `atexit` 兜底 | 该夹具命中数 3 → 4；机制反证（真子进程：注册后抛异常 ⇒ 残留 0；不注册 ⇒ 残留 1，2026-09-29 现跑）；**局限**见 §5.3 |
+| 34 | 只报 | **不修**（新判据，报告自判不属顺手范围）⇒ 待裁定 `P2`（与行 39 合并） | §5 行 34；分支感知 SKIP 会改变条数（同族见行 38 `BRANCH_EST_OVERRIDES`） |
+| 35 | 已修 | **未动**（前批 `a3a3f25`，本批只核对） | §5 原文；`a3a3f25`（173.1s → 2.8–2.9s） |
+| 36 | 已修 | **未动**（同上） | §5 原文；`a3a3f25` |
+| 37 | 已修 | **未动**（同上） | §5 原文；`a3a3f25` |
+| 38 | 已修 | **未动**（同上） | §5 原文；`a3a3f25` |
+| 39 | 部分 | **不修**（报告要的棘轮口径未定）⇒ 待裁定 `P2` | §5 行 39；计数随分支变（`docs/iteration/**` 在 main 上缺席） |
+| 40 | 未修 | **不修**（`agents/spend-budget.json` 授权集外）⇒ 待裁定 `P3` | §5 行 40；该文件 `targets.verified_by` 的声明与 `--check` 实现不符（2026-09-29 现读） |
+| 41 | 未修 | **不修**（两个依赖文件在仓根，授权集外）⇒ 待裁定 `P4` | §5 行 41；2026-09-29 现跑两个依赖清单仍无 `zstandard` |
+| 42 | 未修 | **不修**（属分支状态动作）⇒ 待裁定 `P5` | 2026-09-29 现跑 `git rev-list --count main..origin/main` ＝ 3 |
+| 43 | 只报 | **不修**（报告自判风险可接受）⇒ 待裁定 `P6` | §5 行 43；`verify/verify_usage.py` ⑪14 已在**值域**兜底（窗口来源 ＋ 8 个边界 ＋ 5 个跨档向量逐条同值） |
+| 44 | 只报 | **不修**（功能侧改法在 `paper-qa-script/**`）⇒ 并入待裁定 `P1` | §5 行 44；文档侧收尾已由行 47 承担 |
+| 45 | 未修 | **不修**（`agents/runs/**` 属忽略域、授权集外）⇒ 待裁定 `P7` | 2026-09-29 复算：`18f2274e..bf41d200` ＝ 33 文件、被弃用的超集 `958c739878..bf41d200` ＝ 47 文件 |
+| 46 | 未修 | **不修**（同上）⇒ 待裁定 `P7` | §5 行 46；`git cat-file -e 18f2274:<path>` 现跑 rc=0（2026-09-29） |
+| 47 | 已修 | **未动**（本批工作区改动已由前序批次落盘，本批只核对） | §5 原文；`verify/README.md` 的 `## 故障排查` |
+| 48 | 未修 | **修**：`docs/1-WORKFLOW.MD` 的 R2 日期口径处**就地降级声明**（父代理裁定选②，**不实现新闸门**）＋ §6 第 6 条指针同步 | 声明写在规则**同一条内**（就地追加、**不新增行** ⇒ 登记册指针零漂移）；该文件行数与 `HEAD` 版逐字相同（2026-09-29 现跑，Δ=0），规则原文一个字未改 |
+| 49 | 已修 | **未动**（本批工作区改动，前序批次已落盘） | §5 原文；10 处改仓内相对路径 |
+| 50 | 已修 | **未动**（同上） | §5 原文；`docs/1-WORKFLOW.MD` §6 编号空缺行 |
+| 51 | 只报 | **不修**（报告自判"按现体例可接受"）⇒ 待裁定 `P8` | §5 行 51；`docs/6-DECISIONS.md` 两条的 `时点` 字段各自写明 `2026-09-27（UTC+8）`（2026-09-29 现读） |
+
+### 5.2 待裁定清单（`P1`–`P8`；建议处置 ＋ 代价）
+
+> **这些是建议，不是处置**：按 `D-250926-06`，行出列只认**用户逐条裁定**（含单次豁免）。**不允许**把"已给出建议"读成"已闭环"。
+
+| 编号 | 行 | 建议处置 | 代价 |
+|---|---|---|---|
+| `P1` | 31、44 | 放行 `paper-qa-script/**` 两处：① 选档窗口改**按 provider 取**（`app/usage.py` 的 `peak_windows()` 与 `scripts/agent-ops.py` 的 `peak_windows_from_prices()` 同步改）；② `PAPERQA_VERIFY_PORT` 覆盖对 import 式启动也生效 | 破一次"不得碰 `paper-qa-script/**`"的写入集约束；须重估 `verify_usage.py` ⑪14 与 `verify_provider_switch.py` 的自检；②另需重估应用侧启动路径 |
+| `P2` | 34、39 | 先裁**口径**再实现：是限**条数**（只减不增）还是限**成本面**（秒／前缀探测次数）。若限条数，必须**分支感知**（windows ≈ 0、main ≈ 1106），否则"新增指向 `docs/iteration/**` 的合法指针"会被判红 | 新增判据 ＋ 基线数据文件；每次改断言数／新增指针要同批更新基线；口径错则整条判据在某一分支恒红 |
+| `P3` | 40 | 二选一：① 让 `scripts/spend-report.py --check` 真比对 `baseline`；② 把 `targets.verified_by` 改成与实现相符的措辞 | ①＝改 `agents/spend-budget.json`（集外）＋ 改脚本判据，且"次日读数"要有真值来源才不落成假绿；②＝承认该声明不具备机检 |
+| `P4` | 41 | 在 `requirements.txt` 与 `requirements-windows.txt` 各补 `zstandard`（并核对版本与 `.venv` 实装一致） | 改两个仓根文件（集外）；`scripts/spend-report.py` 的报错文案"仓库 `.venv` 已装"要同批改，否则仍误导 |
+| `P5` | 42 | `git fetch` 后把本地 `main` 快进到 `origin/main`（现跑落后 3 个提交） | 属分支状态动作（本批授权不允许）；快进前须确认无本地未推提交，且 fetch 会刷新 `origin/*` 引用 |
+| `P6` | 43 | 二选一：① 接受为具名技术债（⑪14 已值域兜底，报告原判）；② 新增"两侧同消费面"判据（键消费面一致／新增档位键时两侧同改） | ①＝零成本但结构面仍无判据；②＝约一页夹具 ＋ 需先定义"消费面"的可机检形态（`agent-ops` 与 `usage.py` 的键处理结构不同：前者是白名单常量，后者是 dict 取用） |
+| `P7` | 45、46 | 二选一：① 让 `impact-assessment-103` 按现跑读数**重跑**并覆盖原报告；② 由用户授权代改该报告（`agents/runs/**` 为忽略域，改动不入版本库） | ①＝再跑一次〇查（成本＋新的覆盖窗口）；②＝"代改他人报告"先例 ＋ 报告不在版本控制里，改动无法被闸门追溯 |
+| `P8` | 51 | 二选一：① 维持现状（ID 内嵌**登记日**，生效时点看 `时点` 字段——两条现已各自写明 `2026-09-27（UTC+8）`）；② 改 ID 为 `D-250927-*` | ①＝零成本，但"体例"只由数据体现、无条文；②＝全仓按条目号引用处（含本档 §5 表头）逐处改写，且与"历史不改号"口径相悖 |
+
+### 5.3 未做项与局限（如实记）
+
+1. **行 33 的端到端复现未构造**：只做了"机制探针（`atexit` 注册 vs 不注册，异常退出后目录残留 0 vs 1）＋ 该夹具命中数 3 → 4"两件证据，没有构造"真 `--selftest` 中途判红"的复现（要命中创建 `empty_ops` 之后、显式回收之前的那段断言，需向真账本注入坏数据，风险大于收益）。**该行的"异常路径不残留"结论因此是机制级、不是端到端级。**
+2. **行 24／25 的反证不是本批跑的**：并发与净增读数由**父代理（派单方）**提供，本批只把它逐字写进 §5 并署名，**未复跑**。
+3. **`P1`–`P8` 全部未动**：它们的代价都是"要动授权集外的文件／要动分支状态／要先定口径"，本批一律**不自行标豁免**、也不代改。
+4. **本批不新增闸门**（父代理裁定②的明确要求）；行 48 的强制力恢复义务落在 §6 第 6 条候选①。
+5. **单文件处置原则**：本小节的正文**并入复盘本体**而不是另开新档——`verify/verify_artifact_paths.py` 判据⑥（`git status --porcelain -uall` 不得有 `??` 行）会在"新增未跟踪文件"时 FAIL，而本批**不得** `git add`／`commit`；并入既有文件是唯一能同时满足"内容可核"与"套件全绿"的形态。
+
+### 5.4 本批门槛读数（2026-09-29 现跑；逐条命令见 run 回执）
+
+| 门槛 | 末行读数（2026-09-29 现跑） |
+|---|---|
+| `verify/verify_md_tables.py` | `MD-TABLE PASS`（187 个文件解析通过；4 个历史文件走棘轮基线，均在各自 defect 上限内） |
+| `verify/verify_derived_numbers.py` | `DERIVED-NUMBERS PASS`：184 个文档扫描通过（32 个历史文件走棘轮上限、均在各自上限内；生成物 1 个豁免） |
+| `verify/verify_decision_register.py` | `DECISION-REGISTER PASS`：122 条条目（§3 19 / §4.1 103）；指针 1248 处（本分支不存在 0 处未核）；§4.1 引文-出处逐条核对 97 条、0 条不符（±2 内漂移 10 条，见 WARN；**均为既有漂移，本批新增 0**）；待回填 0 条 |
+| `verify/verify_close_readiness.py --sprint docs/iteration/sprint/2026-09-25-sprint-18.md` | `CLOSE-READINESS PASS`：2026-09-25-sprint-18.md（run 表 18 行，锚点 9f8d690f，覆盖提交 72，产出型标注 0） |
+| `verify/verify_ledger_measurement.py` | `ALL PASS (41 assertions)`；`EVIDENCE: … assertions=41 rc=0 ledger=present`〔2026-09-29 现跑〕 |
+| `verify/run_suite.py --tier offline` | `SUITE PASSED (26 scripts)`〔2026-09-29 现跑〕；首轮曾红在 `verify/verify_artifact_paths.py` 判据⑥（未跟踪新档 ⇒ `??` 行），改形态（内容并入本档 §5.1）后转绿 |
+| `verify/verify_lint.py` | `ALL PASS (11 assertions)`；C 级棘轮 `E501=2468/2494`（**未上调任何 cap**）〔2026-09-29 现跑〕 |
 
 ## 6. G3 输入（用户已认可方向）
 
@@ -172,7 +246,7 @@
    时间戳缺失按**高峰**计并打 `tier_assumed`；`prices-derive` 的键白名单同步（否则派生即丢档）。
 4. **稳定标识**：登记册的 `path:line` 指针换成条目号/文本锚点（今日漂移两轮，全是白工）。
 5. **登记册回填**：105 条 `待回填` 的处置（全量回填 vs 先做高频被引用者）——**待用户裁定**。
-6. **日期口径 R2 规则的机检缺口（2026-09-29 登记；来源＝一查 `run-2026-09-29-doc-audit-104` major 4，落点＝复盘 §5 行 48）**：`docs/1-WORKFLOW.MD:403` 要求"文档内日期与该文件最近一次 `git log -1 --format=%cI` 的 committer 日期相差 >1 天 ⇒ 记 `R2` 并当日更正"，而 2026-09-29 现跑 `verify/` 与 `scripts/` **没有任何实现判这条**（唯一同名命中 `verify_ledger_measurement.py` 的"时间/日期口径"判的是**账本 run 的日期**）⇒ 该规则 `unverifiable`。后果是可观测的：2026-09-29 逐文件比对，本批变更的 13 个 `.MD` 里 **7 个**的头部日期与 `%cI` 相差 >1 天（其中 `verify/TEST-MATRIX.MD` 差 8 天、`docs/6-DECISIONS.md` 差 3 天），**无闸门会报出来**。两条候选（**方向待用户裁定**；本批按 doc-audit 的建议只登记、不实施）：① 落地机检（按变更集逐 `.MD` 取头部日期与 `%cI` 比对，>1 天 FAIL 并点名）——代价＝新增一条闸门并重估套件超时预算；② 在 `:403` 就地标注"本规则 prose-only、无机检"并把执行点降级声明（口径同 `:421`／`:461` 已有的"执行点声明"写法）——代价＝该规则永久失去强制力。**不维持现状**：`agents/functions/doc-audit.md` 第 10 步明定"无执行点的规则 ＝ 机制缺口，须作为一类缺陷报出"。
+6. **日期口径 R2 规则的机检缺口（2026-09-29 登记；来源＝一查 `run-2026-09-29-doc-audit-104` major 4，落点＝复盘 §5 行 48）**：`docs/1-WORKFLOW.MD:403` 要求"文档内日期与该文件最近一次 `git log -1 --format=%cI` 的 committer 日期相差 >1 天 ⇒ 记 `R2` 并当日更正"，而 2026-09-29 现跑 `verify/` 与 `scripts/` **没有任何实现判这条**（唯一同名命中 `verify_ledger_measurement.py` 的"时间/日期口径"判的是**账本 run 的日期**）⇒ 该规则 `unverifiable`。后果是可观测的：2026-09-29 逐文件比对，本批变更的 13 个 `.MD` 里 **7 个**的头部日期与 `%cI` 相差 >1 天（其中 `verify/TEST-MATRIX.MD` 差 8 天、`docs/6-DECISIONS.md` 差 3 天），**无闸门会报出来**。两条候选：① 落地机检（按变更集逐 `.MD` 取头部日期与 `%cI` 比对，>1 天 FAIL 并点名）——代价＝新增一条闸门并重估套件超时预算；② 在 `:403` 就地标注"本规则 prose-only、无机检"并把执行点降级声明（口径同 `:421`／`:461` 已有的"执行点声明"写法）——代价＝该规则永久失去强制力。**处置（2026-09-29 更新）**：✓ 父代理裁定**选②**并已落地——`1-WORKFLOW.MD` 的 `:403` **同一条内**已明写"本条口径当前无任何机检实现、属**未验证口径**、已登记为 G3 未闭环项（本档 §6）"＋代价（强制力只剩人的执行义务）；写法＝就地追加（**不新增行**，避免顶偏登记册 `path:line` 指针）；**本批不实现新闸门**；规则原文一个字未改。**G3 的残留义务 ＝ 候选①**（恢复强制力的唯一路径），其判据与代价仍按上段原文，**不得**把"已声明"读成"已解决"。**不维持现状**：`agents/functions/doc-audit.md` 第 10 步明定"无执行点的规则 ＝ 机制缺口，须作为一类缺陷报出"——本条即按该步报出并显式降级，而不是让它继续以"看起来有规则"的形态存在。
 
 ## 7. 账本时间戳退化：修复方案的**覆盖边界与备案**（用户 2026-09-26 追问后补）
 

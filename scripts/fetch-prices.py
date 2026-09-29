@@ -6,6 +6,9 @@
 - 价格写入 `prices.json` 的 **scraped** 段（新增）；查找优先级 manual（人工覆盖，非 null 优先）
   > scraped > auto（litellm 派生）——manual 永远不被抓取覆盖。
 - `--check`：只抓取+解析+打印校验结果，不写盘；`--apply`：仅把**通过校验**的 provider 写入。
+- **两个档都把判据进退出码**（行 32，2026-09-30）：`--check` 抓空 ⇒ rc=1；`--apply` 抓空
+  ⇒ 写盘照旧（fail-safe：不覆盖抓空来源的旧价）但 **rc=1** —— CI/调度器只认退出码，
+  "价表是否有效"不该只能靠人读日志。
 - 定时机制：本卡先落地手动/脚本入口；两周一次自动调度与 F-AC8（provider_config 定时更新）
   共用调度底座（见 docs/iteration/pre-research/2026-08-31-domain-governance.MD §6）。
 
@@ -444,12 +447,17 @@ def _stale_days(existing: dict) -> float | None:
     return (datetime.now(timezone.utc) - stamp).total_seconds() / 86400.0
 
 
-def judge_scrape(results: dict[str, int], existing: dict, *, strict: bool) -> int:
+def judge_scrape(results: dict[str, int], existing: dict, *, strict: bool,
+                 label: str = "严格") -> int:
     """抓取结果与价表截面判据；返回退出码（0 = 出声但可继续，非 0 = FAIL）。
 
     `results` = `{provider: 解析出的模型数}`（**每个来源都必须有键**，包括 0）。
-    `strict`（`--check`）= 把"应有模型却没抓到"升格为 FAIL：`--check` 是**只看结果**的
-    模式，它红掉才是"抓取真的坏了"的可见出口（`--apply` 保持 fail-safe 不写坏数据）。
+    `strict`（`--check` **或** `--apply`）= 把"应有模型却没抓到"升格为 FAIL：
+    `--check` 是**只看结果**的模式；`--apply` 是**写盘**模式（写盘仍是 fail-safe，
+    不覆盖抓空来源的旧价），两者都必须让判据**进退出码**——CI/调度器只认退出码。
+    行 32（复核 `run-…-104` minor 7）：修前 `strict` 只绑 `args.check`，`--apply`
+    抓空只 `print WARN` 然后 `return 0` ⇒ 价表静默停在旧截面而任务报成功。
+    `label` 只影响上屏文案（点名当前档），不参与判定。
     """
     if not results:
         print("FAIL: 一个来源都没有抓到 —— 抓取链路整体失效")
@@ -465,14 +473,17 @@ def judge_scrape(results: dict[str, int], existing: dict, *, strict: bool) -> in
         print(f"WARN: 价表截面已过旧：meta.scraped_at 距现在 {days:.1f} 天 "
               f"(> {_STALE_DAYS}) —— 抓取长期无效时成本估算会一直用旧单价")
     if args_strict_fail(strict, empty):
-        print(f"FAIL: --check 模式下解析为空的来源 {empty} 视为失效"
-              "（--apply 仍是 fail-safe：不覆盖旧价）")
+        print(f"FAIL: {label} 档下解析为空的来源 {empty} 视为失效"
+              "（写盘只含成功来源，旧价不被覆盖）")
         return 1
     return 0
 
 
 def args_strict_fail(strict: bool, empty: list[str]) -> bool:
-    """`--check` + 抓空 ⇒ FAIL（纯函数，便于反向对照直接驱动）。"""
+    """机读档（`--check` **或** `--apply`）＋ 抓空 ⇒ FAIL（纯函数，便于反向对照直接驱动）。
+
+    行 32：修前只有 `--check` 会走这里（`--apply` 抓空恒 rc=0）⇒ 判据在写盘档**无声**。
+    """
     return bool(strict and empty)
 
 
@@ -511,7 +522,8 @@ def main() -> int:
             counts[prov] = 0
             print(f"[{prov}] FAIL: {type(exc).__name__}: {exc}")
 
-    rc = judge_scrape(counts, _load(), strict=args.check)
+    rc = judge_scrape(counts, _load(), strict=args.check or args.apply,
+                      label="--apply" if args.apply else "--check")
     if rc != 0 and not args.apply:
         return rc
 
@@ -522,9 +534,15 @@ def main() -> int:
             PRICES_PATH.parent.mkdir(parents=True, exist_ok=True)
             PRICES_PATH.write_bytes(json.dumps(merged, ensure_ascii=False, indent=2).encode("utf-8"))
         print(f"[written] {PRICES_PATH}（scraped providers: {sorted(scraped)}）")
-        return 0
+        if rc != 0:
+            # 行 32（复核 `run-…-104` minor 7）：写盘档也要把判据**编码成退出码**。
+            # 修前这里恒 `return 0`（`strict` 只绑 `args.check`）⇒ 价表静默停在旧截面
+            # 而调度任务报成功；"价表是否有效"只能靠人读日志。写盘本身不变（fail-safe）。
+            print(f"FAIL: --apply 档判据未通过（rc={rc}）—— 写入的只有成功来源 "
+                  f"{sorted(scraped)}；抓空来源的旧价**未被覆盖**（明细见上面的 WARN/FAIL）")
+        return rc
     print("--check 模式：未写盘。确认数字无误后运行 --apply")
-    return 0
+    return rc
 
 
 if __name__ == "__main__":
