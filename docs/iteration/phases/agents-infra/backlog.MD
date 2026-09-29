@@ -17,6 +17,11 @@
 | A-LEDGER | `scripts/agent-ops.py` 账本 CLI（8 子命令）+ `registry.json` + `run | ✅ 完成 | Sprint-8 | [cards/A-LEDGER.md](cards/A-LEDGER.md) |
 | A-IDE | 跨 IDE 迁移说明（`agents/README.md`）+ 1-WORKFLOW §4.2 三查引用更新 | ✅ 完成 | Sprint-8 | [cards/A-IDE.md](cards/A-IDE.md) |
 | A-DASH | 本地看板应用（Next.js 16 + **antd 6.6.2** + better-sqlite3/FTS5 + c | ✅ 完成 | Sprint-9（2026-08-30 关闭；PR #31 合并 cbf93ea） | [cards/A-DASH.md](cards/A-DASH.md) |
+| A-PTR | 规范文档指针锚点：path:line 改为稳定锚点（标题／符号） | 候选 | — | [cards/A-PTR.md](cards/A-PTR.md) |
+| A-REG | 派单登记可验证性：规则 14 现为荣誉制（账本分不清谁按的键） | 候选 | — | [cards/A-REG.md](cards/A-REG.md) |
+| A-COST | 成本归属：finish --usage-* 未用 ⇒ 损失只能从会话日志反推 | 候选 | — | [cards/A-COST.md](cards/A-COST.md) |
+| A-CASE | 反例档语料维护：只增不减、无合并／去重／检索 | 候选 | — | [cards/A-CASE.md](cards/A-CASE.md) |
+| A-DECL | 规则可机检性：规则可以是无实现的声明 | 候选 | — | [cards/A-DECL.md](cards/A-DECL.md) |
 
 ## 2. 维护卡 / PM 固化备选（用户意见③：可 agent 固化的项目管理过程）
 
