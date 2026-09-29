@@ -16,7 +16,9 @@
   "main_sessions": [
     "session-d6abecbf-80cb-4dcf-8461-d92f13c48a68"
   ],
-  "_main_sessions_note": "只统计这些会话的 output（＝本回合主代理自己的产出）。不写进脚本：会话 id 属数据，换会话只改本文件。基线 2026-09-28：本会话 output 约 99.5K token（当日现跑读数）⇒ 预算取其半。",
+  "_main_sessions_note": "只统计这些会话的 output（＝本回合主代理自己的产出）。不写进脚本：会话 id 属数据，换会话只改本文件。",
+  "_main_sessions_machine_note": "**这条 id 是本机数据**：`~/.dsh/sessions/session-<uuid>/` 只存在于生成它的那台机器上（该目录不是仓库内容、不在版本控制里）。换机器/换会话时一个都匹配不上 ⇒ `scripts/spend-report.py --check` 判 **SKIP 且 rc=3**（不是 OK）——判据没被触发就不算通过（口径同 `TG-19` M-B：SKIP 与 PASS 互斥），修复路径只有一条：把本文件的 `main_sessions` 改成当前机器的会话目录名。",
+  "_main_sessions_baseline_note": "基线 2026-09-28：本会话 output 约 99.5K token（当日现跑读数）⇒ 预算取其半。",
   "targets": {
     "cut_ratio_vs_baseline": 0.5,
     "verified_by": "scripts/spend-report.py --check 的次日读数与 baseline 对比；读数写入当轮汇报或复盘（带时点锚）"

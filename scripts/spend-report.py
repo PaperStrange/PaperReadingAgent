@@ -35,6 +35,9 @@ except ImportError:  # pragma: no cover
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SESS = pathlib.Path.home() / ".dsh" / "sessions"
 CST = dt.timezone(dt.timedelta(hours=8))
+# 「判据未执行」的专属退出码（`TG-19` M-B 口径：SKIP 与 PASS 互斥）——
+# 与"超预算(1)"和"用法错误(2)"都不同：调用方不得把 SKIP 当成 OK。
+SKIP_EXIT = 3
 
 
 def load_prices() -> tuple[dict, float]:
@@ -128,7 +131,9 @@ def scan(days: int, model: str):
 def check(per_day: dict, per_sess: dict, fx: float, model: str) -> int:
     """按 agents/spend-budget.json 自检当日预算。
 
-    超预算非零退出（供收口/汇报节点自跑）。
+    rc：`0` = 全部判据**真的执行过**且在预算内；`1` = 有项超预算；
+    `3` = 有判据**没被执行**（配置的主线会话 id 在本机一条都没匹配到 ⇒ SKIP，
+    不得当 OK）；`0`＋`SKIP:` 行 = 预算未配置／今日无用量（既有口径，非"检查过"）。
     """
     path = ROOT / "agents" / "spend-budget.json"
     if not path.exists():
@@ -147,23 +152,45 @@ def check(per_day: dict, per_sess: dict, fx: float, model: str) -> int:
     dispatched = len([1 for name, _ in rows
                       if not name.startswith("session-")])
     mine = doc.get("main_sessions") or []
+    # 配置的主线会话 id 是**机器相关**的（`~/.dsh/sessions/session-<uuid>/` 由本机会话
+    # 生成）⇒ 换机后一个都匹配不上时 `main_out` 恒 0，而旧实现照判 `OK` ＝**假绿**
+    # （复核 `run-…-105` major 7）。口径：**判据没被触发就不算通过**——
+    # 一个都没匹配到 ⇒ 该条 SKIP（上屏点名），且退出码非 0（SKIP 不得被调用方当 OK）。
+    matched = {name for name, _a in rows if name in mine}
+    main_ok = bool(matched) or not mine
     main_out = sum(a[1] for name, a in rows if name in mine)
     cny = day[4] * fx
     checks = [
-        ("派单会话数/日", dispatched, budget.get("dispatched_sessions_per_day")),
-        ("主代理 output token/日", main_out, budget.get("main_output_tokens_per_day")),
-        ("当日合计 CNY", round(cny, 2), budget.get("all_sessions_cny_per_day")),
+        ("派单会话数/日", dispatched, budget.get("dispatched_sessions_per_day"), True),
+        ("主代理 output token/日", main_out, budget.get("main_output_tokens_per_day"),
+         main_ok),
+        ("当日合计 CNY", round(cny, 2), budget.get("all_sessions_cny_per_day"), True),
     ]
-    over = []
+    over: list[str] = []
+    skipped: list[str] = []
     print(f"预算自检 {today}（模型 {model}）｜基线 {base.get('measured_at')}")
-    for label, got, cap in checks:
-        flag = "OK " if (cap is None or got <= cap) else "OVER"
-        if flag == "OVER":
-            over.append(label)
+    for label, got, cap, measurable in checks:
+        if not measurable:
+            # **未执行优先于超预算**：这一格显示的 `OK` 是没有测量对象的 OK，
+            # 若把它和别的超预算并列，真正的病（这条判据在换机后形同不存在）
+            # 会被"另一项超预算"盖住 —— 那正是假绿换了个外衣（复核 major 7）。
+            skipped.append(label)
+            flag = "SKIP"
+        else:
+            flag = "OK " if (cap is None or got <= cap) else "OVER"
+            if flag == "OVER":
+                over.append(label)
         b = base.get({"派单会话数/日": "dispatched_sessions_per_day",
                       "主代理 output token/日": "main_output_tokens_per_day",
                       "当日合计 CNY": "all_sessions_cny_per_day"}[label])
         print(f"  [{flag}] {label:<22} 实测 {got:<10} 预算 {cap} 基线 {b}")
+    if skipped:
+        print(f"SPEND-BUDGET SKIP（{len(skipped)} 项判据**未执行**：{skipped}）"
+              f"——**不是通过**：配置的主线会话 id 在本机一条都没匹配到"
+              f"（判据没有测量对象；换机器请改 "
+              f"`agents/spend-budget.json::main_sessions`）"
+              f"｜同时超预算的项：{over or '（无）'}")
+        return SKIP_EXIT
     if over:
         print(f"SPEND-BUDGET FAIL（{len(over)} 项超预算）：{over}")
         return 1

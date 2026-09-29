@@ -66,7 +66,13 @@ VERIFY_META = {
                 '受控状态词 / 被取代指向存在的条目 / path:line 指针可核 / '
                 '§4.1 引文↔出处逐条核对 / 待回填可见；'
                 '反向对照条数见末行 `ALL PASS (N assertions)`',
-    'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 5,
+    # 复核 `run-…-105` major 8：本档耗时**随分支差 110 倍**——windows 上约 5s
+    # （指针绝大多数指向本分支存在的文件），main 上约 173s（1106 个指针指向
+    # windows-only 的 `docs/iteration/**`，修复前每个都 git 问一次）。
+    # 故这里的 `est_seconds` 取**分支无关的上界**（两侧实测的最大者 + 余量），
+    # 真正的按分支取值在 `verify/run_suite.py::BRANCH_EST_OVERRIDES`
+    # （该表用 `path_in_tree("docs/iteration")` 作分支判据，两侧都是实测值）。
+    'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 200,
     'routes': [], 'requires': ['none'],
 }
 
@@ -373,7 +379,20 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
         pointers.append((m.group(1), int(m.group(2)), m.group(0)))
     bad_ptr = 0
     absent_ptr = 0
+    # 分支差异的**短路缓存**（复核 `run-…-105` critical 1）：登记册 1248 个指针里
+    # **1106** 个指向 `docs/iteration/**` 这类 windows-only 子树，而旧实现对每个指针
+    # 跑两次 `git ls-tree`（每个都是新进程）⇒ main 上约 2500 次调用、实测 **173s**，
+    # 越过套件上限（`run_suite.py:239` 的 `est_seconds*4+60` = 80s）⇒ `TIMEOUT`。
+    # 只缓存 `path_in_head() is False` **且路径是目录**的结论：一旦某个目录子树不在
+    # `HEAD` 里，它下面的每一条路径都必然不在（`ls-tree -r <dir>` 非空 ⇔ 子树存在），
+    # 故同一前缀只算一次。**真值方向不缓存**——存在 ⇒ 落到下面的逐指针检查，
+    # 判据强度一字未改（"被删 / 打错改名 / 分支差异"三分法保持原样）。
+    absent_dirs: set[str] = set()
     for relp, line, raw in pointers:
+        parent = str(Path(relp).parent).replace("\\", "/")
+        if parent != "." and parent in absent_dirs:
+            absent_ptr += 1            # 整个前缀都不在本分支 ⇒ 免查（同上：未核可见）
+            continue
         target = root / relp
         if not target.is_file():
             if path_in_head(root, relp):
@@ -381,7 +400,7 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
                                 f"工作区却不存在 ⇒ "
                                 f"被删（不是分支差异）")
                 bad_ptr += 1
-            elif path_in_head(root, str(Path(relp).parent).replace("\\", "/")):
+            elif parent != "." and path_in_head(root, parent):
                 problems.append(f"[指针] {raw} 指向的文件不存在，"
                                 f"而它的目录在 `HEAD` 里存在 ⇒ "
                                 f"**打错或改名**（同级目录里没有这个名字）→ "
@@ -390,6 +409,8 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
                 bad_ptr += 1
             else:
                 absent_ptr += 1        # 本分支没有这条路径 ⇒ 未核（计数可见，不当通过）
+                if parent != ".":
+                    absent_dirs.add(parent)
             continue
         total = len(target.read_text(encoding="utf-8", errors="replace").splitlines())
         if line < 1 or line > total:

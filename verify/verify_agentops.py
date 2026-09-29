@@ -69,7 +69,8 @@ ISO_SPAN_END = "2026-09-28T05:00:00+00:00"
 
 sys.path.insert(0, str(ROOT))
 
-from verify.agent_policy import ENV_POLICY, Attribution, load_policy  # noqa: E402
+from verify.agent_policy import (ENV_POLICY, Attribution, load_policy,  # noqa: E402
+                                 path_in_head)
 
 # TG-15：角色集合**不再在本文件复制一份**（原先这里写死 {"code-review","doc-audit"}，与
 # agent-ops.py 的 `_REVIEW_ROLES`、verify_close_readiness.py 的 `CLOSE_ROLES` 三处并存 →
@@ -102,11 +103,47 @@ def _vec_value(cell: str) -> object:
     return "" if cell == "(empty)" else cell
 
 
+class SpecAbsentOnBranch(Exception):
+    """向量表 spec **不在本分支**（不是缺陷，是分支差异）。
+
+    复核 `run-…-105` critical 2：spec 落在 `docs/iteration/**`（windows-only
+    治理子树），
+    main 上根本没有 ⇒ 旧实现的无保护 `read_text()` 直接 `FileNotFoundError`、
+    **rc=1**（CI 上必红），而正确语义是"这条判据在本分支无从执行 = 显式 SKIP"。
+    """
+
+
+def spec_branch_absent() -> bool:
+    """spec 是"本分支没有"还是"被删"——证据都是 git（口径同
+    `verify_decision_register.py` 的三分法）。
+
+    返回 True **仅当** spec 既不在工作区、也不在本分支 `HEAD` 的提交树里
+    （真·分支差异）。在 HEAD 里存在而工作区没有 ⇒ 是**被删** ⇒ 返回 False，
+    调用方照旧 FAIL（分支差异不是"删了也能放行"的后门）。
+    """
+    rel = SPRINT_VECTOR_SPEC.relative_to(ROOT).as_posix()
+    return not path_in_head(ROOT, rel)
+
+
+def skip_spec_absent(criterion: str) -> None:
+    """spec 不在本分支 ⇒ 显式 SKIP：上屏点名、**不计入 `PASSED`**、判决行可见。"""
+    reason = f"{criterion}（spec=absent-on-branch (SKIP)）"
+    if reason not in SKIPPED:
+        SKIPPED.append(reason)
+    print(f"SKIP[spec-absent-on-branch] {criterion}："
+          f"{SPRINT_VECTOR_SPEC.relative_to(ROOT).as_posix()} 不在本分支"
+          f"（windows-only 治理子树）⇒ 该判据只在本机/windows 分支执行"
+          f"——**本行不是 PASS**")
+
+
 def _spec_vector(section: str) -> list[tuple[str, object, object]]:
     """从 spec 解析 `(id, 输入, 期望值)`；列位由**表头行**定位。
 
     读不到 → 抛（调用方判 FAIL）：判据未被触发时**不得**当通过。
+    spec 不在本分支 ⇒ 抛 `SpecAbsentOnBranch`（调用方转显式 SKIP，**不是 PASS**）。
     """
+    if spec_branch_absent():
+        raise SpecAbsentOnBranch(section)
     lines = SPRINT_VECTOR_SPEC.read_text(encoding="utf-8").splitlines()
     hits = [i for i, line in enumerate(lines) if section in line]
     if not hits:
@@ -190,10 +227,18 @@ def skip_ledger_absent(criterion: str) -> None:
 
 
 def verdict_line(assertions: int, skipped: list[str]) -> str:
-    """最终判决行（**单一真源**：SKIP 优先于 PASS，二者互斥）。"""
+    """最终判决行（**单一真源**：SKIP 优先于 PASS，二者互斥）。
+
+    横幅从 skip 原因里**派生**（不是写死 `ledger-absent`）：两种 SKIP 都要可见——
+    `ledger-absent`（`agents/runtime/*` 被 gitignore，fresh clone 无账本）与
+    `spec-absent-on-branch`（向量表 spec 在 windows-only 子树、main 上没有）。
+    两处都用同一句"**本档不是通过**"。
+    """
     if skipped:
-        return (f"AGENTOPS SKIP[ledger-absent]（{len(skipped)} 条真账本判据未执行"
-                f"：{'；'.join(skipped)}）——非账本判据 {assertions} 条已验，"
+        spec_absent = any("spec=absent-on-branch" in s for s in skipped)
+        cats = "spec-absent-on-branch" if spec_absent else "ledger-absent"
+        return (f"AGENTOPS SKIP[{cats}]（{len(skipped)} 条判据未执行"
+                f"：{'；'.join(skipped)}）——其余 {assertions} 条已验，"
                 f"**本档不是通过**")
     return f"ALL PASS ({assertions} assertions)"
 
@@ -1518,7 +1563,16 @@ def main() -> int:
         # （`set-sprint`），断言"接受/拒绝 + 落库值"逐条与规范期望一致。
         # 为什么必须在这里：判定域由读取侧按同一口径派生，写入侧若与它分叉，
         # 就是台账 E1 反证列的形态（写进去的读不出来）——闸门侧自比查不出这一条。
-        vector = _spec_vector("### 4.1 表 A")
+        # 分支感知（复核 `run-…-105` critical 2）：spec 在 windows-only 子树 ⇒
+        # main 上**显式 SKIP 并上屏**，不得 `FileNotFoundError`（那会把分支差异
+        # 冒充成代码缺陷、让 CI 恒红）。spec 在位时照旧真判（下面的断言一条不少）。
+        e1_absent = False
+        try:
+            vector = _spec_vector("### 4.1 表 A")
+        except SpecAbsentOnBranch:
+            vector = []
+            e1_absent = True
+            skip_spec_absent("E1 一致性向量（写入侧真入口 set-sprint 逐条比对）")
         reason_e1 = "E1 向量：真 CLI 接受后落库值必须逐字节等于规范期望值"
         run(["register", "--role", "impact-assessment", "--task", "e1-sprint-vector",
              "--spec", "impact-assessment@1.4.4", "--run-id", "run-e1-vector"],
@@ -1558,11 +1612,12 @@ def main() -> int:
                 elif got != want:
                     sprint_bad.append(f"{rid}: 落库 {got!r} != 期望 {want!r}")
             sprint_before = got
-        ok(reason_e1, not sprint_bad,
-           f"{len(vector)} 行 bad={sprint_bad[:2] or '[]'}")
-        # 前置条件：两个分支都**真的**被走到（造不出反例就是判据没被触发）。
-        ok("E1 向量：接受与拒绝两个分支都真被走到（否则本次结论不作数）",
-           accepts > 0 and rejects > 0, f"接受 {accepts} 例 / 拒绝 {rejects} 例")
+        if not e1_absent:
+            ok(reason_e1, not sprint_bad,
+               f"{len(vector)} 行 bad={sprint_bad[:2] or '[]'}")
+            # 前置条件：两个分支都**真的**被走到（造不出反例就是判据没被触发）。
+            ok("E1 向量：接受与拒绝两个分支都真被走到（否则本次结论不作数）",
+               accepts > 0 and rejects > 0, f"接受 {accepts} 例 / 拒绝 {rejects} 例")
 
         # UC-23（P1 独立复核整改）：`result_files` 的**受控回填**。
         # 病根（2026-09-25 实测事故）：`finish --result-file` 是收尾**当时**唯一写入口，

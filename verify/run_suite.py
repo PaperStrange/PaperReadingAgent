@@ -43,6 +43,53 @@ if hasattr(sys.stdout, "reconfigure"):
 from verify.verify_matrix import collect  # noqa: E402
 
 SELF_NAMES = {"run_suite.py"}
+
+# 复核 `run-…-105` major 8：`VERIFY_META.est_seconds` 是**分支无关常量**，而实测耗时
+# 随分支差 **110 倍**——`verify_decision_register.py` 在 windows 上约 5s（1248 个指针
+# 里绝大多数指向本分支**存在**的文件，只有真正缺失的才走 git），在 main 上约 173s
+# （1106 个指针指向 windows-only 的 `docs/iteration/**`，每个都要 git 问一次）。
+# 本表把**按分支实测**的超时基准声明化：键 = "该路径在本分支的提交树里存在吗"，
+# 值 = 该分支下的 `est_seconds`。`est_seconds` 本体保留一个**分支无关的上界**
+# （`max`，见下），故任何一边都不会被低估。
+#
+# 取值口径（两者都是**实测**，不是猜的）：
+#   * present（windows 分支）：本批修复后实测 1.4–2.9s ⇒ 取 5s（含余量）；
+#   * absent（main 镜像）：修复前实测 173.1s、修复后实测 2.9s ⇒ 仍取 200s，
+#     因为"该子树在本分支不存在"只是**当前**镜像事实：将来 main 若同步进更多
+#     指向**别处** windows-only 子树的指针，耗时还可能上去，而超时上限宁松勿紧
+#     （紧了就是把正常脚本判成 `TIMEOUT`＝假红）。
+PROBE_KEY = "docs/iteration"
+BRANCH_EST_OVERRIDES: dict[tuple[str, bool], float] = {
+    ("verify_decision_register.py", True): 5.0,
+    ("verify_decision_register.py", False): 200.0,
+}
+
+
+def path_in_tree(rel: str) -> bool:
+    """`rel` 是否在**本分支 `HEAD`** 的提交树里（分支感知的唯一事实来源 = git）。
+
+    判据用**直接证据**（`git ls-tree`），不用"父目录在不在"这类间接推断——
+    口径同 `verify/agent_policy.py::path_in_head`（`TG-17` G2 条目 3/7 立的口径）。
+    """
+    r = subprocess.run(["git", "-C", str(ROOT), "ls-tree", "--name-only", "HEAD",
+                        "--", rel], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    if r.returncode != 0:
+        # git 不可用（shallow/无仓库）⇒ 当作"存在"（现值），fail-closed 到**更紧**的
+        # 那一档：估小了会被超时杀掉（响亮失败），估大了只是慢一点。
+        return True
+    return bool((r.stdout or "").strip())
+
+
+def effective_est_seconds(name: str, meta: dict) -> float:
+    """按**当前分支**给 `est_seconds` 定值（有实测覆盖表时用覆盖值）。
+
+    返回超时判定用的秒数；无覆盖项 ⇒ 原值（既有行为一字不变）。
+    """
+    override = BRANCH_EST_OVERRIDES.get((name, path_in_tree(PROBE_KEY)))
+    if override is None:
+        return float(meta.get("est_seconds") or 60)
+    return override
 # F4（2026-09-25）：结果 JSON 的**标准路径**。原实现 `--json` 默认为空字符串，而 `_write_json("")`
 # 直接 return ⇒ 默认跑一次 `run_suite.py --tier offline` **不刷新** `verify/suite_result.json`，
 # 那份旧文件（上次 network 档留下的）看起来仍像"最新结果"——读的人要翻 `finished_at` 才发现不是本轮。
@@ -196,7 +243,8 @@ def main() -> int:
     if args.tier == "gui":
         print("NOTE: gui 档需要后端 8787 + 前端 5173 已启动（并用 Playwright）；请先确认端口空闲/服务在线，否则本档必然失败。")
     for p, m in picked:
-        print(f"  - {p.name} (est {m.get('est_seconds')}s / {m.get('est_cost_cny')} CNY)")
+        print(f"  - {p.name} (est {effective_est_seconds(p.name, m)}s"
+              f" / {m.get('est_cost_cny')} CNY)")
 
     # 非有限值守卫（2026-09-21 关闭三查·二查 windows major，教训 1.61）：
     # `est_cost_cny: NaN` 会让 `nan > budget` 恒为 False → **付费 network 档被静默放行**（实测复现）。
@@ -236,7 +284,9 @@ def main() -> int:
     os.environ["PAPERQA_SUITE_METRICS"] = str(metrics_path)
     try:
         for p, m in picked:
-            timeout_s = int((m.get("est_seconds") or 60) * 4 + 60)
+            # 超时基准按**分支实测**取（见 `BRANCH_EST_OVERRIDES`）：分支无关常量会让
+            # 一边低估 110 倍（`TIMEOUT` 假红）或另一边白等十几分钟。
+            timeout_s = int(effective_est_seconds(p.name, m) * 4 + 60)
             print(f"--- {p.name} ---", flush=True)
             code, secs = run_one(p, m, timeout_s)
             summary["scripts"].append({"name": p.name, "exit": code, "seconds": secs})

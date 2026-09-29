@@ -95,6 +95,7 @@ from verify.agent_policy import (  # noqa: E402
     load_coverage_exceptions,
     load_policy,
     parse_frontmatter,
+    path_in_head,
 )
 from verify.agent_policy import Policy as AgentPolicy  # noqa: E402  （类型注解用；避免与下方局部名冲突）
 
@@ -126,6 +127,18 @@ DOMAIN_UNAVAILABLE_EXIT = 4
 # M-B（`TG-19` 反空转不变式）：本轮**是否走了 SKIP 档**。SKIP 不是成功 ⇒
 # 不打印机读证据行（`EVIDENCE:` 只属于"判据真的跑过且通过"），见 `main()`。
 _RUN_STATE: dict[str, bool] = {"skipped": False}
+# 自检侧的分支差异 SKIP（`spec=absent-on-branch`）：向量表 spec 落在 windows-only
+# 子树 ⇒ main 上这几条判据**无从执行**。口径与 `verify_agentops.py::SKIPPED` 一致：
+# 上屏点名、判决行**不得**打印 `ALL PASS`（SKIP 与 PASS 互斥，防"跳过冒充通过"）。
+SELF_SKIPPED: list[str] = []
+
+
+def skip_spec_absent(criterion: str) -> None:
+    """spec 不在本分支 ⇒ 自检里显式 SKIP：上屏点名、不计入 `PASSED`。"""
+    SELF_SKIPPED.append(f"{criterion}（spec=absent-on-branch (SKIP)）")
+    print(f"SKIP[spec-absent-on-branch] {criterion}：{SPRINT_VECTOR_SPEC} 不在本分支"
+          f"（windows-only 治理子树）⇒ 该判据只在本机/windows 分支执行"
+          f"——**本行不是 PASS**")
 
 
 def ok(name: str, cond: bool, detail: str = "") -> None:
@@ -283,6 +296,27 @@ def _spec_lines() -> list[str]:
     return path.read_text(encoding="utf-8").splitlines()
 
 
+class SpecAbsentOnBranch(Exception):
+    """向量表 spec **不在本分支**（分支差异，不是缺陷）——复核 `run-…-105` critical 2。
+
+    同族第二处：`verify_agentops.py:94` 的 `SPRINT_VECTOR_SPEC` 是同一个 windows-only
+    路径。那里的故障形态是无保护 `read_text()` ⇒ `FileNotFoundError` rc=1；
+    这里的形态是 `_spec_lines()` 返回空表 ⇒ 误判成"向量表缺失/不可解析"。
+    两处都必须是**分支感知**：spec 不在本分支 ⇒ 显式 SKIP（上屏、不冒充 PASS）；
+    spec 在位 ⇒ 照旧真判（一个字不放宽）。
+    """
+
+
+def _spec_absent_on_branch() -> bool:
+    """spec 是"本分支没有"还是"被删"——证据都是 git（口径同判据三分法）。
+
+    True **仅当** spec 既不在工作区、也不在 `HEAD` 的提交树里（真·分支差异）。
+    在 HEAD 里存在而工作区没有 ⇒ 是**被删** ⇒ False，调用方照旧 fail-closed。
+    """
+    rel = Path(SPRINT_VECTOR_SPEC).as_posix()
+    return not (ROOT / rel).is_file() and not path_in_head(ROOT, rel)
+
+
 def _col_index(head: list[str], name: str) -> int:
     """表头里定位列名。
 
@@ -331,8 +365,12 @@ def _vector_table(section: str, column: str = "输入"
     ——**不要**靠 section 文本猜列名（`"### 4.3 表 C"` 里没有"语义"二字，
     猜错会静默取不到列，而不是响亮失败）。
     缺表、缺列、无数据行 ⇒ None（调用方判 FAIL，不放行）。
+    **spec 整个不在本分支** ⇒ 抛 `SpecAbsentOnBranch`（调用方转显式 SKIP）：
+    那不是"表坏了"，是这条判据在本分支无从执行。
     两侧脚本各自解析**同一张表**，故"同输入"由构造保证，不靠人抄两遍。
     """
+    if _spec_absent_on_branch():
+        raise SpecAbsentOnBranch(SPRINT_VECTOR_SPEC)
     raw_cells = _table_slice(_spec_lines(), section)
     if not raw_cells:
         return None
@@ -370,7 +408,14 @@ def _sprint_vector_problems() -> list[str]:
 
     含**敏感度反证**（台账"向量必须有牙"）：把归一模式按 `_drift_pattern()` 收紧后
     重跑，至少**一个**输入的结论必须改变。一个都没变 ⇒ 判 FAIL：本次一致不作数。
+
+    **spec 不在本分支 ⇒ 本例无从判定**（复核 `run-…-105` critical 2）：
+    旧实现此处返回"向量表缺失或不可解析"⇒ main 上 **C1/E1 直接 FAIL**，
+    把分支差异冒充成代码缺陷。分支差异与"表坏了"必须分开：
+    spec 在位而表缺失/列不齐 ⇒ 照旧返回问题（上面那条 fail-closed 不动）。
     """
+    if _spec_absent_on_branch():
+        return []
     rows = _vector_table("### 4.1 表 A") or []
     rows += _vector_table("### 4.2 表 B") or []
     if not rows:
@@ -394,7 +439,10 @@ def _sprint_semantic_problems() -> list[str]:
     """表 C：读取侧**语义层**（`sprint` 字段缺失时回退 `task_id`）必须与期望同结论。
 
     只测归一函数不测这条回退，等于没测"判定域是从哪来的"。
+    **spec 不在本分支 ⇒ 本例无从判定**（同 `_sprint_vector_problems` 的分支感知）。
     """
+    if _spec_absent_on_branch():
+        return []
     section = "### 4.3 表 C"
     rows = _vector_table(section, "sprint") or []
     tasks = _vector_extra(section, "task_id") or []
@@ -578,6 +626,19 @@ def scope_step_runs(policy: AgentPolicy, runs: list[dict], *,
     return candidates
 
 
+def _terminal_statuses(policy: AgentPolicy) -> set[str]:
+    """政策里的**终态**状态集（真源 `agents/policy.json::ledger_status.terminal`）。
+
+    取不到时退回本仓默认三态——判据方向是 fail-closed（下面用它决定"坏时间戳该判红
+    还是该 SKIP"），故**不得**把"读不到"变成"没有终态"（那会让判据静默消失）。
+    """
+    try:
+        value = (policy._data("ledger_status") or {}).get("terminal")
+    except (AttributeError, PolicyError):
+        value = None
+    return {str(s) for s in value} if value else {"succeeded", "failed", "cancelled"}
+
+
 def scope_window_problems(policy: AgentPolicy, runs: list[dict], candidate: dict, *,
                           sprint_id: str | None = None) -> list[str]:
     """候选作用域 run 能否当"本次关闭的起点"——**次序/时序**判据，违反即返回**具名问题**。
@@ -604,6 +665,10 @@ def scope_window_problems(policy: AgentPolicy, runs: list[dict], candidate: dict
          **但"未起跑"（`queued`／`started_at` 缺失或不可解析）不是"数据被改过"**：
          这类 run 在次序里**没有位置**，一律**显式 SKIP**（上屏点名）并退出②③的比较
          （复盘行 13 的反证 = **有 queued run 时整档不得 `rc=4`**）。
+         SKIP 的**例外**（复核 `run-…-105` major 3）：`status` 是**终态**的 run
+         必然跑过，
+         它的坏时间戳是账本数据缺陷 ⇒ **fail-closed 判红**，不得盖"未起跑"的章——
+         否则"把时间戳改坏"就成了把该 run 从次序判据里抹掉的绕过路径。
 
     ②的口径说明（**与复核建议的字面口径有一处有意分歧，已标注**）：
     字面上"晚于任何后续步骤
@@ -644,9 +709,27 @@ def scope_window_problems(policy: AgentPolicy, runs: list[dict], candidate: dict
     # 而 `_before` 对不可解析值退回**字典序** ⇒ `"" < 任何时间戳` 恒真 ⇒ 一条
     # queued run 就能让判据③报"数据被改过"、窗口被弃用 ⇒ 整档 `rc=4`（域不可派生）。
     # 现改为**显式 SKIP**：从次序比较中剔除并上屏点名（"未起跑"不是"数据被改过"）。
+    # **但是**（复核 `run-…-105` major 3）：SKIP 的谓词只读 `started_at` 的
+    # **可解析性**，
+    # 不读 `status` ⇒ 一条**终态** run（`succeeded`/`failed`/`cancelled`）的坏时间戳
+    # 被盖上"未起跑"的章、静默剔除。终态 run 必然**跑过** ⇒ 它的坏时间戳是
+    # **账本数据缺陷**（不是"还没起跑"），必须 fail-closed 判红：否则把时间戳改坏
+    # 就等于把这条 run 从次序判据里抹掉（"未起跑"的章成了绕过路径）。
+    # 非终态（`queued`/`running` 或状态缺失）仍走 SKIP——那是行 13 的原始语义。
+    _terminal = _terminal_statuses(policy)
     positioned: list[dict] = []
     for run in later:
         if _ts(str(run.get("started_at") or "")) is None:
+            if str(run.get("status") or "") in _terminal:
+                problems.append(
+                    f"[窗口/时间戳] {run.get('run_id')} 是**终态** run"
+                    f"（status={run.get('status')!r}）却带坏时间戳"
+                    f"（started_at={run.get('started_at')!r}）⇒ 终态必然跑过，"
+                    f"这不是『未起跑』而是**账本数据缺陷**：不得按未起跑静默剔除"
+                    f"（那会把『把时间戳改坏』变成绕过次序判据的路径）——"
+                    f"请用 `agent-ops.py set-started-at --evidence … "
+                    f"--reason …` 受控回填")
+                continue
             print(f"SKIP[窗口/未起跑] {run.get('run_id')}"
                   f"（status={run.get('status')!r}，"
                   f"started_at={run.get('started_at')!r}）"
@@ -1653,6 +1736,26 @@ def _selfcheck() -> int:
        and not any("数据被改过" in x for x in problems_pending),
        f"window={window_pending} problems={problems_pending}")
 
+    # ---- 复核 `run-…-105` major 3：**终态** run 的坏时间戳必须 fail-closed --------
+    # 原始形态：SKIP 谓词只读 `started_at` 可解析性、**不读 `status`** ⇒
+    # `status='succeeded' + started_at='GARBAGE'` 被盖"未起跑"的章并静默剔除
+    # （现跑 `problems=[]`）。终态必然跑过 ⇒ 坏时间戳是**账本数据缺陷**，必须判红。
+    # 反证同时保留方向另一侧：**非终态**的坏时间戳仍走 SKIP
+    # （行 13 的口径不许被本条吃掉）。
+    bad_ts = dict(_run("run-c-badts", "code-review", "branch:windows",
+                       "GARBAGE", "impact-assessment:run-k-001"), status="succeeded")
+    _, problems_badts = derive_close_window(policy, [*runs, bad_ts])
+    ok("行 13 反向对照（major 3）：**终态** run（status='succeeded'）＋"
+       "坏时间戳 'GARBAGE' ⇒ FAIL（不得按『未起跑』静默剔除）",
+       any("终态" in p and "run-c-badts" in p for p in problems_badts),
+       f"problems={problems_badts}")
+    _, problems_queued_badts = derive_close_window(
+        policy, [*runs, dict(bad_ts, status="queued")])
+    ok("行 13 防假红（major 3）：**非终态**（status='queued'）＋同一个坏时间戳 ⇒ "
+       "仍不判「数据被改过」（SKIP 语义未被本条吃掉）",
+       not any("终态" in p for p in problems_queued_badts),
+       f"problems={problems_queued_badts}")
+
     # 反向对照 c：非作用域步骤的 run **再早**也不得定义窗口（旧口径正是被这条拖走的）
     earliest_other = min(str(r["started_at"]) for r in runs
                          if r.get("role") != scope_role)
@@ -2302,30 +2405,54 @@ def _selfcheck() -> int:
 
     # ---- 台账 E1 / 行 7：一致性向量（唯一权威 = 本档 §4）------------------
     # 本闸门**不导入**写入侧实现；两侧各自解析本档同一张向量表。
-    rows = (_vector_table("### 4.1 表 A") or []) + (_vector_table("### 4.2 表 B") or [])
-    ok("E1 向量表可解析（缺表 = 判据未被触发 ⇒ 立即 FAIL，不放行）",
-       bool(rows), f"{len(rows)} 行 <- {SPRINT_VECTOR_SPEC}")
-    probs = _sprint_vector_problems()
-    ok("E1 归一化一致性向量：全部输入与规范期望值同结论",
-       not probs, f"{len(rows)} 行 problems={probs[:1]}")
-    # 反证（台账"向量必须有牙"）：把模式按 _drift_pattern() 收紧后，
-    # 至少一个输入的结论必须改变；一个都没变 ⇒ 判 FAIL。
-    drift = re.compile(_drift_pattern())
-    changed = sum((drift.search(t).group(1) if drift.search(t)
-                   else (drift.fullmatch(t).group(1) if drift.fullmatch(t) else None))
-                  != want for _, raw, want in rows for t in [str(raw or "").strip()])
-    ok("E1 反证：收紧归一模式后向量结论必须改变（不敏感 ⇒ 本次一致不作数）",
-       changed > 0, f"changed={changed} 例")
-    sem = _vector_table("### 4.3 表 C", "sprint") or []
-    ok("E1 语义层向量（sprint 缺失时回退 task_id）可解析", bool(sem), f"{len(sem)} 行")
-    ok("E1 语义层一致性向量：域派生与规范期望值同结论",
-       not _sprint_semantic_problems(), f"{len(sem)} 行")
+    # 分支感知（复核 `run-…-105` critical 2 的**同族第二处**）：spec 在
+    # `docs/iteration/**`（windows-only）⇒ main 上旧实现打出 `FAIL: 0 行`、
+    # 把分支差异冒充成"向量表缺失"。现在显式 SKIP 并上屏；spec 在位 ⇒ 照旧真判。
+    try:
+        rows = ((_vector_table("### 4.1 表 A") or [])
+                + (_vector_table("### 4.2 表 B") or []))
+        sem = _vector_table("### 4.3 表 C", "sprint") or []
+    except SpecAbsentOnBranch:
+        rows, sem = [], []
+        for _crit in ("E1 向量表可解析", "E1 归一化一致性向量",
+                      "E1 反证（收紧模式后结论必须改变）", "E1 语义层向量可解析",
+                      "E1 语义层一致性向量"):
+            skip_spec_absent(_crit)
+    else:
+        ok("E1 向量表可解析（缺表 = 判据未被触发 ⇒ 立即 FAIL，不放行）",
+           bool(rows), f"{len(rows)} 行 <- {SPRINT_VECTOR_SPEC}")
+        probs = _sprint_vector_problems()
+        ok("E1 归一化一致性向量：全部输入与规范期望值同结论",
+           not probs, f"{len(rows)} 行 problems={probs[:1]}")
+        # 反证（台账"向量必须有牙"）：把模式按 _drift_pattern() 收紧后，
+        # 至少一个输入的结论必须改变；一个都没变 ⇒ 判 FAIL。
+        drift = re.compile(_drift_pattern())
+
+        def _drift_hit(t: str) -> str | None:
+            m = drift.search(t) or drift.fullmatch(t)
+            return m.group(1) if m else None
+
+        changed = sum(_drift_hit(t) != want
+                      for _, raw, want in rows for t in [str(raw or "").strip()])
+        ok("E1 反证：收紧归一模式后向量结论必须改变（不敏感 ⇒ 本次一致不作数）",
+           changed > 0, f"changed={changed} 例")
+        ok("E1 语义层向量（sprint 缺失时回退 task_id）可解析",
+           bool(sem), f"{len(sem)} 行")
+        ok("E1 语义层一致性向量：域派生与规范期望值同结论",
+           not _sprint_semantic_problems(), f"{len(sem)} 行")
 
     real = registry_path()
     if real.exists():
         warn("真数据模式未在自检中执行（需 `--sprint <当前 Sprint 文档>`）",
              f"账本 {len(load_runs(real))} 条：{real}")
     shutil.rmtree(tmp, ignore_errors=True)   # 行 8：回收本函数的 run 级夹具目录
+    if SELF_SKIPPED:
+        # M-B：SKIP 不是成功 ⇒ **不打印 `ALL PASS` 横幅**（口径同
+        # `verify_agentops.py::verdict_line`：二者互斥，跳过不得冒充通过）。
+        print(f"\nCLOSE-READINESS SKIP[spec-absent-on-branch]（{len(SELF_SKIPPED)} 条"
+              f"判据未执行：{'；'.join(SELF_SKIPPED)}）——其余 {PASSED} 条已验，"
+              f"**本档不是通过**")
+        return 0
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
 
@@ -2349,7 +2476,12 @@ def main() -> int:
         print(f"CLOSE-READINESS FAIL（自检断言未通过）：{exc}")
         return 1
     if rc == 0:
-        print(f"EVIDENCE: verify_close_readiness.py assertions={PASSED} rc=0 mode=selfcheck")
+        if SELF_SKIPPED:
+            print(f"EVIDENCE: verify_close_readiness.py assertions={PASSED} rc=0 "
+                  f"mode=selfcheck skipped={len(SELF_SKIPPED)}")
+        else:
+            print(f"EVIDENCE: verify_close_readiness.py assertions={PASSED} rc=0 "
+                  f"mode=selfcheck")
     return rc
 
 

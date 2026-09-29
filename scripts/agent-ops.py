@@ -115,7 +115,8 @@ _CHARS_PER_TOKEN = 4.0  # UC-4 兜底：无 token 上报时 tokens ≈ chars/4
 # 规则见 1-WORKFLOW.MD §6（政策数据化）。
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from verify.agent_policy import load_policy, parse_frontmatter  # noqa: E402
+from verify.agent_policy import (load_policy, parse_frontmatter,  # noqa: E402
+                                path_in_head)
 from verify.outbound_guard import refuse_or_exit  # noqa: E402
 
 _POLICY = None
@@ -1387,20 +1388,155 @@ def cmd_mark_produced(args: argparse.Namespace) -> None:
           f" (marks={len(r['produced_only_marks'])})")
 
 
-def _retract_cited_by(data: dict, rid: str) -> list[str]:
-    """哪些**其余** run 的 `scope_source` 引用了 `rid`（撤回前必须为空）。
+def _result_file_cites_run(rel: object, rid: str) -> bool:
+    """该 `result_files` 条目是否指进 `runs/<rid>/`（引用链的第二类载体）。
 
-    删掉被引用者，引用者的 C2 判据就会指向不存在的对象——那是把一条误登记换成
-    一条真缺陷，不是撤回的目的。
+    复核 `run-…-105` major 5：旧实现只普查 `scope_source`，而 `result_files` 才是
+    承载 run 目录引用的那一列（真数据 79 行这样写）。判据按**路径分段**比，
+    不做裸子串匹配（那样 `run-x-1` 会被 `run-x-10` 命中）。
+    同时认 canonical 形态（`runs/<rid>/…`）与"条目就是 run_id 或它下面的相对路径"。
+    """
+    text = str(rel or "").strip().replace("\\", "/").lstrip("./")
+    if not text:
+        return False
+    parts = [p for p in text.split("/") if p]
+    return rid in parts
+
+
+def _retract_cited_by(data: dict, rid: str) -> list[str]:
+    """哪些**其余** run 引用了 `rid`（撤回前必须为空）——**引用链的两类载体都查**。
+
+    删掉被引用者，引用者就会指向不存在的对象——那是把一条误登记换成一条真缺陷，
+    不是撤回的目的。
+
+    ① `scope_source`（`impact-assessment:<run_id>`）——旧实现只查这一类；
+    ② `result_files` 里指进 `runs/<rid>/` 的条目（复核 `run-…-105` major 5）：
+       被引用者的**产物目录**是引用者的产物来源，撤掉它等于让引用者的产物凭空消失。
+       实测绕过路径：先撤引用者、再撤被引用者，旧码 rc=0。
     """
     prefixes = _scope_ref_prefixes()
     citing: list[str] = []
     for other in data["runs"]:
-        if str(other.get("run_id") or "") == rid:
+        other_id = str(other.get("run_id") or "")
+        if other_id == rid:
             continue
         if parse_scope_ref(str(other.get("scope_source") or ""), prefixes) == rid:
-            citing.append(str(other.get("run_id") or "?"))
+            citing.append(other_id or "?")
+            continue
+        if any(_result_file_cites_run(rel, rid)
+               for rel in (other.get("result_files") or [])):
+            citing.append(other_id or "?")
     return citing
+
+
+def _evidence_sha256(path: Path) -> str:
+    """凭据文件的**内容摘要**（复核 `run-…-105` major 4）。
+
+    为什么必须记摘要：`--evidence` 此前只核"路径存在"，于是留痕里的证据**事后可改写
+    而不可察**——撤回的理由就变成一句不可复核的话。摘要让"当时凭的是哪份字节"成为
+    可核事实（改一个字节即不一致），且 `retract` 每次调用都会**重核全部既有留痕**。
+    """
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _evidence_rel(path: Path) -> str | None:
+    """证据路径 → **仓库相对路径**（不在仓库里 ⇒ None）。
+
+    留痕里的证据可能是绝对路径（`--evidence` 收的就是调用方给的字符串）；要问
+    "本分支的提交树里有没有它"必须先归一到 `posix` 相对路径。
+    """
+    try:
+        return path.resolve().relative_to(REPO_ROOT.resolve()).as_posix()
+    except (ValueError, OSError):
+        return None
+
+
+def retraction_trace_problems(data: dict, backfilled: list[str] | None = None,
+                              ) -> list[str]:
+    """既有 `retractions[]` 留痕的可核性（每条撤回前都重跑一遍）。
+
+    判据：留痕里的 `evidence` 必须指向一个**文件**，且其内容摘要必须与留痕记录的
+    `evidence_sha256` 一致。
+
+    缺摘要的**旧留痕**（本判据落地前写的）走**补记**路径，不是硬拒也不是静默放过：
+    用现读到的内容补齐 `evidence_sha256`，并在留痕里写下 `evidence_sha256_backfill`
+    （补记时刻／执行者／依据）＋把条目名追加进 `backfilled`（调用方据此落盘与上屏）。
+    硬拒会让存量 3 条旧留痕永久堵死撤回路径；静默放过等于摘要判据对存量无效。
+    证据内容**与已记摘要不一致** ⇒ 照旧判问题（那是"事后被改写"，不是"当时没记"）。
+
+    **分支差异与数据缺陷必须分开**（复核 `run-…-105` critical 1/2 的同族口径）：
+    证据文件不在工作区时，先问它的路径在**本分支 `HEAD`** 里有没有——
+      * 树里也没有 ⇒ 本分支本就没有这条路径（如 main 上没有 `docs/iteration/**`）
+        ⇒ **不计入问题**，但要**上屏说明**（"未核"必须可见，不冒充已核）；
+      * 树里有、工作区没有 ⇒ **被删** ⇒ 照旧 fail-closed 判问题。
+    """
+    problems: list[str] = []
+    for item in data.get("retractions") or []:
+        rid = str(item.get("run_id") or "?")
+        raw = str(item.get("evidence") or "").strip()
+        if not raw:
+            problems.append(f"[撤回留痕] {rid} 的 evidence 为空（不可核）")
+            continue
+        path = Path(raw)
+        if not path.is_file():
+            rel = _evidence_rel(path)
+            if rel and not path_in_head(REPO_ROOT, rel):
+                print(f"NOTE[撤回留痕/分支差异] {rid} 的证据 {raw} 不在本分支"
+                      f"（{rel} 在 `HEAD` 的提交树里也没有，如 windows-only 子树）"
+                      f"⇒ 本条摘要**未核**（不是通过，也不是伪造）")
+                continue
+            problems.append(f"[撤回留痕] {rid} 的 evidence 不是文件：{raw}"
+                            f"（目录/缺失都不构成可核凭据）")
+            continue
+        want = str(item.get("evidence_sha256") or "").strip()
+        got = _evidence_sha256(path)
+        if not want:
+            # 本判据落地前的旧留痕**豁免"当时没记"，不豁免"可核"**（major 4）：
+            # 硬拒会让存量旧留痕永久堵死撤回路径（把修复变成新的锁），
+            # 静默放过又等于摘要判据对存量无效。故：按**现读到的内容**补齐摘要，
+            # 并在留痕里**具名标注**何时补的、依据是什么。
+            item["evidence_sha256"] = got
+            item["evidence_sha256_backfill"] = {
+                "at": _now(), "by": "agent-ops retract",
+                "reason": "本判据落地前的旧留痕没有内容摘要；本次按**现读到的内容**补齐"
+                          "（补的是当时记的那份，但不冒充撤回当时就记过——"
+                          "补记时刻与依据都写在留痕里）"}
+            backfilled.append(rid)
+            print(f"NOTE[撤回留痕/补记] {rid} 的 evidence 缺内容摘要 ⇒ "
+                  f"已按现读内容补齐 sha256={got[:12]}…"
+                  f"（补记时刻与依据写进留痕；此后可核）")
+        elif want != got:
+            problems.append(f"[撤回留痕] {rid} 的 evidence **与留痕记录不一致**："
+                            f"{raw}（记 {want[:12]}… 实测 {got[:12]}…）⇒ "
+                            f"证据事后被改写（留痕不可信）")
+    return problems
+
+
+def retract_guard_problems(data: dict, rid: str) -> list[str]:
+    """撤回 `rid` 前必须为空的两条**引用链不变式**（纯函数，真入口与反证共用同一实现）。
+
+    ① 既有 `retractions[]` 留痕必须可核（见 `retraction_trace_problems`；
+       缺摘要的旧留痕**就地补记**并追加进 `data["_backfilled_traces"]`）；
+    ② `rid` 不得被其余 run 引用（见 `_retract_cited_by`：`scope_source`
+       与 `result_files` 两类载体都算）。
+
+    为什么抽成纯函数：这条判据原来只在 `cmd_retract` 里"现场看一眼"，
+    于是"先撤引用者、再撤被引用者"能把引用链断开而不被察觉（复核 `run-…-105` major 5
+    探针 rc=0）。抽出来之后，**同一条实现**既守 CLI、又能被反向对照直接驱动
+    （不靠造一份手改账本 —— 手改会被完整性校验拦下，那样测的是 UC-7 而不是本条）。
+    """
+    backfilled: list[str] = []
+    problems = retraction_trace_problems(data, backfilled)
+    if backfilled:
+        # 让调用方知道"这次判据顺带改了留痕" ⇒ 必须落盘（否则补记只活在内存里）。
+        data["_backfilled_traces"] = backfilled
+    citing = _retract_cited_by(data, rid)
+    if citing:
+        problems.append(
+            f"{rid} 被其余 run 引用（{citing[:3]}{'…' if len(citing) > 3 else ''}）"
+            f"——先处理引用者：撤回被引用者会让引用者指向不存在的对象"
+            f"（`scope_source` 与 `result_files` 两类载体都算引用）")
+    return problems
 
 
 @_with_registry_lock
@@ -1419,18 +1555,25 @@ def cmd_retract(args: argparse.Namespace) -> None:
     **四条硬约束**（缺一条就不是受控撤回）：
       * ① `--reason` ≥10 字符（同 `set-started-at`/`mark-produced` 口径）；
       * ② **必须留痕**：顶层 `retractions[]{at, by, run_id, reason, evidence,
-        status_at_retraction, quarantine}`——账本行删了，痕不能删；
+        evidence_sha256, status_at_retraction, quarantine}`——账本行删了，痕不能删；
+        **每次撤回都重核全部既有留痕**（内容摘要不符 ⇒ 拒绝追加新痕）；
       * ③ **只认显式点名的单条 `run_id`**：正则白名单 `_RUN_ID_RE`，通配/批量/前缀
         /路径一律拒绝（`*?[]`、空白、路径分隔符都不在字符集里）；
-      * ④ `--evidence <path>` **必须存在**：撤回要能指出"凭什么说这条是误登记"
-        （探针脚本产物、隔离账本对照记录）；拿不出证据就不得撤回。
+      * ④ `--evidence <path>` **必须存在且必须是文件**（复核 `run-…-105` major 4）：
+        撤回要能指出"凭什么说这条是误登记"（探针脚本产物、隔离账本对照记录）；
+        拿不出证据就不得撤回。目录不算凭据（没有内容摘要 ⇒ 留痕不可核），
+        且文件内容摘要记进 `evidence_sha256`——"当时凭的是哪份字节"可复核。
 
     **产物不销毁**：`runs/<id>/` 整体**移到** `runtime/retracted-runs/<id>/`
     （同根、git 忽略域、且不在 `runs/` 判定域里）。撤回删的是**账本行**，
     不是那次动作的现场；移动目标同时写进留痕的 `quarantine`。
 
-    **fail-closed 两处**：被其余 run 的 `scope_source` 引用的 run 不得撤回；
-    已撤回过的 run 不得重复撤回（不做假留痕，同 B2 的教训）。
+    **fail-closed 三处**（由 `retract_guard_problems` 一处实现，不是三处各写一遍）：
+    ① 既有 `retractions[]` 留痕不可核 ⇒ 拒绝追加新撤回（痕不可信则新痕也不算数）；
+    ② 被其余 run 引用的 run 不得撤回——`scope_source` **与** `result_files`
+       两类载体都算引用（复核 `run-…-105` major 5；只查前者时"先撤引用者、
+       再撤被引用者"能绕过，探针 rc=0）；
+    ③ 已撤回过的 run 不得重复撤回（不做假留痕，同 B2 的教训）。
     """
     rid = str(args.run_id or "")
     if not _RUN_ID_RE.match(rid):
@@ -1446,18 +1589,35 @@ def cmd_retract(args: argparse.Namespace) -> None:
     if not ev:
         raise SystemExit("RETRACT-ERROR: 必须给 --evidence <path>——撤回必须指出可核凭据"
                          "（探针脚本产物 / 隔离账本对照记录）；拿不出证据就不得撤回")
-    if not Path(ev).exists():
+    ev_path = Path(ev)
+    if not ev_path.exists():
         raise SystemExit(f"RETRACT-ERROR: --evidence 指向的路径不存在：{ev}")
+    # 复核 `run-…-105` major 4：`Path(ev).exists()` 让**目录**也算凭据，
+    # 而目录没有内容摘要 ⇒ 留痕不可核。必须是**文件**；且必须留下内容摘要。
+    if not ev_path.is_file():
+        raise SystemExit(
+            f"RETRACT-ERROR: --evidence 必须是**文件**（实际是目录：{ev}）"
+            "——目录没有可核的内容摘要，撤回理由会变成一句不可复核的话")
+    ev_sha = _evidence_sha256(ev_path)
     data = _load_registry()
+    # 复核 major 4/5 的**不变式化**：引用链保护不是"撤回时快照看一眼"，而是每次撤回
+    # 都重核①既有留痕的可核性②被引用者是否仍被引用（含 result_files 列）。
+    guard = retract_guard_problems(data, rid)
+    # 补记摘要的落盘：`retract_guard_problems` 只改内存里的留痕（纯函数），
+    # 这里把它**落盘**——否则"补记"只活在这次进程里，下次又是"缺摘要"。
+    # 走 `_save_registry`（原子写 ＋ 重算 integrity），故不是手改账本。
+    if data.pop("_backfilled_traces", None):
+        _save_registry(data)
+        print(f"NOTE[撤回留痕/补记已落盘] 既有留痕的内容摘要已补齐并写回账本"
+              f"（retractions={len(data.get('retractions') or [])}）")
+    if guard:
+        raise SystemExit("RETRACT-ERROR: 引用链不变式不成立，拒绝撤回"
+                         "（既有留痕必须可核、被引用者不得撤回）：\n  - "
+                         + "\n  - ".join(guard[:5]))
     if any(str(x.get("run_id") or "") == rid for x in (data.get("retractions") or [])):
         raise SystemExit(f"RETRACT-ERROR: {rid} 已撤回（留痕已在 retractions[]）"
                          "——不重复撤回、不留假痕")
     r = _find_run(data, rid)
-    citing = _retract_cited_by(data, rid)
-    if citing:
-        raise SystemExit(
-            f"RETRACT-ERROR: {rid} 被其余 run 的 scope_source 引用（{citing[:3]}）"
-            "——先处理引用者：撤回被引用者会让 C2 指向不存在的对象")
     src = RUNS_DIR / rid
     dest = QUARANTINE_DIR / rid
     quarantine = None
@@ -1477,13 +1637,14 @@ def cmd_retract(args: argparse.Namespace) -> None:
     trail = data.setdefault("retractions", [])
     trail.append({"at": _now(), "by": args.by or "main-agent", "run_id": rid,
                   "reason": reason, "evidence": ev,
+                  "evidence_sha256": ev_sha,
                   "status_at_retraction": status_before, "quarantine": quarantine})
     _save_registry(data)
     print(f"retracted {rid}（status_at_retraction={status_before}）"
           f" 产物隔离={quarantine or '（无产物目录）'}"
           f" (retractions={len(trail)})")
     print(f"  reason={reason}")
-    print(f"  evidence={ev}")
+    print(f"  evidence={ev} sha256={ev_sha[:16]}…")
 
 
 def _copy_result_file(run: dict, src: Path) -> None:

@@ -482,7 +482,17 @@ def _enforces_exit_code(text: str) -> tuple[bool, bool]:
 
     判据落在**退出码**上：`--report-only` 的语义是"rc 恒 0"（见
     `structure-guard.py::cmd_verify_git` 的 `report_only` 分支）⇒ "这一段命令
-    由退出码终判"的充要条件是**不带** `--report-only`。
+    由退出码终判"的**必要**条件是**不带** `--report-only`。
+
+    **加强（复核 `run-…-105` major 6）**：旧实现把上面这条当**充要**，实为**必要非充分**
+    ——`--report-only` 只覆盖"守卫自己让出终判"这一种形态，覆盖不了
+    "**调用方把 rc 吞掉**"：
+      * `out=$(python … guard.py verify … 2>&1) || true` ⇒ rc 被 `|| true` 吞；
+      * `python … guard.py verify …; rc=$?; echo done` ⇒ rc 存进变量却再没用过。
+    两种形态旧码都判"由退出码终判"（实测 True），而它们的 rc 一个字都没进入终判
+    ⇒ 整条链在那两处是 fail-open。现判据改判**结构**：rc 必须被逐层传到一条 `exit`
+    （见 `_rc_reaches_final_verdict`）。注意：三层现状**恰好都没踩中**这两种形态，
+    故这是判据强度缺口而不是现行事故——50 条既有断言一条都不许因此变红。
 
     为什么不是"数一数有几层非 report-only"（台账 A 表行 6 的原始措辞）：后者只数
     **层数**、不看**退出码**，正好落进 E3 自己写的那条反证——"只数层数、不看退出码
@@ -490,8 +500,86 @@ def _enforces_exit_code(text: str) -> tuple[bool, bool]:
     `unskippable_wiring_problems` 里把"三处合起来至少一次由退出码终判"与
     "终判层（`EXIT_CODE_JUDGE_REL`）自己不得让出"分别写成判据。
     """
-    lines = _guard_command_lines(text)
-    return len(lines), any("--report-only" not in ln for ln in lines)
+    lines = text.splitlines()
+    # 判据本体复用 `_cmd_line` / `_is_guard_invocation`（与 `_guard_command_lines`
+    # 同一条"命令位置 + 结构"语义，不各判一套）；只是这里要**行号**才能取到
+    # "下一行"（`v=$(…)` / `rc=$?` 是两行的组合形态）。
+    hits: list[int] = []
+    bodies: dict[int, str] = {}
+    for idx, raw in enumerate(lines):
+        body = _cmd_line(raw)
+        if body and _is_guard_invocation(body):
+            hits.append(idx)
+            bodies[idx] = body
+    enforces = any(
+        "--report-only" not in bodies[idx]
+        and _rc_reaches_final_verdict(text, _line_and_next(lines, idx))
+        for idx in hits)
+    return len(hits), enforces
+
+
+# 行 6 加强（复核 `run-…-105` major 6）：**退出码真的被用于终判**的结构判据。
+# 旧实现的判据只有一条"这一行不带 `--report-only`"，自陈"充要"实为**必要非充分**：
+#   * `out=$(python … guard.py verify … 2>&1) || true` —— `|| true` 把 rc 吞掉；
+#   * `python … guard.py verify …; rc=$?; echo done` —— `$?` 存进了变量却再没用过。
+# 两种形态旧码都判"由退出码终判"，而它们的 rc 一个字都没进入文件的终判。
+EXIT_JUDGE_RE = re.compile(r"\bexit\b\s+[\"']?\$\{?(?P<name>\w+)")
+# 赋值捕获：`v=$(<命令>)` / `v=`<命令>``（commmand substitution 的 rc ⇒ 赋给 v）
+CMD_SUBST_ASSIGN_RE = re.compile(r"^\s*(?P<name>\w+)=(?:\$\(|`)")
+# `rc=$?`：把**上一条命令**的 rc 存进变量。块是多行的 ⇒ 行内空白用 `[ \t]`、
+# 不用 `\s`：`\s` 会吞掉**换行**，于是 `^` 从块首起算、`rc=$?` 永远匹配不上
+# （这条被自己的反向对照 s 实测打脸过一次）。
+RC_ASSIGN_RE = re.compile(r"^[ \t]*(?P<name>\w+)=\$\?", re.MULTILINE)
+# 语法上"吞掉一切"的后缀：`|| true` / `|| :` / `|| exit 0` 之外的同类
+SWALLOW_TAIL_RE = re.compile(r"\|\|\s*(?:true|:)\s*$")
+
+
+def _captured_rc_var(block: str) -> str | None:
+    """这段（守卫调用行 ＋ 紧随的下一行）是否把 rc **捕获进变量**；返回变量名。
+
+    三种真形态（本仓三层里都有）：
+      * `v=$(<命令>)` / ``v=`<命令>` `` —— 赋值即捕获（命令替换的 rc 赋给 `v`）；
+      * `<命令>` 之后紧跟 `rc=$?` —— 也是捕获（`$?` 就是上一条命令的 rc）；
+      * 裸调用（既不赋值、也没有 `rc=$?`）⇒ None：它的 rc 直接就是整个脚本/步骤的
+        rc，不需要传递（判据在本函数之外按"这一行就是终判"处理）。
+    `block` 由 `_line_and_next` 给出（调用行 ＋ 下一行），故两种两行形态都覆盖。
+    """
+    block = _strip_comment(block)
+    m = CMD_SUBST_ASSIGN_RE.match(block)
+    if m:
+        return m.group("name")
+    # `re.match` **只锚定串首**、`MULTILINE` 也救不了它；`rc=$?` 在第 2 行
+    # ⇒ 必须 `search`
+    # （被自己的反向对照 s 实测打脸过一次：match 恒 None ⇒ 吞码形态照样判 True）。
+    m = RC_ASSIGN_RE.search(block)
+    return m.group("name") if m else None
+
+
+def _rc_reaches_final_verdict(text: str, line: str) -> bool:
+    """`line` 上那次守卫调用的 rc 是否**真的**参与了这个文件的终判。
+
+    复核 `run-…-105` major 6 的两种吞码形态都必须判否：
+      * `out=$(… guard.py verify …) || true` —— 捕获了，但 `|| true` 把整行的 rc
+        变成 0，且后续没有任何 `exit $out` ⇒ 守卫的非零 rc 进不了终判；
+      * `… guard.py verify …; rc=$?; echo done` —— `$?` 存进 `rc` 却再没被用过
+        （也没有 `exit $rc`）⇒ 同上。
+    判据是**结构**的（rc 是否被逐层传到一条 `exit`），不是"这一行长什么样"：
+      * 裸调用（行首就是命令、没有赋值、也没有吞码后缀）⇒ 它的 rc **就是**终判；
+      * 捕获进变量 `v`（含紧随的 `rc=$?`）⇒ 文件里必须存在 `exit $v`（否则判否）；
+      * 行尾 `|| true` / `|| :` ⇒ 判否（rc 被这一行自己吞掉）。
+    """
+    body = _strip_comment(line)
+    if SWALLOW_TAIL_RE.search(body):
+        return False
+    var = _captured_rc_var(line)
+    if var is None:
+        return True
+    return any(m.group("name") == var for m in EXIT_JUDGE_RE.finditer(text))
+
+
+def _line_and_next(lines: list[str], idx: int) -> str:
+    """`idx` 行（含）与其**紧随的下一行**——`v=$(…)` / `rc=$?` 是两行的组合形态。"""
+    return lines[idx] + "\n" + (lines[idx + 1] if idx + 1 < len(lines) else "")
 
 
 def _hooks_from_ast(text: str) -> list[str] | None:
@@ -1092,6 +1180,33 @@ def selftest() -> int:
            any(_enforces_exit_code(f"{call_ok} --report-only")[1] is False
                for _ in layers)
            and _enforces_exit_code(call_ok)[1] is True)
+        # ---- 行 6 加强（复核 `run-…-105` major 6）：rc 必须**真的**进终判 ----------
+        # 旧实现只判"这一行不带 `--report-only`"，自陈充要、实为必要非充分：
+        # 下面两种形态都不带 `--report-only`，却都把 rc 吞掉，而旧码判 True。
+        swallow_capture = f"out=$({call_ok} 2>&1) || true"
+        swallow_rcvar = f"{call_ok}\nrc=$?\necho done"
+        ok("行 6 加强反证 r：`out=$(<守卫>) || true`"
+           "（rc 被本行吞掉、且没有 `exit $out`）"
+           "⇒ **不得**判『由退出码终判』（旧码判 True）",
+           _enforces_exit_code(swallow_capture)[1] is False,
+           f"{_enforces_exit_code(swallow_capture)}")
+        ok("行 6 加强反证 s：`<守卫>; rc=$?; echo done`（rc 存进 `$?` 却再没用过）"
+           "⇒ **不得**判『由退出码终判』（旧码判 True）",
+           _enforces_exit_code(swallow_rcvar)[1] is False,
+           f"{_enforces_exit_code(swallow_rcvar)}")
+        ok("行 6 加强反证 t：同样的捕获形态，一旦真的 `exit $out` ⇒ 判『由退出码终判』"
+           "（收紧不得把正确的传递形态判红）",
+           _enforces_exit_code(swallow_capture.replace(" || true", "")
+                               + "\nexit $out")[1] is True)
+        ok("行 6 加强反证 u：`rc=$?` 形态，一旦真的 `exit $rc` ⇒ 判『由退出码终判』",
+           _enforces_exit_code(swallow_rcvar.replace("echo done",
+                                                     "exit $rc"))[1] is True)
+        ok("行 6 加强反证 v：**裸调用**（没有赋值、没有吞码后缀）⇒ 它的 rc 就是终判",
+           _enforces_exit_code(call_ok)[1] is True)
+        ok("行 6 加强反证 w：仓库真三层的判定（批 7 的合法形态：`pre-commit` 只报告、"
+           "`commit-msg` 用 `exit 1` 终判）在加强后**一条都不变**",
+           [_enforces_exit_code(t) for _, t in layers] == flags,
+           f"flags={flags}")
         ok("行 6 检测器不认注释：注释里写 `--report-only` 不算 report-only 档"
            "（否则新判据栽在同一种形态上）",
            not _invokes_report_only(f"# 本层不用 --report-only\n{call_ok}"))
