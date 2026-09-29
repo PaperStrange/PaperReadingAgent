@@ -83,21 +83,33 @@ def _model_candidates(model: str) -> list[str]:
     return seen
 
 
-def price_for(model: str) -> dict | None:
-    """查单价：先 `scraped.*.models.<name>`，再 `auto.<name>`；找不到 → None（不猜）。"""
-    prices = load_prices()
+def _price_in(prices: dict, model: str) -> tuple[str, dict] | None:
+    """在**给定价表**里查价：返回 `(provider 名, 价目)`；`auto` 兜底 ⇒ provider 名为 
+    `""`。
+
+    与 `price_for` 的查找顺序**逐字相同**（外层 provider 顺序、内层 `_model_candidates`
+    名字候选；都无 → `auto`）。抽出来是为了让"选档窗口"能**以 `price_for` 实际取到的
+    那条价目为准**取 provider（见 `provider_of`）——按名字猜 provider 会在
+    "同名跨 provider"时与价格口径分叉。
+    """
     cands = _model_candidates(model)
-    scraped = (prices.get("scraped") or {})
-    for prov in scraped.values():
+    for name, prov in (prices.get("scraped") or {}).items():
         models = (prov or {}).get("models") or {}
-        for name in cands:
-            if name in models and models[name]:
-                return models[name]
+        for cand in cands:
+            if cand in models and models[cand]:
+                return str(name), models[cand]
     auto = prices.get("auto") or {}
     for name in cands:
         if name in auto and auto[name]:
-            return auto[name]
+            return "", auto[name]
     return None
+
+
+def price_for(model: str) -> dict | None:
+    """查单价：先 `scraped.*.models.<name>`，再 `auto.<name>`；找不到 → None
+    （不猜）。"""
+    got = _price_in(load_prices(), model)
+    return got[1] if got else None
 
 
 def fx_usd_cny() -> float:
@@ -112,8 +124,10 @@ def fx_usd_cny() -> float:
 # 参考实现 = scripts/agent-ops.py 的 peak_windows_from_prices / is_peak_at /
 # peak_frac_for / _tier_prices（TG-20 行 16 落地）。本模块**镜像同一口径**，不
 # import 它：那是 CLI 脚本（文件名带连字符、模块级即拉 argparse 与账本路径常量），
-# app/ 不能依赖它。两边的选档窗口取自**同一份数据**
-# （价表 `scraped.<provider>._peak_windows`），都不在代码里写死。
+# app/ 不能依赖它。两边的选档窗口取自**同一份数据**、按**同一口径**取
+# （价表里**该模型所属 provider** 的 `scraped.<provider>._peak_windows`，见
+# `provider_of`/`peak_windows`；行 43＝这份"有意镜像"是具名技术债，见复盘 §5 行 43），
+# 都不在代码里写死；跨文件一致性由 `verify/verify_usage.py` ⑪14 现跑判据钉住。
 _TIER_PEAK = "peak"
 _TIER_OFF = "off_peak"
 _TIER_MIXED = "mixed"
@@ -125,19 +139,56 @@ _BUCKET_KEYS = ("calls", "prompt_tokens", "completion_tokens",
 _TIER_TOTALS: dict[str, Any] = {"tier_by_model": {}, "tier_assumed_calls": 0}
 
 
-def peak_windows() -> tuple[list, str] | None:
-    """价表里的 `(_peak_windows, 时区名)`；无该元数据 ⇒ None（= 不按档计价）。
+def provider_of(prices: dict, model: str) -> str | None:
+    """该模型的价来自**给定价表**里的哪个 `scraped.<provider>`（纯函数）。
 
-    与 `agent-ops.peak_windows_from_prices` 同序：第一个"窗口非空"的 `scraped.*` 命中
-    即返回，时区缺省 `Asia/Shanghai`。
+    **以 `price_for` 实际取到的那条价目为准**（同一个 `_price_in`）——不按名字猜。
+    这条"窗口随价走"是行 31 修正的结构保证：选档窗口必须与计价用的那条价目同属一个
+    provider，否则会把 A 的峰谷时段算到 B 的价上。
+
+    后果（具名，见 `verify/verify_usage.py` ⑪14）：`deepseek/deepseek-v4-flash` 这类
+    带命名空间的名字，`price_for` 走 `_model_candidates` 会先命中 **deepseek** 的
+    `deepseek-v4-flash`（provider 外层顺序在前）⇒ 此处也返回 `deepseek`。这与
+    `agent-ops._prices_for` 的**精确键**口径不同（那边命中 `openrouter`，价目不同、
+    故窗口也不同）——差异的根在**价格键解析口径**（既有、刻意），不在选档窗口口径。
+
+    `auto` 兜底（或价表里查无此名）⇒ `None`——没有 provider 级的档位政策，也就没有
+    选档窗口可言。
     """
-    for prov in (load_prices().get("scraped") or {}).values():
-        if not isinstance(prov, dict):
-            continue
-        windows = prov.get("_peak_windows")
-        if isinstance(windows, list) and windows:
-            return windows, str(prov.get("_tier_timezone") or "Asia/Shanghai")
+    got = _price_in(prices, model)
+    return (got[0] or None) if got else None
+
+
+def peak_windows_for(prices: dict, model: str) -> tuple[list, str] | None:
+    """**该模型所属 provider** 的 `(_peak_windows, 时区名)`；该 provider 无此元数据 ⇒ 
+    None。
+
+    与 `agent-ops.peak_windows_from_prices` **同名同义**（纯函数，取给定价表）——两边
+    口径不许分叉，一致性由 `verify/verify_usage.py` ⑪14 现跑判据逐 (provider, 模型) 
+    钉住。
+
+    行 31 修正：原实现按"第一个带窗口的 `scraped.*`"取一组窗口套到所有模型上——今天
+    只因 deepseek 是唯一带 `_peak_windows` 的 provider 而**恰好**等价（属数据巧合，
+    不是结构保证）：给别的 provider 补一组自己的窗口，或给它名下任一模型补 `_tiers`，
+    同一段代码立刻把 A 的峰谷时段算到 B 的头上。
+    时区缺省 `Asia/Shanghai`；`auto` 来源的模型没有 provider ⇒ None（= 不按档计价、
+    如实标 `flat`，见 `2026-09-26-price-tier-spec.MD` §9.5）。
+    """
+    name = provider_of(prices, model)
+    if name is None:
+        return None
+    prov = (prices.get("scraped") or {}).get(name)
+    if not isinstance(prov, dict):
+        return None
+    windows = prov.get("_peak_windows")
+    if isinstance(windows, list) and windows:
+        return windows, str(prov.get("_tier_timezone") or "Asia/Shanghai")
     return None
+
+
+def peak_windows(model: str) -> tuple[list, str] | None:
+    """价表**现值** + `peak_windows_for` 的便捷入口（调用方只有模型名时用它）。"""
+    return peak_windows_for(load_prices(), model)
 
 
 def _hm_minutes(text: object) -> int | None:
@@ -279,7 +330,7 @@ def _tier_plan(model: str, start: object, end: object) -> tuple[str, float, bool
     时置位（与 `agent-ops._estimate_cost` 同条件：单档模型不假装分过档）。
     """
     price = price_for(model)
-    windows = peak_windows()
+    windows = peak_windows(model)
     if not price or not windows:
         return _TIER_FLAT, 1.0, False
     frac = peak_frac(start, end, windows[0], windows[1])
@@ -309,17 +360,20 @@ def _record_tier(model: str, prompt: int, completion: int,
         _TIER_TOTALS["tier_assumed_calls"] += 1
 
 
-def _bucket_usd(price: dict, bucket: dict) -> float:
+def _bucket_usd(model: str, price: dict, bucket: dict) -> float:
     """一个桶的美金金额 = `高峰价 × 高峰加权 token ＋ 空闲价 × 其余`（§3.3）。
 
     纯高峰桶（权重 1）退化为高峰价、纯空闲桶（权重 0）退化为空闲价，一条式子覆盖三档。
-    价表无完整 `_tiers`（或没有选档窗口）⇒ 扁平键（= 高峰镜像）。**金额在这里由价表现值
-    算出**：桶里只存测量量，改价表不会悄悄改历史读数。
+    价表无完整 `_tiers`（或**该模型所属 provider** 没有选档窗口）⇒ 扁平键（= 高峰镜像）
+    。
+    取 `model` 而不是"价表里随便一组窗口"：行 31 修正后窗口是 provider 的属性，
+    单档模型与 `manual`/`auto` 来源的模型**不得**借别的 provider 的窗口分档。
+    **金额在这里由价表现值算出**：桶里只存测量量，改价表不会悄悄改历史读数。
     """
     p = float(bucket.get("prompt_tokens") or 0)
     c = float(bucket.get("completion_tokens") or 0)
     peak, off = _tiered(price, _TIER_PEAK), _tiered(price, _TIER_OFF)
-    if peak is None or off is None or peak_windows() is None:
+    if peak is None or off is None or peak_windows(model) is None:
         pin = float(price.get("input_cost_per_token") or 0.0)
         pout = float(price.get("output_cost_per_token") or 0.0)
         return p * pin + c * pout
@@ -363,7 +417,7 @@ def cost_cny(by_model: dict[str, dict], tiered: dict | None = None) -> dict:
         price = price_for(model)
         detail: dict[str, dict] = {}
         for label, bucket in sorted((buckets_by_model.get(model) or {}).items()):
-            usd = None if not price else round(_bucket_usd(price, bucket), 12)
+            usd = None if not price else round(_bucket_usd(model, price, bucket), 12)
             detail[label] = {**bucket, "usd": usd}
             if usd is None:
                 continue

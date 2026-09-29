@@ -138,11 +138,11 @@ $env:PAPERQA_VERIFY_PORT = "8887"
 .\.venv\Scripts\python.exe .\verify\verify_local_dir.py
 ```
 
-**该覆盖由谁读**：`verify/e2e_common.py` 的 `_PORT_ENV`（决定基座 `PORT` 与后端子进程端口）＋ 真后端 `paper-qa-script/reactflow-paperqa-prototype/backend/main.py` 的 `__main__` 分支（缺省 `8787`，向后兼容；**非法整数／越界一律 `SystemExit`**，不做"占用就换端口"）。
+**该覆盖由谁读**：`verify/e2e_common.py` 的 `_PORT_ENV`（决定基座 `PORT` 与后端子进程端口）＋ 真后端 `paper-qa-script/reactflow-paperqa-prototype/backend/main.py` 的**模块级** `resolve_port()`／`PORT`（缺省 `8787`，向后兼容；**非法整数／越界一律 `SystemExit`**，不做“占用就换端口”；G2 复盘 §5 行 44 起读取点在 import 时求值 ⇒ import 式启动同样生效）。
 
 > **⚠️ 这条覆盖曾经是一封"死信"（本仓"文档承诺 > 实现"的现成实例，值得记住判法）**：README/TG-8① 早就写了"可改用其它端口"，而 `backend/main.py` 当时**根本不读**这个环境变量 ⇒ 提示是一张空头支票，照它做不会生效。落地修复 = 提交 **`14603c2`**（提交信息自陈"documented override was a dead letter"，并由**真启动探针**验证），随后 `bf41d200` 把 README/TG-8 的措辞跟到实现。**判法**：凡"文档说可以这样绕"的提示，只有**跑一次真入口**才能证明它活着——读代码不算（本仓的"证据四件套"要求的就是这个）。
 >
-> **已知边界**：该覆盖只在 `__main__` 分支生效，import 式启动（如 `uvicorn main:app`）读不到它——若将来出现第二种启动方式，需要另接（原 finding 见 G2 复盘 §5 行 44）。
+> **已修（G2 复盘 §5 行 44，`run-2026-09-30-implementation-109`）**：该覆盖现在是**模块级事实**（`main.PORT` ／ `main.serve()`）——import 式启动也读得到，非法值在 **import 时** fail-fast；真入口反证＝`import main` 下 `PORT=9123`／非法 `rc=1`／越界 `rc=1`／不设 env ⇒ `8787`。**残留边界（如实记）**：`uvicorn main:app` 的端口仍由启动器决定（env 不会自动生效），启动器需读 `main.PORT` 或调 `main.serve()`——这不是判据缺口，是第三方启动器的固有分工。
 
 ### 2. 套件内偶发失败、单跑必过
 

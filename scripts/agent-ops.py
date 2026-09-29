@@ -253,14 +253,51 @@ def _hm_minutes(text: object) -> int | None:
     return hh * 60 + mm if 0 <= hh <= 24 and 0 <= mm < 60 else None
 
 
-def peak_windows_from_prices(prices: dict) -> tuple[list, str] | None:
-    """从价表取 `(_peak_windows, 时区名)`；无该元数据 → None（= 不按档计费）。"""
-    for prov in (prices.get("scraped") or {}).values():
-        if not isinstance(prov, dict):
-            continue
-        windows = prov.get("_peak_windows")
-        if isinstance(windows, list) and windows:
-            return windows, str(prov.get("_tier_timezone") or "Asia/Shanghai")
+def provider_of_model(prices: dict, model: str) -> str | None:
+    """该模型的价来自哪个 `scraped.<provider>`（键口径与 `_prices_for` **相同**：
+    `manual` 非 null 优先、其后按 `scraped` 的 provider 顺序取**精确**模型名，
+    **不做**别名归一化）。
+
+    这条"窗口随价走"是行 31 修正的结构保证：选档窗口必须与计价用的那条价目同属一个
+    provider。`manual` 非 null（它才是价源）与 `auto` 兜底 ⇒ `None`——那两种来源
+    **没有** provider 级的档位政策，也就没有选档窗口可言（`manual` 的档位语义仍是
+    "扁平键"，见 `2026-09-26-price-tier-spec.MD` §9.5 未决点 2）。
+
+    与 `paper-qa-script/app/usage.py::provider_of` 的差异是**具名的价格键解析差异**：
+    那边要认 litellm 报出的别名（`openai/deepseek-v4-flash`），故走名字候选归一化；
+    账本里的模型名本就是价表键，故这边按精确键（详见 `verify/verify_usage.py` ⑪14）。
+    """
+    if (prices.get("manual") or {}).get(model):
+        return None
+    for name, prov in (prices.get("scraped") or {}).items():
+        if isinstance(prov, dict) and model in (prov.get("models") or {}):
+            return str(name)
+    return None
+
+
+def peak_windows_from_prices(prices: dict, model: str) -> tuple[list, str] | None:
+    """**该模型所属 provider** 的 `(_peak_windows, 时区名)`；无该元数据 → None。
+
+    G2 复盘行 31（二查 `code-review-104` minor 6）修正：原实现按"第一个带窗口的
+    `scraped.*`"取**一组**窗口、再套到**所有**模型头上。今天只因 deepseek 是唯一
+    带 `_peak_windows` 的 provider 而**恰好**等价于正确口径（成本读数因此没错）——
+    那是**数据巧合**，不是结构保证：给 dashscope 补一组自己的窗口、或给它名下任一模型
+    补 `_tiers`，同一段代码立刻把 A 的峰谷时段算到 B 的头上。
+
+    窗口是 **provider 的**政策属性（爬取时随该 provider 的价目页写回，见
+    `fetch-prices.py::_provider_meta`），故这里**按 provider 取**。`manual` 非 null /
+    `auto` 兜底的模型没有 provider ⇒ `None`（= 不按档计费、如实标 `flat`，与
+    `2026-09-26-price-tier-spec.MD` §9.5 未决点 2／3 的口径一致）。
+    """
+    name = provider_of_model(prices, model)
+    if name is None:
+        return None
+    prov = (prices.get("scraped") or {}).get(name)
+    if not isinstance(prov, dict):
+        return None
+    windows = prov.get("_peak_windows")
+    if isinstance(windows, list) and windows:
+        return windows, str(prov.get("_tier_timezone") or "Asia/Shanghai")
     return None
 
 
@@ -683,7 +720,8 @@ def _estimate_cost(entry: dict) -> dict:
                 "pending_price": True, "model": model}
     meta: dict = {}
     tariff, tier, frac = prices, _TIER_FLAT, None
-    windows = peak_windows_from_prices(_load_prices())
+    # 行 31：选档窗口按**该模型所属 provider** 取（不是"第一个带窗口的 provider"套全体）
+    windows = peak_windows_from_prices(_load_prices(), model)
     if windows is not None:
         frac = peak_frac_for(entry, windows[0], windows[1])
         tariff, tier, frac = _tier_prices(prices, frac)

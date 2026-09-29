@@ -7,6 +7,7 @@
 - 事件模型 → `app.events`；配置 SSOT → `app.config_schema`。
 - 12 条 API 路由（Sprint-4 新增 /api/providers；Sprint-11 新增 /api/config_schema、/api/config/validate；Sprint-16 新增 /api/usage、/api/checkpoints）与线上协议（run_step 请求/响应、SSE 消息字段）与拆分前完全一致。
 """
+import os
 import sys
 import uuid
 import json
@@ -246,23 +247,45 @@ async def run_step(req: StepRequest) -> StepResponse:
     )
 
 
-if __name__ == "__main__":
-    import os
+def resolve_port() -> int:
+    """`PAPERQA_VERIFY_PORT` → 监听端口（G2 行 24 的覆盖；行 44 修正读取位置）。
 
+    读取点**在模块级**（`PORT = resolve_port()`），不在 `__main__` 分支里求值 ⇒
+    import 式启动（`uvicorn main:app`）与 `python main.py` **两种入口都生效**。
+    原实现把这段放在 `if __name__ == "__main__":` 内，第二种启动方式读不到它
+    （复核 `run-…-105` nit 10 的原文口径）。
+
+    取值：空/未设 ⇒ 8787（向后兼容）；非法整数或越界 ⇒ `SystemExit`（fail-fast）。
+    **不做**"端口被占用就静默换一个"——占用即失败是本仓 `TG-8①` 的要求。
+    """
+    raw = os.environ.get("PAPERQA_VERIFY_PORT", "").strip()
+    if not raw:
+        return 8787
+    try:
+        port = int(raw)
+    except ValueError:
+        raise SystemExit(f"PAPERQA_VERIFY_PORT 不是合法整数：{raw!r}") from None
+    if not (1 <= port <= 65535):
+        raise SystemExit(f"PAPERQA_VERIFY_PORT 越界（应 1..65535）：{port}")
+    return port
+
+
+# 模块级求值：**import 式启动也读得到**（行 44）。非法值在 import 时即 fail-fast。
+# 注意：只在 import 时求值**一次**；进程内改了 env 需要现值就再调 `resolve_port()`。
+PORT = resolve_port()
+
+
+def serve() -> None:
+    """按 `PORT` 起服务——`python main.py` 与 import 式启动**共用同一入口**。
+
+    第二种启动方式（如 `uvicorn main:app`）由启动器自己决定端口，故这里额外把
+    `PORT`／`serve()` 暴露成模块级事实：启动器要么读 `main.PORT`，要么调
+    `main.serve()`，两条路都拿到同一份"env 覆盖 + fail-fast"的结果（行 44）。
+    """
     import uvicorn
 
-    # 端口可由环境变量覆盖（G2 行 24）：验证脚本用 `PAPERQA_VERIFY_PORT` 让**每个 run 用不同端口**，
-    # 从而消除"两个实例抢 8787"的并发互踩。缺省仍是 8787，向后兼容。
-    # 注意：这里**不做**"被占用就静默换端口"——占用即失败是本仓 TG-8① 的 fail-fast 要求。
-    _raw_port = os.environ.get("PAPERQA_VERIFY_PORT", "").strip()
-    if _raw_port:
-        try:
-            _port = int(_raw_port)
-        except ValueError:
-            raise SystemExit(f"PAPERQA_VERIFY_PORT 不是合法整数：{_raw_port!r}")
-        if not (1 <= _port <= 65535):
-            raise SystemExit(f"PAPERQA_VERIFY_PORT 越界（应 1..65535）：{_port}")
-    else:
-        _port = 8787
+    uvicorn.run(app, host="127.0.0.1", port=PORT)
 
-    uvicorn.run(app, host="127.0.0.1", port=_port)
+
+if __name__ == "__main__":
+    serve()

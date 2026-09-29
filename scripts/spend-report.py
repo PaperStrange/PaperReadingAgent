@@ -28,7 +28,14 @@ import sys
 try:
     import zstandard as zstd
 except ImportError:  # pragma: no cover
-    print("需要 zstandard（仓库 .venv 已装）")
+    # 行 41 修复：旧文案写"仓库 .venv 已装"——那是**本机现状**，不是清单事实：
+    # 修复前 `requirements.txt` 与 `requirements-windows.txt` **都没有** `zstandard`，
+    # 于是换机器/新克隆时它可能压根没装，而文案却让人以为已装（误导）。
+    # 现在两份清单各自带 `zstandard`（版本与本仓 `.venv` 实装对齐，2026-09-29 核对 =
+    # 0.25.0）。
+    print("缺少运行依赖 zstandard（本脚本要解 DSH 会话日志 .jsonl.zstd）")
+    print("安装：.venv\\Scripts\\python.exe -m pip install "
+          "-r requirements-windows.txt（或 pip install zstandard）")
     print("用法：.venv\\Scripts\\python.exe scripts\\spend-report.py")
     sys.exit(2)
 
@@ -128,12 +135,38 @@ def scan(days: int, model: str):
     return per_day, per_sess, fx, files
 
 
+def baseline_note(got: float, base: float) -> str:
+    """当日读数与 `baseline` 的**对照文本**（超基线/低于基线都要看得见）。
+
+    G2 复盘行 40 修复：`agents/spend-budget.json::targets.verified_by` 声称
+    "次日读数与 baseline 对比"，而旧实现只打印 `基线 <值>`、**从不比对**
+    （声明了机制而机制不存在）⇒ 这里把比对真做出来。
+    **口径**：`baseline` 自述"用于对照，不作为判据"⇒ 本函数只产出上屏文本，
+    **不参与退出码**（退出码仍由预算上限决定）；"缺 baseline 字段 ⇒ SKIP"那条
+    由调用方判（判据没被执行就不算通过，口径同 `TG-19` M-B）。
+    """
+    if base == 0:
+        # 基线为 0 时**不能算倍率**（除零）——如实说"基线为 0"，不编一个无穷大出来
+        return ("等于基线（基线 = 0，无倍率）" if got == 0
+                else f"高于基线（基线 = 0，实测 {got}，无倍率）")
+    if got > base:
+        return f"高于基线 {abs(got / base - 1) * 100:.1f}%（{got / base:.2f}×）"
+    if got < base:
+        return f"低于基线 {(1 - got / base) * 100:.1f}%（{got / base:.2f}×）"
+    return "等于基线（1.00×）"
+
+
 def check(per_day: dict, per_sess: dict, fx: float, model: str) -> int:
     """按 agents/spend-budget.json 自检当日预算。
 
     rc：`0` = 全部判据**真的执行过**且在预算内；`1` = 有项超预算；
-    `3` = 有判据**没被执行**（配置的主线会话 id 在本机一条都没匹配到 ⇒ SKIP，
-    不得当 OK）；`0`＋`SKIP:` 行 = 预算未配置／今日无用量（既有口径，非"检查过"）。
+    `3` = 有判据**没被执行**（① 配置的主线会话 id 在本机一条都没匹配到；
+    ② `baseline` 缺该指标字段 ⇒ 无对照对象 ⇒ 行 40 要求的"与 baseline 对比"
+    这一半没执行。两条都**不得当 OK**）；`0`＋`SKIP:` 行 = 预算未配置／今日无用量
+    （既有口径，非"检查过"）。
+
+    每行输出三件事实：预算判据（`OK`/`OVER`/`SKIP`）、`实测`/`预算`、以及与
+    `baseline` 的**对照**（高于/低于/等于，带倍率）——对照只上屏，不参与判据。
     """
     path = ROOT / "agents" / "spend-budget.json"
     if not path.exists():
@@ -142,6 +175,7 @@ def check(per_day: dict, per_sess: dict, fx: float, model: str) -> int:
     doc = json.loads(path.read_text(encoding="utf-8"))
     budget = doc.get("budget") or {}
     base = doc.get("baseline") or {}
+    targets = doc.get("targets") or {}
     today = max(per_day) if per_day else None
     if not today:
         print("SKIP: 今日无用量记录")
@@ -160,41 +194,56 @@ def check(per_day: dict, per_sess: dict, fx: float, model: str) -> int:
     main_ok = bool(matched) or not mine
     main_out = sum(a[1] for name, a in rows if name in mine)
     cny = day[4] * fx
+    no_main = "配置的主线会话 id 在本机一条都没匹配到（换机器请改 `main_sessions`）"
     checks = [
-        ("派单会话数/日", dispatched, budget.get("dispatched_sessions_per_day"), True),
-        ("主代理 output token/日", main_out, budget.get("main_output_tokens_per_day"),
-         main_ok),
-        ("当日合计 CNY", round(cny, 2), budget.get("all_sessions_cny_per_day"), True),
+        {"label": "派单会话数/日", "base_key": "dispatched_sessions_per_day",
+         "got": dispatched, "cap": budget.get("dispatched_sessions_per_day"),
+         "measurable": True, "why": ""},
+        {"label": "主代理 output token/日", "base_key": "main_output_tokens_per_day",
+         "got": main_out, "cap": budget.get("main_output_tokens_per_day"),
+         "measurable": main_ok, "why": no_main},
+        {"label": "当日合计 CNY", "base_key": "all_sessions_cny_per_day",
+         "got": round(cny, 2), "cap": budget.get("all_sessions_cny_per_day"),
+         "measurable": True, "why": ""},
     ]
     over: list[str] = []
     skipped: list[str] = []
-    print(f"预算自检 {today}（模型 {model}）｜基线 {base.get('measured_at')}")
-    for label, got, cap, measurable in checks:
-        if not measurable:
+    print(f"预算自检 {today}（模型 {model}）｜基线 {base.get('measured_at')}"
+          f"｜靶 相对基线 {targets.get('cut_ratio_vs_baseline')}×"
+          f"（`targets.cut_ratio_vs_baseline`；对照只上屏，不作为判据）")
+    for row in checks:
+        label, got, cap = row["label"], row["got"], row["cap"]
+        b = base.get(row["base_key"])
+        if not isinstance(b, (int, float)):
+            b = None
+        if not row["measurable"]:
             # **未执行优先于超预算**：这一格显示的 `OK` 是没有测量对象的 OK，
             # 若把它和别的超预算并列，真正的病（这条判据在换机后形同不存在）
             # 会被"另一项超预算"盖住 —— 那正是假绿换了个外衣（复核 major 7）。
-            skipped.append(label)
-            flag = "SKIP"
+            flag, note = "SKIP", f"未执行（{row['why']}）"
+            skipped.append(f"{label}：{row['why']}")
+        elif b is None:
+            # 行 40：原文声称"与 baseline 对比"⇒ 没有基线字段时这一半**没被执行**，
+            # 故是 SKIP（不是 OK，也不是 OVER）——判据没被触发就不算通过。
+            why = f"`baseline.{row['base_key']}` 缺失 ⇒ 无对照对象"
+            flag, note = "SKIP", f"未执行（{why}）"
+            skipped.append(f"{label}：{why}")
         else:
             flag = "OK " if (cap is None or got <= cap) else "OVER"
             if flag == "OVER":
                 over.append(label)
-        b = base.get({"派单会话数/日": "dispatched_sessions_per_day",
-                      "主代理 output token/日": "main_output_tokens_per_day",
-                      "当日合计 CNY": "all_sessions_cny_per_day"}[label])
-        print(f"  [{flag}] {label:<22} 实测 {got:<10} 预算 {cap} 基线 {b}")
+            note = baseline_note(float(got), float(b))
+        print(f"  [{flag}] {label:<22} 实测 {str(got):<10} 预算 {cap} "
+              f"基线 {'（缺）' if b is None else b}｜对照 {note}")
     if skipped:
-        print(f"SPEND-BUDGET SKIP（{len(skipped)} 项判据**未执行**：{skipped}）"
-              f"——**不是通过**：配置的主线会话 id 在本机一条都没匹配到"
-              f"（判据没有测量对象；换机器请改 "
-              f"`agents/spend-budget.json::main_sessions`）"
+        print(f"SPEND-BUDGET SKIP（{len(skipped)} 项判据**未执行**）"
+              f"——**不是通过**：判据没有测量对象／没有对照对象，逐项原因见上"
               f"｜同时超预算的项：{over or '（无）'}")
         return SKIP_EXIT
     if over:
         print(f"SPEND-BUDGET FAIL（{len(over)} 项超预算）：{over}")
         return 1
-    print("SPEND-BUDGET PASS（全部在预算内）")
+    print("SPEND-BUDGET PASS（全部在预算内；每项基线对照见上）")
     return 0
 
 

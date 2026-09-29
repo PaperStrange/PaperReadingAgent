@@ -1249,6 +1249,57 @@ def selftest() -> int:
         # 行 8：整目录回收（含四个探针；`ignore_errors` 与旧实现的 unlink 同口径）
         shutil.rmtree(gate_root, ignore_errors=True)
 
+    # 行 34（P2 裁定：口径＝**条数**＋**分支感知**）：`run_suite.py`
+    # 的判决句／条数棘轮。
+    # 判据本体在 `run_suite.verdict_problems`（纯函数）——本闸门（"闸门的闸门"）把它
+    # 逐形态驱动一遍，并静态钉住"它**真的被套件调用**"（否则删掉调用点 =
+    # 判据形同不存在）。
+    from verify.run_suite import (BRANCH_ASSERTION_FLOORS, BRANCH_VERDICT_SCOPE_MIN,
+                                  verdict_problems, verdict_scope_problems)  # noqa: PLC0415
+    vline = "ALL PASS (174 assertions)"
+    ok("行 34 反向对照①：判决句在末行、条数 = 本分支下限 ⇒ 无缺陷",
+       verdict_problems("verify_agentops.py", ["x", vline], 0, True) == [], vline)
+    ok("行 34 反向对照②：判决句在、条数**低于**下限（173 < 174）⇒ FAIL 且点名棘轮",
+       any("棘轮" in p for p in
+           verdict_problems("verify_agentops.py", [vline.replace("174", "173")],
+                            0, True)),
+       "173 < 174")
+    ok("行 34 反证③：**没有判决句**（只有普通 PASS 行）⇒ FAIL"
+       "（这正是行 34 的病：删掉一批自检后脚本照样退 0）",
+       any("没有" in p for p in
+           verdict_problems("verify_agentops.py", ["PASS: a", "PASS: b"], 0, True)),
+       "无判决句")
+    ok("行 34 反证④：末行是**具名 SKIP 横幅**且退 0 ⇒ FAIL（TG-19 M-B：SKIP≠PASS）",
+       any("SKIP" in p for p in verdict_problems(
+           "verify_agentops.py",
+           [vline, "AGENTOPS SKIP[spec-absent-on-branch]（…不是通过）"],
+           0, True)),
+       "SKIP 横幅")
+    ok("行 34 反证⑤：判决句在、但该分支**没登记下限** ⇒ FAIL（fail-closed）",
+       any("没有登记断言数下限" in p for p in
+           verdict_problems("verify_agentops.py", [vline], 0, True, floors={})),
+       "floors 空")
+    ok("行 34 对照⑥：非零退出**不**由本条重复报（退出码已由既有判据判红）",
+       verdict_problems("verify_agentops.py", [], 1, True) == [], "code=1")
+    ok("行 34 反向对照⑦：自陈脚本数 5 = 本分支下限 ⇒ 无缺陷；4 < 5 ⇒ FAIL"
+       "（删掉 features 里的自陈字样 = 把该脚本移出棘轮 ⇒ 这条钉住）",
+       verdict_scope_problems(5, True) == [] and bool(verdict_scope_problems(4, True)),
+       f"下限={BRANCH_VERDICT_SCOPE_MIN.get(True)}")
+    ok("行 34 反向对照⑧：分支感知——同一读数在 absent 侧（下限 15）放行、"
+       "在 present 侧（下限 17）判红（「全局一个数」必然误判一边）",
+       verdict_problems("verify_card_index.py", ["ALL PASS (15 assertions)"],
+                        0, False) == []
+       and bool(verdict_problems("verify_card_index.py",
+                                 ["ALL PASS (15 assertions)"], 0, True)),
+       f"floors={BRANCH_ASSERTION_FLOORS.get(('verify_card_index.py', True))}/"
+       f"{BRANCH_ASSERTION_FLOORS.get(('verify_card_index.py', False))}")
+    rs_src = (ROOT / "verify" / "run_suite.py").read_text(
+        encoding="utf-8", errors="replace")
+    ok("行 34 判据**真被套件调用**（静态钉住调用点：删掉接线 = 判据形同不存在）",
+       len(re.findall(r"^\s*vp = verdict_problems\(", rs_src, re.MULTILINE)) == 1
+       and "verdict_scope_problems(len(declared), branch_present)" in rs_src,
+       "run_suite.py 调用点")
+
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
 

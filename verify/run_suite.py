@@ -28,9 +28,11 @@ import argparse
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -64,6 +66,54 @@ BRANCH_EST_OVERRIDES: dict[tuple[str, bool], float] = {
     ("verify_decision_register.py", False): 200.0,
 }
 
+# -------------------------------------------------------- 行 34
+# 判决句 ＋ 条数棘轮（口径＝按条数、必须分支感知）
+# G2 复盘行 34（二查 `run-…-104` nit 9）：多处 `VERIFY_META['features']` 已把写死的
+# "含 N 条反向对照"改成"见末行 `ALL PASS (N assertions)`"（方向正确），
+# 但**没有任何判据**
+# 要求 `--selftest` 真的跑到那句判决句——删掉一批 `ok()` 之后脚本照样退 0，只是 N 变小，
+# 而 N 不被任何地方钉住。
+#
+# P2 裁定口径：**按「条数」**，且**必须分支感知**（同一判据在两分支的读数不同 ⇒ 下限也
+# 必须分支感知；同 `BRANCH_EST_OVERRIDES`／指针短路同一思路）。
+#
+# 判据（对**自陈**了"条数见末行 `ALL PASS (N assertions)`"的脚本，逐脚本三道）：
+#   ① 判据句必须真的出现（接受两种已声明的形态：`ALL PASS (N assertions)` 或
+#      `EVIDENCE: <本脚本> assertions=N rc=0 …`）——"退 0"不等于"自检跑到了末行"；
+#   ② 若末行是具名 SKIP 横幅（`<NAME> SKIP[...]`），**不算通过**（`TG-19` M-B：
+#      SKIP 与 PASS 互斥；脚本自己就写着"本档不是通过"）；
+#   ③ N 不得低于**本分支实测下限**（只增不减；删断言 ⇒ N 下降 ⇒ 红）；
+#   ④ 自陈脚本的**数量**不得低于本分支下限（靠删掉 features 里的自陈来躲开棘轮 ⇒ 红）。
+# 取值口径（全部**实测**，两侧都不是猜的；present = windows 工作树，
+# absent = "windows 树减掉 `docs/iteration/**`"的**镜像**——与 `BRANCH_EST_OVERRIDES`
+# 同口径：当前 `main` ref 上这几个脚本／登记册本身缺席，故 absent 侧只能用镜像量）：
+#   * `verify_agentops.py`：present **174**；absent 侧**跑不到判决句**（只打
+#     `AGENTOPS SKIP[spec-absent-on-branch]…不是通过` 且退 0）⇒ 该侧**不登记下限**，
+#     判据①会把它判红。**这是真缺陷，不是假红**：`TG-19` M-B 要求 SKIP 与 PASS 互斥，
+#     而该脚本自己写着"本档不是通过"却退 0 ⇒ 套件把它算成 PASS（收尾已如实记录）。
+#   * `verify_card_index.py`：**唯一**两侧读数不同的脚本（17／15：absent 侧少 2 条依赖
+#     windows-only 卡文件的判据）——正是"下限必须分支感知"的实例。
+#   * `verify_decision_register.py` 32／32、`verify_derived_numbers.py` 19／19、
+#     `verify_gate_integrity.py` 68／68（两侧同值：它们的断言不依赖 `docs/iteration`）。
+# 复算：`present` = 在工作树跑该脚本、读末行；`absent` = 在 %TEMP% 镜像（clone 后
+# `git rm -r docs/iteration` 并提交、再把工作区改动同步进去、补上 gitignore 的
+# `agents/runtime`＋`agents/runs`）里跑同一脚本。
+VERDICT_LINE_RE = re.compile(r"^ALL PASS \((\d+) assertions\)$")
+VERDICT_EVIDENCE_RE = re.compile(
+    r"^EVIDENCE: (?P<name>[\w.\-]+) assertions=(?P<n>\d+)\s")
+SKIP_VERDICT_RE = re.compile(r"^\S+ SKIP\[")
+VERDICT_TAIL_LINES = 6          # 判决句必须落在输出的**末尾这几行**内（末行判决句）
+BRANCH_ASSERTION_FLOORS: dict[tuple[str, bool], int] = {
+    ("verify_agentops.py", True): 174,
+    ("verify_card_index.py", True): 17, ("verify_card_index.py", False): 15,
+    ("verify_decision_register.py", True): 32,
+    ("verify_decision_register.py", False): 32,
+    ("verify_derived_numbers.py", True): 19, ("verify_derived_numbers.py", False): 19,
+    ("verify_gate_integrity.py", True): 68, ("verify_gate_integrity.py", False): 68,
+}
+BRANCH_VERDICT_SCOPE_MIN: dict[bool, int] = {True: 5, False: 5}
+TAIL_KEEP = 60                  # 每个脚本留最后 60 行（判决句判据只读末尾数行）
+
 
 def path_in_tree(rel: str) -> bool:
     """`rel` 是否在**本分支 `HEAD`** 的提交树里（分支感知的唯一事实来源 = git）。
@@ -90,6 +140,79 @@ def effective_est_seconds(name: str, meta: dict) -> float:
     if override is None:
         return float(meta.get("est_seconds") or 60)
     return override
+
+
+def declared_verdict_scripts(picked: list[tuple[Path, dict]]) -> list[str]:
+    """本轮里**自陈**了"条数见末行 `ALL PASS (N assertions)`"的脚本名（按名字排序）。
+
+    自陈是 `VERIFY_META.features` 里的显式字样（不是"我看它源码里有 ok()"）——
+    口径与行 34 的原文一致：这几处 features 自己承诺了"条数见末行"。
+    """
+    return sorted(p.name for p, m in picked
+                  if "ALL PASS (N assertions)" in str(m.get("features") or ""))
+
+
+def verdict_problems(name: str, tail: list[str], code: int, branch_present: bool,
+                     floors: dict[tuple[str, bool], int] | None = None) -> list[str]:
+    """行 34 的**纯函数**判决：`(该脚本的问题清单)`；空清单 = 这一道过。
+
+    `tail` = 该脚本输出的末尾若干行（去空行）。判据见 `BRANCH_ASSERTION_FLOORS` 
+    上方注释。
+    抽成纯函数是为了让反向对照能直接驱动它（不必真去改一个脚本的断言数）。
+    """
+    table = BRANCH_ASSERTION_FLOORS if floors is None else floors
+    problems: list[str] = []
+    if code != 0:
+        return problems          # 非零退出已由既有判据判红；这里不重复报
+    last = [ln.rstrip() for ln in tail if ln.strip()]
+    if last and SKIP_VERDICT_RE.match(last[-1]):
+        problems.append(
+            f"[行34] 自陈『条数见末行』却以**具名 SKIP 横幅**收尾且退 0："
+            f"{last[-1][:80]}——`TG-19` M-B 口径要求 SKIP 与 PASS 互斥"
+            f"（脚本自己写着『不是通过』，套件却把它算成 PASS）")
+    n_found: int | None = None
+    for line in reversed(last[-VERDICT_TAIL_LINES:]):
+        m = VERDICT_LINE_RE.match(line)
+        if m:
+            n_found = int(m.group(1))
+            break
+        m = VERDICT_EVIDENCE_RE.match(line)
+        if m and m.group("name") == name:
+            n_found = int(m.group("n"))
+            break
+    if n_found is None:
+        problems.append(
+            f"[行34] 自陈『条数见末行 `ALL PASS (N assertions)`』，但输出末尾 "
+            f"{VERDICT_TAIL_LINES} 行内**没有**判决句 ⇒ 判据没跑到末行就不能算通过"
+            f"（末行：{(last[-1][:80] if last else '（无输出）')}）")
+        return problems
+    key = (name, branch_present)
+    floor = table.get(key)
+    if floor is None:
+        problems.append(
+            f"[行34] {name} 在 present={branch_present} 上**没有登记断言数下限**"
+            f"（fail-closed：打印了判决句就必须有基线，否则棘轮可被『不登记』绕过）")
+        return problems
+    if n_found < floor:
+        problems.append(
+            f"[行34 棘轮] {name} 断言数 {n_found} < 本分支下限 {floor}"
+            f"（present={branch_present}）——只增不减：删掉一批自检会让这条红")
+    return problems
+
+
+def verdict_scope_problems(present_count: int, branch_present: bool,
+                           mins: dict[bool, int] | None = None) -> list[str]:
+    """行 34 判据④的**纯函数**：自陈脚本数不得低于本分支下限（删自陈 = 躲棘轮）。"""
+    table = BRANCH_VERDICT_SCOPE_MIN if mins is None else mins
+    floor = table.get(branch_present)
+    if floor is None:
+        return [f"[行34] 分支判据 present={branch_present} 无自陈脚本数下限"
+                f" ⇒ fail-closed"]
+    if present_count < floor:
+        return [f"[行34 棘轮] 自陈『条数见末行』的脚本只有 {present_count} 个 < 下限 "
+                f"{floor} 个（present={branch_present}）——删掉 `VERIFY_META.features` "
+                f"里的自陈字样就会把该脚本移出棘轮范围 ⇒ 这条把它钉住"]
+    return []
 # F4（2026-09-25）：结果 JSON 的**标准路径**。原实现 `--json` 默认为空字符串，而 `_write_json("")`
 # 直接 return ⇒ 默认跑一次 `run_suite.py --tier offline` **不刷新** `verify/suite_result.json`，
 # 那份旧文件（上次 network 档留下的）看起来仍像"最新结果"——读的人要翻 `finished_at` 才发现不是本轮。
@@ -179,20 +302,57 @@ def select(verify_dir: Path, tier: str, only: list[str] | None) -> list[tuple[Pa
     return sorted(picked, key=lambda pm: pm[0].name)
 
 
-def run_one(path: Path, meta: dict, timeout_s: int) -> tuple[int, float]:
+def run_one(path: Path, meta: dict, timeout_s: int) -> tuple[int, float, list[str]]:
+    """跑一个脚本：**逐行实时转发**子进程输出，同时留下末尾若干行（行 34 的判决句判据）
+    。
+
+    为什么要抓输出：`rc == 0` 只说明"进程正常退出"，**不能**说明自检真的跑到了末行判决句
+    ——删掉一批 `ok()` 之后脚本照样退 0。故这里把每个脚本的**末行判决句**与断言条数留下，
+    交给 `verdict_problems()` 判。
+
+    实时性不做妥协：用 `Popen` + 读线程逐行 `print`（`PYTHONUNBUFFERED=1` 
+    让子进程不攒块），
+    超时仍按原口径（`timeout_s` 秒后 `kill` ⇒ 判 `124`）；只多留最后 `TAIL_KEEP` 行。
+    """
     if path.suffix == ".py":
         cmd = [sys.executable, str(path)]
     elif path.suffix == ".mjs":
         cmd = ["node", str(path)]
     else:
-        return 127, 0.0
+        return 127, 0.0, []
+    tail: list[str] = []
+    lock = threading.Lock()
     t0 = time.perf_counter()
+
+    def _forward(stream) -> None:
+        for line in stream:
+            with lock:
+                tail.append(line)
+                if len(tail) > TAIL_KEEP:
+                    del tail[0]
+            sys.stdout.write(line)
+            sys.stdout.flush()
+
     try:
-        proc = subprocess.run(cmd, cwd=str(ROOT), timeout=timeout_s, check=False)
-        return proc.returncode, round(time.perf_counter() - t0, 2)
+        proc = subprocess.Popen(
+            cmd, cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace", bufsize=1,
+            env={**os.environ, "PYTHONUNBUFFERED": "1"})
+    except OSError as exc:
+        print(f"  SPAWN-ERROR: {type(exc).__name__}: {exc}")
+        return 126, 0.0, []
+    reader = threading.Thread(target=_forward, args=(proc.stdout,), daemon=True)
+    reader.start()
+    try:
+        proc.wait(timeout=timeout_s)
     except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        reader.join(timeout=5)
         print(f"  TIMEOUT after {timeout_s}s")
-        return 124, round(time.perf_counter() - t0, 2)
+        return 124, round(time.perf_counter() - t0, 2), tail
+    reader.join(timeout=5)
+    return proc.returncode, round(time.perf_counter() - t0, 2), tail
 
 
 def main() -> int:
@@ -276,6 +436,11 @@ def main() -> int:
         return 0
 
     failed: list[str] = []
+    branch_present = path_in_tree(PROBE_KEY)
+    declared = set(declared_verdict_scripts(picked))
+    verdict_readings: list[str] = []
+    verdict_failed: list[str] = []
+    undeclared_printers: list[str] = []
     # Retro ③（2026-09-20）：子脚本把实测用量写成 JSONL 指标文件，suite 据此聚合出真实成本。
     # 复核 round-4 minor：文件在**确定要执行之后**才创建（避免 --dry-run/拒绝启动路径遗留文件）。
     fd, metrics_name = tempfile.mkstemp(prefix="suite_metrics_", suffix=".jsonl")
@@ -288,11 +453,33 @@ def main() -> int:
             # 一边低估 110 倍（`TIMEOUT` 假红）或另一边白等十几分钟。
             timeout_s = int(effective_est_seconds(p.name, m) * 4 + 60)
             print(f"--- {p.name} ---", flush=True)
-            code, secs = run_one(p, m, timeout_s)
+            code, secs, tail = run_one(p, m, timeout_s)
             summary["scripts"].append({"name": p.name, "exit": code, "seconds": secs})
             print(f"--- {p.name}: exit={code} ({secs}s) ---", flush=True)
             if code != 0:
                 failed.append(p.name)
+            # 行 34：只对**自陈**『条数见末行』的脚本判判决句与条数棘轮（其余脚本的
+            # 判决句形态不在本条射程内，见 `BRANCH_ASSERTION_FLOORS` 上方注释）。
+            if p.name in declared:
+                vp = verdict_problems(p.name, tail, code, branch_present)
+                got = next((ln.strip() for ln in reversed(tail[-VERDICT_TAIL_LINES:])
+                            if VERDICT_LINE_RE.match(ln.strip())
+                            or VERDICT_EVIDENCE_RE.match(ln.strip())), "（无判决句）")
+                floor_txt = BRANCH_ASSERTION_FLOORS.get((p.name, branch_present),
+                                                          "未登记")
+                verdict_readings.append(f"{p.name}：{got}｜本分支下限 {floor_txt}")
+                if vp:
+                    verdict_failed.append(p.name)
+                    failed.append(f"{p.name}（行34）")
+                    for prob in vp:
+                        print(f"  VERDICT-FAIL: {prob}")
+            elif any(VERDICT_LINE_RE.match(ln.strip())
+                     or VERDICT_EVIDENCE_RE.match(ln.strip())
+                     for ln in tail):
+                # 打印了判决句却没自陈 ⇒ 未纳入条数棘轮。**上屏可见**（不判红：
+                # 纳入棘轮要
+                # 先给两侧实测下限，那是逐脚本的登记工作，本批只登记自陈的那 5 个）。
+                undeclared_printers.append(p.name)
 
         metrics = _read_metrics(metrics_path)
     finally:
@@ -320,8 +507,39 @@ def main() -> int:
         )
 
     summary["finished_at"] = time.time()
+    # 行 34 判据④（自陈脚本数棘轮）只对 offline 档判：Declared 集合是 offline 档的
+    # 5 个脚本（gui/network 档不选它们 ⇒ 比较两个不同的清单没有意义）。
+    if args.tier == "offline":
+        print(f"\n== 行 34 判决句／条数棘轮（分支判据 `{PROBE_KEY}` "
+              f"在树里={branch_present}）==")
+        for line in verdict_readings:
+            print(f"  {line}")
+        print(f"  自陈『条数见末行』的脚本 {len(declared)} 个")
+        if undeclared_printers:
+            print(f"  WARN（可见缺口，**本批不判红**）："
+                  f"{len(undeclared_printers)} 个脚本打印了判决句但未在 "
+                  f"`VERIFY_META.features` 里自陈条数 ⇒ 未纳入条数棘轮："
+                  f"{', '.join(sorted(undeclared_printers))}")
+        # 判据④（自陈脚本数棘轮）**只对仓库自己的 `verify/` 目录**判：`--verify-dir`
+        # 指向
+        # fixture（`verify_runner.py` 的自检就是这么跑的）时脚本集是造的，"本分支应有 5
+        # 个
+        # 自陈脚本"在那里没有意义——按 fixture 判会造出假红。
+        if verify_dir.resolve() == (ROOT / "verify").resolve():
+            _scope_min = BRANCH_VERDICT_SCOPE_MIN.get(branch_present)
+            print(f"  自陈脚本数下限（本分支）＝{_scope_min} 个")
+            for prob in verdict_scope_problems(len(declared), branch_present):
+                print(f"  VERDICT-FAIL: {prob}")
+                failed.append("（行34 自陈脚本数棘轮）")
+        else:
+            print(f"  NOTE: `--verify-dir`＝{verify_dir}（非仓库 `verify/`）"
+                  f"⇒ 自陈脚本数棘轮不判（fixture 的脚本集是造的；"
+                  f"逐脚本的判决句／条数判据照常）")
     summary["status"] = "failed" if failed else "ok"
     summary["failed_scripts"] = failed
+    summary["verdict_floor_branch_present"] = branch_present
+    summary["verdict_readings"] = verdict_readings
+    summary["verdict_failed"] = verdict_failed
     _write_json(args.json, summary)
 
     if args.tier == "network":

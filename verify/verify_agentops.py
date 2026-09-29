@@ -743,8 +743,8 @@ def main() -> int:
         ao_tier_mod = importlib.util.module_from_spec(spec_ao_tier_mod)
         assert spec_ao_tier_mod.loader is not None
         spec_ao_tier_mod.loader.exec_module(ao_tier_mod)
-        tier = ao_tier_mod.peak_windows_from_prices(tier_prices)
-        ok("UC-20 前置①：选档窗口元数据来自价表（不是代码里写死）",
+        tier = ao_tier_mod.peak_windows_from_prices(tier_prices, "deepseek-v4-flash")
+        ok("UC-20 前置①：选档窗口元数据来自**该模型所属 provider**（不是写死）",
            tier is not None and tier[1] == "Asia/Shanghai" and len(tier[0]) == 2,
            f"windows={tier}")
 
@@ -856,7 +856,7 @@ def main() -> int:
            tier_prices["scraped"]["deepseek"]["models"]["deepseek-v4-flash"]["_tiers"],
            f"off_peak={flash_tiers.get('off_peak')}")
         ok("E9 派生后选档仍可用（`peak_windows_from_prices` 读得到窗口）",
-           ao_tier_mod.peak_windows_from_prices(after) is not None,
+           ao_tier_mod.peak_windows_from_prices(after, "deepseek-v4-flash") is not None,
            f"keys={sorted(prov)}")
         # 反向对照前置：真造出"白名单不同步"的实现（临时副本，**不动仓库文件**）。
         # 摘掉 `_tiers, _tier_scheme` 这一行 ⇒ 等价于"多档落地时没同步白名单"。

@@ -65,6 +65,7 @@ VERIFY_META = {
     'features': '决策登记册机检（TG-20 ③④⑤）：章节在位 / 条目 8 字段齐全 / '
                 '受控状态词 / 被取代指向存在的条目 / path:line 指针可核 / '
                 '§4.1 引文↔出处逐条核对 / 待回填可见；'
+                '行 39 未核指针**条数**棘轮（分支感知：windows 0／main 1106）；'
                 '反向对照条数见末行 `ALL PASS (N assertions)`',
     # 复核 `run-…-105` major 8：本档耗时**随分支差 110 倍**——windows 上约 5s
     # （指针绝大多数指向本分支存在的文件），main 上约 173s（1106 个指针指向
@@ -96,6 +97,63 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 REGISTER_REL = "docs/6-DECISIONS.md"
+
+# ---------------------------------------------------------------- 行 39 棘轮（P2 裁定）
+# **口径 = 条数 ＋ 分支感知**（裁定原文：与 `est_seconds`／指针短路同一思路——同一判据在
+# 两分支的读数不同 ⇒ 上限也必须分支感知）。
+#
+# 对象：`pointers_branch_absent` ＝ "指针指向的路径**不在本分支提交树里** ⇒
+# 未核"的**条数**。
+# 它同时是**成本面**：每新增一个指向 windows-only 子树的指针，在 main 上就多一次 git
+# 询问
+# （修复前每个指针两次 ⇒ 实测 173s 超时，见行 35）。
+#
+# 键 = `path_in_head(ROOT, PROBE_KEY)`（**与 `run_suite.BRANCH_EST_OVERRIDES`
+# 同一分支判据**：
+# 用 git 的直接证据回答"`docs/iteration` 在本分支的提交树里吗"）。
+# 值 = 该分支的**实测**未核条数上限（**只减不增**）：
+# * present（windows）：实测 **0** 处（登记册 1248 处指针全部落在本分支存在的文件上）⇒
+# 上限 0；
+#   * absent：登记册在、`docs/iteration/**` 整棵子树缺席 ⇒ 指向它的指针**全部**未核，
+# 实测 **1106** 处（2026-09-29 现跑）。复算：取本文件的 `POINTER_RE` + `_strip_fences`
+#     扫 `docs/6-DECISIONS.md` 得 1248 处指针，逐处判"父目录是否在目标 revision 的树里"
+# （`git ls-tree --name-only <rev> -- <dir>`），缺席者计未核 ⇒ 1106（与 §5 行 35 同数）
+# 。
+#
+# **absent 侧是"镜像"读数，不是当前 `main` ref 的读数**（如实记）：`main`（bc31219）上
+# `docs/6-DECISIONS.md` 与 `verify/verify_decision_register.py` **本身缺席** ⇒ 该分支走
+# 具名 SKIP（`skipped=True`），本棘轮不参与。absent 侧真正描述的是"登记册已同步进 main、
+# 但 `docs/iteration/**` 仍缺席"的形态——与 `run_suite.BRANCH_EST_OVERRIDES` 的 absent
+# 侧同口径（那也是镜像实测）。
+#
+# 为什么不取"全局一个数"（如"只减不增"的 0）：那会让"新增一个指向 `docs/iteration/**` 的
+# **合法**指针"在 windows 上恒红——windows 上它是**可核**的，不该按 absent 侧的形态判。
+BRANCH_ABSENT_CAPS: dict[bool, int] = {True: 0, False: 1106}
+PROBE_KEY = "docs/iteration"
+
+
+def absent_ratchet_problems(absent: int, present: bool,
+                            caps: dict[bool, int] | None = None) -> list[str]:
+    """行 39 棘轮的**纯函数**（供反向对照直接驱动）：未核条数 > 本分支上限 ⇒ 一条 
+    problem。
+
+    无该分支的上限 ⇒ **fail-closed**（不许当成"没有上限"）：
+    棘轮表缺项等于该分支失去棘轮，
+    那正是本条要治的形态。
+    """
+    table = BRANCH_ABSENT_CAPS if caps is None else caps
+    cap = table.get(present)
+    if cap is None:
+        return [f"[行39 棘轮] 分支判据 present={present} 在上限表里没有对应项 "
+                f"⇒ fail-closed（缺项不得读成『无上限』）"]
+    if absent > cap:
+        return [f"[行39 棘轮] 本分支未核指针 {absent} 条 > 上限 {cap} 条（只减不增）："
+                f"新增指向本分支不存在的子树的指针会线性放大 main 上的成本面"
+                f"（修复前实测 173s ⇒ TIMEOUT，见行 35）；要么改指向存在的文件、"
+                f"要么同批给出上限调整的理由"]
+    return []
+
+
 SECTIONS = ("## 1. 字段定义", "## 2. 提问纪律", "## 3. ", "## 4. ", "## 4.1 ",
             "## 4.2 ", "## 4.3 ", "## 5.", "## 6.")
 FIELDS = ("原文", "出处", "时点", "主代理归纳", "生效状态", "证据", "验证时间戳",
@@ -520,11 +578,18 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
         warns.append(f"本分支不存在的路径：指针 {absent_ptr} 处未核、引文 "
         f"{unverifiable} 条未核"
                      f"（分支差异；windows 上这些**全部**要核，见 `summary` 的 0/0）")
+    # 行 39（P2 裁定）：未核**条数**的棘轮——分支感知，只减不增。放在 WARN 之后：
+    # 未核本身是"判据没被触发"的可见计数（WARN），而**涨过本分支上限**是 defect（FAIL）
+    # 。
+    branch_present = path_in_head(root, PROBE_KEY)
+    problems.extend(absent_ratchet_problems(absent_ptr, branch_present))
     stats = {"entries": len(entries),
              "section3": sum(1 for e in entries if _in_spans(e["line"], spans3)),
              "section41": sum(1 for e in entries if _in_spans(e["line"], spans41)),
              "pointers": len(pointers),
              "bad_pointers": bad_ptr, "pointers_branch_absent": absent_ptr,
+             "branch_present": branch_present,
+             "branch_absent_cap": BRANCH_ABSENT_CAPS.get(branch_present),
              "quotes_checked": checked, "quotes_unverifiable": unverifiable,
              "quotes_mismatch": len(mismatch), "pending": len(pending),
              "quotes_drift": len(drift),
@@ -608,11 +673,24 @@ def selftest() -> int:
     dangling = run(build({"出处": "docs/no-such-tree-xyz/a.md:3",
                           "证据": "docs/no-such-tree-xyz/a.md:3"}))
     ok("反向对照 c1 指针指向**本分支与 `HEAD` 都没有**的子树 ⇒ 记『未核』"
-       "（`pointers_branch_absent`），不误判成漂移"
+       "（`pointers_branch_absent`），**不误判成漂移／打错／被删**"
        "（二查 run-…-088 critical 1：登记册大量指针指向 windows-only 子树）",
-       dangling["problems"] == []
-       and dangling["stats"].get("pointers_branch_absent", 0) >= 1,
+       dangling["stats"].get("pointers_branch_absent", 0) >= 1
+       and not any(("打错" in p or "被删" in p or "漂移" in p)
+                   for p in dangling["problems"]),
        f"problems={dangling['problems'][:1]} stats={dangling['stats']}")
+    # 行 39（P2 裁定）**端到端**反向对照：同一夹具（2 条未核指针）必须**按本分支的上限**
+    # 决定是否触发棘轮——present 侧上限 0 ⇒ 触发（"未核"从 WARN 升级为 defect）；
+    # absent 侧上限 1106 ⇒ 不触发。判据写成"与 `读数 > 上限` 同值"而不是"一定触发"，
+    # 否则这条控制本身会在 absent 分支假红（同一判据两分支读数不同 ⇒
+    # 期望也必须分支感知）。
+    _cap = dangling["stats"].get("branch_absent_cap")
+    _reading = dangling["stats"].get("pointers_branch_absent")
+    ok("反向对照 c1″（行 39 端到端、真入口、分支感知）：棘轮是否出现在 problems 里"
+       "= 「本分支未核读数 > 本分支上限」",
+       bool(any("[行39 棘轮]" in p for p in dangling["problems"]))
+       == (isinstance(_cap, int) and isinstance(_reading, int) and _reading > _cap),
+       f"读数={_reading} 上限={_cap} present={dangling['stats'].get('branch_present')}")
     # 反向对照 c1′（**修复验证复核 `run-…-089` major 1d(a) 的原始形态**）：
     # 路径在**存在的
     # 同级目录**里查无此名 = 打错/改名 ⇒ 必须 FAIL（首版把所有"文件不存在"都算成未核
@@ -767,6 +845,24 @@ def selftest() -> int:
        drift["problems"] == [] and drift["stats"].get("quotes_drift", 0) >= 1
        and any("实际命中" in w for w in drift["warns"]),
        f"drift={drift['stats'].get('quotes_drift')} warns={drift['warns'][:1]}")
+    # 行 39（P2 裁定）：未核**条数**棘轮的分支感知 —— 反向对照直接驱动纯函数
+    ok("反向对照 u 行 39 棘轮：present（windows）分支上未核 0 条 = 上限 ⇒ 不报缺陷",
+       absent_ratchet_problems(0, True) == [], "absent=0 cap=0")
+    ok("反向对照 v 行 39 棘轮：present 分支上未核 **1** 条 > 上限 0 ⇒ FAIL"
+       "（windows 上新增一条指向不存在路径的指针即红）",
+       bool(absent_ratchet_problems(1, True)),
+       str(absent_ratchet_problems(1, True)[:1]))
+    ok("反向对照 w 行 39 棘轮：absent（main 镜像）分支上未核 1106 条 = 实测上限"
+       " ⇒ 不报缺陷（这一条防的是「全局只减不增」在 main 上恒红）",
+       absent_ratchet_problems(1106, False) == [], "absent=1106 cap=1106")
+    ok("反向对照 x 行 39 棘轮：absent 分支上 **1107** 条 > 上限 1106 ⇒ FAIL"
+       "（同形态指针**线性放大**在 main 上被咬住）",
+       bool(absent_ratchet_problems(1107, False)),
+       str(absent_ratchet_problems(1107, False)[:1]))
+    ok("反向对照 y 行 39 棘轮：条数**下调**（1105 < 1106）⇒ 放行（收紧永远放行）",
+       absent_ratchet_problems(1105, False) == [], "absent=1105")
+    ok("反向对照 z 行 39 棘轮：上限表缺该分支 ⇒ fail-closed（缺项不得读成『无上限』）",
+       bool(absent_ratchet_problems(3, True, caps={False: 1106})), "caps 缺 True")
     _reclaim()   # 行 8：显式回收 run 级夹具目录（异常路径由 `atexit` 兜底）
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
@@ -795,7 +891,10 @@ def main() -> int:
     print(f"DECISION-REGISTER PASS：{s.get('entries')} 条条目（§3 {s.get('section3')} "
     f"/ §4.1 "
           f"{s.get('section41')}）；指针 {s.get('pointers')} 处（其中本分支不存在 "
-          f"{s.get('pointers_branch_absent')} 处未核）；§4.1 引文-出处逐条核对 "
+          f"{s.get('pointers_branch_absent')} 处未核，行 39 棘轮上限 "
+          f"{s.get('branch_absent_cap')} 条〔分支判据 "
+          f"`{PROBE_KEY}` 在树里={s.get('branch_present')}〕）；"
+          f"§4.1 引文-出处逐条核对 "
           f"{s.get('quotes_checked')} 条、{s.get('quotes_mismatch')} 条不符"
           f"（另 {s.get('quotes_unverifiable')} 条因路径不在本分支未核；"
           f"±2 内漂移 {s.get('quotes_drift')} 条，见 WARN）；"

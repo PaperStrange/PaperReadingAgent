@@ -299,8 +299,9 @@ def main() -> int:
     #    真源 = docs/iteration/phases/agents-infra/2026-09-26-price-tier-spec.MD §3；
     #    参考实现 = scripts/agent-ops.py 的 is_peak_at / peak_frac_for（TG-20 行 16）。
     #    每条都**先断言前置条件确实发生**（机制案例 26）：前置不成立 ⇒ FAIL 且不作数。
-    win = U.peak_windows()
-    ok("⑪0 前置①：选档窗口来自**价表**（不是代码写死）；时区 Asia/Shanghai、两条窗口",
+    win = U.peak_windows(MODEL)
+    ok("⑪0 前置①：选档窗口来自**价表**（不是代码写死）且取自该模型所属 provider；"
+       "时区 Asia/Shanghai、两条窗口",
        bool(win) and win[1] == "Asia/Shanghai" and len(win[0]) == 2, f"windows={win}")
     tiers = (U.price_for(MODEL) or {}).get("_tiers") or {}
     pk, off = tiers.get("peak") or {}, tiers.get("off_peak") or {}
@@ -458,9 +459,88 @@ def main() -> int:
     missing = [n for n in names if not hasattr(ao, n)]
     ok("⑪14 前置：参考实现可加载且带这三个口径函数（缺 ⇒ 一致性无法验证，判 FAIL）",
        not missing, str(missing))
-    ok("⑪14 窗口来源一致：两边从**同一份**价表读到同一组窗口/时区",
-       ao.peak_windows_from_prices(U.load_prices()) == U.peak_windows(),
-       str(ao.peak_windows_from_prices(U.load_prices())))
+    # 行 31（P1 裁定）：窗口按**该模型所属 provider** 取 ⇒ 判据也必须是逐 (provider,
+    # 模型)
+    # 的现跑对照。旧判据是"两边各取**一组**"——在"只有一个 provider 带窗口"时**恒真**，
+    # 正是行 31 说的"数据巧合而非结构保证"。
+    pricing = U.load_prices()
+    combos = [(pname, mname)
+              for pname, prov in (pricing.get("scraped") or {}).items()
+              for mname in ((prov or {}).get("models") or {})]
+
+    def _has_win(provname: str | None) -> bool:
+        """该 provider 在真实价表里**带**选档窗口元数据吗。"""
+        prov = (pricing.get("scraped") or {}).get(provname or "")
+        return bool(isinstance((prov or {}).get("_peak_windows"), list)
+                    and (prov or {}).get("_peak_windows"))
+
+    # 两侧的**价格键解析口径不同**（既有、刻意）：本模块 `price_for` 走
+    # `_model_candidates`
+    # 归一化（认 litellm 报出的别名），`agent-ops._prices_for` 按精确键。故先按"两侧是否
+    # 解析到同一价目"分层，再逐层判窗口。
+    same_entry = [(p, m) for p, m in combos if ao._prices_for(m) == U.price_for(m)]
+    win_mism = [(p, m) for p, m in combos
+                if ao.peak_windows_from_prices(pricing, m)
+                != U.peak_windows_for(pricing, m)]
+    same_mism = [(p, m) for p, m in win_mism if (p, m) in same_entry]
+    expect_mism = {(p, m) for p, m in combos
+                   if _has_win(ao.provider_of_model(pricing, m))
+                   != _has_win(U.provider_of(pricing, m))}
+    ok(f"⑪14a 窗口来源一致（**同一价目**的模型）：真实价表 {len(combos)} 个组合里 "
+       f"{len(same_entry)} 个两侧价目相同 ⇒ 它们的窗口读数逐条同值",
+       bool(same_entry) and not same_mism, str(same_mism[:3]))
+    ok("⑪14b 窗口读数的**全部分歧都由「该 provider 有没有窗口元数据」解释**"
+       "（不存在第二类分歧：两侧 provider 的窗口元数据相同却读出不同窗口）",
+       set(win_mism) == expect_mism,
+       f"窗口不同={sorted(m for _p, m in win_mism)} "
+       f"预期不同={sorted(m for _p, m in expect_mism)}")
+    same_win = {(p, m) for p, m in same_entry
+                if U.peak_windows_for(pricing, m) is not None}
+    ok("⑪14c 窗口按 provider 取（真实价表）：同一价目的模型里，拿得到窗口的**恰好**是"
+       "所属 provider 带 `_peak_windows` 的那些（deepseek 的 4 个；"
+       "dashscope／openrouter 的模型一律 None，不借别家窗口）",
+       bool(same_win) and same_win == {(p, m) for p, m in same_entry if _has_win(p)},
+       f"带窗口={sorted({p for p, _m in same_win})} 组合数={len(same_win)}")
+    # 具名（既有差异，**非行 31 引入**）：价目不同的键只能是那些带命名空间的键
+    # （`deepseek/deepseek-v4-flash` 等）——`price_for` 的名字候选先命中 deepseek 的
+    # 同名模型（provider 顺序在前），`_prices_for` 的精确键命中 openrouter。
+    # 判据钉的是**方向**（差异 ⊆ 带 `/` 的键；裸名两侧必须一致），不是"差异的数量"
+    # ——数量会随价表增删模型而变，钉数量等于把夹具漂移写进判据。
+    diff_names = {m for _p, m in combos if ao._prices_for(m) != U.price_for(m)}
+    ok("⑪14d 具名差异（已钉方向）：两侧价目不同的键**只能是**带 `/` 的命名空间键"
+       "（裸模型名两侧必须解析到同一价目）；窗口读数是否随之不同由 ⑪14b 逐条解释",
+       bool(diff_names) and all("/" in m for m in diff_names)
+       and not any(ao._prices_for(m) != U.price_for(m)
+                   for _p, m in combos if "/" not in m),
+       f"价目不同的键={sorted(diff_names)}；带 `/` 的键="
+       f"{sorted({m for _p, m in combos if '/' in m})}")
+    # ⑪14 反向对照（**合成价表**，行 31 的核心判据）：A provider 带窗口、B provider 不带
+    # ⇒ B 名下的模型必须 None（**不得**借 A 的窗口），而 A 的模型照旧拿 A
+    # 的窗口（不回归）。
+    # 这一条在修前两边都判红（旧实现把 A 的窗口套给 B 的模型）。
+    synth_win = [{"days": ["Mon"], "start": "09:00", "end": "12:00"}]
+    synth = {"scraped": {
+        "alpha": {"_tier_timezone": "Asia/Shanghai", "_peak_windows": synth_win,
+                  "models": {"a-1": {"_tiers": {"peak": {}, "off_peak": {}}}}},
+        "beta": {"models": {"b-1": {"_tiers": {"peak": {}, "off_peak": {}}}}}}}
+    ok("⑪14e 反向对照：B provider 无窗口 ⇒ B 的模型两边都判 None（不借 A 的窗口）；"
+       "同一张合成表上 A 的模型两边都拿到 A 的窗口（修前此处 b-1 会拿到 A 的窗口）",
+       U.peak_windows_for(synth, "b-1") is None
+       and ao.peak_windows_from_prices(synth, "b-1") is None
+       and U.peak_windows_for(synth, "a-1") == (synth_win, "Asia/Shanghai")
+       and ao.peak_windows_from_prices(synth, "a-1") == (synth_win, "Asia/Shanghai"),
+       f"usage b-1={U.peak_windows_for(synth, 'b-1')} "
+       f"a-1={U.peak_windows_for(synth, 'a-1')}")
+    # 具名差异（同下一条"朴素时间戳"的写法）：名字归一化只在 usage 侧——`price_for`
+    # 走 `_model_candidates`（`openai/deepseek-v4-flash` → 也试 `deepseek-v4-flash`），
+    # 而 `agent-ops._prices_for` 按**精确键**取（账本里的模型名本就是价表键）。
+    ok("⑪14f 别名归一是 usage 侧口径（已具名）：`openai/deepseek-v4-flash` 与 "
+       "`deepseek-v4-flash` 在本模块取到同一组窗口；agent-ops 侧只认精确键",
+       U.peak_windows_for(pricing, MODEL)
+       == U.peak_windows_for(pricing, "deepseek-v4-flash")
+       and U.peak_windows_for(pricing, "deepseek-v4-flash") is not None
+       and ao.peak_windows_from_prices(pricing, MODEL) is None,
+       f"{MODEL} → {U.peak_windows_for(pricing, MODEL)}")
     mism = []
     for hm, at, _ in bound_cases:
         if ao.is_peak_at(at, win[0], win[1]) is not U.is_peak_at(at, win[0], win[1]):
