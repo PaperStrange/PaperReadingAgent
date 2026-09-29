@@ -348,15 +348,42 @@ RUN_KEY_RE = re.compile(r"^run\s*:\s*")
 # 否则新判据会栽在它自己要治的同一种形态上（注释里提一句就假红）。
 
 
+def _mask_quotes(line: str) -> str:
+    """把**成对引号内**的字符换成 `.`（保长度、保位置），返回掩码串。
+
+    修复验证复核 `run-…-114` major 1 时发现的新缺口：`#` 与 `;`／`&&`／`||` 的
+    判据都必须**引号感知**——`echo "a; b"` 里的 `;` 不是命令分隔符，
+    `echo "a # b"` 里的 `#` 不是注释起点。掩码（而不是删除）是为了让**列位置不变**，
+    调用方按同一坐标取子串即可。
+    """
+    chars = list(line)
+    quote = ""
+    for i, ch in enumerate(chars):
+        if quote:
+            chars[i] = "."
+            if ch == quote:
+                quote = ""
+        elif ch in "\"'":
+            quote = ch
+            chars[i] = "."
+    return "".join(chars)
+
+
 def _strip_comment(line: str) -> str:
     """剥掉行尾注释（`#` 起）。
 
     行 4 的第二半（092 minor）：旧实现只跳**整行**注释 ⇒
     行尾注释里的同名字样（CI 里 `run: echo x   # structure-guard.py verify …`）
     照样满足判据。三份层文件的注释一律用 `#`，故这一步够用且方向收紧。
+
+    `run-…-114` major 1：`#` 也要**引号感知**——`echo "a # b"` 里的 `#` 不是注释起点。
+    旧实现（`partition("#")`）会把引号内的 `#` 当注释起点，于是
+    `echo "a # b"; <守卫调用>` 这类行被**截断**、守卫调用整段丢失 ⇒ 判据在真调用上
+    假红（而修法方向是收紧，不能靠"反正真文件里没有"放过）。故改为在掩码串上找
+    第一个真注释位，再按同一坐标切**原文**。
     """
-    head, sep, _ = line.partition("#")
-    return head if sep else line
+    i = _mask_quotes(line).find("#")
+    return line if i < 0 else line[:i]
 
 
 def _clean_word(word: str) -> str:
@@ -493,8 +520,8 @@ def _enforces_exit_code(text: str) -> tuple[bool, bool]:
     `structure-guard.py::cmd_verify_git` 的 `report_only` 分支）⇒ "这一段命令
     由退出码终判"的**必要**条件是**不带** `--report-only`。
 
-    **加强（复核 `run-…-105` major 6）**：旧实现把上面这条当**充要**，实为**必要非充分**
-    ——`--report-only` 只覆盖"守卫自己让出终判"这一种形态，覆盖不了
+    **加强（复核 `run-…-105` major 6）**：旧实现把上面这条当**充要**，实为
+    **必要非充分**——`--report-only` 只覆盖"守卫自己让出终判"这一种形态，覆盖不了
     "**调用方把 rc 吞掉**"：
       * `out=$(python … guard.py verify … 2>&1) || true` ⇒ rc 被 `|| true` 吞；
       * `python … guard.py verify …; rc=$?; echo done` ⇒ rc 存进变量却再没用过。
@@ -502,6 +529,20 @@ def _enforces_exit_code(text: str) -> tuple[bool, bool]:
     ⇒ 整条链在那两处是 fail-open。现判据改判**结构**：rc 必须被逐层传到一条 `exit`
     （见 `_rc_reaches_final_verdict`）。注意：三层现状**恰好都没踩中**这两种形态，
     故这是判据强度缺口而不是现行事故——50 条既有断言一条都不许因此变红。
+
+    **再加强（复核 `run-…-114` major 1：上面这版只治了"多行形态"）**：
+    `run-…-105` 的两种吞码形态**写在同一行**时旧码照旧判 True（现跑实测 8 形态）
+    ——`… verify --from-git HEAD; echo done` ⇒ True（应 False）、
+    `…; echo done` ＋ 末行 `exit 0` ⇒ True、`… || exit 0` ⇒ True（旧
+    `SWALLOW_TAIL_RE` 只认 `|| true`／`|| :`）。根因是判据只把**行首**当命令位置：
+    `;` 之后的尾巴（`echo done`／`exit 0`／`rc=$?`）既不参与"调用是否裸"的判定、
+    也不参与"rc 是否进终判"的判定。现在改为**段感知**（`_split_commands`：按未加引号的
+    `;`／`&&`／`||`／`&` 切段，引号感知）＋**位置判定**（`_guard_call_end`）：
+    调用之后若还有**别的命令**（无论同行还是下一行）⇒ rc 已被那条命令盖掉/吞掉，
+    不判"由退出码终判"，除非那条尾巴本身就是一条**承载该 rc 的 `exit`**。
+    ⚠ 边界同 `run-…-114` 报告（不夸大）：仓库现三层（`ci.yml` 裸调用、
+    `commit-msg` `exit 1`、`pre-commit` `exit $rc`）**恰好都没踩中**上述形态，
+    故这是**判据强度缺口**、不是现行事故；修复后旧断言一条未减（只增不减）。
 
     为什么不是"数一数有几层非 report-only"（台账 A 表行 6 的原始措辞）：后者只数
     **层数**、不看**退出码**，正好落进 E3 自己写的那条反证——"只数层数、不看退出码
@@ -515,14 +556,17 @@ def _enforces_exit_code(text: str) -> tuple[bool, bool]:
     # "下一行"（`v=$(…)` / `rc=$?` 是两行的组合形态）。
     hits: list[int] = []
     bodies: dict[int, str] = {}
+    masked: dict[int, str] = {}
     for idx, raw in enumerate(lines):
         body = _cmd_line(raw)
         if body and _is_guard_invocation(body):
             hits.append(idx)
             bodies[idx] = body
+            masked[idx] = _mask_quotes(_strip_comment(raw))
     enforces = any(
         "--report-only" not in bodies[idx]
-        and _rc_reaches_final_verdict(text, _line_and_next(lines, idx))
+        and _rc_reaches_final_verdict(text, _line_and_next(lines, idx),
+                                      masked[idx], lines, idx)
         for idx in hits)
     return len(hits), enforces
 
@@ -533,57 +577,398 @@ def _enforces_exit_code(text: str) -> tuple[bool, bool]:
 #   * `python … guard.py verify …; rc=$?; echo done` —— `$?` 存进了变量却再没用过。
 # 两种形态旧码都判"由退出码终判"，而它们的 rc 一个字都没进入文件的终判。
 EXIT_JUDGE_RE = re.compile(r"\bexit\b\s+[\"']?\$\{?(?P<name>\w+)")
-# 赋值捕获：`v=$(<命令>)` / `v=`<命令>``（commmand substitution 的 rc ⇒ 赋给 v）
+# 赋值捕获：`v=$(<命令>)` / `v=`<命令>``（commmand substitution 的 rc ⇒ 赋给 v）。
+# 锚 `^` ＋ 掩码串 ⇒ **只认段首／行首的赋值**：`…; rc=$?` 这种**同行尾巴**不会被
+# 误认成"调用行自己捕获了 rc"（那正是 `run-…-114` major 1 的第二个根因）。
 CMD_SUBST_ASSIGN_RE = re.compile(r"^\s*(?P<name>\w+)=(?:\$\(|`)")
 # `rc=$?`：把**上一条命令**的 rc 存进变量。块是多行的 ⇒ 行内空白用 `[ \t]`、
 # 不用 `\s`：`\s` 会吞掉**换行**，于是 `^` 从块首起算、`rc=$?` 永远匹配不上
 # （这条被自己的反向对照 s 实测打脸过一次）。
+# **`\$` 必须转义**（`run-…-114` major 1 第六版探针实测）：写成 `=\$?` 时 `$` 落在
+# `\` 前面 ⇒ 正则里它是"**行尾锚**"，`?...` 又把 `?` 当量词 ⇒ 该 pattern 认的是
+# `rc=` 后跟零个量词，**永远匹配不到 `rc=$?`**。原版（`run-…-105`）正是这么写的，
+# 而它的自检在多行形态上"看起来绿"纯属巧合：捕获取不到 ⇒ 判成裸调用 ⇒ 恰好也是 True。
 RC_ASSIGN_RE = re.compile(r"^[ \t]*(?P<name>\w+)=\$\?", re.MULTILINE)
-# 语法上"吞掉一切"的后缀：`|| true` / `|| :` / `|| exit 0` 之外的同类
-SWALLOW_TAIL_RE = re.compile(r"\|\|\s*(?:true|:)\s*$")
+# 未加引号的命令分隔符（行 6 加强②：`;` 之后的尾巴也是命令）。
+#   * `&&`／`||` 必须排在 `&` 前面，否则会被切坏；
+#   * `&` 不得是**重定向**的一部分（`2>&1`／`>&1`）——`run-…-114` major 1 第二版
+#     探针实测：`out=$(… 2>&1)` 被 `&` 切碎，于是真形态被误判成"调用之后还有命令"；
+#   * `;` 在**跨行的 `$( … )` 里**不是分隔符（`file_scope=True` 时才判，见下）。
+CMD_SEP_RE = re.compile(r"&&|\|\||;|(?<![>])&(?![>0-9])")
+# 尾巴的分类：`; rc=$?`（同行捕获）⇒ 由 `_captured_rc_var` 认；`; exit $out`
+# ⇒ 由 `_swallow_expr` 的"传 rc 的退出"那一支认；`; echo done`／`; exit 0`
+# ⇒ 两条都不认 ⇒ 判否。
+# **重定向不是"别的命令"**：`… verify … 2>&1`（含 `--report-only 2>&1)`）之后
+# 没有第二条命令，rc 仍是这一行的 rc（不设这条会把真形态判成吞码）。
+REDIRECT_ONLY_RE = re.compile(r"^\d*[<>]")
+
+
+def _split_commands(masked: str, file_scope: bool = False
+                    ) -> list[tuple[str, str]]:
+    """把一行按**未加引号的** `;`／`&&`／`||`／`&` 切段；返回 `(段, 段后的分隔符)`。
+
+    `run-…-114` major 1：判据此前只把**整行**当一个命令块 ⇒ `… verify …; echo done`
+    里的 `echo done` 既不在"调用是否裸"的判定里、也不在"rc 是否进终判"的判定里。
+    掩码串上的 `;` 一定是真分隔符（引号内的已被 `_mask_quotes` 换成 `.`），
+    而**列位置保真** ⇒ 段文本可直接按同一坐标从掩码串取（分段判定不需要原文）。
+    末段的"段后分隔符"记为空串。
+
+    `file_scope=True`（整块）时多一条：`$( … )` **内部**（嵌套深度 > 0）的分隔符不算
+    ——`out=$(cmd; echo x)` 是一整条命令，不是三条。`run-…-114` major 1 第五版探针
+    实测：不设这条，`out=$(cmd 2>&1) || true` 会在 `&` 处被切碎、真形态反而判不出来。
+    单行文本（`file_scope=False`）不做嵌套判定：那里要的正是"同一行的 `;` 尾巴"。
+    """
+    depth = 0
+    prev = 0
+    parts: list[tuple[str, str]] = []
+    i = 0
+    while i < len(masked):
+        ch = masked[i]
+        if ch == "\\":
+            i += 2
+            continue
+        if masked.startswith("$(", i):
+            depth += 1
+            i += 2
+            continue
+        if ch == ")" and depth:
+            depth -= 1
+            i += 1
+            continue
+        if depth == 0 or not file_scope:
+            m = CMD_SEP_RE.match(masked, i)
+            if m:
+                parts.append((masked[prev:i], m.group(0)))
+                prev = i = m.end()
+                continue
+        i += 1
+    parts.append((masked[prev:], ""))
+    return parts
+
+
+def _guard_call_end(seg: str) -> int | None:
+    """段内**守卫调用结束**的列位置；`seg` 不是"守卫调用" ⇒ None。
+
+    词元级（与 `_is_guard_invocation` 同一套 `_clean_word` / `_script_name` /
+    `PY_WORD_RE`），只是这里还要"调用在哪结束"——否则无法判断后面有没有别的命令。
+    引号内的空格被掩码成 `.` ⇒ 不会把词元切错。
+
+    "结束"= 该调用**最后一个选项/实参词元**之后：`verify` 之后的第一批**干净词元**
+    （`_clean_word` 认得、即不含 `;`／`&`／`|`／引号／括号／`=` 的词元）全是它的
+    选项与实参（`--from-git HEAD`、`--ack-file "$msgfile"`），不含这些字符的词元
+    （`;`／`||`／`&&`／`&`／`2>&1`）才是"调用之后还有别的命令"的信号。
+    """
+    words = [(m.start(), m.group(0)) for m in re.finditer(r"\S+", seg)]
+    kept = [i for i, (_pos, tok) in enumerate(words) if _clean_word(tok)]
+    if not kept:
+        return None
+    clean = [_script_name(_clean_word(words[i][1])) for i in kept]
+    if clean[0] == GUARD_SCRIPT:
+        offset = 1                       # 无解释器：`structure-guard.py verify …`
+        if len(clean) < 2 or clean[1] != GUARD_SUBCOMMAND:
+            return None
+    elif PY_WORD_RE.match(clean[0]):
+        offset = 3                       # `<解释器> structure-guard.py verify …`
+        if len(clean) < 3 or clean[1] != GUARD_SCRIPT:
+            return None
+        if clean[2] != GUARD_SUBCOMMAND:
+            return None
+    else:
+        return None                      # 首词元既不是解释器、也不是守卫脚本
+    end = kept[offset:]                  # 该调用的选项与实参（`verify` 之后的干净词元）
+    if not end:
+        return None
+    return words[end[-1]][0] + len(words[end[-1]][1])
 
 
 def _captured_rc_var(block: str) -> str | None:
     """这段（守卫调用行 ＋ 紧随的下一行）是否把 rc **捕获进变量**；返回变量名。
 
-    三种真形态（本仓三层里都有）：
+    四种真形态（本仓三层里都有）：
       * `v=$(<命令>)` / ``v=`<命令>` `` —— 赋值即捕获（命令替换的 rc 赋给 `v`）；
       * `<命令>` 之后紧跟 `rc=$?` —— 也是捕获（`$?` 就是上一条命令的 rc）；
+      * `<命令>; rc=$?`（**同一行**的 `;` 尾巴）—— 同样是捕获（`run-…-114` major 1
+        要求穷举的那个形态）；
       * 裸调用（既不赋值、也没有 `rc=$?`）⇒ None：它的 rc 直接就是整个脚本/步骤的
         rc，不需要传递（判据在本函数之外按"这一行就是终判"处理）。
-    `block` 由 `_line_and_next` 给出（调用行 ＋ 下一行），故两种两行形态都覆盖。
+
+    `block` 由 `_line_and_next` 给出（调用行 ＋ 下一行）。**两类捕获必须分开归属**：
+    赋值只可能出现在**调用所在那一行**（`v=$(…)`），而 `rc=$?` 既可能是下一行
+    （两行组合形态）、也可能是同一行的 `;` 尾巴——两者结论相同（都是"捕获"），
+    但**同行 `; rc=$?; echo done`** 与**下一行 `rc=$?` ＋ `echo done`** 都要认，
+    所以下面的 `search` 跑在整块（含下一行）上。
     """
     block = _strip_comment(block)
-    m = CMD_SUBST_ASSIGN_RE.match(block)
-    if m:
+    first = block.split("\n", 1)[0]
+    m = CMD_SUBST_ASSIGN_RE.match(first)
+    # 赋值捕获要求这一行**没有未加引号的命令分隔符**：`… verify …; rc=$?` 里的
+    # `rc=$?` 是"调用之后的另一条命令的捕获"，不是"**这一行**把整条调用赋给变量"
+    # （`run-…-114` major 1 第三版探针实测：不设这条，`…; rc=$?` ＋ `exit $rc`
+    # 会被赋成 `out` 而判出错误结论）。
+    if m and not CMD_SEP_RE.search(first):
         return m.group("name")
     # `re.match` **只锚定串首**、`MULTILINE` 也救不了它；`rc=$?` 在第 2 行
     # ⇒ 必须 `search`
     # （被自己的反向对照 s 实测打脸过一次：match 恒 None ⇒ 吞码形态照样判 True）。
-    m = RC_ASSIGN_RE.search(block)
-    return m.group("name") if m else None
+    # 判据落在"**命令段首**"上（`run-…-114` major 1 第七版探针实测）：`rc=$?` 既可以
+    # 是下一行的第一个命令（`^` 够），也可以是**同一行 `;` 之后**的第一个命令
+    # （`^` 不够，MULTILINE 也救不了——`;` 不是行首）⇒ 逐段逐行判 `match`。
+    for seg, _sep in _split_commands(block):
+        for piece in seg.split("\n"):
+            m = RC_ASSIGN_RE.match(piece)
+            if m:
+                return m.group("name")
+    return None
 
 
-def _rc_reaches_final_verdict(text: str, line: str) -> bool:
+def _rc_reaches_final_verdict(text: str, line: str, masked: str = "",
+                              lines: list[str] | None = None,
+                              idx: int = 0) -> bool:
     """`line` 上那次守卫调用的 rc 是否**真的**参与了这个文件的终判。
 
-    复核 `run-…-105` major 6 的两种吞码形态都必须判否：
+    复核 `run-…-105` major 6＋`run-…-114` major 1 的**全部**吞码形态都必须判否：
       * `out=$(… guard.py verify …) || true` —— 捕获了，但 `|| true` 把整行的 rc
         变成 0，且后续没有任何 `exit $out` ⇒ 守卫的非零 rc 进不了终判；
       * `… guard.py verify …; rc=$?; echo done` —— `$?` 存进 `rc` 却再没被用过
-        （也没有 `exit $rc`）⇒ 同上。
+        （也没有 `exit $rc`）⇒ 同上；**同一行**写 `; rc=$?; echo done` 与
+        分三行写结论必须一致（旧码只在多行形态上判否）；
+      * `… verify …; echo done` ／ `… verify … || exit 0` ／ `… verify … && true`
+        ／ `… verify … &` —— 调用之后那条尾巴才是这一行的 rc，
+        守卫的 rc 被它盖掉（`&` 更是直接后台化）⇒ 判否。
     判据是**结构**的（rc 是否被逐层传到一条 `exit`），不是"这一行长什么样"：
-      * 裸调用（行首就是命令、没有赋值、也没有吞码后缀）⇒ 它的 rc **就是**终判；
-      * 捕获进变量 `v`（含紧随的 `rc=$?`）⇒ 文件里必须存在 `exit $v`（否则判否）；
-      * 行尾 `|| true` / `|| :` ⇒ 判否（rc 被这一行自己吞掉）。
+      * 裸调用（行首就是命令、且**调用之后没有别的命令**）⇒ 它的 rc **就是**终判；
+      * 捕获进变量 `v`（赋值 `v=$(…)`／紧随 `rc=$?`／同行 `; rc=$?`）⇒ 文件里必须
+        存在 `exit $v`（否则判否）；
+      * 调用之后跟着**别的命令**（含 `|| true`／`|| :`／`|| exit 0`）⇒ 判否，
+        唯一例外是那条尾巴本身就是承载 `$v` 的 `exit`（或传 `$?` 的 `exit`）；
+      * 调用之后**无条件覆盖** `$v`（`v=false`）⇒ 判否（旧码只看"文件里有没有
+        `exit $v`"，前面覆盖掉也算，同属"自陈强于实际"）。
+    `masked` 由 `_enforces_exit_code` 给出（行首/段首的掩码串）；缺省时按明文重算，
+    故本函数可以单独真驱动（自检里正是这么用的）。
     """
     body = _strip_comment(line)
-    if SWALLOW_TAIL_RE.search(body):
-        return False
+    masked = masked or _mask_quotes(body)
     var = _captured_rc_var(line)
+    segs = _split_commands(masked, file_scope=True)
+    if len(segs) > 1:
+        # 调用之后**还有别的命令**：守卫的 rc 已被那条命令盖掉……除非那条命令就是
+        # 承载这个 rc 的 `exit`／`rc=$?`。分支内**不重复**判 `|| true`：那条尾巴由
+        # `_swallow_expr` 统一判（一处判据、一处自陈，不各判一套）。
+        _seg, sep = segs[0]
+        if sep == "&":
+            return False                     # 后台化：rc 连读都读不到
+        rest = sep + "".join(s + t for s, t in segs[1:])
+        # 尾巴 = "第一个分隔符 ＋ 其后各段"（**不在** `masked` 上按段内坐标切片：
+        # `seg` 是切分后的片段，段内坐标与整行坐标不是一回事——第十二版探针实测
+        # B9 被切错；E1 又因切片把 `|| true` 切没了 ⇒ 假绿）。
+        tail = rest.strip()
+        # 尾巴**含分隔符**（`|| exit $?` 的 `||` 就是分隔符本身）⇒ 交给
+        # `_swallow_expr` 前先剥掉：判据看的是"分隔符之后那条命令是什么"。
+        # 尾巴是 `exit`／`return` 时还要核**实参真的引用了这次调用的 rc**
+        # （`exit 1`／`exit $((1))` 都是常量 ⇒ 仍算吞码，见 `_exit_carries`）。
+        tail = tail.lstrip("&|; \t")
+        if re.match(r"^(?:exit|return)\b", tail):
+            if not _exit_carries(tail, {var} if var else None, raw_dollar=True):
+                return False
+        elif _condition_on_rc(tail):
+            return False                 # `if [ $? -ne 0 ]; then exit 1; fi`：真拒绝
+        elif _swallow_expr(tail):
+            return False
+    else:
+        # 调用是这一行唯一（或最后的）命令：调用之后若还有别的词元（含 `|| true`
+        # 这类同段尾巴），同判"rc 已被盖掉"。
+        head = segs[0][0]
+        end = _guard_call_end(head)
+        tail = head[end:].strip() if end is not None else ""
+        if _swallow_expr(tail):
+            return False
     if var is None:
-        return True
-    return any(m.group("name") == var for m in EXIT_JUDGE_RE.finditer(text))
+        # 裸调用：它的 rc **就是**这一行的 rc，但"这一行的 rc 是不是文件的终判"还要看
+        # **后面还有没有别的命令**（`run-…-114` major 1 第十一版探针实测：旧码在
+        # "调用行之后还有 `echo`／`exit`"时照样判 True，等于把"后面把 rc 覆盖掉"的
+        # 形态放行）。故：
+        #   * 调用行之后没有别的行（或只剩空行/注释/提示符/块结束括号）⇒ 它的 rc 就是
+        #     终判（CI 真形态：`run:` 块的最后一条命令就是该步骤的 rc）；
+        #   * 有后续行 ⇒ 由 `exit` 承担（裸调用 ＋ `if [ $? -ne 0 ]` 的 `commit-msg`
+        #     真形态；`exit 0` 而无 `$?` 的形态仍判否）。
+        after = _after_line(lines if lines is not None else text.split("\n"), idx)
+        if _shell_noise_only(after) or _after_is_own_scope(after):
+            return True
+        return _exit_carries(after, raw_dollar=True)
+    # 覆盖判定搜**整段文件文本**（`line` 只是"调用行 ＋ 下一行"）：只搜那两行会漏掉
+    # "调用之后第三行才无条件覆盖"的形态（`run-…-114` major 1 第八版探针实测 A5）。
+    if _static_rc_assign(text, var):
+        return False
+    # **捕获链**（第九版探针实测 F1b／A3）：真仓形态是两级 —— `out=$(<守卫>)` 捕获
+    # 命令替换的 rc，紧接着 `rc=$?` 又把**同一个 rc** 捕获一次，终判用的是 `exit $rc`。
+    # 只看"有没有 `exit $out`"会把这种**真传递**判红。
+    chain = {var, *RC_ASSIGN_RE.findall(_strip_comment(line))}
+    return _exit_carries(text, chain, raw_dollar=True)
+
+
+# `exit` / `return` 的**实参**（`exit $rc` / `exit "$1"` / `exit 1`）。
+# 判"终判用的是不是被捕获的那个变量"必须在**实参**上判，不能只判"文件里出现过
+# `exit $v`"：`if …; then exit 1; fi; exit $rc`（`commit-msg` 真形态）里前一条
+# `exit` 是常量的分支出口，只看"出现过"会把 `exit $((1))` 这种常量也算成传递。
+EXIT_ARG_RE = re.compile(r"\b(?:exit|return)\s+(?P<arg>[^\s;&|]+)")
+# 条件形态：`if` / `elif` / `while` / `until` / `case` 或 `[` / `[[` / `((`。
+CONDITION_RE = re.compile(r"[\[(]|\b(?:if|elif|while|until|case)\b")
+
+
+def _condition_on_rc(tail: str) -> bool:
+    """尾巴是否是"**条件读 rc ⇒ 拒绝**"的形态（`if [ $? -ne 0 ]; then exit 1; fi`）。
+
+    这是**合法**的终判形态，与"把 rc 吞成 0"（`|| true`／`; echo done`）必须分开：
+      * `commit-msg` 真形态 —— `if [ $rc -ne 0 ]; then echo …; exit 1; fi`；
+      * 反向对照（**不**算条件拒绝）：`; echo done`（无 `$?`／`$v`）、
+        `|| true`（无 `exit`）、`; exit 0`（无 `$?`／`$v`）。
+    故判据合取三件事：尾巴里有**条件结构**、条件里引用了 **rc**（`$?`／`$变量`）、
+    且尾巴里有 `exit`／`return`（拒绝通道真的存在）。
+    """
+    return bool(CONDITION_RE.search(tail)
+                and re.search(r"\$(?:\?|\{?\w)", tail)
+                and re.search(r"\b(?:exit|return)\b", tail))
+
+
+def _exit_carries(text: str, names: set[str] | None = None, raw_dollar: bool = False
+                  ) -> bool:
+    """`text` 里**最后一条** `exit`／`return` 是否承载了这次调用的 rc。
+
+    `names` = 这次调用的 rc 捕获链（`out=$(…)` 的 `out` 与紧随的 `rc=$?` 的 `rc`
+    是同一层传递）⇒ 实参引用其中任一个即算承载。
+    `raw_dollar=True` 时额外认"实参就是 `$?`"（`|| exit $?` 与"裸调用 ＋
+    `if [ $? -ne 0 ]`"两种形态：没有变量名可对，`$?` 就是守卫的 rc）。
+
+    取**最后一条**是保守方向：`run-…-114` major 1 第十版探针实测，取"出现过任意
+    一条"会让 `exit $((1))`（常量）也算成传递 ⇒ 假绿。
+    """
+    args = [m.group("arg") for m in EXIT_ARG_RE.finditer(_strip_comment(text))]
+    if not args:
+        return False
+    for m in reversed(list(EXIT_ARG_RE.finditer(_strip_comment(text)))):
+        arg = m.group("arg").lstrip("\"'")
+        if raw_dollar and arg.lstrip("${").startswith("?"):
+            return True
+        name = re.match(r"[A-Za-z_]\w*", arg.lstrip("$").lstrip("{"))
+        if name and name.group(0) in (names or set()):
+            return True
+        if _exit_is_conditional(_strip_comment(text), m.start()):
+            # `if [ $v -ne 0 ]; then exit 1; fi`：**条件**里的常量退出码就是拒绝通道
+            # （守卫的 rc 被读进条件）⇒ 算承载。无条件形态（`; echo done` ＋ `exit 0`）
+            # 的扫描回看里没有条件关键字 ⇒ 仍判否。
+            return True
+    return False
+
+
+# 条件关键字：`if` / `elif` / `[` / `[[` / `((`；`fi` 是条件块**结束**。
+COND_OPEN_RE = re.compile(r"\bif\b|\belif\b|\[\[?|\(\(")
+COND_CLOSE_RE = re.compile(r"\bfi\b")
+
+
+def _exit_is_conditional(text: str, pos: int) -> bool:
+    """`text[pos:]` 这条 `exit`／`return` 是否落在**条件块内**（回看最近的关键字）。
+
+    只看"最近一个条件关键字是不是 `fi`"：`if …; then exit 1; fi; exit 0` 里
+    `exit 1` 最近的是 `if`（条件内 ⇒ 承载），`exit 0` 最近的是 `fi`（条件外 ⇒ 不承载）。
+    """
+    head = text[:pos]
+    opens = [m.start() for m in COND_OPEN_RE.finditer(head)]
+    closes = [m.start() for m in COND_CLOSE_RE.finditer(head)]
+    return bool(opens) and (not closes or opens[-1] > closes[-1])
+
+
+def _swallow_expr(tail: str) -> bool:
+    """守卫调用**之后**的尾巴 `tail` 是否把 rc 吞掉/盖掉。
+
+    穷举本项要覆盖的同行与多行形态（每一条都在自检里有真驱动的反向对照）：
+      * `""`（调用之后什么都没有）⇒ **不吞**：这一行（或这一行的命令）就是终判；
+      * `|| true` / `|| :` / `&& true` / `; true` / `true` ⇒ **吞**（常量恒 0）；
+      * `|| exit 0` / `; exit 0` / `exit 0`（常量退出码）⇒ **吞**；
+      * `|| exit $rc` / `; exit $out` / `; exit $?` / `exit $((…))`（传 rc 的
+        退出）⇒ **不吞**（这正是"rc 真进终判"的形态，不得误判成吞码）；
+      * `; rc=$?` / `rc=$?`（同行捕获）⇒ **不吞**：`$?` 就是守卫的 rc，
+        由调用方继续判"文件里有没有 `exit $rc`"（这是"同行 `;` 尾巴"与
+        "同行吞码尾巴"的分界）；
+      * `; echo done` / `; exit 0 && echo ok` 之类的普通尾巴 ⇒ **吞**
+        （这条尾巴的 rc 才是这一行的 rc，守卫的 rc 一个字都没进终判）。
+    判据是"尾巴的 rc 会不会等于守卫的 rc"：只有 `exit $<变量>`（含 `$?`）会。
+    """
+    if not tail:
+        return False
+    tail = tail.lstrip()
+    if re.match(r"^(?:exit|return)\b", tail):
+        # `exit <常量>` 吞码；`exit $v` / `exit $?` / `exit $#` / `exit $((…))` 是传递。
+        return not re.match(r"^(?:exit|return)\b\s*[\"']?\$[A-Za-z_0-9?#(]", tail)
+    if RC_ASSIGN_RE.match(tail):
+        return False                     # `rc=$?`：守卫的 rc 被捕获（尚未使用）
+    if REDIRECT_ONLY_RE.match(tail):
+        return False                     # `2>&1` / `> out.log`：重定向不是别的命令
+    return True
+
+
+def _static_rc_assign(snippet: str, var: str) -> bool:
+    """`snippet` 里是否有**无条件**把 `var` 覆盖成常量的赋值（`v=false`）。
+
+    只认"行/段首即赋值、且右值不是 `$?`／命令替换"的形态。带 `||`/`&&` 前缀的
+    条件赋值（`cmd || v=1`）**不算**覆盖——那种形态下 rc 仍可能原样传出。
+
+    **逐行**判（`run-…-114` major 1 第四版探针实测：把整块交给 `re.match` 时
+    `^` 只锚**串首**、`re.MULTILINE` 又救不了段中间的行 ⇒ `rc=$?\\nrc=0\\nexit $rc`
+    这个"覆盖后传递"的形态照样判 True）。
+    """
+    if not snippet:
+        return False
+    pat = re.compile(rf"^[ \t]*(?:export[ \t]+)?{re.escape(var)}=(?!\$\?|\$\(|`)")
+    return any(pat.match(seg) for seg, _sep in _split_commands(
+        _mask_quotes(snippet)) for seg in seg.split("\n"))
+
+
+# YAML **步骤边界**：`- name:` / `- uses:` / `- run:`（下一个 CI 步骤）——它之后的
+# 命令属于**另一次执行**，不会把这一步的 rc 盖掉。
+YAML_STEP_RE = re.compile(r"^\s*-\s*(?:name|uses|run|id)\s*:")
+
+
+def _shell_noise_only(text: str) -> bool:
+    """`text` 里是否只剩"**不执行命令**的行"（空行、`#` 注释、shell 提示符、单独的大括号）。
+
+    用于"裸调用之后还有没有别的命令"这一判定：`run: |` 块末尾的 `}`（PowerShell 块
+    结束）与 `$ ` 提示符都不是命令，而 `- name: …`（下一个 CI 步骤）与普通命令行都是。
+    判"噪声"是**收紧**方向：认不出来的一律当命令（⇒ 判否）。
+    """
+    for line in text.splitlines():
+        body = _strip_comment(line).strip()
+        if not body or body in ("}", "{", "fi", "done", "esac") or body.startswith("$ "):
+            continue
+        return False
+    return True
+
+
+def _after_is_own_scope(text: str) -> bool:
+    """裸调用之后的那段是否属于**别的执行单元**（YAML 下一个步骤／别的文件）。
+
+    `ci.yml` 真形态：守卫调用是它那个 `run:` 块的**最后一条命令**（下一行是 `}`，
+    再往下就是 `- name: Build reactflow frontend`）。GH 的 `run: |` 是**同一个 pwsh**
+    跑完整个块 ⇒ 块内最后一条命令的 rc 就是该步骤的 rc，守卫的 rc 不会被后续步骤
+    盖掉（后续步骤是**另一次机会**，各自独立判红）。故"下一个步骤边界"要当"调用行
+    之后没有别的命令"处理——否则 CI 真形态会被判成"后面还有命令"而假红
+    （`run-…-114` major 1 第十四版探针实测：自检 A-M12① 当场咬住）。
+    """
+    for line in text.splitlines():
+        if not _strip_comment(line).strip():
+            continue
+        return bool(YAML_STEP_RE.match(line))
+    return True
+
+
+def _after_line(lines: list[str], idx: int) -> str:
+    """`lines` 里**这次调用行之后**的部分（跳过调用行与紧随的下一行）。
+
+    `run-…-114` major 1 第十三版探针实测：早先按 `_line_and_next` 的**块长度**切，
+    而块永远是 2 行 ⇒ 在"调用在文件第 367 行"的真文件上切出来的是**文件开头两行**，
+    于是 CI 真形态被判成"后面还有别的命令"⇒ 假红（自检 A-M12① 当场咬住）。
+    按**行号**切才对。
+    """
+    return "\n".join(lines[idx + 2:])
 
 
 def _line_and_next(lines: list[str], idx: int) -> str:
@@ -1245,6 +1630,56 @@ def selftest() -> int:
            not _invokes_report_only(f"# 本层不用 --report-only\n{call_ok}"))
         ok("行 6 检测器认命令位置：真调用带 `--report-only` ⇒ 检测器点名",
            _invokes_report_only(f"{call_ok} --report-only"))
+        # ---- 行 6 加强②（复核 `run-…-114` major 1）：**同一行**的 `;`／`||`／`&&`／`&`
+        # 尾巴也必须判否。旧版的判据只把**行首**当命令位置 ⇒ `;` 之后的尾巴
+        # （`echo done`／`exit 0`／`rc=$?`）既不参与"调用是否裸"、也不参与
+        # "rc 是否进终判"⇒ `… verify …; echo done` 判 True（**应 False**）。
+        # 下面逐形态真驱动（每条都有反向对照；既有断言一条未减）。
+        def _enf(body: str) -> bool:
+            """这次调用是否由退出码终判（局部让断言行宽可控）。"""
+            return _enforces_exit_code(body)[1]
+
+        ok("行 6 加强② 反证 x1：**同一行** `… verify …; echo done`（104 报告逐字形态）"
+           "⇒ 判否（旧码判 True）", _enf(f"{call_ok}; echo done") is False)
+        ok("行 6 加强② 反证 x2：**同一行** `; echo done` ＋ 末行硬编码 `exit 0` ⇒ 判否"
+           "（旧码判 True；`exit 0` 把 rc 盖成常量）",
+           _enf(f"{call_ok}; echo done\nexit 0") is False)
+        ok("行 6 加强② 反证 x3：**同一行** `; rc=$?; echo done`（`$?` 存进 `rc` 却再没"
+           "用过）⇒ 判否（与多行形态 x3′ 结论必须一致）",
+           _enf(f"{call_ok}; rc=$?; echo done") is False
+           and _enf(f"{call_ok}\nrc=$?\necho done") is False)
+        ok("行 6 加强② 反证 x4：`|| true` / `|| :` / `&& true` / `; true` 四种常量"
+           "吞码尾巴 ⇒ 全判否", not any(_enf(f"{call_ok}{t}")
+                                        for t in (" || true", " || :", " && true",
+                                                  "; true")))
+        ok("行 6 加强② 反证 x5：`|| exit 0` / `; exit 0` / `; exit $((1))`（**常量退出码**）"
+           "⇒ 判否（旧 `SWALLOW_TAIL_RE` 只认 `|| true`／`|| :` ⇒ 前两条漏网）",
+           not any(_enf(f"{call_ok}{t}")
+                   for t in (" || exit 0", "; exit 0", "; exit $((1))", " || exit 1")))
+        ok("行 6 加强② 反证 x6：`… verify … &`（后台化 ⇒ rc 连读都读不到）⇒ 判否",
+           _enf(f"{call_ok} &") is False)
+        ok("行 6 加强② 反证 x7：**同行** `; rc=$?` 之后真的 `exit $rc` ⇒ 判『由退出码"
+           "终判』（收紧不得把同行真传递形态判红）",
+           _enf(f"{call_ok}; rc=$?\nexit $rc") is True)
+        ok("行 6 加强② 反证 x8：`|| exit $?`（传 `$?` 的退出）⇒ 判『由退出码终判』",
+           _enf(f"{call_ok} || exit $?") is True)
+        ok("行 6 加强② 反证 x9：`… verify …; exit $rc`（`$rc` **未绑定**）⇒ 判否"
+           "（保守方向：认不出承载就不认）",
+           _enf(f"{call_ok}; exit $rc") is False)
+        ok("行 6 加强② 反证 x10：**多行** `rc=$?` 后无条件覆盖 `rc=0` ⇒ 判否"
+           "（旧码只看『文件里有没有 `exit $rc`』⇒ 覆盖也算 ⇒ 假绿）",
+           _enf(f"{call_ok}\nrc=$?\nrc=0\nexit $rc") is False)
+        ok("行 6 加强② 反证 x11：调用之后**还有命令**、且末行是常量 `exit 0` ⇒ 判否"
+           "（裸调用的 rc 不再等于文件 rc）",
+           _enf(f"{call_ok}\necho done\nexit 0") is False)
+        ok("行 6 加强② 反向对照 x12：仓库真三层判定在加强②后**一条不变**"
+           "（`ci.yml` 由退出码终判；两个钩子各自按本层语义）",
+           [_enforces_exit_code(t) for _, t in layers] == flags,
+           f"flags={flags}")
+        ok("行 6 加强② 引号感知：`echo \"a; b\"` 里的 `;` 不是分隔符、"
+           "引号里的 `#` 不是注释起点（防假红）",
+           _enf('echo "a; b" # note\n' + call_ok) is True
+           and _enf('echo "a # b"\n' + call_ok) is True)
     finally:
         # 行 8：整目录回收（含四个探针；`ignore_errors` 与旧实现的 unlink 同口径）
         shutil.rmtree(gate_root, ignore_errors=True)

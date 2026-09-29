@@ -395,8 +395,27 @@ def main() -> int:
             json.dumps({"auto": {}, "manual": {"deepseek-v4-flash": None}}, ensure_ascii=False),
             encoding="utf-8",
         )
-        run(["prices-derive"], base_env, check=True)
-        prices = json.loads((runtime / "prices.json").read_text(encoding="utf-8"))
+        # UC-26（复核 `run-…-114` minor 3）：`prices-derive` 的**默认档不得写盘**。
+        # 修前形态：该命令不带任何开关也写文件（`args` 甚至没被读过），取证时正是
+        # 在真仓踩到这一点（`agents/runtime/prices.json` 被改写、已还原）。
+        # 装置：本夹具的 `prices.json` 已就位 ⇒ 先记字节，再跑**不带 `--apply`** 的一次，
+        # 断言**字节逐字节不变**；然后跑带 `--apply` 的一次作**正向对照**
+        # （证明"不写"不是因为命令本来就写不动）。
+        _pjson = runtime / "prices.json"
+        _before = _pjson.read_bytes()
+        _r_dry = run(["prices-derive"], base_env, check=True)
+        ok("UC-26 反向对照：`prices-derive` **不带 `--apply`** ⇒ 文件字节不变",
+           _pjson.read_bytes() == _before,
+           f"before={len(_before)}B after={len(_pjson.read_bytes())}B")
+        ok("UC-26 默认档自陈：上屏明说这是 dry-run 且文件未改动",
+           "DRY-RUN" in _r_dry.stdout and "prices.json 未改动" in _r_dry.stdout,
+           _r_dry.stdout.strip().splitlines()[0][:60])
+        _r_apply = run(["prices-derive", "--apply"], base_env, check=True)
+        ok("UC-26 正向对照：`prices-derive --apply` ⇒ **真的写盘**"
+           "（否则上一条的『不变』是命令空转的假绿）",
+           _pjson.read_bytes() != _before and "已派生" in _r_apply.stdout,
+           f"after={len(_pjson.read_bytes())}B")
+        prices = json.loads(_pjson.read_text(encoding="utf-8"))
         ok("UC-10 价表派生", "gpt-4o-mini" in prices["auto"] and "text-embedding-3-large" in prices["auto"],
            "auto 提取 gpt-4o-mini/text-embedding-3-large")
         ok("UC-10 人工覆盖段保留", "deepseek-v4-flash" in prices["manual"], "manual 段不被派生覆盖")
@@ -872,7 +891,7 @@ def main() -> int:
         # 一跑档位就没了，而"我这次写对了"不是判据。反向对照：把注册表摘掉（= 白名单不
         # 同步的等价物）后同一断言必须 FAIL——先证明它咬得住，再说它绿。
         tpath = tmp / "tier" / "runtime" / "prices.json"
-        r = run(["prices-derive"], tier_env, check=True)
+        r = run(["prices-derive", "--apply"], tier_env, check=True)
         after = json.loads(tpath.read_text(encoding="utf-8"))
         prov = (after.get("scraped") or {}).get("deepseek") or {}
         prov_keys = ("_tier_scheme", "_tier_timezone", "_peak_windows")
@@ -909,9 +928,14 @@ def main() -> int:
         clone_cli.write_text(pat.sub(")", src_txt), encoding="utf-8")
 
         def derive_with(cli_path: Path) -> subprocess.CompletedProcess:
-            """跑一次 `prices-derive`（副本 REPO_ROOT 在 %TEMP% ⇒ 显式 PYTHONPATH）。"""
+            """跑一次 `prices-derive`（副本 REPO_ROOT 在 %TEMP% ⇒ 显式 PYTHONPATH）。
+
+            `--apply` 是必须的（本批起默认 dry-run）：E9 判的是"派生**后**档位仍在"，
+            而派生本身要写盘 ⇒ 这一条是**写盘档**的判据。
+            """
             env = {**tier_env, "PYTHONPATH": str(ROOT)}
-            return subprocess.run([sys.executable, str(cli_path), "prices-derive"],
+            return subprocess.run([sys.executable, str(cli_path), "prices-derive",
+                                   "--apply"],
                                   capture_output=True, text=True, encoding="utf-8",
                                   errors="replace", env=env)
 
@@ -945,7 +969,7 @@ def main() -> int:
            and good_auto["_tiers"] is None,
            f"rc={r_good.returncode} auto keys={sorted(good_auto)}")
 
-        run(["prices-derive"], tier_env, check=True)  # 恢复夹具（不留半态给后续用例）
+        run(["prices-derive", "--apply"], tier_env, check=True)  # 恢复夹具（不留半态给后续用例）
 
         # 行 32（复核 `run-…-104` minor 7）：`--apply` 档必须把判据**编码成退出码**。
         # 装置：**真子进程**跑真 `main()`（真 `judge_scrape`、真写盘路径），唯一被替换的是

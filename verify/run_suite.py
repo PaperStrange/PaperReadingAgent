@@ -95,7 +95,7 @@ BRANCH_EST_OVERRIDES: dict[tuple[str, bool], float] = {
 # 取值口径（全部**实测**，两侧都不是猜的；present = windows 工作树，
 # absent = "windows 树减掉 `docs/iteration/**`"的**镜像**——与 `BRANCH_EST_OVERRIDES`
 # 同口径：当前 `main` ref 上这几个脚本／登记册本身缺席，故 absent 侧只能用镜像量）：
-#   * `verify_agentops.py`：present **177**；absent 侧**不登记下限** —— 该侧脚本
+#   * `verify_agentops.py`：present **180**；absent 侧**不登记下限** —— 该侧脚本
 #     退 **3**（`verdict_exit`：`AGENTOPS SKIP[…]` 判决行与退出码同口径），
 #     判据①/②在非零退出上短路，红由既有"非零退出"判据给出（**不是**假绿）。
 #     **2026-09-30 本批更正**：此前这里写"该侧只打 SKIP 横幅且**退 0** ⇒ 套件把它算成
@@ -105,7 +105,17 @@ BRANCH_EST_OVERRIDES: dict[tuple[str, bool], float] = {
 #   * `verify_card_index.py`：**唯一**两侧读数不同的脚本（17／15：absent 侧少 2 条依赖
 #     windows-only 卡文件的判据）——正是"下限必须分支感知"的实例。
 #   * `verify_decision_register.py` 32／32、`verify_derived_numbers.py` 19／19、
-#     `verify_gate_integrity.py` 68／68（两侧同值：它们的断言不依赖 `docs/iteration`）。
+#     `verify_gate_integrity.py` 88／88（两侧同值：它们的断言不依赖 `docs/iteration`）。
+#     **2026-09-30 本批同步（复核 `run-…-114` minor 2）**：该键此前写 **68**，而现跑
+#     已是 **75**（`6a0cfc9` 加了 7 条判据却没抬下限）⇒ 与本表其它项（`verify_agentops.py`
+#     174→177 同步抬）做法不一致，也违反本文件 `:93-94` 自陈的"只增不减"：
+#     下限 68 ⇒ **删掉 7 条 `ok()` 仍判绿**。本批先抬到 75（同批复核 gap），
+#     再随本批新增的 13 条断言抬到 **88**（两侧同值：该脚本的断言不依赖
+#     `docs/iteration`，与上面的口径一致）。**同批另一处同类余量**：
+#     `verify_agentops.py` 因本批新增 UC-26 三条断言（177→180）⇒ 该键同步抬到 **180**
+#     （同批再复核本表其余各行，**只这两行有余量**）。
+#     复算口径 = 在工作树跑 `verify/verify_gate_integrity.py --selftest` 读末行
+#     `ALL PASS (N assertions)`。
 # 复算：`present` = 在工作树跑该脚本、读末行；`absent` = 在 %TEMP% 镜像（clone 后
 # `git rm -r docs/iteration` 并提交、再把工作区改动同步进去、补上 gitignore 的
 # `agents/runtime`＋`agents/runs`）里跑同一脚本。
@@ -139,12 +149,12 @@ SKIP_EXIT = 3    # 与 `verify_agentops.py::SKIP_EXIT` / `spend-report` 同码
 SKIP_NOT_PASS_MARK = "本档不是通过"
 SKIP_BANNER_RE = re.compile(r"^\S+ SKIP\[(?P<cat>[^\]]+)\]")
 BRANCH_ASSERTION_FLOORS: dict[tuple[str, bool], int] = {
-    ("verify_agentops.py", True): 177,
+    ("verify_agentops.py", True): 180,
     ("verify_card_index.py", True): 17, ("verify_card_index.py", False): 15,
     ("verify_decision_register.py", True): 32,
     ("verify_decision_register.py", False): 32,
     ("verify_derived_numbers.py", True): 19, ("verify_derived_numbers.py", False): 19,
-    ("verify_gate_integrity.py", True): 68, ("verify_gate_integrity.py", False): 68,
+    ("verify_gate_integrity.py", True): 88, ("verify_gate_integrity.py", False): 88,
 }
 BRANCH_VERDICT_SCOPE_MIN: dict[bool, int] = {True: 5, False: 5}
 TAIL_KEEP = 60                  # 每个脚本留最后 60 行（判决句判据只读末尾数行）

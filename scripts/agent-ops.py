@@ -39,7 +39,8 @@
   python scripts/agent-ops.py validate-spec <file.md>
   python scripts/agent-ops.py fetch-spec <file.md> [--offline]
   python scripts/agent-ops.py parse-report <file.md>
-  python scripts/agent-ops.py prices-derive
+  python scripts/agent-ops.py prices-derive [--apply]
+  （默认 dry-run：只算 + 上屏差异，**不写盘**；`--apply` 才落盘）
 
 测量口径（TG-13，真源 `agents/policy.json::ledger_measurement`）：
   dur      = `ended_at - started_at`（累计**墙钟**；`round` 追加会前移到末轮）。
@@ -2115,12 +2116,41 @@ _AUTO_KEY_WHITELIST = ("max_input_tokens", "input_cost_per_token",
                        "cache_creation_input_token_cost", "_tiers", "_tier_scheme")
 
 
+def _prices_diff_lines(before: dict, after: dict) -> list[str]:
+    """`before` → `after` 的差异（只列键路径，不列值：价表里有长字典）。
+
+    修复验证复核 `run-…-114` minor 3：dry-run 档要能说清"会改什么"，
+    否则"默认不写盘"只是把风险换成"我不知道它会写什么"。
+    """
+    lines: list[str] = []
+
+    def walk(prefix: str, a: object, b: object) -> None:
+        if isinstance(a, dict) and isinstance(b, dict):
+            for key in sorted(set(a) | set(b)):
+                walk(f"{prefix}.{key}" if prefix else str(key),
+                     a.get(key), b.get(key))
+            return
+        if a != b:
+            lines.append(f"  {prefix}: {a!r} -> {b!r}")
+
+    walk("", before, after)
+    return lines
+
+
 def _derive_prices(args: argparse.Namespace | None = None) -> None:
     """UC-10：从 litellm 捆绑价表派生 prices.json（人工覆盖段保留）。
 
     TG-20 行 16：派生**不得丢档**。三条守卫见 `_AUTO_KEY_WHITELIST`、
     `top_level_tier_keys` 与末尾的"派生后档位仍在"自检。
+
+    **默认 dry-run（修复验证复核 `run-…-114` minor 3）**：此前本命令**不带任何开关
+    也会写盘**（`args` 甚至没被读过），而它与 `fetch-prices --apply` 是同族命令 ——
+    "写盘"要靠 `--apply` 显式表达。取证时正是踩到这一点：在真仓跑了一次
+    `prices-derive`，`agents/runtime/prices.json` 被改写（语义逐键相同、仅字节层）。
+    现在：不带 `--apply` ⇒ 只算+上屏差异并打印"prices.json 未改动"；带 `--apply`
+    才在锁内落盘并回读"派生后档位仍在"。
     """
+    apply = bool(getattr(args, "apply", False))
     prices = _load_prices()
     auto = {}
     litellm_json = None
@@ -2147,10 +2177,25 @@ def _derive_prices(args: argparse.Namespace | None = None) -> None:
     if lost:
         print(f"WARN: 顶层未入册的键 {lost} —— `prices-derive` 重建顶层时"
               "**丢弃**它们。请加进 `_TOP_LEVEL_TIER_KEYS`（多档）或挪进对应段内。")
+    payload = json.dumps(out, ensure_ascii=False, indent=2).encode("utf-8")
+    if not apply:
+        # **默认档不落盘**：`PRICES_PATH.write_bytes` 只出现在 `--apply` 分支里
+        # （静态可核：本行与下一条打印合起来就是"dry-run 面真的不写"的证据）。
+        print("DRY-RUN（未带 `--apply`）：只计算并上屏差异，**不写盘**。")
+        for line in _prices_diff_lines(prices, out)[:20]:
+            print(line)
+        print(f"prices.json 未改动（dry-run）：auto={sorted(auto)}"
+              f" manual={sorted(out['manual'])}"
+              f" top_level_tier_keys={sorted(carried)}"
+              f"（字节数 would-be={len(payload)}）")
+        if lost:
+            print("WARN: dry-run 完成，但有未入册顶层键**将被丢弃**"
+                  "（见上）——档位可能已不完整")
+        return
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     with _prices_lock():  # 035：与 fetch-prices --apply 互斥
         # write_bytes：LF 字节写盘（1.47——文本模式在 Windows 会把 \n 翻成 \r\n）
-        PRICES_PATH.write_bytes(json.dumps(out, ensure_ascii=False, indent=2).encode("utf-8"))
+        PRICES_PATH.write_bytes(payload)
     # 落盘后**回读**：判据 = "派生后档位仍在"（不是"我以为我写对了"）
     scheme = tier_scheme_of(_load_prices())
     two_tier = sorted(k for k, v in scheme.items() if v != _TIER_SCHEME_SINGLE)
@@ -2346,7 +2391,9 @@ def main() -> int:
     p.add_argument("--offline", action="store_true")
     p = sub.add_parser("parse-report")
     p.add_argument("report_file")
-    sub.add_parser("prices-derive")
+    sub.add_parser("prices-derive").add_argument(
+        "--apply", action="store_true",
+        help="真的写盘（默认只算 + 上屏差异，不落盘——复核 run-…-114 minor 3）")
 
     args = ap.parse_args()
     {
