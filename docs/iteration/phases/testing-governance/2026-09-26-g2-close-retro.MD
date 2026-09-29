@@ -403,3 +403,101 @@
 
 
 > **已处置裁定（父代理 2026-09-27，不另立行）**：`verify/suite_result.json` 是**仓库内**固定名、两个 `run_suite.py` 并发会互相覆盖 ⇒ 裁定「**并发跑同一套件不是受支持场景**，套件须串行运行」；这不是缺陷而是使用约束（行 8 批如实报出、未擅自改）。
+
+## 8. CI 放行的**第二处落点**：关闭前置闸门步骤（2026-09-30 批 6）
+
+**起因（批 5 的遗留）**：批 5 把 `verify/verify_close_readiness.py` 的 SKIP 档退出码由 0 改判成 3
+（判决行与退出码同一真源）之后，`ci.yml` 里**另一个步骤**——`Close-readiness gate for sprints that
+claim closure (TG-11)`——在无账本的全新 checkout 上必然 rc=3，而该步骤的
+`$ErrorActionPreference="Stop"` ＋ `$PSNativeCommandUseErrorActionPreference=$true` 会把它判红：
+**套件那一步放行了，红只是换到了这一步**（仍没有一条真判据失败）。父代理 2026-09-30 裁定：
+按**与套件门同一条护栏语义**给该步骤加门（放行只认"rc=3 ＋ 具名 SKIP 横幅"两通道，裸 rc=3 仍判红），
+并在放行分支**先显式打印**"**账本类判据未执行、本档不是通过**"**再**置 rc=0。
+
+落点＝`ci.yml` 该步骤内 `# === CI-CLOSE-SKIP-GATE-BEGIN/END ===` 段（**门标记即在位证据**）。
+与套件门的**唯一有意差异**：标记把**整条步骤体**（含 `$ErrorActionPreference`）纳入，故"逐字取出
+标记之间的字节"即得**可直接真跑**的整段（反向对照不需要预置任何变量 ⇒ 不存在推演）。
+
+| 事实 | 读数（2026-09-30 批 6 现跑；命令逐条见 run 回执） |
+|---|---|
+| 退出码五态（判据来源＝脚本 docstring，门内**不重写**） | 0=通过（末行必是 `EVIDENCE: … rc=0 mode=real-data`）；1=检出违规；2=fail-closed 无法判定；**3=SKIP（唯一可放行档）**；4=domain-unavailable（**不产出结论**） |
+| 门的放行条件 | **两通道同时**：① 末行＝具名 SKIP 横幅（`CLOSE-READINESS SKIP[<分类>]（N 条判据未执行：…）——其余 M 条已验，**本档不是通过**`，单一真源＝`verify_close_readiness.py::verdict_line`）；② rc=3。**任缺其一判红**；rc=1/2/4 一律判红；rc=0 但末行不是机读证据行也判红（两通道矛盾 ⇒ fail-closed） |
+| 形态判据的**两档**（批 6 实测发现的新假红路径） | pwsh 解码子进程输出用 `[Console]::OutputEncoding`（与控制台代码页耦合）：步骤 `env:` 有 `PYTHONUTF8=1`（python 侧 UTF-8），但**解码侧**若不是 UTF-8，横幅 CJK 段变替换字符 ⇒ 形态判据恒不命中。故：① 全形态（CJK 逐字在位）；② 编码降级档（非 ASCII 投影后前缀仍 `CLOSE-READINESS SKIP[分类]` 且行尾仍 `**`）。**②不比①宽**：real-data 模式下该前缀**只有** `verdict_line()` 的 SKIP 分支会产出（失败档 `CLOSE-READINESS FAIL`／无法判定 `CLOSE-READINESS-ERROR`／域不可派生 `DOMAIN-UNAVAILABLE`／成功档 `EVIDENCE:`＋`CLOSE-READINESS PASS`），而它同一条 f-string 必然带 `**本档不是通过**` ⇒ 两档在**可达状态上等价**（去掉的只是对终端编码的依赖）。**两种编码下九条反向对照结论逐条相同** |
+
+**四条反向对照（真驱动：门字节从 `ci.yml` 标记之间逐字取出、真 `pwsh` 跑；A/B 系列为 `%TEMP%` 注入桩）**：
+
+| 用例 | 期望 | 实测（`rc` 为**门自身**的退出码） |
+|---|---|---|
+| A1 真失败 rc=1 | 判红 | rc=**1**，末行 `verify_close_readiness.py --sprint rc=1` |
+| A2 fail-closed rc=2 | 判红 | rc=**1** |
+| A3 **裸 rc=3 无横幅** | 判红 | rc=**1**，末行 `…rc=3 但不是具名 SKIP 的放行形态 ⇒ 本步失败` |
+| A4 rc=3 准横幅（有 `SKIP[分类]`、缺 `（N 条判据未执行：` 段） | 判红 | rc=**1**（**两种编码下都判红**） |
+| A5 rc=4 domain-unavailable | 判红 | rc=**1**（不被当成 SKIP 吞掉） |
+| B1 **具名横幅 ＋ rc=3** | 放行 | rc=**0**，上屏 `**账本类判据未执行、本档不是通过**`；形态档 ①（utf8）／②（legacy 编码失配） |
+| B2 具名横幅 ＋ rc=0 | 判红 | rc=**1**，末行 `rc=0 但末行形态不可核` |
+| B3 具名横幅 ＋ rc=2 | 判红 | rc=**1** |
+| B4 rc=0 ＋ 真机读证据行 | 通过（正向对照） | rc=**0**，`checked 1 sprint doc(s) declaring a real anchor` |
+
+**两环境实测（同一门字节；`OLD` ＝`git show HEAD:.github/workflows/ci.yml` 的该步骤体逐字取出）**：
+
+| 门 | 环境 | 步骤 rc | 判读 |
+|---|---|---|---|
+| OLD（HEAD，无门） | 无账本克隆 | **1** | 复现批 5 的遗留红：`Program "python.exe" ended with non-zero exit code: 3` ⇒ 该步中止（假红） |
+| NEW | 无账本克隆 | **0** | 两份 Sprint 文档（sprint-17 run 表 12 行／sprint-18 18 行）各 rc=3 ＋ 具名横幅 ⇒ 放行；`checked 2 sprint doc(s)` |
+| OLD | windows 工作树（有账本） | **1** | sprint-17 真数据档 **FAIL 9 项**（`[C1/需求]` 1 ＋ `[linkage]` 7 ＋ `[C3]` 1 项点名 27 个提交无归属）⇒ **改动前就红**，与本门无关（此前该循环遇 rc=1 同样中止） |
+| NEW | windows 工作树 | **1** | 同上（门把 rc=1 原样判红，不做任何吞并）——**行为未回归** |
+
+**无账本克隆里两个步骤的护栏各跑一遍**（命令＝`pwsh` 里 `Set-Location <克隆>` 后跑 `ci.yml` 该步骤的
+**逐字字节**；解释器＝把 `<真仓>\.venv\Scripts` 前置到 `PATH`（克隆无 `.venv`；裸 `python` 会
+`SUITE FAILED (8/26)`）；环境＝步骤自己声明的 `PYTHONUTF8=1`）：
+
+| 步骤 | 末行／关键输出 | 步骤 rc |
+|---|---|---|
+| `Offline verify suite` | `SUITE PASSED (25 scripts, 1 skipped): verify_agentops.py[ledger-absent] —— 无失败，但 1 个脚本的判据未执行（SKIP≠PASS）⇒ 本档不是通过（rc=3）`＋放行分支上屏"账本类判据未执行、本档不是通过"；随后 `CHECK OK: 57 脚本与 TEST-MATRIX.MD 一致` 〔2026-09-30 批 6 现跑〕 | **0** |
+| `Close-readiness gate…` | sprint-17／sprint-18 各 `CLOSE-READINESS SKIP[ledger-absent]（1 条判据未执行：…）——其余 12／18 条已验，**本档不是通过**`；两次放行分支均上屏"账本类判据未执行、本档不是通过"；`close-tax` 两次 `CLOSE-TAX SKIP（…**不是通过**）` rc=0 | **0** |
+
+⇒ **克隆里 `verify` 作业的三个 Python 步骤全绿**（第三个＝`Explicit gate tiers`，rc=0：`CARD-INDEX PASS`／
+`MD-TABLE PASS（186 文件）`／`verify_no_policy_hardcode.py ALL PASS (22)`／`verify_lint.py ALL PASS (11)`／
+`DECISION-REGISTER PASS`＋`ALL PASS (32)`／`structure-guard.py --replay ALL PASS (68)`／
+`structure-guard.py verify --from-git HEAD~1`）。该步骤含 GitHub Actions 表达式
+`${{ github.event.before }}`，探针里替换为空串以走 `HEAD~1` 回退（**这是探针侧唯一的替换**；
+两处门字节不含任何 `${{ }}` ⇒ "逐字取出"的前提成立）。**未跑**：两个 `npm ci && npm run build`
+（需联网安装，与本批无关——**不声称其结果**）。
+
+**"第三处"同族问题的全量盘点（`ci.yml` 里每一处依赖脚本 rc 的调用）**：
+
+| 位置 | 命令 | 脚本非零退出码语义 | 会被同族问题影响？ |
+|---|---|---|---|
+| 套件步骤 | `run_suite.py --tier offline` | 1=有失败；3=有具名 SKIP **或** `REFUSE_EXIT`（拒绝启动） | **是**（批 5 已加门） |
+| 套件步骤末 | `verify_matrix.py check` | 0/1（无第三态） | 否 |
+| 关闭前置步骤 | `verify_close_readiness.py --sprint` | 1/2/**3=SKIP**/4 | **是**（**本批加门**） |
+| 关闭前置步骤（**同一循环体**） | `verify_close_tax_reading.py --sprint` | 1=FAIL；2=文档不可解析；**SKIP 三处均退 0** | **否**（不会红）；但**方向相反**：它的 SKIP 横幅写着"**不是通过**"却退 0（与 `run_suite.py::skip_mismatch` 同类；且缺 `[分类]` 方括号形态 ⇒ 套件也不认它为具名横幅）。**本批不改**（改成 3 会在同一循环体里**新增**一处 CI 红灯，需另配门）——列为下一批候选 |
+| 显式档位步骤 | `verify_card_index.py --check --strict` | 0/1；SKIP 时打 `CARD-INDEX SKIP` 但 rc=0 | 同上（反向；本批不改） |
+| 同上 | `verify_md_tables.py` | 0/1 | 否 |
+| 同上 | `verify_no_policy_hardcode.py` | 0/1（`SystemExit(str)`＝1） | 否 |
+| 同上 | `verify_lint.py` | 1=C 级棘轮；2=ruff 缺席 fail-closed | 否（无第三态） |
+| 同上 | `verify_decision_register.py` | 1=FAIL；缺登记册 ⇒ SKIP rc=**0** | 同上（反向；本批不改） |
+| 同上 | `structure-guard.py --replay` | 0/1/2 都是真判定 | 否 |
+| 同上 | `structure-guard.py verify --from-git` | 0/1/2 | 否 |
+| `e2e-optional`（仅手动） | `verify_e2e.py` | 2=缺 key；**3=后端未就绪**（真失败，非 SKIP） | 否 |
+
+**批 6 门槛读数（windows 工作树现跑；本批只改 `ci.yml` ＋ 本档）**：
+
+| 门槛 | 末行读数 |
+|---|---|
+| `verify/run_suite.py --tier offline` | `SUITE PASSED (26 scripts)`、**rc=0**（零 skipped ⇒ 第三态仍不改动末行形态） 〔2026-09-30 批 6 现跑〕 |
+| `verify/verify_close_readiness.py --selftest` | `ALL PASS (105 assertions)`；`EVIDENCE: … assertions=105 rc=0 mode=selfcheck` 〔2026-09-30 批 6 现跑〕 |
+| `verify/verify_close_readiness.py --sprint docs/iteration/sprint/2026-09-25-sprint-18.md` | `CLOSE-READINESS PASS`：2026-09-25-sprint-18.md（run 表 18 行，锚点 9f8d690f，覆盖提交 72，产出型标注 0）；`EVIDENCE: … assertions=6 rc=0 mode=real-data criteria=6`；rc=0 〔2026-09-30 批 6 现跑〕 |
+| `verify/verify_matrix.py check` | `CHECK OK: 57 脚本与 TEST-MATRIX.MD 一致`（**与改动前同值**） 〔2026-09-30 批 6 现跑〕 |
+| `verify/verify_lint.py` | `ALL PASS (11 assertions)`；C 级棘轮 `D101=12/12 D102=46/46 D103=203/205 E501=**2466**/2494`（与改动前**逐字同值** ⇒ 净新增超长行 0；**未上调任何 cap**） 〔2026-09-30 批 6 现跑〕 |
+| `verify/verify_artifact_paths.py` | `ALL PASS (13 assertions)｜动态目标 105 处（34 个文件全在棘轮表内且未超上限）`；本批**零新增文件**（`git status --porcelain -uall` 只有 2 个 `M`、零 `??`） 〔2026-09-30 批 6 现跑〕 |
+| `verify/verify_gate_integrity.py` | `ALL PASS (75 assertions)`；`guard_required=10 ratchets=5`（读数未变——本批**未改**该文件） 〔2026-09-30 批 6 现跑〕 |
+| `verify/verify_decision_register.py` | `ALL PASS (32 assertions)`；`entries=122 quotes_checked=97 quotes_drift=10 pointers=1248`——**与改动前同数 ⇒ 漂移净新增 0**（本档改动＝**文件末尾追加**，不动任何既有行号） 〔2026-09-30 批 6 现跑〕 |
+| `verify/verify_md_tables.py` | `MD-TABLE PASS（186 个文件解析通过；其中 4 个历史文件走棘轮基线、均在各自的 defect 上限内）` 〔2026-09-30 批 6 现跑〕 |
+
+**本批没做的事（如实记）**：① 未改任何 `verify/**` 脚本、未改 `VERIFY_META`（故 `verify_matrix.py check`
+读数与改动前同值；`derive` 无需重跑，已现跑 `check` 复核）；② **未给 CI 门加机检钉**——
+`verify_gate_integrity.py` 不检查 `ci.yml` 里门标记是否存在，故**删掉整段门不会让任何闸门变红**
+（这与批 5 的套件门同属**未闭环项**，列为下一批候选；本批只交付"门在位 ＋ 反向对照真驱动"）；
+③ 未把"SKIP 退 0"的脚本（`verify_close_tax_reading.py` 等）改判（见上表处置）；
+④ 未放宽任何判据、未上调任何 cap／timeout、未对 skipped 取 0 换绿。〔2026-09-30 批 6 现跑〕

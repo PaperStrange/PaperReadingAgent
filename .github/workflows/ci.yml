@@ -147,6 +147,57 @@ jobs:
         env:
           PYTHONUTF8: "1"
         run: |
+          # === CI-CLOSE-SKIP-GATE-BEGIN ===
+          # 父代理 2026-09-30 裁定（**与套件步骤的 `# === CI-SKIP-GATE-BEGIN/END ===` 同一条
+          # 护栏语义**）：批 5 把 `verify_close_readiness.py` 的 SKIP 档退出码由 0 改判成 3
+          # （判决行与退出码同一真源）——**本步骤**于是在全新 checkout（无
+          # `agents/runtime/registry.json`，`.gitignore` 忽略）上必然 rc=3，而
+          # `$ErrorActionPreference="Stop"` ＋ `$PSNativeCommandUseErrorActionPreference=$true`
+          # 会把它判红：套件那一步放行了，**红只是换到了这一步**（仍没有一条真判据失败）
+          # ——这正是本段要消掉的假红。
+          #
+          # **硬约束：绝不允许只看 rc。** 本脚本的退出码五态（单一真源＝脚本自己的 docstring）：
+          #   0=通过（**末行必是 `EVIDENCE: verify_close_readiness.py … rc=0 mode=real-data`**；
+          #     `TG-6` 规定机读证据行只在成功路径打印）；
+          #   1=检出违规；2=fail-closed 无法判定；**3=SKIP**（唯一可放行档）；
+          #   4=domain-unavailable（判定域派生不出 ⇒ **不产出任何结论**）。
+          # 故放行条件＝**两通道同时**（缺一不可）：
+          #   ① 判决行通道：末行是具名 SKIP 横幅
+          #      `CLOSE-READINESS SKIP[<分类>]（N 条判据未执行：…）——其余 M 条已验，**本档不是通过**`
+          #      （单一真源＝`verify_close_readiness.py::verdict_line`）；
+          #   ② 退出码通道：rc = **3**（`verify_close_readiness.py::SKIP_EXIT`）。
+          # 裸 rc=3（无横幅：`CLOSE-READINESS-ERROR`／`DOMAIN-UNAVAILABLE`／形态被改坏）
+          # **仍判红**；rc=1/2/4 一律判红；rc=0 但末行不是证据行（例如"横幅形态却退 0"）
+          # 也判红（两通道矛盾 ⇒ fail-closed）。
+          # 反向对照（**真驱动**：门字节从本文件逐字取出、真 pwsh 跑，见 run 回执）：
+          # 真失败 rc=1／rc=2 ⇒ 红；裸 rc=3 ⇒ 红；具名横幅＋rc=3 ⇒ 放行且上屏"本档不是通过"；
+          # 横幅形态但 rc=0／rc=2 ⇒ 红。
+          #
+          # `$` 行尾锚点**故意不用**（与套件门同一条实测教训）：本横幅以 `**` 收尾，
+          # 但分类段与理由段内含 CJK 全角 `）`（如 `…（ledger=absent (SKIP)）`）——
+          # 形态只锚**前半段**（`SKIP[分类]` ＋ `（N 条判据未执行：` ＋ 必含 `本档不是通过`），
+          # 尾部说明文字不参与判定（它随文案变，不是判据）。
+          #
+          # **终端编码**（本批实测，另一条假红路径）：pwsh 解码子进程输出用的是
+          # `[Console]::OutputEncoding`（与控制台代码页耦合）。步骤 `env:` 已设
+          # `PYTHONUTF8=1`（python 侧输出 UTF-8），但**解码侧**若不是 UTF-8，横幅的 CJK 段
+          # 会变成替换字符——本机实测：不设 `PYTHONUTF8` 时同一横幅到 pwsh 里是
+          # `CLOSE-READINESS SKIP[ledger-absent]��1 ���о�δִ�У�…`，形态判据当即恒不命中。
+          # 故形态判据**两档，任一命中即可**（两档都不看 rc；rc 是另一条独立通道）：
+          #   ① 全形态：`CLOSE-READINESS SKIP[分类]（N 条判据未执行：…**本档不是通过**`
+          #      **逐字在位**；
+          #   ② 编码降级档：把非 ASCII 投影掉后，前缀仍是 `CLOSE-READINESS SKIP[分类]`
+          #      且行尾仍是 `**`（横幅的最后两个字符就是 `**`——ASCII，任何解码都活着）。
+          # ② **不比①宽**（不是放宽判据）：real-data 模式下 `CLOSE-READINESS SKIP[` 这个
+          # 前缀**只有** `verdict_line()` 的 SKIP 分支会产出（失败档打 `CLOSE-READINESS FAIL`、
+          # 无法判定打 `CLOSE-READINESS-ERROR`、域不可派生打 `DOMAIN-UNAVAILABLE`、
+          # 成功档打 `EVIDENCE:`＋`CLOSE-READINESS PASS`），而该分支的**同一条 f-string**
+          # 必然带 `**本档不是通过**` ⇒ ② 在可达状态上与①等价。② 去掉的只是"对终端编码的
+          # 依赖"，不是判据（反向对照里"准横幅"样本在**两种编码下都判红**）。
+          #
+          # 标记位置与套件门的**唯一有意差异**：本段从 `$ErrorActionPreference` 起就把整条
+          # 步骤体纳入标记，故"逐字取出标记之间的字节"即得**可直接真跑**的整段
+          # （反向对照因此不需要预置任何变量，不存在推演）。
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $true
           # TG-11 ③b/M4：**谁声称已关闭，谁就必须自证**——只校验**真的写了锚点 sha** 的 Sprint 文档
@@ -158,12 +209,81 @@ jobs:
           # 只是把"没有可校验对象"如实说成跳过，而不是把它伪装成失败）。选择器正则语义**未改动**。
           $sprintGlob = 'docs/iteration/sprint/*sprint-*.md'
           $pat = '三查锚点\s*[:：]\s*`?[0-9a-fA-F]{7,40}'
+          $closeSkipExit = 3
+          $closeSkipPrefix = 'CLOSE-READINESS SKIP['
+          # 形态判据两档（见上方"终端编码"段）：① 全形态；② ASCII 投影的降级档。
+          $closeSkipRe = '^CLOSE-READINESS SKIP\[[^\]]+\]（\d+ 条判据未执行：.+）——其余 \d+ 条已验，\*\*本档不是通过\*\*'
+          $closeSkipReAscii = '^CLOSE-READINESS SKIP\[[^\]]+\].*\*\*$'
+          $closeNotPassMark = '本档不是通过'
+          $closePassRe = '^EVIDENCE: verify_close_readiness\.py assertions=\d+ rc=0 mode=real-data'
           $checked = 0
           if (Test-Path 'docs/iteration/sprint') {
             foreach ($f in Get-ChildItem $sprintGlob) {
               if (Select-String -Path $f.FullName -Pattern $pat -Quiet) {
                 Write-Host "close-readiness -> $($f.Name)"
-                python verify/verify_close_readiness.py --sprint $f.FullName
+                # 先关掉原生命令的终止语义：要拿到**输出**与**退出码**再判（`finally` 复位）。
+                # 不这么做的话 `$PSNativeCommandUseErrorActionPreference=$true` 会在 rc≠0 时抛，
+                # 捕获与判定都到不了。捕获的 stderr 一并 `Write-Host` 上屏（日志可见性不降级）。
+                $closeOut = @()
+                $closeRc = 0
+                try {
+                  $PSNativeCommandUseErrorActionPreference = $false
+                  $closeOut = @(python verify/verify_close_readiness.py --sprint $f.FullName 2>&1 | ForEach-Object { "$_" })
+                  $closeRc = $LASTEXITCODE
+                } finally {
+                  $PSNativeCommandUseErrorActionPreference = $true
+                }
+                $closeOut | ForEach-Object { Write-Host $_ }
+                $closeLines = @($closeOut | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ })
+                $closeLast = if ($closeLines.Count) { $closeLines[-1] } else { "" }
+                $closeAsciiLast = $closeLast -replace '[^\x20-\x7E]', ''
+                $closeSkipShapeFull = $closeLast.StartsWith($closeSkipPrefix) `
+                  -and ($closeLast -match $closeSkipRe) `
+                  -and $closeLast.Contains($closeNotPassMark)
+                $closeSkipShapeAscii = $closeAsciiLast.StartsWith($closeSkipPrefix) `
+                  -and ($closeAsciiLast -match $closeSkipReAscii)
+                $closeSkipShape = $closeSkipShapeFull -or $closeSkipShapeAscii
+                # 分类**从脚本自己的横幅里取**（机器可读段 `SKIP[<分类>]` 是 ASCII，两种解码下都在），
+                # 不在门里写死"一定是 ledger-absent"——写死就是把判据的第二份声明塞进门里。
+                $closeCat = if ($closeLast -match '^(?:CLOSE-READINESS )?SKIP\[([^\]]+)\]') { $Matches[1] } `
+                  elseif ($closeAsciiLast -match '^CLOSE-READINESS SKIP\[([^\]]+)\]') { $Matches[1] } `
+                  else { '?' }
+                $closeSkipAccepted = $closeSkipShape -and ($closeRc -eq $closeSkipExit)
+                if ((-not $closeSkipAccepted) -and ($closeRc -eq $closeSkipExit)) {
+                  Write-Host 'Close-readiness：rc=3 且**不是**具名 SKIP 横幅形态 ⇒ 判红。'
+                  Write-Host '  具名 SKIP 档一定是"rc=3 ＋ 末行打 `本档不是通过` 横幅"两通道齐备；'
+                  Write-Host '  本处不是它：`CLOSE-READINESS-ERROR`（rc=2）与 `DOMAIN-UNAVAILABLE`（rc=4）'
+                  Write-Host '  都退非零、且都不产出结论——裸接受 3 只会把它们吞掉，故不放行。'
+                  Write-Host "  末行现读：$closeLast"
+                  throw 'verify_close_readiness.py rc=3 但不是具名 SKIP 的放行形态 ⇒ 本步失败'
+                }
+                if ($closeSkipAccepted) {
+                  # 放行分支**先显式打印、再置 rc=0**（不静默；仓内先例＝套件门与
+                  # structure-guard 的具名跳过段）。
+                  Write-Host "Close-readiness：**具名 SKIP[$closeCat]** ⇒ 本步放行（显式说明，非静默）。"
+                  Write-Host '  **账本类判据未执行、本档不是通过**：全新 checkout 没有'
+                  Write-Host '  `agents/runtime/registry.json`（`.gitignore` 忽略）⇒ C1/需求、linkage、'
+                  Write-Host '  C3 覆盖归属**本环境无从判定**；退出码 3 的语义是'
+                  Write-Host '  『没有失败，但有判据未执行』。本档只核了不依赖账本的部分'
+                  Write-Host '  （Sprint 文档可解析、§9 run 表结构合法、三查锚点已声明）。'
+                  Write-Host "  未执行项见上屏横幅：$closeLast"
+                  Write-Host "  形态档：$(if ($closeSkipShapeFull) { '① 全形态（CJK 逐字在位）' } else { '② 编码降级档（ASCII 投影；终端编码与控制台代码页不匹配，见上方说明）' })"
+                  # 跳过是**判定结论**：GH 的 pwsh 模板在步骤末尾 `exit $LASTEXITCODE`
+                  # （仓内先例＝structure-guard 的具名跳过段），不显式归零会"日志说放行、
+                  # 步骤却失败"。
+                  $global:LASTEXITCODE = 0
+                } elseif ($closeRc -ne 0) {
+                  Write-Host "Close-readiness：rc=$closeRc ⇒ 本步失败（fail-closed）。"
+                  throw "verify_close_readiness.py --sprint rc=$closeRc"
+                } else {
+                  # rc=0 ⇒ 末行**必是**成功路径的机读证据行（`TG-6`：只在 rc=0 且未跳过时打印）。
+                  # 不是它（例如"具名横幅形态却退 0"）＝两通道矛盾 ⇒ fail-closed，不静默放行。
+                  if (-not ($closeLast -match $closePassRe)) {
+                    Write-Host 'Close-readiness：rc=0 但末行不是 `EVIDENCE: … rc=0 mode=real-data`'
+                    Write-Host "  （末行现读：$closeLast）⇒ 判红（退出码与判决行两通道矛盾）。"
+                    throw 'verify_close_readiness.py rc=0 但末行形态不可核'
+                  }
+                }
                 # 关闭税读数闸门（TG-19 M-E）：**同一选择器**（声明了真锚点的 Sprint 文档）。
                 # 二查 run-…-087 minor 6：它的触发条件是"§9 有 run 行 / 声明真锚点"，此前**没接 CI**，
                 # 于是"关闭记录缺机读读数行"只能靠人记得跑。
@@ -176,6 +296,7 @@ jobs:
           } else {
             Write-Host "close-readiness: no sprint docs on this branch -> step skipped (docs/iteration/ is windows-only; selector '$sprintGlob' matched nothing)"
           }
+          # === CI-CLOSE-SKIP-GATE-END ===
 
       - name: Explicit gate tiers (card index / md tables / policy hardcode / lint / structure guard)
         env:
