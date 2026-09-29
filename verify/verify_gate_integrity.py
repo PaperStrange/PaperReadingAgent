@@ -1255,15 +1255,23 @@ def selftest() -> int:
     # 逐形态驱动一遍，并静态钉住"它**真的被套件调用**"（否则删掉调用点 =
     # 判据形同不存在）。
     from verify.run_suite import (BRANCH_ASSERTION_FLOORS, BRANCH_VERDICT_SCOPE_MIN,
+                                  SKIP_EXIT, SKIP_NOT_PASS_MARK, skip_verdict,
+                                  suite_verdict_line,
                                   verdict_problems, verdict_scope_problems)  # noqa: PLC0415
-    vline = "ALL PASS (174 assertions)"
+    # 条数**从下限表派生**，不再写死：这里曾写死 `174`，而 `verify_agentops.py`
+    # 加了一批判据（判决行／退出码同口径）后下限变 **177** ⇒ 写死的那个数当场变成
+    # "低于下限"的坏样本，反向对照①会**假红**。同一个数出现在两处必然会漂移
+    # （`docs/1-WORKFLOW.MD:440` 的"读数必须有来源"）。
+    floor_ao = BRANCH_ASSERTION_FLOORS[("verify_agentops.py", True)]
+    vline = f"ALL PASS ({floor_ao} assertions)"
     ok("行 34 反向对照①：判决句在末行、条数 = 本分支下限 ⇒ 无缺陷",
        verdict_problems("verify_agentops.py", ["x", vline], 0, True) == [], vline)
-    ok("行 34 反向对照②：判决句在、条数**低于**下限（173 < 174）⇒ FAIL 且点名棘轮",
+    ok(f"行 34 反向对照②：判决句在、条数**低于**下限"
+       f"（{floor_ao - 1} < {floor_ao}）⇒ FAIL 且点名棘轮",
        any("棘轮" in p for p in
-           verdict_problems("verify_agentops.py", [vline.replace("174", "173")],
-                            0, True)),
-       "173 < 174")
+           verdict_problems("verify_agentops.py",
+                            [f"ALL PASS ({floor_ao - 1} assertions)"], 0, True)),
+       f"{floor_ao - 1} < {floor_ao}")
     ok("行 34 反证③：**没有判决句**（只有普通 PASS 行）⇒ FAIL"
        "（这正是行 34 的病：删掉一批自检后脚本照样退 0）",
        any("没有" in p for p in
@@ -1299,6 +1307,55 @@ def selftest() -> int:
        len(re.findall(r"^\s*vp = verdict_problems\(", rs_src, re.MULTILINE)) == 1
        and "verdict_scope_problems(len(declared), branch_present)" in rs_src,
        "run_suite.py 调用点")
+
+    # 第三态（SKIP，2026-09-30 本批）：套件多了一档"既不计 PASS 也不计 FAIL"。
+    # 判据本体在 `run_suite.skip_verdict` / `run_suite.suite_verdict_line`（纯函数）——
+    # 这里（"闸门的闸门"）逐形态驱动一遍，并静态钉住"**真的被套件接线**"：
+    # 删掉调用点 / 把 rc 改回 0，本闸门必须红。
+    _banner = (f"AGENTOPS SKIP[spec-absent-on-branch]（1 条判据未执行）"
+               f"——其余 170 条已验，**{SKIP_NOT_PASS_MARK}**")
+    ok("第三态①：**具名 SKIP**（rc=3 ＋ 末行横幅）⇒ 归 skipped 档并带出分类",
+       skip_verdict([_banner], SKIP_EXIT) == ("skipped", "spec-absent-on-branch"),
+       f"{skip_verdict([_banner], SKIP_EXIT)}")
+    ok("第三态②（反向对照）：末行有横幅却 rc≠3 ⇒ **不**归 skipped"
+       "（两通道矛盾；rc=0 与 rc=1 两种都不认）",
+       skip_verdict([_banner], 0)[0] == "mismatch"
+       and skip_verdict([_banner], 1)[0] == "mismatch",
+       f"rc0={skip_verdict([_banner], 0)[0]} rc1={skip_verdict([_banner], 1)[0]}")
+    ok("第三态③（反向对照）：rc=3 但末行**没有**具名横幅 ⇒ 不是 SKIP"
+       "（否则任何脚本退 3 就能溜出 PASS/FAIL 记账）",
+       skip_verdict(["PASS: a", "BOOM: rc=3"], SKIP_EXIT)[0] == "none"
+       and skip_verdict([f"AGENTOPS SKIP[x] 本行不是 PASS"], SKIP_EXIT)[0] == "none"
+       and skip_verdict([_banner, "NOTE: 横幅之后还有输出"], SKIP_EXIT)[0] == "none",
+       "无横幅/缺『本档不是通过』/横幅不在末行 三形态")
+    _one = [{"name": "verify_agentops.py", "category": "spec-absent-on-branch"}]
+    ok("第三态④：末行**显式区分**——skipped 不混进 PASSED 的脚本数、且判决句带分类与"
+       "『本档不是通过』（absent 侧形态）",
+       suite_verdict_line(26, [], _one)
+       == (f"SUITE PASSED (25 scripts, 1 skipped): "
+           f"verify_agentops.py[spec-absent-on-branch]"
+           f" —— 无失败，但 1 个脚本的判据未执行（SKIP≠PASS）⇒ {SKIP_NOT_PASS_MARK}"
+           f"（rc={SKIP_EXIT}）"),
+       suite_verdict_line(26, [], _one))
+    ok("第三态⑤：零跳过时判决句与既有形态**逐字一致**（windows 侧零回归）",
+       suite_verdict_line(26, [], []) == "SUITE PASSED (26 scripts)"
+       and suite_verdict_line(26, ["verify_x.py"], [])
+       == "SUITE FAILED (1/26): verify_x.py",
+       f"{suite_verdict_line(26, [], [])} / "
+       f"{suite_verdict_line(26, ['verify_x.py'], [])}")
+    ok("第三态⑥（反向对照）：failed 与 skipped 同时出现 ⇒ **failed 优先**，"
+       "且跳过档另列可见（不得因'有跳过'把失败说轻）",
+       suite_verdict_line(26, ["verify_x.py"], _one).startswith(
+           "SUITE FAILED (1/26, 1 skipped):")
+       and "另有 skipped" in suite_verdict_line(26, ["verify_x.py"], _one),
+       suite_verdict_line(26, ["verify_x.py"], _one))
+    ok("第三态判据**真被套件调用**（静态钉住接线：判据本体 ＋ rc 两处，"
+       "删任一处 = 形同不存在）",
+       len(re.findall(r"^\s*state, detail = skip_verdict\(tail, code\)",
+                      rs_src, re.MULTILINE)) == 1
+       and "suite_verdict_line(len(picked), failed, skipped)" in rs_src
+       and len(re.findall(r"^\s*return SKIP_EXIT$", rs_src, re.MULTILINE)) == 1,
+       "run_suite.py 的第三态调用点")
 
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0

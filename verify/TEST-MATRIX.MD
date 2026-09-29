@@ -36,9 +36,9 @@
 | `verify_checkpoint.py` | F-AC10 文献级 checkpoint：逐篇落盘 + 零成本复用 + 文件变更/载荷损坏/模型不匹配/切块口径/同内容去重五重边界 fail-closed（est = 近次实测 ¥0.016965 × 1.3 ≈ 0.03，2026-09-20 校准） | network | deepseek | 240s | ¥0.03 | /api/new_session, /api/run_step | keys, network, self-boots-backend |
 | `verify_checkpoint_index.py` | F-AC16 v1 checkpoint 只读索引：扫描/排序/逐篇载荷路径与存在性/坏件 fail-soft/detail 与 resolve_payload/字段白名单（离线合成 fixture） | offline | — | 5s | ¥0 | /api/checkpoints | none |
 | `verify_close_readiness.py` | TG-15 关闭前置闸门：C1 声明完备 / C2 指涉可核（含 A-M13 的"全账本 role 必有 spec"封闭世界）/ C3 覆盖闭环（锚点→域右端每提交有归属），需求全来自 fanout.json + spec frontmatter；含变异用例自 fanout 自动生成的反向对照；M-A（TG-19）：判定域必须由**被判定物**派生（Sprint 身份 + 该 Sprint 的作用域 run + 该 Sprint 的最后一条覆盖 run 作右端），域不可派生时退出码 4（domain-unavailable）且不产出结论；A-M13④：§9 在飞宽限内只提示不判（口径同 ledger_measurement.in_flight） | offline | — | 15s | ¥0 | — | none |
-| `verify_close_tax_reading.py` | 关闭税读数机器派生（TG-19 M-E）：从 code-review / doc-audit 报告重新派生 code_major / code_critical / doc_items，并要求 Sprint 文档的机读读数行与之逐字一致（禁止手抄）；含缺失行 fail-closed、报告缺失显式 SKIP 与反向对照自检 | offline | — | 5s | ¥0 | — | none |
+| `verify_close_tax_reading.py` | 关闭税读数机器派生（TG-19 M-E）：从 code-review / doc-audit 报告重新派生 code_major / code_critical / doc_items，并要求 Sprint 文档的机读读数行与之逐字一致（禁止手抄）；含缺失行 fail-closed、报告缺失显式 SKIP 与反向对照自检；另核**复盘 §5 的状态计数可解析**（`状态码` 列收敛五元词表／机读声明计数＝逐行实数／§5.0 逐行清单与之逐行对钉／凡 `已修` 行必须能指到落地提交） | offline | — | 5s | ¥0 | — | none |
 | `verify_config_schema.py` | 配置 SSOT 一致性 + M7 前端零硬编码 + Settings 升级基线护栏（114 断言，离线） | offline | — | 5s | ¥0 | /api/config_schema, /api/config/validate | none |
-| `verify_decision_register.py` | 决策登记册机检（TG-20 ③④⑤）：章节在位 / 条目 8 字段齐全 / 受控状态词 / 被取代指向存在的条目 / path:line 指针可核 / §4.1 引文↔出处逐条核对 / 待回填可见；反向对照条数见末行 `ALL PASS (N assertions)` | offline | — | 200s | ¥0 | — | none |
+| `verify_decision_register.py` | 决策登记册机检（TG-20 ③④⑤）：章节在位 / 条目 8 字段齐全 / 受控状态词 / 被取代指向存在的条目 / path:line 指针可核 / §4.1 引文↔出处逐条核对 / 待回填可见；行 39 未核指针**条数**棘轮（分支感知：windows 0／main 1106）；反向对照条数见末行 `ALL PASS (N assertions)` | offline | — | 200s | ¥0 | — | none |
 | `verify_deduction_rates.py` | §2.1.1 扣率数据闸门：deduction_rates 读取器 fail-closed（缺键/超界/负值/全0/步长非法/判据缺证据/无到期日约束/折算级别越界）+ 纯函数 deduction_for 正反例（合并开关与比例均来自数据、封顶优先于取整） | offline | — | 5s | ¥0 | — | none |
 | `verify_derived_numbers.py` | 派生数字不得手抄：按文件棘轮约束"现测/实测 <数字>"式当期主张（断言数/卡数/文件数/脚本数/字节/C 级条数/棘轮计数）；生成物豁免、上限只减不增、review_by 到期即 FAIL；反向对照条数见末行 `ALL PASS (N assertions)` | offline | — | 4s | ¥0 | — | none |
 | `verify_e2e.py` | deepseek 全链路 6 步（LLM+vision + 本地 st- 向量） | network | deepseek | 120s | ¥0.3 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
@@ -59,7 +59,7 @@
 | `verify_providers.py` | F-AC8 provider 一文件：文件加载/来源标记/覆盖优先级/非法文件跳过/无密钥泄漏/调研元数据契约 | offline | — | 20s | ¥0 | — |  |
 | `verify_prune_callbacks.py` | litellm 回调裁剪：上限 env 可配 + 非法值回落 + 钳制（离线） | offline | — | 2s | ¥0 | — | none |
 | `verify_remote_e2e.py` | remote 数据源全链路（arXiv 下载+索引+6 步） | network | deepseek | 180s | ¥0.4 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
-| `verify_runner.py` | TG-5 分层 runner + 定时底座：offline/gui/network 分层 + fail-closed + 三态预算闸门 + due 判定 + 成本回填 + 状态文件 fail-closed（TG-7） | offline | — | 60s | ¥0 | — |  |
+| `verify_runner.py` | TG-5 分层 runner + 定时底座：offline/gui/network 分层 + fail-closed + 三态预算闸门 + 第三态 SKIP（⑮：具名 SKIP 归 skipped 档／假 SKIP 不归入／failed 优先，均真入口驱动）+ due 判定 + 成本回填 + 状态文件 fail-closed（TG-7） | offline | — | 60s | ¥0 | — |  |
 | `verify_smoke.py` | 冒烟 8 项：paperqa 导入/后端 12 路由加载/runtime_trace 目标/PDF 解析等（离线） | offline | — | 10s | ¥0 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session, /api/health, /api/providers, /api/config_schema, /api/config/validate, /api/translate_preview, /api/usage, /api/checkpoints | none |
 | `verify_usage.py` | Retro③ 成本换算 ＋ TG-20 行 20 按调用时刻选档：真入口对照/跨档/缺失/退化/可审计/真派发，改前取自钉住 revision（离线，需 git） | offline | — | 12s | ¥0 | — | git |
 

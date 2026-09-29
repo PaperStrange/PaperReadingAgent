@@ -31,7 +31,9 @@ VERIFY_META = {
     'features': '关闭税读数机器派生（TG-19 M-E）：从 code-review / doc-audit 报告重新'
                 '派生 code_major / code_critical / doc_items，并要求 Sprint 文档的'
                 '机读读数行与之逐字一致（禁止手抄）；含缺失行 fail-closed、'
-                '报告缺失显式 SKIP 与反向对照自检',
+                '报告缺失显式 SKIP 与反向对照自检；另核**复盘 §5 的状态计数可解析**'
+                '（`状态码` 列收敛五元词表／机读声明计数＝逐行实数／§5.0 逐行清单与之'
+                '逐行对钉／凡 `已修` 行必须能指到落地提交）',
     'tier': 'offline', 'providers': [], 'est_seconds': 5, 'est_cost_cny': 0,
     'routes': [], 'requires': ['none'],
 }
@@ -44,6 +46,13 @@ import sys
 import tempfile
 from collections import Counter
 from pathlib import Path
+
+# 本闸门要解析**复盘 §5 表**（状态计数档），故复用 `verify_md_tables` 的**同一套**
+# 切分器：`\|` 是内容、裸 `|` 才是分隔。**不另写一份**——两份切分器必然漂移
+# （复盘行 7 的教训：同一口径两份实现）。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from verify.agent_policy import path_in_head                    # noqa: E402
+from verify.verify_md_tables import split_row as _split_row     # noqa: E402
 
 # 控制台编码兜底（本仓既有口径）：Windows 默认 GBK 遇到 `⇒`／`—` 这类字符会
 # `UnicodeEncodeError` —— 那会让闸门在**打印判据**时崩掉（不是判据本身出错）。
@@ -119,6 +128,228 @@ def claims_closure(doc: str) -> bool:
     """文档是否自称已关闭（声明真锚点 或 §9 有 run 行）
     ——决定"缺读数行"是 FAIL 还是 SKIP。"""
     return bool(ANCHOR_RE.search(doc)) or bool(RUN_ROW_RE.search(doc))
+
+
+# ------------------------------------------------- 状态计数可解析（本批新增）
+#
+# 要治的是什么（`run-2026-09-30-implementation-110` 的派单问题 A）：复盘 §5 的
+# "未闭环项"表有 51 行，**状态此前不可机读**——状态词混在长句子里，于是两个 agent
+# 对同一张表数出了两套结果，而"零未闭环项"的结论正建立在这套计数上。
+#
+# 处置：给 §5 表加**独立机读列 `状态码`**（词表收敛五元）＋ 一行**机读声明**
+# （`状态计数: 已修=N …`）＋ §5.0 逐行清单（`行｜状态｜落地提交/run｜依据`）。
+# 本档的判据把三处**逐行对钉**：任一处改了而另两处没改 ⇒ FAIL。
+# 口径同 `TG-19` M-E：**读数必须由工具派生，禁止手抄**。
+STATUS_TOKENS = ("已修", "未修", "部分", "只报", "用户豁免")
+STATUS_TABLE_HEADER = ("#", "项", "来源", "状态说明（依据）", "状态码")
+STATUS_DETAIL_HEADER = ("行", "状态", "落地提交/run", "依据（可复跑）")
+RETRO_REL = ("docs/iteration/phases/testing-governance/"
+             "2026-09-26-g2-close-retro.MD")
+# 机读声明行。用 `search`（不是 `match`）：真行形如
+# `> **状态计数（机读，…）**：状态计数: 已修=46 …`——行首那段 `状态计数（` 后面
+# 不是冒号，故只会在**第二处**命中（这一条是本档写第一版时踩过的坑）。
+STATUS_COUNT_RE = re.compile(r"状态计数\s*[:：]\s*(?P<body>.+?)\s*$")
+# "落地提交/run" 的机检形态：sha（≥7 位十六进制）或 `run-<日期>-…`。
+LANDING_RE = re.compile(r"(?:\b[0-9a-f]{7,40}\b|run-\d{4}-\d{2}-\d{2}-)")
+
+
+def find_table(doc: str, header: tuple[str, ...]) -> tuple[list[list[str]], int]:
+    """按**逐字表头**定位一张 Markdown 表 → `(数据行, 表头行号)`；找不到 ⇒ `([], 0)`。
+
+    只认"表头逐字相等"的表：本档里 §3 A 表／§4 表／§5 表**行号重叠**（各自 1..N），
+    靠表头区分才不会张冠李戴——这正是上一批数错行的机制。
+    """
+    lines = doc.splitlines()
+    for i, line in enumerate(lines):
+        if not line.lstrip().startswith("|"):
+            continue
+        if tuple(_split_row(line)) != header:
+            continue
+        rows: list[list[str]] = []
+        for j in range(i + 1, len(lines)):
+            if not lines[j].lstrip().startswith("|"):
+                break
+            cells = _split_row(lines[j])
+            if cells and all(c and set(c) <= set("-: ") for c in cells):
+                continue                      # `|---|…|` 分隔行
+            rows.append(cells)
+        return rows, i + 1
+    return [], 0
+
+
+def _leading_status(cell: str) -> str | None:
+    """`状态说明` 单元格**开头**的状态词（没有 ⇒ `None`）。
+
+    `部分已修` 归一成 `部分`（真档的历史措辞）。只认**行首**——正文中间提到别的
+    状态词不算（例如"该行原记未修）"这类括注）。
+    """
+    text = cell.lstrip("*> \t")
+    if text.startswith("部分已修"):
+        return "部分"
+    for tok in STATUS_TOKENS:
+        if text.startswith(tok):
+            return tok
+    return None
+
+
+def parse_status_counts(doc: str) -> tuple[dict | None, list[int]]:
+    """解析机读声明行 → `({token: N, "合计": N} | None, 命中行号)`。
+
+    命中 ≠ 1 行时的判定由调用方负责（0 行 = 无声明；≥2 行 = 两套口径）——二者都不是通过。
+    """
+    hits = [(i, m) for i, line in enumerate(doc.splitlines(), 1)
+            for m in [STATUS_COUNT_RE.search(line)]
+            if m and "=" in m.group("body")]
+    if not hits:
+        return None, []
+    _, m = hits[0]
+    out: dict = {}
+    for token in m.group("body").replace("；", " ").split():
+        if "=" not in token:
+            continue
+        key, _, value = token.partition("=")
+        key = key.strip()
+        if key in STATUS_TOKENS or key == "合计":
+            out[key] = int(value) if value.strip().isdigit() else value
+    return out, [ln for ln, _ in hits]
+
+
+def status_count_problems(doc: str) -> list[str]:
+    """§5 状态读数**可解析且自洽**（纯函数；反向对照直接驱动它）。
+
+    五道判据：
+      ① 表结构——表头逐字＝`STATUS_TABLE_HEADER`；每行 5 格；首列行号 1..N **连续**；
+      ② 词表——`状态码` 列每一格 ∈ `STATUS_TOKENS`（收敛到有限集，不允许自由文本）；
+      ③ 计数——机读声明行的五个词 ＋ `合计` 与**逐行实数**逐项相等（禁止手抄）；
+      ④ 逐行对钉——§5.0 清单覆盖同一组行号、状态与 §5 表**逐行相同**，
+         且凡 `已修` 行必须能指到具名 sha／run（"已修"不得是无签发的空话）；
+      ⑤ 行内不矛盾——`状态说明` 若以状态词开头，该词必须等于 `状态码`
+         （"唯一真源"不许被同一行的散文当场推翻）。
+    """
+    problems: list[str] = []
+    rows, _hline = find_table(doc, STATUS_TABLE_HEADER)
+    if not rows:
+        return [f"[状态计数] 找不到带 `状态码` 列的 §5 表（表头应为 "
+                f"{' | '.join(STATUS_TABLE_HEADER)}）⇒ 状态读数无从复算（fail-closed）"]
+    tokens: dict[int, str] = {}
+    for idx, cells in enumerate(rows, 1):
+        if len(cells) != len(STATUS_TABLE_HEADER):
+            problems.append(
+                f"[状态计数] §5 表第 {idx} 条数据行单元格数 {len(cells)} ≠ "
+                f"表头 {len(STATUS_TABLE_HEADER)}（首列 {cells[0]!r}）"
+                f"——机读列被合并/多了分隔符")
+            continue
+        try:
+            n = int(cells[0])
+        except ValueError:
+            problems.append(f"[状态计数] §5 表首列不是行号：{cells[0]!r}")
+            continue
+        tok = cells[-1]
+        if tok not in STATUS_TOKENS:
+            problems.append(
+                f"[状态计数] 行 {n} 的状态码 {tok!r} 不在词表 {list(STATUS_TOKENS)} 内"
+                f"（词表必须收敛到有限集，否则又变成自由文本）")
+        # 判据⑤：**同一行内不许自相矛盾**——`状态说明` 若以状态词开头，该词必须与
+        # `状态码` 相同。本批第一版就是靠这条抓到的：行 4/5/6/11/13 的说明格仍是裸
+        # `未修`，而机读列已改判 `已修`（"唯一真源"当场被自己一行推翻）。
+        lead = _leading_status(cells[3])
+        if lead is not None and lead != tok:
+            problems.append(
+                f"[状态计数] 行 {n} 自相矛盾：`状态说明` 以 {lead!r} 开头，"
+                f"`状态码` 却是 {tok!r}——同一行不许有两个状态")
+        tokens[n] = tok
+    nums = sorted(tokens)
+    if nums != list(range(1, len(nums) + 1)):
+        problems.append(f"[状态计数] §5 表行号必须连续 1..N：实测 {nums[:6]}…"
+                        f"{nums[-3:] if nums else '（空）'}")
+
+    declared, hit_lines = parse_status_counts(doc)
+    if declared is None:
+        problems.append("[状态计数] 文档里没有机读声明行"
+                        "（形如 `状态计数: 已修=N … 用户豁免=N 合计=N`）⇒ 计数无从核对"
+                        "（fail-closed；手抄的计数不算读数）")
+    elif len(hit_lines) > 1:
+        problems.append(f"[状态计数] 有 {len(hit_lines)} 行机读声明（行 {hit_lines}）"
+                        f"——两行读数＝两套口径，先合并成唯一一行")
+    else:
+        actual = Counter(tokens.values())
+        for tok in STATUS_TOKENS:
+            want = declared.get(tok)
+            if want is None:
+                problems.append(f"[状态计数] 声明行缺 `{tok}=`——五个词一个都不能省"
+                                f"（少一个就等于少一项读数）")
+            elif not isinstance(want, int):
+                problems.append(f"[状态计数] 声明行 `{tok}=` 不是整数：{want!r}")
+            elif want != actual.get(tok, 0):
+                problems.append(f"[状态计数] {tok} 声明 {want} ≠ 逐行实数 "
+                                f"{actual.get(tok, 0)}（计数必须由工具派生，禁止手抄）")
+        total = declared.get("合计")
+        if total is None:
+            problems.append("[状态计数] 声明行缺 `合计=`")
+        elif total != len(tokens):
+            problems.append(f"[状态计数] 合计 声明 {total} ≠ 表内行数 {len(tokens)}")
+
+    detail, _dline = find_table(doc, STATUS_DETAIL_HEADER)
+    if not detail:
+        problems.append(f"[状态计数] 找不到 §5.0 逐行状态清单（表头应为 "
+                        f"{' | '.join(STATUS_DETAIL_HEADER)}）⇒ 无逐行举证可对钉")
+        return problems
+    dm: dict[int, tuple[str, str]] = {}
+    for cells in detail:
+        if len(cells) != len(STATUS_DETAIL_HEADER):
+            problems.append(f"[状态计数] §5.0 行 {cells[0]!r} 单元格数 "
+                            f"{len(cells)} ≠ 表头 {len(STATUS_DETAIL_HEADER)}")
+            continue
+        try:
+            n = int(cells[0])
+        except ValueError:
+            problems.append(f"[状态计数] §5.0 首列不是行号：{cells[0]!r}")
+            continue
+        dm[n] = (cells[1], cells[2])
+    if sorted(dm) != nums:
+        only_d = sorted(set(dm) - set(tokens))
+        only_t = sorted(set(tokens) - set(dm))
+        problems.append(f"[状态计数] §5.0 与 §5 表的行集合不一致："
+                        f"只在 §5.0＝{only_d[:8]}，只在 §5 表＝{only_t[:8]}")
+    for n in sorted(set(dm) & set(tokens)):
+        dstat, dland = dm[n]
+        if dstat != tokens[n]:
+            problems.append(f"[状态计数] 行 {n}：§5 表状态码 {tokens[n]!r} ≠ §5.0 清单 "
+                            f"{dstat!r}——同一行被两处写成了两个状态")
+        if tokens[n] == "已修" and not LANDING_RE.search(dland):
+            problems.append(f"[状态计数] 行 {n} 记为 `已修`，但 §5.0 的『落地提交/run』"
+                            f"{dland!r} 指不到具名 sha／run"
+                            f"（『已修』必须能指到落地提交，否则改判并写理由）")
+    return problems
+
+
+def status_count_gate() -> tuple[str, list[str]]:
+    """真数据档：拿**仓库里的复盘档**跑 `status_count_problems` → `(判决, 输出行)`。
+
+    判决三态，口径同 `verify_md_tables.coverage_problems` 的**分支差异 vs 被删**三分法：
+      * `pass`——文件在，且逐行自洽；
+      * `fail`——文件在但不自洽，**或**文件在 `HEAD` 里存在而工作区被删
+        （被删 ≠ 分支差异）；
+      * `skip`——文件既不在工作区、也不在本分支 `HEAD`（windows-only 治理子树）⇒ 该档
+        无从执行；调用方据此**不得**打印 `CLOSE-TAX PASS` 横幅（`TG-19` M-B）。
+    """
+    retro = ROOT / RETRO_REL
+    if retro.is_file():
+        found = status_count_problems(io.open(retro, encoding="utf-8",
+                                              errors="replace").read())
+        if found:
+            head = (f"CLOSE-TAX FAIL（{len(found)} 项）——复盘 §5 的状态读数"
+                    f"不可解析／不自洽：{RETRO_REL}")
+            return "fail", [head] + [f"  - {p}" for p in found[:20]]
+        return "pass", [f"CLOSE-TAX PASS（状态计数档）：{RETRO_REL} 的 "
+                        f"`状态码` 列词表合法、声明计数＝逐行实数、"
+                        f"§5.0 逐行一致且 `已修` 行均有落地签发"]
+    if path_in_head(ROOT, RETRO_REL):
+        return "fail", [f"CLOSE-TAX FAIL（1 项）：{RETRO_REL} 在 `HEAD` 里**存在**、"
+                        f"工作区却缺失 ⇒ 这是**被删**（不是分支差异）；状态读数的真源"
+                        f"被删 ⇒ fail-closed"]
+    return "skip", [f"CLOSE-TAX SKIP（状态计数档）：{RETRO_REL} 不在本分支"
+                    f"（windows-only 治理子树）⇒ 该档未执行——**本行不是通过**"]
 
 
 def count_code_report(text: str) -> Counter:
@@ -242,6 +473,19 @@ def check_sprint(sprint_file: Path, *, runs_dir: Path = RUNS_DIR) -> int:
         for p in problems[:20]:
             print(f"  - {p}")
         return 1
+    # 状态计数档（本批新增）：复盘 §5 的"未闭环项"状态必须**可机读且自洽**——
+    # 它正是"零未闭环项"这条关闭结论的读数来源，不核它等于把结论建在手抄数字上。
+    verdict, lines = status_count_gate()
+    for line in lines:
+        print(line)
+    if verdict == "fail":
+        return 1
+    if verdict == "skip":
+        # M-B：SKIP 档**不得**打印 `CLOSE-TAX PASS` 横幅，也不打印 `EVIDENCE:`
+        # （证据行只属于"判据真的跑过且通过"）。
+        print(f"CLOSE-TAX SKIP（读数档通过，但状态计数档在本分支无从执行）"
+              f"——**本档不是通过**：{path.name}")
+        return 0
     print(f"CLOSE-TAX PASS：{path.name}（声明与报告派生逐字一致："
           + ", ".join(f"{k}={actual[k]}" for k in KEYS)
           + f"；来源 {len(runs)} 个 run）")
@@ -284,6 +528,32 @@ DOC_RPT = """# doc-audit report (fixture)
 ## Verified consistent (for reference)
 
 - 无
+"""
+
+# 状态计数档的夹具：模拟复盘 §5 的**三处结构**（机读列 ＋ 声明行 ＋ 逐行清单）。
+# 注意第一处 `状态计数（机读…）` **不带冒号**——真档就长这样，而它曾经让第一版
+# 正则用 `match` 时恰好命中错位置；夹具把它固定成回归样本。
+STATUS_FIXTURE_DECL = ("> **状态计数（机读，2026-01-01 现跑）**："
+                       "状态计数: 已修=1 未修=1 部分=0 只报=1 用户豁免=0 合计=3")
+STATUS_FIXTURE = """# 复盘（夹具）
+
+## 5. 未闭环项
+
+| # | 项 | 来源 | 状态说明（依据） | 状态码 |
+|---|---|---|---|---|
+| 1 | 甲项 | 一查 | **已修**（`abc1234`）：修好了 | 已修 |
+| 2 | 乙项 | 一查 | 未修 | 未修 |
+| 3 | 丙项 | 一查 | **只报**（原因：体例） | 只报 |
+
+""" + STATUS_FIXTURE_DECL + """
+
+### 5.0 逐行状态清单
+
+| 行 | 状态 | 落地提交/run | 依据（可复跑） |
+|---|---|---|---|
+| 1 | 已修 | `abc1234` | 该提交触及甲项 |
+| 2 | 未修 | — | 无落地提交 |
+| 3 | 只报 | `P6` 裁定 | 具名技术债（父代理裁定） |
 """
 
 
@@ -382,6 +652,55 @@ def selftest() -> int:
         _, missing = derive(["run-2999-01-01-code-review-999"], runs_dir=runs)
         ok("反向对照 E：来源 run 的报告不存在 ⇒ 具名问题（不得把'查不到'算成 0）",
            any("不存在" in p for p in missing), f"problems={missing[:1]}")
+
+        # ---- 状态计数档（本批新增）：纯函数 ＋ 六条反向对照 ------------------
+        ok("状态计数：夹具文档（§5 表 ＋ 机读声明 ＋ §5.0 清单三处一致）⇒ 零问题",
+           status_count_problems(STATUS_FIXTURE) == [],
+           f"{status_count_problems(STATUS_FIXTURE)[:1]}")
+        ok("状态计数：声明行的两处 `状态计数` 只在**带冒号**那处命中"
+           "（行首那段 `状态计数（机读）` 不得被当成读数行）",
+           parse_status_counts(STATUS_FIXTURE)[1] == [11],
+           f"hits={parse_status_counts(STATUS_FIXTURE)[1]}")
+        ok("状态计数反证①：声明把 `已修=1` 改成 `已修=2` ⇒ FAIL 且点名差值"
+           "（禁止手抄计数）",
+           any("已修" in p and "逐行实数" in p for p in status_count_problems(
+               STATUS_FIXTURE.replace("已修=1 未修=1", "已修=2 未修=1"))))
+        ok("状态计数反证②：某行状态码写成词表外的自由文本（`已修好`）⇒ FAIL",
+           any("不在词表" in p for p in status_count_problems(
+               STATUS_FIXTURE.replace("修好了 | 已修 |", "修好了 | 已修好 |"))))
+        ok("状态计数反证③：删掉机读声明行 ⇒ FAIL（没有声明就无从核对，不是放行）",
+           any("没有机读声明行" in p for p in status_count_problems(
+               STATUS_FIXTURE.replace(STATUS_FIXTURE_DECL + "\n", ""))))
+        ok("状态计数反证④：§5.0 与 §5 表把同一行写成两个状态 ⇒ FAIL"
+           "（唯一真源被两处写岔）",
+           any("两个状态" in p for p in status_count_problems(
+               STATUS_FIXTURE.replace("| 2 | 未修 | — | 无落地提交 |",
+                                      "| 2 | 已修 | — | 无落地提交 |"))))
+        ok("状态计数反证⑤：记为 `已修` 但 §5.0 的落地提交栏是 `—` ⇒ FAIL"
+           "（『已修』必须能指到落地提交）",
+           any("指不到具名" in p for p in status_count_problems(
+               STATUS_FIXTURE.replace("| 1 | 已修 | `abc1234` |", "| 1 | 已修 | — |"))))
+        ok("状态计数反证⑥：把 `状态码` 列整列删掉（表退化成 4 列）⇒ FAIL"
+           "（找不到机读列，fail-closed）",
+           any("找不到带 `状态码` 列" in p for p in status_count_problems(
+               STATUS_FIXTURE.replace(" | 状态码 |", " |").replace(
+                   " | 已修 |", " |").replace(" | 未修 |", " |").replace(
+                   " | 只报 |", " |"))))
+        # 判据⑤ 的反向对照（本批第一版**真的**踩过：机读列已改判 `已修`，而说明格
+        # 仍是裸 `未修` ⇒ 同一行两个状态）。两个样本：裸词、以及 `部分已修` 归一形态。
+        ok("状态计数反证⑦：说明格以**与状态码相反**的状态词开头"
+           "（`未修` vs 机读 `已修`）⇒ FAIL（行内不许自相矛盾）",
+           any("自相矛盾" in p for p in status_count_problems(
+               STATUS_FIXTURE.replace("| **已修**（`abc1234`）：修好了 | 已修 |",
+                                      "| 未修 | 已修 |"))))
+        ok("状态计数反证⑦′：`部分已修` 归一为 `部分` 后与机读列比对"
+           "（措辞变体不得绕过这条判据）",
+           _leading_status("**部分已修**；基准漂移") == "部分"
+           and _leading_status("已修（`abc1234`）") == "已修"
+           and _leading_status("该行原记未修") is None
+           and any("自相矛盾" in p for p in status_count_problems(
+               STATUS_FIXTURE.replace("| **已修**（`abc1234`）：修好了 | 已修 |",
+                                      "| **部分已修** | 已修 |"))))
     finally:
         shutil.rmtree(tax_root, ignore_errors=True)
     print(f"\nALL PASS ({PASSED} assertions)")

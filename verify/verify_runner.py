@@ -18,11 +18,15 @@
   ⑫ 自动回填的新鲜度门槛（fresh 采信 / stale·缺 finished_at·非 measured 不采信）
   ⑬ **预估安全系数可配置**：`--est-factor` > env `PAPERQA_EST_SAFETY_FACTOR` > 默认 1.3；
     非法/非正值回落默认（不放松闸门）
+  ⑭ 非有限预估花费（NaN/inf）不得绕过预算闸门（元数据层 ＋ runner 守卫层）
+  ⑮ **第三态（SKIP）**：具名 SKIP（rc=3 ＋ 末行 SKIP 横幅）⇒ 归 skipped 档、套件 rc=3；
+    三条反向对照**真入口**驱动：真失败仍判 FAIL／假 SKIP 不归 skipped／
+    failed 优先于 skipped
 
 Run: .venv\\Scripts\\python.exe verify\\verify_runner.py
 """
 from __future__ import annotations
-VERIFY_META = {'features': 'TG-5 分层 runner + 定时底座：offline/gui/network 分层 + fail-closed + 三态预算闸门 + due 判定 + 成本回填 + 状态文件 fail-closed（TG-7）', 'tier': 'offline', 'providers': [], 'est_seconds': 60, 'est_cost_cny': 0, 'routes': [], 'requires': []}
+VERIFY_META = {'features': 'TG-5 分层 runner + 定时底座：offline/gui/network 分层 + fail-closed + 三态预算闸门 + 第三态 SKIP（⑮：具名 SKIP 归 skipped 档／假 SKIP 不归入／failed 优先，均真入口驱动）+ due 判定 + 成本回填 + 状态文件 fail-closed（TG-7）', 'tier': 'offline', 'providers': [], 'est_seconds': 60, 'est_cost_cny': 0, 'routes': [], 'requires': []}
 
 import atexit
 import json
@@ -44,6 +48,11 @@ PY = sys.executable
 RUN_SUITE = ROOT / "verify" / "run_suite.py"
 SCHED = ROOT / "scripts" / "scheduled-tasks.py"
 PASSED = 0
+# 第三态（⑮）的夹具横幅：形态**逐字对齐** `verify_agentops.py::verdict_line` 的 SKIP 档
+# （`<NAME> SKIP[<分类>]（…）——…**本档不是通过**`）。套件的具名 SKIP 判据认的就是
+# 这个形态（`run_suite.py::SKIP_BANNER_RE` ＋ `SKIP_NOT_PASS_MARK`），此处不另立一套。
+SKIP_BANNER = ("FAKEOPS SKIP[spec-absent-on-branch]（1 条判据未执行：E1 一致性向量"
+               "（spec=absent-on-branch (SKIP)））——其余 7 条已验，**本档不是通过**")
 
 
 def _has_marker(text: str, marker: str) -> bool:
@@ -79,7 +88,21 @@ def write_fixture(
     metric_cny: float | None = None,
     unpriced: str = "",
     calls: int = 1,
+    tail_lines: list[str] | None = None,
 ) -> None:
+    """写一个合成 fixture（`tail_lines` 给出时改走"**输出末行可控**"模板）。
+
+    `tail_lines` 模板只打印给定行并按 `exit_code` 退出——第三态反向对照（⑮）要求
+    SKIP 横幅**落在末行**，故不复用 marker／指标行。
+
+    **两条模板只留一个写盘点是刻意的**：`verify/verify_artifact_paths.py` 对本文件的
+    "动态写盘目标"有棘轮（上限 2、只许下调），另起一个写 fixture 的函数就是第 3 处——
+    实测（本批首版）absent 镜像与 windows 两侧套件都因此判红：`[棘轮] verify/verify_runner.py
+    动态写盘目标 3 处 > 上限 2`。同理，夹具的 stdout 一律 reconfigure 成 UTF-8：套件的
+    `run_one` 以 UTF-8 解码子进程输出，而 Windows 上子进程默认跟控制台代码页（cp936），
+    否则中文横幅到父进程成 U+FFFD ⇒「末行命中横幅」判据恒假（实测首版 ⑮a 得
+    `exit=1 status=failed`）。
+    """
     marker_line = f'    Path(r"{marker}").write_text("ran", encoding="utf-8")\n' if marker else ""
     metric_line = ""
     if metric_cny is not None or unpriced:
@@ -96,19 +119,31 @@ def write_fixture(
             "    if _mp:\n"
             f"        open(_mp, 'a', encoding='utf-8').write(_json.dumps({rec!r}) + '\\n')\n"
         )
+    if tail_lines is not None:
+        body = "".join(f"    print({ln!r}, flush=True)\n" for ln in tail_lines)
+    else:
+        body = marker_line + metric_line
     (d / name).write_text(
         "from pathlib import Path\n"
-        f"VERIFY_META = {{'features': 'fixture {name}', 'tier': '{tier}', 'providers': [], "
-        f"'est_seconds': 1, 'est_cost_cny': {cost}, 'routes': [], 'requires': []}}\n\n"
+        "import sys\n"
+        f"VERIFY_META = {{'features': 'fixture {name}', 'tier': '{tier}', "
+        f"'providers': [], "
+        f"'est_seconds': 1, 'est_cost_cny': {cost}, 'routes': [], 'requires': []}}\n"
+        "if hasattr(sys.stdout, 'reconfigure'):\n"
+        "    sys.stdout.reconfigure(encoding='utf-8', errors='replace')\n\n"
         "def main():\n"
-        f"{marker_line}"
-        f"{metric_line}"
+        f"{body}"
         f"    return {exit_code}\n\n"
         "if __name__ == '__main__':\n"
-        "    import sys\n"
         "    sys.exit(main())\n",
         encoding="utf-8",
     )
+
+
+def last_out_line(text: str) -> str:
+    """输出的**末行**（去掉尾部空行）——第三态的判据读的就是这一行。"""
+    lines = [ln.rstrip() for ln in (text or "").splitlines() if ln.strip()]
+    return lines[-1] if lines else ""
 
 
 def main() -> int:
@@ -414,6 +449,82 @@ def main() -> int:
     ok("⑭c validate_meta 拒绝 nan / inf / -inf 的 est_cost_cny",
        all(_meta_rejects(v) for v in (float("nan"), float("inf"), float("-inf"))),
        f"nan={_meta_rejects(float('nan'))} inf={_meta_rejects(float('inf'))} -inf={_meta_rejects(float('-inf'))}")
+
+    # ⑮（2026-09-30 本批）**第三态（SKIP）**：具名 SKIP 既不计 PASS 也不计 FAIL。
+    # **真入口驱动**（起真子进程跑 run_suite.py，不是只调纯函数）。修前形态实测于
+    # absent 镜像：`verify_agentops.py` 退 3 ＋ 判决行"本档不是通过" ⇒ 套件把它当
+    # 失败 ⇒ `SUITE FAILED (1/26)`——**没有一条真判据失败**。三条反向对照必须同时成立：
+    #   ① 真失败仍判 FAIL（rc=1），不得被第三态吞掉；
+    #   ② **假 SKIP**（rc≠3 或末行不是具名横幅）不得归入 skipped；
+    #   ③ skipped 与 failed 同时出现 ⇒ **failed 优先**（rc=1）。
+    skipfix = tmp / "skipfix"
+    skipfix.mkdir()
+    write_fixture(skipfix, "verify_fake_skip.py", "offline", 0, 3, None,
+                  tail_lines=["PASS: 真判据（未执行的那条不在其中）", SKIP_BANNER])
+    write_fixture(skipfix, "verify_fake_fail.py", "offline", 0, 2, None,
+                  tail_lines=["FAIL: 真失败（不是跳过）"])
+    write_fixture(skipfix, "verify_fake_rc3_nobanner.py", "offline", 0, 3, None,
+                  tail_lines=["BOOM: 退 3 但末行不是具名 SKIP 横幅"])
+    write_fixture(skipfix, "verify_fake_banner_rc0.py", "offline", 0, 0, None,
+                  tail_lines=["PASS: 假装跳过（横幅却退 0 = 两通道矛盾）", SKIP_BANNER])
+
+    res = run([PY, str(RUN_SUITE), "--tier", "offline", "--verify-dir", str(skipfix),
+               "--scripts", "verify_fake_skip.py", "--json", str(tmp / "r15a.json")])
+    s15a = json.loads((tmp / "r15a.json").read_text(encoding="utf-8"))
+    ok("⑮a 具名 SKIP（rc=3 ＋ 末行横幅）⇒ 套件 rc=3"
+       "（**不得取 0**：取 0 就是 SKIP 冒充通过）",
+       res.returncode == 3 and s15a.get("status") == "skipped",
+       f"exit={res.returncode} status={s15a.get('status')}")
+    ok("⑮a 归入 skipped 档：既不计 PASS 也不计 FAIL（failed_scripts 为空）",
+       s15a.get("skipped_scripts") == ["verify_fake_skip.py"]
+       and s15a.get("failed_scripts") == [],
+       json.dumps({"skipped": s15a.get("skipped_scripts"),
+                   "failed": s15a.get("failed_scripts")}, ensure_ascii=False))
+    ok("⑮a 末行显式区分：skipped **不混进** PASSED 的脚本数（`0 scripts, 1 skipped`）"
+       "且点名分类与『本档不是通过』",
+       last_out_line(res.stdout).startswith("SUITE PASSED (0 scripts, 1 skipped):")
+       and "verify_fake_skip.py[spec-absent-on-branch]" in last_out_line(res.stdout)
+       and "本档不是通过" in last_out_line(res.stdout),
+       last_out_line(res.stdout))
+
+    res = run([PY, str(RUN_SUITE), "--tier", "offline", "--verify-dir", str(skipfix),
+               "--json", str(tmp / "r15b.json")])
+    s15b = json.loads((tmp / "r15b.json").read_text(encoding="utf-8"))
+    ok("⑮b 反向对照①：真失败仍判 FAIL（rc=1）——不被第三态吞掉",
+       res.returncode == 1 and s15b.get("status") == "failed"
+       and "verify_fake_fail.py" in (s15b.get("failed_scripts") or []),
+       f"exit={res.returncode} status={s15b.get('status')}"
+       f" failed={s15b.get('failed_scripts')}")
+    ok("⑮b 反向对照③：skipped 与 failed 同时出现 ⇒ **failed 优先**"
+       "（rc=1，且末行两档都说）",
+       res.returncode == 1
+       and last_out_line(res.stdout).startswith("SUITE FAILED (2/4, 1 skipped):")
+       and "verify_fake_skip.py[spec-absent-on-branch]" in last_out_line(res.stdout),
+       last_out_line(res.stdout))
+    ok("⑮b 反向对照②（其一）：rc=3 但末行**不是**具名横幅 ⇒ 不归入 skipped，照旧判失败",
+       res.returncode == 1
+       and "verify_fake_rc3_nobanner.py" in (s15b.get("failed_scripts") or [])
+       and "verify_fake_rc3_nobanner.py" not in (s15b.get("skipped_scripts") or []),
+       json.dumps({"skipped": s15b.get("skipped_scripts"),
+                   "failed": s15b.get("failed_scripts")}, ensure_ascii=False))
+    ok("⑮b 反向对照②（其二）：末行有横幅但 rc≠3 ⇒ 不归入 skipped"
+       "（两通道矛盾，上屏 WARN）",
+       s15b.get("skipped_scripts") == ["verify_fake_skip.py"]
+       and s15b.get("skip_banner_rc_mismatch") == ["verify_fake_banner_rc0.py"]
+       and "两通道" in (res.stdout or ""),
+       f"mismatch={s15b.get('skip_banner_rc_mismatch')}"
+       f" skipped={s15b.get('skipped_scripts')}")
+
+    res = run([PY, str(RUN_SUITE), "--tier", "offline", "--verify-dir", str(skipfix),
+               "--scripts", "verify_fake_banner_rc0.py",
+               "--json", str(tmp / "r15c.json")])
+    s15c = json.loads((tmp / "r15c.json").read_text(encoding="utf-8"))
+    ok("⑮c 反向对照②（隔离驱动）：横幅 ＋ rc=0 单独跑 ⇒ **不**归 skipped、"
+       "末行**不**出现 skipped",
+       res.returncode == 0 and (s15c.get("skipped_scripts") or []) == []
+       and "skipped" not in last_out_line(res.stdout)
+       and "WARN" in (res.stdout or ""),
+       f"exit={res.returncode} 末行={last_out_line(res.stdout)}")
 
     # 行 25：回收 run 级夹具目录——**重试 + 失败即 WARN**。一次性
     # `rmtree(ignore_errors=True)` 会**静默半途而废**（实测：满套件并发跑的那一轮

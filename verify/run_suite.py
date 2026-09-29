@@ -11,6 +11,14 @@
   ③ **三态记账**：本轮实际花费 = 由账本/价表核对；runner 自身不臆测花费——network 档记 `cost_status=unknown`
      并提示用真实用量回填（下一轮夜间套件遇到 unknown 会拒绝放行，见 scripts/scheduled-tasks.py）；
   ④ 上限与周期一律可配置：`--budget-cny` > env `PAPERQA_NIGHTLY_BUDGET_CNY` > 默认 10（D3 约束：不得写死）。
+  ⑤ **第三态（SKIP）**：子脚本 rc=**3** 且末行是**具名 SKIP 横幅**
+     （`<NAME> SKIP[<分类>]…本档不是通过`）⇒ 归入 skipped 档：
+     **既不计 PASS 也不计 FAIL**，末行与 summary 都显式点名
+     （`SUITE PASSED (23 scripts, 1 skipped): verify_agentops.py[…]`），
+     套件自身 rc 取 **3**（"没有失败，但有判据未执行"——与 `spend-report --check`／
+     `verify_agentops.py::SKIP_EXIT` 同码；取 0 就是"SKIP 冒充通过"）。
+     两通道只满足其一都不是 SKIP，见 `skip_verdict()` 与
+     `suite_verdict_line()`。
 
 用法：
   .venv\\Scripts\\python.exe verify\\run_suite.py --tier offline
@@ -22,7 +30,7 @@
 而不是上一轮那份看起来仍像最新结果的 `ok`（`scheduled-tasks` 只认 `cost_status=measured`，占位不会被误采信）。
 """
 from __future__ import annotations
-VERIFY_META = {'features': 'TG-5 分层 runner：offline/gui/network 分层 + fail-closed + 三态预算闸门（上限可配置）', 'tier': 'offline', 'providers': [], 'est_seconds': 5, 'est_cost_cny': 0, 'routes': [], 'requires': []}
+VERIFY_META = {'features': 'TG-5 分层 runner：offline/gui/network 分层 + fail-closed + 三态预算闸门（上限可配置）+ 第三态 SKIP（rc=3：具名 SKIP 两通道同口径，既不计 PASS 也不计 FAIL）', 'tier': 'offline', 'providers': [], 'est_seconds': 5, 'est_cost_cny': 0, 'routes': [], 'requires': []}
 
 import argparse
 import json
@@ -87,10 +95,13 @@ BRANCH_EST_OVERRIDES: dict[tuple[str, bool], float] = {
 # 取值口径（全部**实测**，两侧都不是猜的；present = windows 工作树，
 # absent = "windows 树减掉 `docs/iteration/**`"的**镜像**——与 `BRANCH_EST_OVERRIDES`
 # 同口径：当前 `main` ref 上这几个脚本／登记册本身缺席，故 absent 侧只能用镜像量）：
-#   * `verify_agentops.py`：present **174**；absent 侧**跑不到判决句**（只打
-#     `AGENTOPS SKIP[spec-absent-on-branch]…不是通过` 且退 0）⇒ 该侧**不登记下限**，
-#     判据①会把它判红。**这是真缺陷，不是假红**：`TG-19` M-B 要求 SKIP 与 PASS 互斥，
-#     而该脚本自己写着"本档不是通过"却退 0 ⇒ 套件把它算成 PASS（收尾已如实记录）。
+#   * `verify_agentops.py`：present **177**；absent 侧**不登记下限** —— 该侧脚本
+#     退 **3**（`verdict_exit`：`AGENTOPS SKIP[…]` 判决行与退出码同口径），
+#     判据①/②在非零退出上短路，红由既有"非零退出"判据给出（**不是**假绿）。
+#     **2026-09-30 本批更正**：此前这里写"该侧只打 SKIP 横幅且**退 0** ⇒ 套件把它算成
+#     PASS"，实测**不成立**——`verdict_problems` 在 rc=0 且末行是具名 SKIP 横幅时
+#     **本来就报红**（判据②）。真正的缺陷是"判决行说不是通过、退出码说成功"的
+#     两通道矛盾，已由 `verify_agentops.py::verdict_exit` 收紧为 rc=3。
 #   * `verify_card_index.py`：**唯一**两侧读数不同的脚本（17／15：absent 侧少 2 条依赖
 #     windows-only 卡文件的判据）——正是"下限必须分支感知"的实例。
 #   * `verify_decision_register.py` 32／32、`verify_derived_numbers.py` 19／19、
@@ -103,8 +114,29 @@ VERDICT_EVIDENCE_RE = re.compile(
     r"^EVIDENCE: (?P<name>[\w.\-]+) assertions=(?P<n>\d+)\s")
 SKIP_VERDICT_RE = re.compile(r"^\S+ SKIP\[")
 VERDICT_TAIL_LINES = 6          # 判决句必须落在输出的**末尾这几行**内（末行判决句）
+
+# -------------------------------------------------------- 第三态（SKIP）
+# 第三态的语义：**既不计 PASS 也不计 FAIL**（2026-09-30 本批）。
+# 承接 `run-…-110` 把 `verify_agentops.py` 的"spec 缺席"档从 rc=0 收紧为 rc=3
+# （判决行与退出码同口径）：套件此前只有两态（rc=0 = PASS / rc≠0 = FAIL），于是
+# "该判据在本分支**无从执行**"这个第三态被 rc≠0 撞成了假红——absent 镜像实测
+# `SUITE FAILED (1/26): verify_agentops.py`（**没有一条真判据失败**）。
+#
+# 具名 SKIP 的判据 = **两个通道同时**说"本档不是通过"（缺一不可）：
+#   ① 退出码通道：rc == SKIP_EXIT(3)；
+#   ② 判决行通道：输出**末行**是 `<NAME> SKIP[<分类>]…本档不是通过` 形态的横幅
+#      （`SKIP_VERDICT_RE` 命中 + 含 `SKIP_NOT_PASS_MARK`；形态真源 =
+#      `verify_agentops.py::verdict_line`）。
+# 两通道只满足其一的都**不是** SKIP —— 这正是"假 SKIP 不得归入 skipped"的反向对照目标：
+#   * rc=3 却无具名横幅：**照旧按失败计**（否则任何脚本退 3 就能溜出 PASS/FAIL 记账）；
+#   * 有具名横幅却 rc≠3：两通道互相矛盾 ⇒ **不**归入 skipped，上屏 WARN（它与
+#     `verify_close_readiness.py` 的 rc=0 档同形态：那是既有实现，本批不擅自改判，
+#     只让它可见——改判要动那个脚本的退出码，属另一批）。
+SKIP_EXIT = 3    # 与 `verify_agentops.py::SKIP_EXIT` / `spend-report` 同码
+SKIP_NOT_PASS_MARK = "本档不是通过"
+SKIP_BANNER_RE = re.compile(r"^\S+ SKIP\[(?P<cat>[^\]]+)\]")
 BRANCH_ASSERTION_FLOORS: dict[tuple[str, bool], int] = {
-    ("verify_agentops.py", True): 174,
+    ("verify_agentops.py", True): 177,
     ("verify_card_index.py", True): 17, ("verify_card_index.py", False): 15,
     ("verify_decision_register.py", True): 32,
     ("verify_decision_register.py", False): 32,
@@ -213,6 +245,67 @@ def verdict_scope_problems(present_count: int, branch_present: bool,
                 f"{floor} 个（present={branch_present}）——删掉 `VERIFY_META.features` "
                 f"里的自陈字样就会把该脚本移出棘轮范围 ⇒ 这条把它钉住"]
     return []
+
+
+def skip_verdict(tail: list[str], code: int) -> tuple[str, str]:
+    """第三态判决（**纯函数**；反向对照与端到端夹具都直接驱动它）：`(态, 说明)`。
+
+    态三值（口径见 `SKIP_EXIT` 上方注释）：
+      * `("skipped", <分类>)`：**具名 SKIP** —— rc=3 **且**末行是
+        `<NAME> SKIP[<分类>]…本档不是通过` 横幅 ⇒ 既不计 PASS 也不计 FAIL；
+      * `("mismatch", <说明>)`：末行有具名横幅却 rc≠3 ⇒ 两通道矛盾，**不**归入 skipped
+        （调用方上屏 WARN；是 PASS 还是 FAIL 交回原有判据）；
+      * `("none", "")`：与第三态无关（rc=3 却无横幅 / 普通 PASS / 普通失败）。
+    """
+    last = [ln.rstrip() for ln in tail if ln.strip()]
+    cat: str | None = None
+    if last:
+        m = SKIP_BANNER_RE.match(last[-1])
+        if m and SKIP_NOT_PASS_MARK in last[-1]:
+            cat = m.group("cat")
+    if code == SKIP_EXIT:
+        return ("skipped", cat) if cat is not None else ("none", "")
+    if cat is not None:
+        return "mismatch", (f"末行是具名 SKIP 横幅（分类 {cat}）"
+                            f"却 rc={code}≠{SKIP_EXIT}"
+                            f"——判决行说『{SKIP_NOT_PASS_MARK}』、退出码却说成功")
+    return "none", ""
+
+
+def skipped_badge(skipped: list[dict]) -> str:
+    """skipped 档的点名片：`verify_agentops.py[spec-absent-on-branch]`（逗号分隔）。
+
+    **末行、行 34 读数段、summary 三处共用**——三处各拼一次字符串必然漂移。
+    """
+    return ", ".join(f"{e['name']}[{e.get('category') or '?'}]" for e in skipped)
+
+
+def suite_verdict_line(total: int, failed: list[str], skipped: list[dict]) -> str:
+    """套件**末行判决句**（单一真源；三态各说各的，互不冒充）。
+
+    * 有 failed ⇒ `SUITE FAILED (n/total[, m skipped]): …`——**failed 优先**（rc=1），
+      skipped 另列，不得因为"有跳过"而把失败说轻；
+    * 无 failed 但有 skipped ⇒
+      `SUITE PASSED (total-m scripts, m skipped): name[分类] —— 本档不是通过`。
+      **skipped 不混进 PASSED 的脚本数**（写 `total-m scripts`）：
+      把跳过的算进"通过"就是冒充全绿；
+    * 都没有 ⇒ `SUITE PASSED (total scripts)`——与既有形态**逐字一致**
+      （windows 侧零回归）。
+    """
+    badge = skipped_badge(skipped)
+    if failed:
+        head = f"SUITE FAILED ({len(failed)}/{total}"
+        head += f", {len(skipped)} skipped" if skipped else ""
+        tail = f" —— 另有 skipped（判据未执行，非 PASS）：{badge}" if skipped else ""
+        return f"{head}): {', '.join(failed)}{tail}"
+    if skipped:
+        n_ok, n_sk = total - len(skipped), len(skipped)
+        return (f"SUITE PASSED ({n_ok} scripts, {n_sk} skipped): {badge}"
+                f" —— 无失败，但 {n_sk} 个脚本的判据未执行（SKIP≠PASS）"
+                f"⇒ {SKIP_NOT_PASS_MARK}（rc={SKIP_EXIT}）")
+    return f"SUITE PASSED ({total} scripts)"
+
+
 # F4（2026-09-25）：结果 JSON 的**标准路径**。原实现 `--json` 默认为空字符串，而 `_write_json("")`
 # 直接 return ⇒ 默认跑一次 `run_suite.py --tier offline` **不刷新** `verify/suite_result.json`，
 # 那份旧文件（上次 network 档留下的）看起来仍像"最新结果"——读的人要翻 `finished_at` 才发现不是本轮。
@@ -441,6 +534,11 @@ def main() -> int:
     verdict_readings: list[str] = []
     verdict_failed: list[str] = []
     undeclared_printers: list[str] = []
+    # 第三态（SKIP，见 `SKIP_EXIT` 上方注释）：skipped = 具名 SKIP 的脚本
+    # （既不计 PASS 也不计 FAIL）；skip_mismatch = 末行有具名横幅却 rc≠3 的
+    # **两通道矛盾**（不归 skipped，上屏 WARN）。
+    skipped: list[dict] = []
+    skip_mismatch: list[str] = []
     # Retro ③（2026-09-20）：子脚本把实测用量写成 JSONL 指标文件，suite 据此聚合出真实成本。
     # 复核 round-4 minor：文件在**确定要执行之后**才创建（避免 --dry-run/拒绝启动路径遗留文件）。
     fd, metrics_name = tempfile.mkstemp(prefix="suite_metrics_", suffix=".jsonl")
@@ -454,25 +552,56 @@ def main() -> int:
             timeout_s = int(effective_est_seconds(p.name, m) * 4 + 60)
             print(f"--- {p.name} ---", flush=True)
             code, secs, tail = run_one(p, m, timeout_s)
-            summary["scripts"].append({"name": p.name, "exit": code, "seconds": secs})
+            # 第三态**先判**（纯函数，见 `skip_verdict`）：具名 SKIP 不进 `failed`
+            # ——但两通道只满足其一的都**不算**（rc=3 无横幅照旧按失败计；
+            # 有横幅却 rc≠3 上屏 WARN）。
+            state, detail = skip_verdict(tail, code)
+            if state == "skipped":
+                entry_verdict = f"skipped[{detail}]"
+            elif state == "mismatch":
+                entry_verdict = "skip-banner-rc-mismatch"
+            else:
+                entry_verdict = "ok" if code == 0 else "failed"
+            summary["scripts"].append({"name": p.name, "exit": code, "seconds": secs,
+                                       "verdict": entry_verdict})
             print(f"--- {p.name}: exit={code} ({secs}s) ---", flush=True)
-            if code != 0:
+            if state == "skipped":
+                skipped.append({"name": p.name, "category": detail, "exit": code})
+                print(f"  SKIPPED: {p.name}[{detail}] —— 具名 SKIP"
+                      f"（rc={SKIP_EXIT} ＋ 末行判决行「{SKIP_NOT_PASS_MARK}」"
+                      f"**同口径**）：不计 PASS 也不计 FAIL；"
+                      f"套件末行与 rc 会如实说出「有判据未执行」")
+            elif state == "mismatch":
+                skip_mismatch.append(p.name)
+                print(f"  WARN: {p.name} {detail} ⇒ **不**归入 skipped"
+                      f"（两通道必须同时说「不是通过」才认第三态）；本条按原有判据处置")
+            if code != 0 and state != "skipped":
                 failed.append(p.name)
             # 行 34：只对**自陈**『条数见末行』的脚本判判决句与条数棘轮（其余脚本的
             # 判决句形态不在本条射程内，见 `BRANCH_ASSERTION_FLOORS` 上方注释）。
             if p.name in declared:
-                vp = verdict_problems(p.name, tail, code, branch_present)
-                got = next((ln.strip() for ln in reversed(tail[-VERDICT_TAIL_LINES:])
-                            if VERDICT_LINE_RE.match(ln.strip())
-                            or VERDICT_EVIDENCE_RE.match(ln.strip())), "（无判决句）")
                 floor_txt = BRANCH_ASSERTION_FLOORS.get((p.name, branch_present),
-                                                          "未登记")
-                verdict_readings.append(f"{p.name}：{got}｜本分支下限 {floor_txt}")
-                if vp:
-                    verdict_failed.append(p.name)
-                    failed.append(f"{p.name}（行34）")
-                    for prob in vp:
-                        print(f"  VERDICT-FAIL: {prob}")
+                                                        "未登记")
+                if state == "skipped":
+                    # 具名 SKIP：判据根本没执行 ⇒ 条数棘轮无从判（判据①/②在非零退出上
+                    # 本就短路）。这里显式记账：读的人看到的是"没跑"，不是"跑过且通过"。
+                    verdict_readings.append(
+                        f"{p.name}：（具名 SKIP[{detail}]，判据未执行）"
+                        f"｜本分支下限 {floor_txt}"
+                        f" ⇒ 不计 PASS/FAIL（见末行 skipped 档）")
+                else:
+                    vp = verdict_problems(p.name, tail, code, branch_present)
+                    got = next((ln.strip()
+                                for ln in reversed(tail[-VERDICT_TAIL_LINES:])
+                                if VERDICT_LINE_RE.match(ln.strip())
+                                or VERDICT_EVIDENCE_RE.match(ln.strip())),
+                               "（无判决句）")
+                    verdict_readings.append(f"{p.name}：{got}｜本分支下限 {floor_txt}")
+                    if vp:
+                        verdict_failed.append(p.name)
+                        failed.append(f"{p.name}（行34）")
+                        for prob in vp:
+                            print(f"  VERDICT-FAIL: {prob}")
             elif any(VERDICT_LINE_RE.match(ln.strip())
                      or VERDICT_EVIDENCE_RE.match(ln.strip())
                      for ln in tail):
@@ -520,6 +649,16 @@ def main() -> int:
                   f"{len(undeclared_printers)} 个脚本打印了判决句但未在 "
                   f"`VERIFY_META.features` 里自陈条数 ⇒ 未纳入条数棘轮："
                   f"{', '.join(sorted(undeclared_printers))}")
+        if skip_mismatch:
+            print(f"  WARN（可见缺口，**本批不判红**）：{len(skip_mismatch)} 个脚本"
+                  f"末行是具名 SKIP 横幅却 rc≠{SKIP_EXIT}"
+                  f"（两通道矛盾：判决行说『{SKIP_NOT_PASS_MARK}』、退出码说成功）"
+                  f"⇒ **不**归入 skipped：{', '.join(sorted(skip_mismatch))}"
+                  f"——改判要动那些脚本的退出码，属另一批")
+        if skipped:
+            print(f"  具名 SKIP（第三态，既不计 PASS 也不计 FAIL）："
+                  f"{skipped_badge(skipped)}"
+                  f" ⇒ 套件 rc={SKIP_EXIT}（无失败，但有判据未执行）")
         # 判据④（自陈脚本数棘轮）**只对仓库自己的 `verify/` 目录**判：`--verify-dir`
         # 指向
         # fixture（`verify_runner.py` 的自检就是这么跑的）时脚本集是造的，"本分支应有 5
@@ -535,8 +674,14 @@ def main() -> int:
             print(f"  NOTE: `--verify-dir`＝{verify_dir}（非仓库 `verify/`）"
                   f"⇒ 自陈脚本数棘轮不判（fixture 的脚本集是造的；"
                   f"逐脚本的判决句／条数判据照常）")
-    summary["status"] = "failed" if failed else "ok"
+    # 三态（`status` 也是三值：ok / failed / skipped）——skipped **不得**写成 ok，
+    # 否则 summary 这一通道又会说"全绿"（末行已经说过"本档不是通过"）。
+    summary["status"] = "failed" if failed else ("skipped" if skipped else "ok")
     summary["failed_scripts"] = failed
+    summary["skipped_scripts"] = [e["name"] for e in skipped]
+    summary["skipped"] = skipped
+    summary["skipped_badge"] = skipped_badge(skipped)
+    summary["skip_banner_rc_mismatch"] = sorted(skip_mismatch)
     summary["verdict_floor_branch_present"] = branch_present
     summary["verdict_readings"] = verdict_readings
     summary["verdict_failed"] = verdict_failed
@@ -546,11 +691,6 @@ def main() -> int:
         print(f"MEASURED: cost={summary['cost_measured_cny']} CNY status={summary['cost_status']} "
               f"scripts_reporting={len(measured)}/{len(executed)} unpriced={unpriced}"
               + (f" no_data={no_data}" if no_data else ""))
-    if failed:
-        print(f"\nSUITE FAILED ({len(failed)}/{len(picked)}): {', '.join(failed)}")
-        return 1
-    print(f"\nSUITE PASSED ({len(picked)} scripts)")
-    if args.tier == "network":
         if summary["cost_status"] == "measured":
             print(f"NOTE: network 档**实测**花费 {summary['cost_measured_cny']} CNY（token 实测 + 本地价表换算）；"
                   "`scheduled-tasks.py` 会自动回填该值（无需人工 --record-cost）。")
@@ -558,6 +698,15 @@ def main() -> int:
             print("NOTE: network 档成本未测量完整（脚本缺用量回报或价表缺单价）→ cost_status=unknown；"
                   "未回填时下一轮夜间套件仍拒绝放行（三态闸门）。"
                   + (f" 缺价模型：{unpriced}" if unpriced else ""))
+    # 判决句**永远最后一行**（`suite_verdict_line` 是它的单一真源）：三态各说各的，
+    # 谁都不许借"有跳过"把失败说轻，也不许借"没失败"把跳过说成通过。
+    print(f"\n{suite_verdict_line(len(picked), failed, skipped)}")
+    if failed:
+        return 1
+    if skipped:
+        # 第三态：**没有失败，但有判据未执行** ⇒ 3（不得取 0——取 0 就是"SKIP 冒充通过"；
+        # 与 `verify_agentops.py::SKIP_EXIT` / `spend-report --check` 同码）。
+        return SKIP_EXIT
     return 0
 
 

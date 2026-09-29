@@ -83,10 +83,15 @@ if hasattr(sys.stdout, "reconfigure"):
 PASSED = 0
 # M-B（`TG-19` 反空转不变式）：**真账本**判据"没执行"的具名原因。
 # 空 = 真账本判据真的跑过；非空 = 本环境没有账本。
-# 它决定**最终判决行**的措辞：有 SKIP 时不得打印 `ALL PASS` 横幅
-# （口径同 `verify_card_index.py::verdict_line` 的判决行单一真源）。
+# 它决定**最终判决行**的措辞（有 SKIP 时不得打印 `ALL PASS` 横幅；口径同
+# `verify_card_index.py::verdict_line` 的判决行单一真源）**与最终退出码**
+# （`verdict_exit`：判决行说"不是通过"，rc 就必须同口径，两个通道不许互相矛盾）。
 SKIPPED: list[str] = []
 LEDGER_REL = "agents/runtime/registry.json"
+# M-B（`TG-19` 反空转不变式）：SKIP 档的**退出码**。判决行说"本档不是通过"、
+# 退出码就必须同口径（见 `verdict_exit` 的推导）。3 ＝ 本仓既有的"判据未执行"
+# 非零码（`scripts/spend-report.py` / `agents/spend-budget.json --check`）。
+SKIP_EXIT = 3
 
 # 台账 E1 / 行 7：归一化是**生产逻辑**，本文件是写入侧的真入口测试
 # （`register --sprint` / `set-sprint`）。一致性向量表在 spec（唯一权威），
@@ -241,6 +246,33 @@ def verdict_line(assertions: int, skipped: list[str]) -> str:
                 f"：{'；'.join(skipped)}）——其余 {assertions} 条已验，"
                 f"**本档不是通过**")
     return f"ALL PASS ({assertions} assertions)"
+
+
+def verdict_exit(skipped: list[str]) -> int:
+    """最终**退出码**（**单一真源**，与 `verdict_line` 同口径：SKIP 与 PASS 互斥）。
+
+    要治的是什么（本批实测，2026-09-30）：判决行**已经**写"本档不是通过"，
+    但 `main()` 照旧 `return 0` ⇒ 两个通道互相矛盾：
+
+      * **判决行通道**说"不是通过"；**退出码通道**说"成功"。
+      * 只看 rc 的消费方（CI 步骤、shell `&&`、以及 `run_suite.py` 的
+        "非零退出 ⇒ 判红"那条既有判据）会把它读成**通过**。
+      * `run_suite.py` 行 34 的判据②正是为这一形态写的（"具名 SKIP 横幅 ＋ 退 0"），
+        所以套件**本来就**会判红——但它给的是"SKIP 冒充通过"这条红，
+        而不是"该判据在本分支未执行"这条红。**两处口径不一致本身就是缺陷**。
+
+    为什么是 3（而不是照抄 `verify_close_readiness.py` 的 rc=0）：
+      `verify_close_readiness.py` 的"账本缺失 ⇒ 显式 SKIP（rc=0）"是**数据不可得**档
+      （换台机器/关闭期就能补跑，且它不是自陈"条数见末行"的脚本，故套件对它没有
+      判决句判据）。本处是**分支差异**档，而本脚本**自陈**了条数 ⇒ 套件判据②盯的就是它。
+      本仓对"判据没被执行就不算通过"既有的**非零**先例是 `rc=3`：
+      `scripts/spend-report.py`（复盘 §5 行 40）与 `agents/spend-budget.json --check`
+      （行 37）的 SKIP 档一律 rc=3。故这里沿用 3，让两个通道同口径。
+
+    **不是放宽判据**：这是把"退 0"收紧成"退 3"；真判据一条不少跑（windows 上
+    spec 在位 ⇒ `skipped` 为空 ⇒ 照旧 rc=0 ＋ `ALL PASS`）。
+    """
+    return SKIP_EXIT if skipped else 0
 
 
 def price_shape_problems(frozen: dict, real: dict) -> list[str]:
@@ -2014,6 +2046,17 @@ def main() -> int:
            and verdict_line(7, _sk).startswith("AGENTOPS SKIP[ledger-absent]"))
         ok("M-B 判决行：无 SKIP 时才是 `ALL PASS` 横幅（二者互斥）",
            verdict_line(7, []) == "ALL PASS (7 assertions)")
+        # 退出码与判决行**同口径**：SKIP 档退 0 会让只看 rc 的消费方（CI／shell／
+        # 套件的"非零退出"判据）把它读成成功——两个通道互相矛盾就是缺陷本身。
+        ok("M-B 退出码：SKIP 档**不得**退 0（判决行与退出码必须同口径）",
+           verdict_exit(_sk) == SKIP_EXIT and verdict_exit(_sk) != 0,
+           f"verdict_exit={verdict_exit(_sk)}")
+        ok("M-B 退出码：**无** SKIP 时退 0（防假红：真判据全跑过必须成功）",
+           verdict_exit([]) == 0, f"verdict_exit={verdict_exit([])}")
+        ok("M-B 退出码：两种 SKIP 原因（spec 缺席／账本缺席）同判非 0"
+           "（不得只给其中一种加码）",
+           verdict_exit(["E1 一致性向量（spec=absent-on-branch (SKIP)）"]) == SKIP_EXIT
+           and verdict_exit(["M-g 真入口（ledger=absent (SKIP)）"]) == SKIP_EXIT)
         # 窄化反向对照（夹具落在 %TEMP%，本脚本不往仓库写文件）：
         # SKIP **只**认"文件不存在"；账本存在但坏/结构非法必须 fail-closed。
         probe_dir = tmp / "ledger-probe"
@@ -2038,7 +2081,9 @@ def main() -> int:
            read_real_ledger(good) == {"runs": []})
 
         print(f"\n{verdict_line(PASSED, SKIPPED)}")
-        return 0
+        # 判决行与退出码**同一个真源**（`verdict_exit`）：SKIP 档不得退 0，
+        # 否则只读 rc 的消费方（CI／shell／套件的"非零退出"判据）仍读成成功。
+        return verdict_exit(SKIPPED)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
