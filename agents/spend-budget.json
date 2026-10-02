@@ -13,6 +13,10 @@
     "main_output_tokens_per_day": 50000,
     "all_sessions_cny_per_day": 12.0
   },
+  "over_budget_escape": {
+    "_comment": "2026-10-03 用户裁定「成本基线倾向 A」的具名逃生门参数（**本段不含任何预算值**；预算值只看上面的 budget 段）。落地：`scripts/agent-ops.py register` 在『当日派单数 >= budget.dispatched_sessions_per_day』时**拒绝启动**（rc≠0、上屏点名读数/预算/逃生门用法）；给 ≥reason_min_chars 字符的理由可放行，理由**落账本**该 run 行的 budget_override_reason（原话）＋ budget_override{axis,reading,budget,day,at}（被豁免掉的读数，事后可核）。读数＝账本 agents/runtime/registry.json 里当日（UTC+8）已登记的 run 数（run_id 日期段 ∪ started_at 折算），**不是**度量仪的『派单会话数』——后者把别的主线的子代理会话也算进来（作用域缺陷，归 A-COST 卡），拿它当阻断依据＝用错数停工作。故金额（CNY）/日 轴**暂不阻断**，只在拒绝文案里如实标注该缺陷。",
+    "reason_min_chars": 10
+  },
   "main_sessions": [
     "session-d6abecbf-80cb-4dcf-8461-d92f13c48a68"
   ],

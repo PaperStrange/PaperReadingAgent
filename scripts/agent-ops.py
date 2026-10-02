@@ -856,9 +856,187 @@ def _norm_sprint(value: object) -> str | None:
     return m.group(1) if m else None
 
 
+# ------------------- 成本预算闸门（2026-10-03 用户裁定「成本基线倾向 A」）
+# 裁定要点：超预算 ⇒ **阻断派单**。本节实现口径（父代理已定，不得另设计）：
+#   * 阻断轴**只有一条**——**派单数/日**，读数**取自账本**（本命令在锁内刚读的
+#     `runtime/registry.json` 里当日已登记的 run 数），**不**取度量仪
+#     `scripts/spend-report.py --check` 的"派单会话数"；
+#   * 金额（CNY）/日 轴**暂不阻断**，只在拒绝文案里如实标注该轴的已知缺陷；
+#   * 具名逃生门 `--over-budget "<理由 ≥下限>"` ⇒ 放行且**理由落账本**；
+#   * 预算值/理由下限一律**现读数据文件**，代码里不写死
+#     （`verify/verify_no_policy_hardcode.py` 守这条）。
+# 为什么阻断轴必须用账本（父代理裁定的实测依据）：度量仪把**别的主线的子代理
+# 会话**也算进本主线的派单数（作用域缺陷，归 `A-COST` 卡）⇒ 拿它当阻断依据
+# ＝**用错数停工作**；账本读数才是本主线自己的登记事实。
+# 为什么"未配置预算"不阻断登记：隔离账本（verify 夹具／`%TEMP%` 探针）没有
+# 预算文件，阻断它＝把测试与探针全卡死。故该档判**未执行**并上屏点名
+# （口径同 `spend-report --check` 的 SKIP：**不算通过**，也不冒充 PASS）。
+def _spend_budget_path() -> Path:
+    """预算数据文件 = `<账本根>/spend-budget.json`（默认 `agents/spend-budget.json`）。
+
+    **为什么跟着账本根走**：预算与账本必须**同源**，否则会拿另一本账的预算去判
+    这本账的读数——那正是度量仪作用域缺陷的同一种病。`AGENT_OPS_DIR` 重定向
+    （verify 夹具）时两者一起搬，夹具因此能用受控预算**真驱动**闸门。
+    """
+    return _AGENTS_BASE / "spend-budget.json"
+
+
+def _dispatch_budget() -> tuple[int | None, int | None, str]:
+    """读当日**派单数**预算与逃生门理由下限：`(预算, 理由下限, 未执行原因)`。
+
+    三种"读不到"必须分开（混成一个 `None`/`0` 就是把闸门静默关掉）：
+      * **文件不存在** ⇒ `(None, None, <原因>)`：这本账没配置预算 ⇒ 本判据
+        **未执行**（上屏点名，不算通过），但**不阻断**登记；
+      * **文件在、预算键缺失/非法** ⇒ 抛 `SystemExit`（fail-closed）：配置坏了
+        必须响亮地坏——回落 0/None 会让"超预算阻断"无声消失；
+      * 正常 ⇒ `(预算, 理由下限, "")`。
+
+    理由下限（`over_budget_escape.reason_min_chars`）只影响逃生门那条路径：
+    读不到 ⇒ 逃生门 fail-closed（说不出"多长算具名"就不许放行），例行判据照跑。
+    """
+    path = _spend_budget_path()
+    if not path.is_file():
+        return None, None, (f"{path} 不存在（这本账未配置成本预算）"
+                            "⇒ 本判据**未执行**——**不是通过**"
+                            "（口径同 spend-report --check 的 SKIP）")
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise SystemExit(f"BUDGET-ERROR: {path} 读不出或不是合法 JSON：{exc}"
+                         "（预算读不到 ⇒ fail-closed，不得静默放行派单）") from exc
+    budget = doc.get("budget") if isinstance(doc, dict) else None
+    cap = None
+    if isinstance(budget, dict):
+        cap = budget.get("dispatched_sessions_per_day")
+    if isinstance(cap, bool) or not isinstance(cap, int) or cap < 0:
+        raise SystemExit(
+            f"BUDGET-ERROR: {path} 的 budget.dispatched_sessions_per_day={cap!r} 非法"
+            "（须为 ≥0 的整数）——缺它/写坏它就等于把『超预算阻断』静默关掉 ⇒ "
+            "fail-closed 拒绝登记")
+    esc = doc.get("over_budget_escape")
+    floor = esc.get("reason_min_chars") if isinstance(esc, dict) else None
+    if isinstance(floor, bool) or not isinstance(floor, int) or floor < 1:
+        floor = None
+    return cap, floor, ""
+
+
+# run_id 的 UTC+8 日期段（`_local_date()` 在登记当时写下；A5 的 id↔目录同口径）。
+# 注意：它只是**当日读数**的其中一个信号，无日期段的 id 由 `started_at` 兜底。
+_RUN_ID_DAY = re.compile(r"^run-(\d{4}-\d{2}-\d{2})-")
+
+
+def _dispatch_reading(data: dict, day: str) -> tuple[int, int, int]:
+    """当日（UTC+8）已登记 run 数：`(合计, run_id 日期段命中, started_at 命中)`。
+
+    **为什么两个信号取并集**（少一个就有一条刷单路径）：
+      * `run_id` 日期段 = **登记当时**由 `_local_date()`（UTC+8）写下的留痕，
+        id 落地后不再变；
+      * `started_at` 是账本里唯一的时间戳（UTC）⇒ 换算 UTC+8 后同样指向登记日；
+      * **只用 id** ⇒ `--run-id` 不带日期段的 run 全部不计数（合成夹具里就有）；
+      * **只用 started_at** ⇒ 漏 `--start` 的 run（`started_at=None`）不计数，
+        即"不传 `--start` 就能刷单"，闸门形同不存在。
+    两个信号都归不出日期的 run **不计入**——这是本判据的已知盲区，写在拒绝文案
+    与 BR-1 卡里，不假装覆盖。
+
+    `data` = 本命令**自己**在锁内刚读的账本（"现读"＝这一次 load，不是缓存、
+    不是派生文件）；计数与追加同在一把锁内 ⇒ 无 TOCTOU。
+    """
+    total = by_id = by_start = 0
+    for run in data.get("runs") or []:
+        hit = False
+        m = _RUN_ID_DAY.match(str(run.get("run_id") or ""))
+        if m and m.group(1) == day:
+            by_id += 1
+            hit = True
+        started = _parse_ts(run.get("started_at"))
+        if started is not None:
+            local = (started.astimezone(timezone.utc)
+                     + timedelta(hours=_TZ_OFFSET_HOURS)).strftime("%Y-%m-%d")
+            if local == day:
+                by_start += 1
+                hit = True
+        total += 1 if hit else 0
+    return total, by_id, by_start
+
+
+def _dispatch_gate(data: dict, args: argparse.Namespace) -> dict | None:
+    """派单预算闸门：`>= 预算` ⇒ **拒绝启动**；具名逃生门 ⇒ 放行并回传**留痕**。
+
+    返回 `None` = 无需留痕（含"未执行"档）；返回 dict = 具名逃生门的留痕
+    （由 `cmd_register` 写进该 run 行，见那里的字段落点说明）。
+
+    未超预算却传 `--over-budget` ⇒ **拒绝**：放行一条不存在的超预算是
+    **假留痕**，比无留痕更坏（同 `set-anchor` 同值不写假的教训）。
+    """
+    cap, floor, note = _dispatch_budget()
+    override = (getattr(args, "over_budget", "") or "").strip()
+    if cap is None:
+        print(f"dispatch-budget: {note}")
+        if override:
+            raise SystemExit(
+                "BUDGET-ERROR: 这本账未配置预算 ⇒ 无从判『超预算』；"
+                "--over-budget 在此处只会留下一条**假留痕** ⇒ 拒绝登记")
+        return None
+    day = _local_date()
+    total, by_id, by_start = _dispatch_reading(data, day)
+    if total < cap:
+        if override:
+            raise SystemExit(
+                f"BUDGET-ERROR: 当日派单读数 {total} < 预算 {cap} ⇒ **不是超预算**，"
+                "无需逃生门（具名逃生门只对**真实超预算**开放；放行一条不存在的"
+                "超预算是假留痕，比无留痕更坏）⇒ 拒绝登记")
+        print(f"dispatch-budget: {total}/{cap}（UTC+8 {day}）→ 放行")
+        return None
+    # ---- 超预算：无具名理由 ⇒ 拒绝启动（本仓"拒绝启动"语义）
+    hint = (f'--over-budget "<理由 ≥{floor} 字>"' if floor
+            else '--over-budget "<理由>"（下限未配置，见 BUDGET-ERROR）')
+    if not override:
+        raise SystemExit(
+            "BUDGET-REFUSED: 当日派单数已达预算 ⇒ **拒绝启动**"
+            "（fail-closed；用户 2026-10-03 裁定「超预算即阻断派单」）\n"
+            f"  轴：派单数/日｜读数 {total}（UTC+8 {day} 已登记："
+            f"run_id 日期段 {by_id} 条、started_at {by_start} 条；并集口径，"
+            "两信号都归不出日期的 run 不计入＝已知盲区）\n"
+            f"  预算：{cap}（来源 {_spend_budget_path()}::"
+            "budget.dispatched_sessions_per_day，非代码常量）\n"
+            f"  逃生门：本笔确有例外时加 {hint} —— 放行且理由落账本，事后可核\n"
+            "  金额轴（CNY/日）**不阻断**：度量仪 spend-report.py --check 的"
+            "『派单会话数』作用域有已知缺陷（把别的主线的子代理会话也算进来）\n"
+            "  ⇒ 拿它当阻断依据＝用错数停工作（该缺陷归 A-COST 卡，本批不改度量仪）")
+    if floor is None:
+        raise SystemExit(
+            f"BUDGET-ERROR: {_spend_budget_path()} 缺 over_budget_escape."
+            "reason_min_chars ⇒ 逃生门**无法具名**（说不出『多长算具名』就不许"
+            "放行）⇒ fail-closed 拒绝登记")
+    if len(override) < floor:
+        raise SystemExit(
+            f"BUDGET-ERROR: --over-budget 必须具名：理由 ≥{floor} 字符"
+            f"（实测 {len(override)}）⇒ 拒绝登记。逃生口不具名＝后人只读到"
+            "『某天多放了一笔』，读不到为什么")
+    print(f"dispatch-budget: {total}/{cap}（UTC+8 {day}）→ **具名逃生门放行**"
+          "（理由已落账本 budget_override_reason）")
+    return {"axis": "dispatched_sessions_per_day", "reading": total, "budget": cap,
+            "day": day, "at": _now()}
+
+
 @_with_registry_lock
 def cmd_register(args: argparse.Namespace) -> None:
-    """`register` 子命令：登记一条 run（校验 scope 来源、规范化锚点、初始化测量字段）。"""
+    """`register` 子命令：登记一条 run（校验 scope 来源、规范化锚点、初始化测量字段）。
+
+    2026-10-03 起**多一道成本预算闸门**（用户裁定 A：超预算即阻断派单）：
+    `_dispatch_gate()` 用**账本读数**判当日派单数，`>= 预算` 即拒绝启动；
+    具名逃生门 `--over-budget "<理由 ≥下限>"` 可放行，理由**落账本**两字段：
+      * `budget_override_reason`：理由**原话**（≥下限，去空白）——先例是
+        `finish --allow-degenerate` 的 `degenerate_reason`（同一族"具名豁免"，
+        同一落法：单行、原话、可事后逐字核）；
+      * `budget_override`：`{axis, reading, budget, day, at}` ——**被豁免掉的读数**
+        （哪个轴、当时读多少、预算是多少、UTC+8 哪天、何时登记）。
+        先例是 `mark-produced` 的 `produced_only`＋`produced_only_marks[]`
+        （"这不是默认形态"落库，且**留下判据所依据的数**）。
+    为什么不用 `task_id`／`scope_deviation` 兼职：那两格各有**自己的**语义
+    （任务名、〇查范围偏离），塞进去会让读账本的人分不清"这是任务名还是豁免理由"；
+    具名豁免在账本里必须是**可 grep 的独立字段**。
+    """
     data = _load_registry()
     # review 修正（Sprint-8 三查）：显式 run_id 查重（_find_run 只命中第一条）
     if any(r["run_id"] == args.run_id for r in data["runs"]):
@@ -869,6 +1047,10 @@ def cmd_register(args: argparse.Namespace) -> None:
     if not re.fullmatch(r"[A-Za-z0-9._-]+", run_id):
         raise SystemExit(f"run_id 含非法字符（仅允许字母数字 . _ -）：{run_id!r}")
     scope_source, scope_deviation = _validate_scope(args, data)
+    # 成本预算闸门（2026-10-03 裁定 A）：放在**纯输入校验之后、任何写盘之前**
+    # ——这样"输入本身有错"（run_id 字符集／scope 缺失）永远报它自己的错，
+    # 不会被预算档盖住；而超预算时账本一个字节都不会动（拒绝启动＝不半写）。
+    budget_override = _dispatch_gate(data, args)
     # TG-15 ③ 锚点自动化：run 登记时自动记覆盖锚点（= 登记时的 HEAD），
     # 无需人往 Sprint 文档手抄。
     # `--coverage-anchor` 可显式覆盖（补录历史 run / fixture）；
@@ -936,6 +1118,11 @@ def cmd_register(args: argparse.Namespace) -> None:
     # TG-13：测量来源（此刻只有 started_at、没有 ended_at → unknown，
     # 禁止写 0.00 冒充测量值）
     _apply_measurement(entry)
+    # 逃生门留痕（仅**真的**超预算且具名放行时才落这两格；正常 run 不多出键，
+    # 故既有 run 行的字段集一字不变）
+    if budget_override is not None:
+        entry["budget_override_reason"] = (args.over_budget or "").strip()
+        entry["budget_override"] = budget_override
     data["runs"].append(entry)
     _save_registry(data)
     print(f"registered {run_id} (status={entry['status']})")
@@ -2238,6 +2425,12 @@ def main() -> int:
                    help="TG-11：自选/偏离〇查范围的理由（评审类 run 缺 scope-source 时必填）")
     p.add_argument("--coverage-anchor", default="",
                    help="TG-15：覆盖窗口下界 sha（默认 = 登记时的 HEAD，自动记录）")
+    p.add_argument("--over-budget", default="",
+                   help="2026-10-03 裁定 A 的**具名逃生门**：当日派单数已达预算时，"
+                        "给 ≥下限（spend-budget.json::over_budget_escape."
+                        "reason_min_chars）字符的理由可放行；理由落账本 "
+                        "budget_override_reason + budget_override。"
+                        "**未超预算时传它会被拒**（假留痕比无留痕更坏）")
 
     p = sub.add_parser("update")
     p.add_argument("run_id")

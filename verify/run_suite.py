@@ -114,6 +114,9 @@ BRANCH_EST_OVERRIDES: dict[tuple[str, bool], float] = {
 #     `docs/iteration`，与上面的口径一致）。**同批另一处同类余量**：
 #     `verify_agentops.py` 因本批新增 UC-26 三条断言（177→180）⇒ 该键同步抬到 **180**
 #     （同批再复核本表其余各行，**只这两行有余量**）。
+#     **2026-10-03 本批同步**：`verify_agentops.py` 新增 UC-27（成本预算阻断，
+#     18 条断言）⇒ 现跑 **198**，该键同步抬到 **198**（`:93` 的"只增不减"：
+#     不抬 ⇒ 删掉这 18 条判据仍判绿，等于本批白做）。其余各行本批复核后**无余量**。
 #     复算口径 = 在工作树跑 `verify/verify_gate_integrity.py --selftest` 读末行
 #     `ALL PASS (N assertions)`。
 # 复算：`present` = 在工作树跑该脚本、读末行；`absent` = 在 %TEMP% 镜像（clone 后
@@ -149,7 +152,7 @@ SKIP_EXIT = 3    # 与 `verify_agentops.py::SKIP_EXIT` / `spend-report` 同码
 SKIP_NOT_PASS_MARK = "本档不是通过"
 SKIP_BANNER_RE = re.compile(r"^\S+ SKIP\[(?P<cat>[^\]]+)\]")
 BRANCH_ASSERTION_FLOORS: dict[tuple[str, bool], int] = {
-    ("verify_agentops.py", True): 180,
+    ("verify_agentops.py", True): 198,
     ("verify_card_index.py", True): 17, ("verify_card_index.py", False): 15,
     ("verify_decision_register.py", True): 32,
     ("verify_decision_register.py", False): 32,

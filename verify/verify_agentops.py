@@ -25,7 +25,7 @@ clobber（一方删掉另一方正在用的探针 → 两边都 rc=1，
 """
 
 from __future__ import annotations
-VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1 起（**编号区间与条数以末行 `ALL PASS (N assertions)` 现跑为准，勿在本串写死**；离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库，UC-19=TG-8 离线开关：三入口拒绝+反向对照+配置面+两侧一致）', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 20, 'routes': [], 'requires': ['none']}
+VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1 起（**编号区间与条数以末行 `ALL PASS (N assertions)` 现跑为准，勿在本串写死**；离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库，UC-19=TG-8 离线开关：三入口拒绝+反向对照+配置面+两侧一致，UC-27=成本预算阻断（2026-10-03 用户裁定 A：**账本读数**当日派单数>=预算即拒绝 `register`（点名读数/预算/逃生门），具名 `--over-budget` 放行且理由落账本，含空账本第一笔/别的 role/逃生门/未超预算乱传/配置坏 fail-closed/未配置预算未执行 真驱动反向对照；金额轴不阻断并在文案里标注度量仪作用域缺陷））', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 20, 'routes': [], 'requires': ['none']}
 
 import json
 import os
@@ -34,7 +34,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -2040,6 +2040,230 @@ def main() -> int:
            r.returncode != 0 and "引用" in (r.stdout + r.stderr)
            and _uc25_row("run-uc25-cited") is not None,
            f"rc={r.returncode} out={(r.stdout + r.stderr).strip()[:56]}")
+
+        # ---- UC-27（2026-10-03 用户裁定「成本基线倾向 A」）：超预算 ⇒ 阻断派单
+        # ---------------------------------------------------------------
+        # 判据本体 = `scripts/agent-ops.py::_dispatch_gate`：
+        # **当日派单数（账本读数） >= 预算 ⇒ `register` 拒绝启动**；
+        # 预算与逃生门下限**现读** `<账本根>/spend-budget.json`（代码里不写死）。
+        # 为什么这里必须**真驱动 CLI**：这条闸门的全部意义就是"真的会停下来"——
+        # 只断言"某函数返回了什么"证明不了 `register` 会被拦；BR-1 卡记的
+        # "三项全 OVER 而没有任何东西因此停下"正是"有表无闸"的形态。
+        # 夹具自带**账本根 + 预算文件**（预算与账本同源，见 `_spend_budget_path`）
+        # ⇒ 同一个账本状态下改预算文件即改判定，闸门两个方向都能真跑出来。
+        uc27 = tmp / "uc27"
+        uc27.mkdir()
+        uc27_budget = uc27 / "spend-budget.json"
+
+        def _uc27_payload(cap: object, floor: object = 10) -> str:
+            """受控预算文件的**内容**（落点由调用方的字面量路径决定）。
+
+            为什么不让本函数自己写盘：写盘目标必须是**静态可判定的落点**
+            （`verify/verify_artifact_paths.py` 的动态目标棘轮在本文件上**零余量**：
+            上限 5 = 现状 5）。把 `root` 当参数写盘会立刻顶破上限——本批实测踩到过。
+            """
+            return json.dumps(
+                {"budget": {"dispatched_sessions_per_day": cap},
+                 "over_budget_escape": {"reason_min_chars": floor}},
+                ensure_ascii=False)
+
+        def _uc27_day() -> str:
+            """夹具自己算的 UTC+8 今天（**不导入被测实现**的 `_local_date()`）。"""
+            return (datetime.now(timezone.utc)
+                    + timedelta(hours=8)).strftime("%Y-%m-%d")
+
+        def _uc27_rows(root: Path) -> list[dict]:
+            led = root / "runtime" / "registry.json"
+            if not led.is_file():
+                return []
+            return json.loads(led.read_text(encoding="utf-8"))["runs"]
+
+        def _uc27_reading(root: Path) -> int:
+            """**独立**复算当日读数（不导入被测实现，两侧各自解析同一账本）。
+
+            与闸门同口径的**并集**：`run_id` 的 `run-<日期>-` 段 ∪ `started_at`
+            折算 UTC+8。判据必须独立实现——导入被测实现再比就成恒真式了。
+            """
+            day = _uc27_day()
+            n = 0
+            for row in _uc27_rows(root):
+                hit = str(row.get("run_id") or "").startswith(f"run-{day}-")
+                raw = str(row.get("started_at") or "")
+                if raw:
+                    try:
+                        ts = datetime.fromisoformat(raw).astimezone(timezone.utc)
+                    except ValueError:
+                        ts = None
+                    if ts is not None and (ts + timedelta(hours=8)
+                                           ).strftime("%Y-%m-%d") == day:
+                        hit = True
+                n += 1 if hit else 0
+            return n
+
+        def _uc27_reg(root: Path, rid: str, role: str = "implementation",
+                      extra: list[str] | None = None):
+            spec = f"{role}@1.0.0"
+            argv = ["register", "--role", role, "--task", "uc27 budget fixture",
+                    "--spec", spec, "--run-id", rid, *(extra or [])]
+            return run(argv, {**base_env, "AGENT_OPS_DIR": str(root)}, raw=True)
+
+        uc27_reason = "探针：当日派单数已满，用户裁定 A 下的具名例外（验证逃生门）"
+        uc27_budget.write_text(_uc27_payload(2), encoding="utf-8")
+        # 种子①：**带日期 id**（= 今日，UTC+8）、**不给 `--start`**
+        # ⇒ 它只能被 `run_id` 日期段计入（started_at 为空）。
+        r = _uc27_reg(uc27, f"run-{_uc27_day()}-uc27-dated")
+        ok("UC-27 正方向①：空账本当日第一笔**照常放行**"
+           "（不得被『无历史/空账本』卡住；读数 0 < 预算 2）",
+           r.returncode == 0 and "0/2" in r.stdout and "放行" in r.stdout,
+           f"rc={r.returncode} out={r.stdout.strip()[:64]}")
+        ok("UC-27 信号①：**只有带日期的 run_id、没有 started_at** 的 run 也被计入"
+           "（漏了这条 ⇒ 用带日期的 id 就能刷单）",
+           len(_uc27_rows(uc27)) == 1
+           and not _uc27_rows(uc27)[0].get("started_at")
+           and "1/2" in _uc27_reg(uc27, "run-uc27-start-signal",
+                                  extra=["--start"]).stdout)
+        # 种子②：**无日期 id**、给 `--start` ⇒ 由 started_at 计入。至此读数 = 2。
+        ok("UC-27 信号②：**无日期 id + `--start`** 的 run 也计入（两个信号取并集）",
+           _uc27_reading(uc27) == 2 and len(_uc27_rows(uc27)) == 2,
+           f"独立复算读数={_uc27_reading(uc27)} 账本 {len(_uc27_rows(uc27))} 条")
+        _bytes27 = (uc27 / "runtime" / "registry.json").read_bytes()
+        r = _uc27_reg(uc27, "run-uc27-blocked-1")
+        out27 = (r.stdout + r.stderr)
+        ok("UC-27 ②超预算：读数 2 >= 预算 2 ⇒ `register` **拒绝启动**（rc≠0）",
+           r.returncode != 0 and "BUDGET-REFUSED" in out27 and "拒绝启动" in out27,
+           f"rc={r.returncode} out={out27.strip().splitlines()[0][:64]}")
+        ok("UC-27 ②点名：拒绝文案必须点出**读数／预算／逃生门用法**"
+           "（只报『超预算』＝用户不知道该改什么）",
+           "读数 2" in out27 and "预算：2" in out27 and "--over-budget" in out27
+           and "≥10 字" in out27,
+           f"读数={'读数 2' in out27} 预算={'预算：2' in out27} "
+           f"逃生门={'--over-budget' in out27}")
+        ok("UC-27 ②如实标注金额轴：拒绝文案里写明 **CNY/日 轴不阻断**及原因"
+           "（度量仪作用域缺陷 ⇒ 拿它当依据＝用错数停工作）",
+           "不阻断" in out27 and "作用域" in out27 and "A-COST" in out27,
+           "金额轴缺陷已标注" if "不阻断" in out27 else out27[:60])
+        ok("UC-27 ②拒绝＝**不半写**：账本字节逐字节未动、行数不变",
+           (uc27 / "runtime" / "registry.json").read_bytes() == _bytes27
+           and len(_uc27_rows(uc27)) == 2,
+           f"行数={len(_uc27_rows(uc27))}")
+        # ④ 同一判据对**别的 role** 一样生效（不许只在某一 role 上接线）
+        r_impl = _uc27_reg(uc27, "run-uc27-blocked-2")
+        r_rev = _uc27_reg(uc27, "run-uc27-blocked-3", role="doc-audit", extra=[
+            "--scope-source", "self-chosen",
+            "--deviation", "UC-27 预算夹具：合成评审 run，无真实评审范围"])
+        ok("UC-27 ④同一判据对**别的 role** 一样生效"
+           "（implementation 与评审类 doc-audit 都被拦，不是某一角色的专属接线）",
+           r_impl.returncode != 0 and r_rev.returncode != 0
+           and "BUDGET-REFUSED" in (r_impl.stdout + r_impl.stderr)
+           and "BUDGET-REFUSED" in (r_rev.stdout + r_rev.stderr),
+           f"impl rc={r_impl.returncode} doc-audit rc={r_rev.returncode}")
+        r = _uc27_reg(uc27, "run-uc27-escape", extra=["--over-budget", uc27_reason])
+        esc27 = next((x for x in _uc27_rows(uc27)
+                      if x["run_id"] == "run-uc27-escape"), None)
+        ok("UC-27 ③逃生门：具名理由 ⇒ **放行**（rc=0）且上屏点名走了逃生门",
+           r.returncode == 0 and "逃生门放行" in r.stdout,
+           f"rc={r.returncode} out={r.stdout.strip()[:64]}")
+        ok("UC-27 ③留痕（现读账本）：理由**原话**落 `budget_override_reason`"
+           "（不是只上屏——先例＝`finish --allow-degenerate` 的 `degenerate_reason`）",
+           esc27 is not None and esc27.get("budget_override_reason") == uc27_reason,
+           f"budget_override_reason={esc27 and esc27.get('budget_override_reason')!r}")
+        ok("UC-27 ③留痕（现读账本）：`budget_override` 记下**被豁免掉的读数**"
+           "（轴／读数 2／预算 2／UTC+8 日／登记时刻），事后可核",
+           bool(esc27) and esc27.get("budget_override", {}).get("axis")
+           == "dispatched_sessions_per_day"
+           and esc27["budget_override"].get("reading") == 2
+           and esc27["budget_override"].get("budget") == 2
+           and esc27["budget_override"].get("day") == _uc27_day()
+           and bool(str(esc27["budget_override"].get("at") or "").strip()),
+           f"budget_override={esc27 and esc27.get('budget_override')}")
+        _rows27 = len(_uc27_rows(uc27))
+        r = _uc27_reg(uc27, "run-uc27-short", extra=["--over-budget", "太短了"])
+        ok("UC-27 ③反向对照：逃生门理由**过短** ⇒ 拒绝且**不留痕**"
+           "（说不出为什么就不许放行）",
+           r.returncode != 0 and "BUDGET-ERROR" in r.stderr
+           and "≥10" in r.stderr and len(_uc27_rows(uc27)) == _rows27,
+           f"rc={r.returncode} err={r.stderr.strip()[:56]}")
+        # ⑦ 未超预算却传逃生门 ⇒ 拒绝（否则"随手带上逃生门"就能把闸门架空）
+        uc27b = tmp / "uc27b"
+        uc27b.mkdir()
+        uc27b_budget = uc27b / "spend-budget.json"
+        uc27b_budget.write_text(_uc27_payload(5), encoding="utf-8")
+        r = _uc27_reg(uc27b, "run-uc27-fake-escape",
+                      extra=["--over-budget", "未超预算也想放行看看会怎样"])
+        ok("UC-27 ⑦反向对照：**未超预算**却传 `--over-budget` ⇒ 拒绝"
+           "（放行一条不存在的超预算是**假留痕**，比无留痕更坏）",
+           r.returncode != 0 and "不是超预算" in r.stderr
+           and _uc27_rows(uc27b) == [],
+           f"rc={r.returncode} err={r.stderr.strip()[:56]}")
+        # ⑧ 盲区如实记：id 无日期段 **且** 无 started_at 的 run 不计入（已知盲区）
+        _uc27_reg(uc27b, "run-uc27-blind")           # 无日期 id、无 --start
+        r = _uc27_reg(uc27b, "run-uc27-after-blind", extra=["--start"])
+        ok("UC-27 ⑧已知盲区如实上屏：**id 无日期段且无 `started_at`** 的 run 不计入"
+           "（读数仍是 0/5，而账本已有 2 条）——盲区登记在卡上，不假装覆盖",
+           "0/5" in r.stdout and len(_uc27_rows(uc27b)) == 2,
+           f"out={r.stdout.strip()[:48]} 账本={len(_uc27_rows(uc27b))} 条")
+        # ⑨ 预算值**真来自数据**：同一个账本、同一个读数，只改预算文件即改判定
+        r_before = _uc27_reg(uc27, "run-uc27-data-driven-1")
+        uc27_budget.write_text(_uc27_payload(4), encoding="utf-8")
+        r_up = _uc27_reg(uc27, "run-uc27-data-driven-1")
+        uc27_budget.write_text(_uc27_payload(2), encoding="utf-8")
+        r_down = _uc27_reg(uc27, "run-uc27-data-driven-2")
+        ok("UC-27 ⑨反向对照（真驱动）：只改数据文件里的预算（2→4）⇒ 同一状态由"
+           "『拒绝』变『放行』，改回 2 ⇒ 又拒绝（预算不是代码常量）",
+           r_before.returncode != 0 and r_up.returncode == 0
+           and r_down.returncode != 0,
+           f"2⇒{r_before.returncode} 4⇒{r_up.returncode} 2⇒{r_down.returncode}")
+        # ⑩ 未配置预算 ⇒ 判据**未执行**（不算通过），但不阻断隔离账本
+        uc27c = tmp / "uc27c"
+        uc27c.mkdir()
+        r = _uc27_reg(uc27c, "run-uc27-nobudget")
+        ok("UC-27 ⑩未配置预算：**未执行**档上屏点名『不是通过』且不阻断登记"
+           "（口径同 spend-report --check 的 SKIP；不得冒充 PASS）",
+           r.returncode == 0 and "未执行" in r.stdout and "不是通过" in r.stdout
+           and len(_uc27_rows(uc27c)) == 1,
+           f"rc={r.returncode} out={r.stdout.strip()[:48]}")
+        # ⑪ 配置坏了必须响亮地坏：预算键缺失／布尔／负数 ⇒ fail-closed，不静默放行
+        # 三个夹具根**逐个字面写名**（循环变量当落点会变成"动态写盘目标"，
+        # 而本文件的该棘轮零余量——见 `_uc27_payload` 的说明）。
+        b27a = tmp / "uc27bad-a"
+        b27b = tmp / "uc27bad-b"
+        b27c = tmp / "uc27bad-c"
+        b27a.mkdir()
+        b27b.mkdir()
+        b27c.mkdir()
+        (b27a / "spend-budget.json").write_text(
+            json.dumps({"budget": {}}, ensure_ascii=False), encoding="utf-8")
+        (b27b / "spend-budget.json").write_text(json.dumps(
+            {"budget": {"dispatched_sessions_per_day": True}},
+            ensure_ascii=False), encoding="utf-8")
+        (b27c / "spend-budget.json").write_text(json.dumps(
+            {"budget": {"dispatched_sessions_per_day": -1}},
+            ensure_ascii=False), encoding="utf-8")
+        bad27: dict[str, int] = {}
+        for label, root in (("缺失", b27a), ("布尔 true", b27b), ("负数", b27c)):
+            rr = _uc27_reg(root, "run-uc27-badcap")
+            bad27[label] = (rr.returncode
+                            if rr.returncode != 0 and "BUDGET-ERROR" in rr.stderr
+                            else 0)
+        ok("UC-27 ⑪fail-closed：预算键**缺失／布尔／负数** ⇒ 一律拒绝登记"
+           "（配置坏了不得静默把闸门关掉）",
+           all(v != 0 for v in bad27.values()) and len(bad27) == 3,
+           f"rc={bad27}")
+        # ⑫ 真预算文件的契约（防"删掉键即静音"）：真仓文件必须真带这两把锁
+        real_budget = json.loads(
+            (ROOT / "agents" / "spend-budget.json").read_text(encoding="utf-8"))
+        cap_real = (real_budget.get("budget") or {}).get("dispatched_sessions_per_day")
+        esc_real = real_budget.get("over_budget_escape") or {}
+        floor_real = esc_real.get("reason_min_chars")
+        ok("UC-27 ⑫真仓契约：`agents/spend-budget.json` 带 `budget."
+           "dispatched_sessions_per_day`（≥0 整数）与 `over_budget_escape."
+           "reason_min_chars`（正整数）——删/改坏任一键，闸门或逃生门即失效",
+           isinstance(cap_real, int) and not isinstance(cap_real, bool)
+           and cap_real >= 0
+           and isinstance(floor_real, int) and not isinstance(floor_real, bool)
+           and floor_real >= 1,
+           f"cap={cap_real!r} reason_min_chars={floor_real!r}（**只核类型，不核取值**："
+           f"预算值属用户政策，改它不该让本判据变红）")
 
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))
