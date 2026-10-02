@@ -22,6 +22,7 @@
 | A-COST | 成本归属：finish --usage-* 未用 ⇒ 损失只能从会话日志反推 | 候选 | — | [cards/A-COST.md](cards/A-COST.md) |
 | A-CASE | 反例档语料维护：只增不减、无合并／去重／检索 | 候选 | — | [cards/A-CASE.md](cards/A-CASE.md) |
 | A-DECL | 规则可机检性：规则可以是无实现的声明 | 候选 | — | [cards/A-DECL.md](cards/A-DECL.md) |
+| A-EXCL | 排除清单复审：被排除项反复被拉回、排除时不查消费者、清单无周期复审 | 候选 | — | [cards/A-EXCL.md](cards/A-EXCL.md) |
 
 ## 2. 维护卡 / PM 固化备选（用户意见③：可 agent 固化的项目管理过程）
 
