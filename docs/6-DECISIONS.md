@@ -1727,8 +1727,8 @@
 | A-227 | A-M11 用户插入 | docs/iteration/ROADMAP.MD:14 | 2026-09-21 |
 | A-228 | 治理批用户四项口径后成稿 | docs/iteration/ROADMAP.MD:18 | 2026-09-21 |
 | A-229 | MM-6 用户插入 | docs/iteration/ROADMAP.MD:27 | 2026-09-20 |
-| A-230 | 走查修复批次待用户确认排期 | docs/iteration/ROADMAP.MD:28 | 2026-09-20 |
-| A-231 | TG-6/7/11/12 用户插入 | docs/iteration/ROADMAP.MD:29 | 2026-09-20；2026-09-21 |
+| A-230 | 走查修复批次待用户确认排期 | docs/iteration/ROADMAP.MD:29 | 2026-09-20 |
+| A-231 | TG-6/7/11/12 用户插入 | docs/iteration/ROADMAP.MD:30 | 2026-09-20；2026-09-21 |
 | A-232 | agents-infra 原规划用户批准冻结 | docs/iteration/phases/agents-infra/roadmap.MD:6 | 2026-08-30 |
 | A-233 | 用户意见①按职能划分评审 | docs/iteration/phases/agents-infra/roadmap.MD:11 | 2026-08-30 |
 | A-234 | 用户意见②用例表 ③Sprint 化 | docs/iteration/phases/agents-infra/roadmap.MD:11；docs/iteration/phases/agents-infra/roadmap.MD:14 | 2026-08-30 |
