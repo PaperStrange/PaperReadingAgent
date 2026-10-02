@@ -18,7 +18,7 @@ TG-11 ③b 版本把判据写成"按角色名逐条判断"——`CLOSE_ROLES` �
 需求来源（**只有两个**，本文件不再有角色名单）：
 
     agents/fanout.json :: sprint_close_pipeline   →
-    哪些关闭步骤/role/target 必填（`close_ledger`/`close_targets`）
+    哪些关闭步骤/role/target 必填（`close_ledger`；`close_targets` 字段已删）
     agents/functions/<role>.md frontmatter        → `scope_required`（谁必须声明 scope）
     、`coverage_window`
     agents/policy.json                            → 阈值与开关（偏离理由长度、

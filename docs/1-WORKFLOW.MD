@@ -82,7 +82,7 @@ Sprint-16 暴露的四个管理问题（数据：日历 9 天但**只有 3 天�
 
 **经验教训总结（2026-08-30 用户要求固化，关闭前置必做）**：
 - 一查/二查（文档/代码审查）完成、**Close 之前**必须执行（fan-out 五步第 4 步，先于三查环境核验）——由 `agents/functions/lessons-learned.md` 职能（子代理）产出 3-LEARNED 新条目草稿 + 分类索引更新建议，主代理审核后回填；无真教训可明说"本轮无需新增"，但**步骤不可跳过**。
-- **fan-out 顺序与运行条件为可调配置**：关闭流程五步（scope→doc-audit→code-review→lessons→workspace-check）定义在 `agents/fanout.json`（条件/顺序/执行者可调，看板可编辑）——用户可通过看板观察 agent 执行对功能开发部署进度的影响，并据此调整顺序与运行判断条件。
+- **fan-out 顺序与运行条件为可调配置**：关闭流程五步（scope→doc-audit→code-review→lessons→workspace-check）定义在 `agents/fanout.json`（条件/顺序/执行者可调，看板可编辑）——用户可通过看板观察 agent 执行对功能开发部署进度的影响，并据此调整顺序与运行判断条件。**执行点边界（2026-10-03 收敛批如实标注；父代理裁定路 A）**：`condition`／`executor` **仅有看板 schema 校验、无求值器**——`verify/agent_policy.py::_load_fanout` 只读 role／target／spec／order／`close_ledger`（`condition` 的读者只有看板类型校验与自检夹具）⇒ **某步骤是否执行一律以 `close_ledger` 为准**；两字段**保留不删**，但在语义面上是**仅文字**。
 
 ### 4.2 Sprint 关闭：必须有足够 solid 的证据 + 理由
 
@@ -313,7 +313,7 @@ node .\verify\gui_check_config_schema.mjs      # Sprint-11/12/13：schema 清单
 
 | 数据源 | 放什么 | 例子 |
 |---|---|---|
-| `agents/fanout.json` | **流程需求**：关闭流水线有哪些步骤、每步 role、必填 target、是否产出账本 run（`close_ledger`/`close_targets`） | 加一条"安全检查"步骤 = 加一条 JSON 记录 |
+| `agents/fanout.json` | **流程需求**：关闭流水线有哪些步骤、每步 role、必填 target、是否产出账本 run（`close_ledger`；必填 target 由该步自身 `task.target`／`tasks[].target` 派生——**`close_targets` 字段已删除**：审查实测零读者，见该文件 `comment`） | 加一条"安全检查"步骤 = 加一条 JSON 记录 |
 | `agents/functions/<role>.md` frontmatter | **角色属性**：`scope_required`（是否必须声明 scope 来源）、`coverage_window`（是否参与 C3 覆盖） | 新增角色 = 新建 spec + 显式声明两字段 |
 | `agents/policy.json` | **阈值与开关**：偏离理由最小长度、scope 引用前缀、覆盖路径清单、ruff 规则分级（含 **C 级棘轮 caps**：`lint_readability_ratchet` 的计数上限 + `measured_at` + `review_by`，只许下调）、归档识别前缀、**账本状态机**（`ledger_status`：状态集合/终态/流转/不可采信态）、C3-T 例外表路径与 doc-only 规则 | 调阈值 = 改一个数字 |
 | `agents/policy/coverage-exceptions.json` | **C3-T 覆盖例外**：sha 钉死 + class + reason（表落后 → 闸门默认 FAIL 并点名） | 见该文件 `_rules_of_engagement` |
@@ -502,21 +502,26 @@ Sprint 文档里的 `三查锚点` 只用于**关闭判定**，不再是覆盖�
 | 机制 | 收录哪些规则 | 该机制的机检落点（脚本／闸门；没有就写「无（仅文字）」） |
 |---|---|---|
 | M1 政策与数据的单一真源 | 规则 1（政策数据化，行 303）；新脚本产物目录约定（行 385） | `verify/verify_no_policy_hardcode.py`、`verify/verify_artifact_paths.py` |
-| M2 派生数字与读数 | 规则 2（行 389）、规则 10（行 434）、规则 12（行 440） | `verify/verify_derived_numbers.py`、`verify/verify_close_tax_reading.py` |
+| M2 派生数字与读数 | 规则 2（行 389）、规则 10（行 434）、规则 12（行 440） | `verify/verify_derived_numbers.py`、`verify/verify_close_tax_reading.py`（**覆盖边界，2026-10-03 收敛批如实标注**：`verify/run_suite.py` 以**默认参数**调用后者 ⇒ 套件里走的是 `mode=selfcheck`、**不带 `--sprint`**，§5 状态计数那条判据只在 CI 的 `--sprint` 档生效（`.github/workflows/ci.yml`）⇒ **`run_suite.py --tier offline` 全绿不覆盖 §5 状态计数闸门**） |
 | M3 上限与棘轮 | 规则 8（行 432） | `verify/verify_gate_integrity.py`、`verify/verify_lint.py` |
 | M4 Markdown 结构 | 规则 7（行 422）、表格结构一族（行 415–421） | `scripts/structure-guard.py`、`verify/verify_md_tables.py` |
 | M5 文档对象（卡／Sprint／登记册） | 规则 6（行 405）、规则 11（行 439） | `verify/verify_card_index.py`、`verify/verify_close_readiness.py` |
 | M6 账本与覆盖 | 规则 17（行 451）、规则 19 的登记项（行 461） | `verify/verify_ledger_measurement.py`、`verify/verify_close_readiness.py`、`agents/functions/*.md` frontmatter 封闭世界自检 |
-| M7 派单契约 | 规则 1（行 425）、规则 4（行 428）、规则 5 的环境项（行 429）、规则 6 的前提项（行 430）、规则 14（行 443）、规则 16（行 445）、规则 17（行 451）、规则 19（行 461） | **半自动**：`scripts/agent-ops.py` 的 `_resolve_sha()`／`register`／`finish` 兜住「传进来的参数合法」，**兜不住「prompt 里写了什么」** |
+| M7 派单契约 | 规则 1（行 425）、规则 4（行 428）、规则 5 的环境项（行 429）、规则 6 的前提项（行 430）、规则 14（行 443）、规则 16（行 445）、规则 17（行 451）、规则 18（行 454）、规则 19（行 461） | **半自动**：`scripts/agent-ops.py` 的 `_resolve_sha()`／`register`／`finish` 兜住「传进来的参数合法」，**兜不住「prompt 里写了什么」**；**规则 18（行 454，`core.autocrlf` 陷阱）无（仅文字）**；**`fanout.json` 的 `condition`／`executor` 仅有看板 schema 校验、无求值器**——某步骤是否执行**一律以 `close_ledger` 为准**（2026-10-03 父代理裁定路 A：显式降级为仅文字，不新增求值器、不删字段） |
 | M8 事故与缺口留档 | 规则 8（行 432，机制缺口）、规则 9（行 433，提问与留档） | **半自动**：反例档文件存在与案例号连续可由人核；「当日追加」无判据 |
 | M9 决策登记册 | 规则 9（行 433） | `verify/verify_decision_register.py` |
 | M10 日期与版本口径 | 规则 3 的日期一族（行 391、行 403） | **无（仅文字）**——R2 日期口径无任何机检实现（就地降级声明见该行；G3 残留义务） |
 | M11 对照质量 | 规则 3（行 427 对照打真实入口）、规则 20（行 474，GUI／交互类） | **无（仅文字）**：对照质量是语义判断，现只有同族反例留档要求 |
 | M12 进度与中断可见性 | 规则 11（行 439）、规则 13（行 441）、规则 21（行 476） | **半自动**：`scripts/agent-ops.py interrupt` 强制 `--reason`／`--impact` ＋ `verify_agentops.py` UC-21；「汇报是否主动」无机检 |
 
-> **本表覆盖边界（如实记）**：上表覆盖 §6 的 **21 条**规则（编号 1–19 中 15 为空缺 ⇒ 18 条，另加行 474／476 两条 prose 规则）；行 385／389／403／405／415–422 的 prose 规则按上表归入对应机制。
+> **本表覆盖边界（如实记；2026-10-03 收敛批按 doc-audit `run-2026-10-03-doc-audit-123` 定案更正计数基准）**：
+> **计数句**——上表覆盖 §6 的 **20 条**规则 = **18** 条 §6 编号实规则（`^(\d+)\. \*\*` 在行 425–461 命中 19 次，其中行 444 是**编号空缺占位**、其正文首句即自陈"本行不是规则" ⇒ 18）＋ **2** 条 prose 规则（行 474／476）。更正前写"21 条"，而括号算式只能推出 20 ⇒ **21 无来源**；行 303 的政策数据化 prose **不计入本数**（计入就必须同时声明行 385／389／403／405／415–422 那批是否计入，两种情况都得不到唯一解）。
+> **归类句**——行 303／385／389／403／405／415–422 的 prose 规则按上表归入对应机制，**不计入上面的 20**。
+> **并集句**——**本表收录规则号并集 = `1..14,16,17,18,19,20,21`**，缺 `15` = 行 444 的编号空缺占位（非漏收），`18` 为 2026-10-03 本批补收（见 M7）⇒ **任何漏号当场可见**；并集只按本表写法的规则号取，不解决行 303 与行 425 都写作"规则 1"的同号异指（属另一族问题，本表不动）。
 > **`§4` 的 C1／C2／C3 不属本节**，其执行点见 `verify/verify_close_readiness.py`（`A-M11` 卡的条目 6／7）。
 > **本表自身无机检**（没有闸门检查「新规则有没有登记进本表」）——这条缺口如实记在此，不掩盖。
+
+> **套件覆盖边界（2026-10-03 收敛批现跑标注；同属"声明与覆盖不符"一族，按 `D-251002-01` 豁免只更新本索引、不记 §5 行）**：`verify/run_suite.py --tier offline` 对**所有**进套件的脚本一律**不带参数**调用（`:423`~`:424` 的 `cmd = [sys.executable, str(path)]` 即通用调用口），故两处"真数据档"都不在套件覆盖内——① `verify_close_tax_reading.py` ⇒ 套件走 `mode=selfcheck`（现跑 `ALL PASS (23 assertions) rc=0`），§5 状态计数只在 `--sprint` 档判（现跑 `mode=real-data`，CI 档见 `.github/workflows/ci.yml`）；② `verify_close_readiness.py` ⇒ 套件走 `mode=selfcheck`（现跑 `ALL PASS (105 assertions) rc=0`），而 `--sprint docs/iteration/sprint/2026-09-25-sprint-18.md` 现跑 **`CLOSE-READINESS FAIL（2 项）`**（`[linkage]` run-…-119 未登记 §9；`[C3]` 691f0ea／ae14048 无归属——两者均为 `ce0cd18` 之前既存，非本批引入）⇒ **`SUITE PASSED` 不等于关闭判定通过**。
 
 **规则准入（2026-10-02 用户批准收敛时定；不占新规则号、不改任何既有规则）**：
 

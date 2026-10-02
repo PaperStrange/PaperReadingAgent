@@ -1158,7 +1158,7 @@
 - 生效状态: 生效（工具约束已交付；判定本身在位）
 - 证据: docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:15（U1 行=用户原话）；docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:73（U1 低级错误重复…① 复发即**升级为工具改造**…② 必须在原始事故上复现拦截）；docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:238（U1…**成立**（且已由 §2.2.1 自动触发治理模式））；docs/iteration/phases/agents-infra/cards/A-M12.md:45（已交付（2026-09-25，工具约束，非"规则 + 反例文档"））；docs/iteration/phases/agents-infra/cards/A-M12.md:96（① 用 R1 的真实输入复跑**必须被拦下** → `--replay` 全绿（**已达成**））
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
-- 违背事故: 有——裁决生效后同型形态复发：`A-M12` 已交付"结构性编辑前后各跑一次 `structure-guard.py`"之后，R1 编辑边界事故仍连续发生（关闭期第 6 次、关闭后第 7 次，均由主代理所犯），关闭期一轮自述为"同型 4 次、全部靠 `read` 复核发现、闸门一条都抓不到"（docs/iteration/sprint/2026-09-21-sprint-17.md:366；docs/iteration/sprint/2026-09-21-sprint-17.md:364；docs/iteration/sprint/2026-09-25-sprint-18.md:334；docs/iteration/phases/testing-governance/2026-09-26-g2-close-retro.MD:20）。
+- 违背事故: 有——裁决生效后同型形态复发：`A-M12` 已交付"结构性编辑前后各跑一次 `structure-guard.py`"之后，R1 编辑边界事故仍连续发生（关闭期第 6 次、关闭后第 7 次，均由主代理所犯），关闭期一轮自述为"同型 4 次、全部靠 `read` 复核发现、闸门一条都抓不到"（docs/iteration/sprint/2026-09-21-sprint-17.md:366；docs/iteration/sprint/2026-09-21-sprint-17.md:364；docs/iteration/sprint/2026-09-25-sprint-18.md:334；docs/iteration/phases/testing-governance/2026-09-26-g2-close-retro.MD:19；2026-10-03 收敛批重钉：旧指针 20 因该档头部裁剪前移一行，`git show 6663e68` 旧 20 行与现 19 行逐字相同）。
 - 备注: 促成本条判定的既成事实（裁决前）：R1（编辑边界吃内容）在本 Sprint 内的多次实例、`card_index` 套件默认模式恒真、`md_tables` 判据②分支不可达、自写核对器连错多版，逐条见 docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:238。
 - 备注: 同族形态另有独立登记：规则绕过族的同两次 R1 实例已记在 §4.1 `V-059` 的违背事故行（docs/6-DECISIONS.md:901），本条按"同型复发"口径另记，两处指向同一事故行的不同判据面。
 
@@ -1194,9 +1194,9 @@
 - 生效状态: 生效
 - 证据: docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:18（U4 行=用户原话）；docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:76（U4 态度敷衍…操作化为**产出缺项**…⑥ 每份治理提案**必须自证"能拦住原事故"**）；docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:86（5. **原始事故验证**：把本次事故的输入**原样喂给新机制**，必须被拦下）；docs/1-WORKFLOW.MD:440（读数必须有来源：手抄禁止，编造更禁止（2026-09-26 立规，我自己的事故））
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
-- 违背事故: 有——裁决生效后产出缺项复发：2026-09-26 关闭期把仍在跑的复核 run 的分级结论先写成成品数字（"那组数字没有任何来源"），同型第二次被判"过度声称"，并直接导致用户对严重性判断失去信任（docs/iteration/sprint/2026-09-25-sprint-18.md:334；docs/iteration/phases/testing-governance/2026-09-26-g2-close-retro.MD:53；docs/iteration/phases/testing-governance/2026-09-26-g2-close-retro.MD:86）。
+- 违背事故: 有——裁决生效后产出缺项复发：2026-09-26 关闭期把仍在跑的复核 run 的分级结论先写成成品数字（"那组数字没有任何来源"），同型第二次被判"过度声称"，并直接导致用户对严重性判断失去信任（docs/iteration/sprint/2026-09-25-sprint-18.md:334；docs/iteration/archive/2026-09-26-g2-close-retro-archived-narrative.MD:381；docs/iteration/archive/2026-09-26-g2-close-retro-archived-narrative.MD:38；2026-10-03 收敛批重钉：旧指针 53／86 随 §5 叙述移入归档档，归档 381／38 行与 `git show 6663e68` 旧 53／86 行逐字相同）。
 - 备注: 促成本条判定的既成事实（裁决前）：产出中存在当天就存在的真缺陷被闸门放行、死旋钮、文档引用了不存在的政策键与不存在的自检开关（docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:241）。
-- 备注: 本条判定的后续可核化落点："读数必须有来源"入 docs/1-WORKFLOW.MD:440；用户因本形态撤回自定"债"口径（docs/iteration/phases/testing-governance/2026-09-26-g2-close-retro.MD:86）。
+- 备注: 本条判定的后续可核化落点："读数必须有来源"入 docs/1-WORKFLOW.MD:440；用户因本形态撤回自定"债"口径（docs/iteration/archive/2026-09-26-g2-close-retro-archived-narrative.MD:38；2026-10-03 收敛批重钉：旧指针 86 已变为机读状态计数行，该行随叙述移入归档档）。
 
 ### V-080 用户分工决定：接手该对话下所有工作
 - 原文（逐字）: "全全由你接受这个对话下的所有工作，包括已完成结果、你自己的待办、待我确认的条例等等，**先做 D2、D3 的独立审核**，再和我一起规划下一步。"
