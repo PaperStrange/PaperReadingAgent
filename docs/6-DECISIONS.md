@@ -666,8 +666,8 @@
 - 证据: docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:70；docs/iteration/sprint/2026-09-21-governance-batch-plan.MD:74；scripts/structure-guard.py:899；.github/workflows/ci.yml:170
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 有——裁决生效后 R1（文件丢失或内容被吞）反复被触碰：Sprint-17 内记 6 次同型（治理模式于第 5 次触发后仍复现），Sprint-18/G2 内又记 2 次（2026-09-25 D4），关闭期再记第 3 至第 6 次，两轮「红线事件 = 0」的目标均记为不达标（docs/iteration/sprint/2026-09-25-sprint-18.md:122；docs/iteration/sprint/2026-09-21-sprint-17.md:150）。
-- 备注: R1 的处置档位按 V-035 分阶段（G1 为 S0 告警加当日闭环，G2 为 S1 立即硬停）；Sprint-18 记录的闭环方式是当日修复加全闸门复跑，未见 S1 档要求的硬停与用户二次确认（docs/iteration/sprint/2026-09-25-sprint-18.md:331）。
-- 备注: 触发计数的登记与复算入口（Sprint-18 §10 带 `R1` 与 `编辑边界` 标记的事故行）见 docs/iteration/phases/agents-infra/cards/A-M12.md:91；同型事故的逐条描述见 docs/iteration/sprint/2026-09-25-sprint-18.md:334。
+- 备注: R1 的处置档位按 V-035 分阶段（G1 为 S0 告警加当日闭环，G2 为 S1 立即硬停）；Sprint-18 记录的闭环方式是当日修复加全闸门复跑，未见 S1 档要求的硬停与用户二次确认（docs/iteration/sprint/2026-09-25-sprint-18.md:332）。
+- 备注: 触发计数的登记与复算入口（Sprint-18 §10 带 `R1` 与 `编辑边界` 标记的事故行）见 docs/iteration/phases/agents-infra/cards/A-M12.md:91；同型事故的逐条描述见 docs/iteration/sprint/2026-09-25-sprint-18.md:335。
 
 ### V-035 红线分阶段执行
 - 原文（逐字）: "分阶段执行"
@@ -1158,7 +1158,7 @@
 - 生效状态: 生效（工具约束已交付；判定本身在位）
 - 证据: docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:15（U1 行=用户原话）；docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:73（U1 低级错误重复…① 复发即**升级为工具改造**…② 必须在原始事故上复现拦截）；docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:238（U1…**成立**（且已由 §2.2.1 自动触发治理模式））；docs/iteration/phases/agents-infra/cards/A-M12.md:45（已交付（2026-09-25，工具约束，非"规则 + 反例文档"））；docs/iteration/phases/agents-infra/cards/A-M12.md:96（① 用 R1 的真实输入复跑**必须被拦下** → `--replay` 全绿（**已达成**））
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
-- 违背事故: 有——裁决生效后同型形态复发：`A-M12` 已交付"结构性编辑前后各跑一次 `structure-guard.py`"之后，R1 编辑边界事故仍连续发生（关闭期第 6 次、关闭后第 7 次，均由主代理所犯），关闭期一轮自述为"同型 4 次、全部靠 `read` 复核发现、闸门一条都抓不到"（docs/iteration/sprint/2026-09-21-sprint-17.md:366；docs/iteration/sprint/2026-09-21-sprint-17.md:364；docs/iteration/sprint/2026-09-25-sprint-18.md:334；docs/iteration/phases/testing-governance/2026-09-26-g2-close-retro.MD:19；2026-10-03 收敛批重钉：旧指针 20 因该档头部裁剪前移一行，`git show 6663e68` 旧 20 行与现 19 行逐字相同）。
+- 违背事故: 有——裁决生效后同型形态复发：`A-M12` 已交付"结构性编辑前后各跑一次 `structure-guard.py`"之后，R1 编辑边界事故仍连续发生（关闭期第 6 次、关闭后第 7 次，均由主代理所犯），关闭期一轮自述为"同型 4 次、全部靠 `read` 复核发现、闸门一条都抓不到"（docs/iteration/sprint/2026-09-21-sprint-17.md:366；docs/iteration/sprint/2026-09-21-sprint-17.md:364；docs/iteration/sprint/2026-09-25-sprint-18.md:335；docs/iteration/phases/testing-governance/2026-09-26-g2-close-retro.MD:19；2026-10-03 收敛批重钉：旧指针 20 因该档头部裁剪前移一行，`git show 6663e68` 旧 20 行与现 19 行逐字相同）。
 - 备注: 促成本条判定的既成事实（裁决前）：R1（编辑边界吃内容）在本 Sprint 内的多次实例、`card_index` 套件默认模式恒真、`md_tables` 判据②分支不可达、自写核对器连错多版，逐条见 docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:238。
 - 备注: 同族形态另有独立登记：规则绕过族的同两次 R1 实例已记在 §4.1 `V-059` 的违背事故行（docs/6-DECISIONS.md:901），本条按"同型复发"口径另记，两处指向同一事故行的不同判据面。
 
@@ -1194,7 +1194,7 @@
 - 生效状态: 生效
 - 证据: docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:18（U4 行=用户原话）；docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:76（U4 态度敷衍…操作化为**产出缺项**…⑥ 每份治理提案**必须自证"能拦住原事故"**）；docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:86（5. **原始事故验证**：把本次事故的输入**原样喂给新机制**，必须被拦下）；docs/1-WORKFLOW.MD:440（读数必须有来源：手抄禁止，编造更禁止（2026-09-26 立规，我自己的事故））
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
-- 违背事故: 有——裁决生效后产出缺项复发：2026-09-26 关闭期把仍在跑的复核 run 的分级结论先写成成品数字（"那组数字没有任何来源"），同型第二次被判"过度声称"，并直接导致用户对严重性判断失去信任（docs/iteration/sprint/2026-09-25-sprint-18.md:334；docs/iteration/archive/2026-09-26-g2-close-retro-archived-narrative.MD:381；docs/iteration/archive/2026-09-26-g2-close-retro-archived-narrative.MD:38；2026-10-03 收敛批重钉：旧指针 53／86 随 §5 叙述移入归档档，归档 381／38 行与 `git show 6663e68` 旧 53／86 行逐字相同）。
+- 违背事故: 有——裁决生效后产出缺项复发：2026-09-26 关闭期把仍在跑的复核 run 的分级结论先写成成品数字（"那组数字没有任何来源"），同型第二次被判"过度声称"，并直接导致用户对严重性判断失去信任（docs/iteration/sprint/2026-09-25-sprint-18.md:335；docs/iteration/archive/2026-09-26-g2-close-retro-archived-narrative.MD:381；docs/iteration/archive/2026-09-26-g2-close-retro-archived-narrative.MD:38；2026-10-03 收敛批重钉：旧指针 53／86 随 §5 叙述移入归档档，归档 381／38 行与 `git show 6663e68` 旧 53／86 行逐字相同）。
 - 备注: 促成本条判定的既成事实（裁决前）：产出中存在当天就存在的真缺陷被闸门放行、死旋钮、文档引用了不存在的政策键与不存在的自检开关（docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:241）。
 - 备注: 本条判定的后续可核化落点："读数必须有来源"入 docs/1-WORKFLOW.MD:440；用户因本形态撤回自定"债"口径（docs/iteration/archive/2026-09-26-g2-close-retro-archived-narrative.MD:38；2026-10-03 收敛批重钉：旧指针 86 已变为机读状态计数行，该行随叙述移入归档档）。
 
@@ -1219,7 +1219,7 @@
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
 - 备注: 出处第二个指针 docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:190 只有同义转述（"| 需用户转达 | 通知那个会话停止对 `windows` 的写入（本会话无法跨会话通信） |"），逐字只在同文件 :96。
-- 备注: 裁决后同族新实例（本条明文禁令未被违反，如实登记）：2026-09-26 关闭期主代理用 `git add <单文件>` 把子代理在飞的工作区改动一并暂存提交，违反的是其后才立的"同一文件不得双写/同一切片只许一个写入者"规则，不是本条"显式列路径"的字面要求（docs/iteration/sprint/2026-09-25-sprint-18.md:335）。
+- 备注: 裁决后同族新实例（本条明文禁令未被违反，如实登记）：2026-09-26 关闭期主代理用 `git add <单文件>` 把子代理在飞的工作区改动一并暂存提交，违反的是其后才立的"同一文件不得双写/同一切片只许一个写入者"规则，不是本条"显式列路径"的字面要求（docs/iteration/sprint/2026-09-25-sprint-18.md:336）。
 - 备注: 证据局限如实标注：另一会话与本会话的提交作者同为同一 git 身份，无法用 git 元数据区分，"对方未再写入"只由文档记载支撑（docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:121）。
 
 ### V-082 用户退出确认
