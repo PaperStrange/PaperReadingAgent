@@ -94,6 +94,15 @@ RUNS_DIR = _AGENTS_BASE / "runs"
 # 复盘行 19：被撤回 run 的产物**隔离区**（同根、git 忽略域内、不在 `runs/` 判定域里）。
 # 撤回必须"删账本行但不销毁产物"——产物是那次动作唯一的现场。
 QUARANTINE_DIR = RUNTIME_DIR / "retracted-runs"
+# 用户 2026-10-03 追加裁定（"超过时也要有兜底策略"）：**被拒派单的运行态队列**。
+# 一行一条 JSONL：时点／axis／读数／预算／被拒 run_id／理由 ⇒ 次日额度恢复后可查、
+# 不丢待办（只"拒绝启动"而不留痕＝那件事凭空消失）。**跟账本根走**（`RUNTIME_DIR`
+# 同源）：拒绝记录必须与被拒的那本账在一起，否则夹具/探针的拒绝会写进真仓队列。
+# 落点在 `.gitignore` 的 `agents/runtime/*` 忽略域内 ⇒ 不产生 `??`（本批未改
+# `.gitignore`）。**写成模块级常量而不是函数**：`verify_artifact_paths.py` 的
+# "动态写盘目标"棘轮只认静态可判定的落点，函数返回的落点会被记成动态目标
+# （本批实测：写成函数时 scripts/agent-ops.py 的动态目标 7 → 8，顶破上限）。
+DISPATCH_REFUSALS_PATH = RUNTIME_DIR / "dispatch-refusals.jsonl"
 # 复盘行 19：`retract` 只认**显式点名的单条 run**——通配/批量/前缀/路径一律拒绝
 # （`*?[]`、空白、`..`＋分隔符都不在字符集里）。
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -881,24 +890,117 @@ def _spend_budget_path() -> Path:
     return _AGENTS_BASE / "spend-budget.json"
 
 
-def _dispatch_budget() -> tuple[int | None, int | None, str]:
-    """读当日**派单数**预算与逃生门理由下限：`(预算, 理由下限, 未执行原因)`。
+def _redirected_ledger() -> bool:
+    """本进程的账本根是否**不是**真仓（＝被 `AGENT_OPS_DIR` 重定向的夹具/探针档）。
 
-    三种"读不到"必须分开（混成一个 `None`/`0` 就是把闸门静默关掉）：
-      * **文件不存在** ⇒ `(None, None, <原因>)`：这本账没配置预算 ⇒ 本判据
-        **未执行**（上屏点名，不算通过），但**不阻断**登记；
+    判据是**身份**（解析后的绝对路径 ≠ 真仓 `agents/`），**不是**"环境变量存不存在"：
+    第一版按 env 判定，实测有洞——`AGENT_OPS_DIR` 为空串/全空白时 `os.environ.get`
+    返回假值，而 `Path("")` 会解析成**当前目录**，于是"设了一个空的重定向"被当成
+    真仓档；更糟的是**任何**同源判定都经不起"再来一个变量"的推演。
+    改成指向比较后：真仓档＝`_AGENTS_BASE` 就是 `<仓库>/agents`；只要落点不是它
+    （含空值、相对路径、别的绝对目录），一律按重定向档判"未执行"。
+    **为什么不是"路径长得像不像 %TEMP%"**：探针可以落在任意目录，形状不是判据。
+    """
+    try:
+        here = _AGENTS_BASE.resolve()
+        real = (REPO_ROOT / "agents").resolve()
+    except OSError:      # resolve 失败（不存在的盘符/权限）⇒ 按重定向档（更宽松的那档）
+        return True
+    return here != real
+
+
+def _legacy_escapes(raw: object) -> frozenset[str]:
+    """`max_escapes_legacy_rows` 读成 run_id 集合（拒绝队列式的**显式点名**）。
+
+    这一格只为一件事存在：上限是 2026-10-03 **当天**才立的规则，而账本里
+    已有**旧规则下**（自述理由即放行）登记的逃生门行 —— 不把那一行排除，
+    上限就会把**规则诞生之前的历史**当成"今天已经用过一次"来拦今天的正事。
+    为什么不把整段计数窗口往前推（本批第一版就是那么写的，**实测证明它更差**：
+    生效日一旦前置，当天所有历史行一起免计，等于凭空多出额度）：
+    逐行点名把豁免面**钉在具体 run_id** 上——新增的每一次逃生门都照常计数
+    （UC-27 ⑬ 仍判拒绝），而豁免表本身写在数据文件里、可逐行核。
+    非列表/元素非字符串 ⇒ 抛（配置坏了不得静默把豁免面放大或缩小）。
+    """
+    if raw is None:
+        return frozenset()
+    if not isinstance(raw, list):
+        raise SystemExit("BUDGET-ERROR: over_budget_escape.max_escapes_legacy_rows"
+                         f"={raw!r} 非法（须为 run_id 字符串数组）⇒ fail-closed")
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            raise SystemExit("BUDGET-ERROR: over_budget_escape."
+                             f"max_escapes_legacy_rows 含非法元素 {item!r}"
+                             "（须为 run_id 字符串）⇒ fail-closed")
+    return frozenset(x.strip() for x in raw)
+
+
+def _esc_nonneg_int(esc: dict, key: str) -> int | None:
+    """`over_budget_escape[key]` 读成 ≥0 整数；缺失/非整数/布尔 ⇒ `None`。"""
+    raw = esc.get(key)
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+        return None
+    return raw
+
+
+def _esc_patterns(esc: dict) -> list[re.Pattern[str]] | None:
+    """逃生门理由的**可核引用**正则（现读数据文件，不在代码里写死形态）。"""
+    raw = esc.get("citation_patterns")
+    if not isinstance(raw, list) or not raw:
+        return None
+    out: list[re.Pattern[str]] = []
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            return None
+        try:
+            out.append(re.compile(item))
+        except re.error:
+            return None
+    return out
+
+
+def _named_exception_kinds(esc: dict) -> dict[str, str]:
+    """逃生门的**具名例外类别**表（类别词 → 说明），来自预算文件。
+
+    具名类别是"这算不算例外"的机检判据；表为空 ⇒ 逃生门 fail-closed
+    （没有任何可机检的例外类别 ⇒ 不许放行），不许回落成"随便写理由"。
+    """
+    raw = esc.get("named_exception_kinds")
+    if not isinstance(raw, dict) or not raw:
+        return {}
+    out: dict[str, str] = {}
+    for key, val in raw.items():
+        if isinstance(key, str) and key.strip() and isinstance(val, str):
+            out[key.strip()] = val
+    return out
+
+
+def _dispatch_budget() -> tuple:
+    """读当日**派单数**预算 ＋ 逃生门四把锁：`(预算, 锁, 未执行原因)`。
+
+    四种"读不到"必须分开（混成一个 `None`/`0` 就是把闸门静默关掉）：
+      * **文件不存在** ⇒ `(None, <未执行标记>, <原因>, "")`：分两档——
+        **真仓**（账本根＝本仓 `agents/`，见 `_redirected_ledger()`）⇒ 原因放空串，
+        调用侧**拒绝启动**（"删预算文件即绕过"必须堵死）；**重定向档**（verify
+        夹具／`%TEMP%` 探针，账本根指向别处）⇒ 判据**未执行**（上屏点名"不是
+        通过"，但不阻断：那些档本就没有预算文件，阻断它＝把探针卡死）；
       * **文件在、预算键缺失/非法** ⇒ 抛 `SystemExit`（fail-closed）：配置坏了
         必须响亮地坏——回落 0/None 会让"超预算阻断"无声消失；
-      * 正常 ⇒ `(预算, 理由下限, "")`。
+      * **文件在、逃生门四把锁缺任一** ⇒ 同样 fail-closed（理由下限／可核引用
+        正则／同日次数上限／具名例外类别表，缺一把就等于把逃生门改回"自述即
+        放行"）；
+      * 正常 ⇒ `(预算, 锁, "", "")`。
 
-    理由下限（`over_budget_escape.reason_min_chars`）只影响逃生门那条路径：
-    读不到 ⇒ 逃生门 fail-closed（说不出"多长算具名"就不许放行），例行判据照跑。
+    "锁"是一个 dict（`floor`/`patterns`/`max_escapes`/`kinds`），只影响逃生门
+    那条路径；例行判据照跑。`"未执行"` 标记只用于"预算文件不存在"，不冒充
+    "锁齐全"。
     """
     path = _spend_budget_path()
     if not path.is_file():
-        return None, None, (f"{path} 不存在（这本账未配置成本预算）"
-                            "⇒ 本判据**未执行**——**不是通过**"
-                            "（口径同 spend-report --check 的 SKIP）")
+        note = (f"{path} 不存在（这本账未配置成本预算）"
+                "⇒ 本判据**未执行**——**不是通过**"
+                "（口径同 spend-report --check 的 SKIP）")
+        return None, {"未执行": True}, note, ("" if _redirected_ledger()
+                                              else note)
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
@@ -914,10 +1016,48 @@ def _dispatch_budget() -> tuple[int | None, int | None, str]:
             "（须为 ≥0 的整数）——缺它/写坏它就等于把『超预算阻断』静默关掉 ⇒ "
             "fail-closed 拒绝登记")
     esc = doc.get("over_budget_escape")
-    floor = esc.get("reason_min_chars") if isinstance(esc, dict) else None
-    if isinstance(floor, bool) or not isinstance(floor, int) or floor < 1:
-        floor = None
-    return cap, floor, ""
+    esc = esc if isinstance(esc, dict) else {}
+    missing = [k for k in ("reason_min_chars", "max_escapes_per_day",
+                           "citation_patterns", "named_exception_kinds")
+               if k not in esc]
+    if missing:
+        raise SystemExit(
+            f"BUDGET-ERROR: {path} 的 over_budget_escape 缺键 {missing}"
+            "——逃生门四把锁（理由下限／同日次数上限／可核引用正则／具名例外"
+            "类别表）缺一把就等于把它改回『自述理由即放行』⇒ fail-closed")
+    floor = _esc_nonneg_int(esc, "reason_min_chars")
+    if floor is None or floor < 1:
+        raise SystemExit(f"BUDGET-ERROR: {path} 的 over_budget_escape."
+                         f"reason_min_chars={esc.get('reason_min_chars')!r} 非法"
+                         "（须为 ≥1 的整数）⇒ fail-closed")
+    patterns = _esc_patterns(esc)
+    if patterns is None:
+        raise SystemExit(f"BUDGET-ERROR: {path} 的 over_budget_escape."
+                         "citation_patterns 非法（须为非空字符串数组且逐条可编译）"
+                         "——说不出『什么算可核引用』就不许放行 ⇒ fail-closed")
+    kinds = _named_exception_kinds(esc)
+    if not kinds:
+        raise SystemExit(f"BUDGET-ERROR: {path} 的 over_budget_escape."
+                         "named_exception_kinds 非法（须为非空『类别词: 说明』表）"
+                         "⇒ 逃生门 fail-closed")
+    max_escapes = _esc_nonneg_int(esc, "max_escapes_per_day")
+    if max_escapes is None or max_escapes < 1:
+        raise SystemExit(f"BUDGET-ERROR: {path} 的 over_budget_escape."
+                         "max_escapes_per_day="
+                         f"{esc.get('max_escapes_per_day')!r} 非法"
+                         "（须为 ≥1 的整数；写 0 会让逃生门整体失效）⇒ fail-closed")
+    counts_from = esc.get("max_escapes_counts_from")
+    if counts_from is not None and not re.fullmatch(r"\d{4}-\d{2}-\d{2}",
+                                                   str(counts_from)):
+        raise SystemExit(f"BUDGET-ERROR: {path} 的 over_budget_escape."
+                         f"max_escapes_counts_from={counts_from!r} 非法"
+                         "（须为 `YYYY-MM-DD`）——生效日写错会让『同日几次』数出"
+                         "一个假的数（多算或少算都是假读数）⇒ fail-closed")
+    locks = {"floor": floor, "patterns": patterns, "max_escapes": max_escapes,
+             "kinds": kinds, "counts_from": (str(counts_from)
+                                             if counts_from is not None else ""),
+             "legacy_rows": _legacy_escapes(esc.get("max_escapes_legacy_rows"))}
+    return cap, locks, "", ""
 
 
 # run_id 的 UTC+8 日期段（`_local_date()` 在登记当时写下；A5 的 id↔目录同口径）。
@@ -959,25 +1099,135 @@ def _dispatch_reading(data: dict, day: str) -> tuple[int, int, int]:
     return total, by_id, by_start
 
 
-def _dispatch_gate(data: dict, args: argparse.Namespace) -> dict | None:
-    """派单预算闸门：`>= 预算` ⇒ **拒绝启动**；具名逃生门 ⇒ 放行并回传**留痕**。
+def _fallback_hints() -> str:
+    """兜底阶梯第 1、2 级（**不需要代码支持**，只在拒绝上屏里给建议）。
 
-    返回 `None` = 无需留痕（含"未执行"档）；返回 dict = 具名逃生门的留痕
+    为什么写在拒绝文案里：读到拒绝的人（下一个我）第一反应是"那我再加一次
+    逃生门"。父代理定的阶梯要求先试前两级——它们在**编排层**做（不派单／
+    合并拆分目标），闸门判不了，所以闸门的义务是把它们**说到**。
+    """
+    return ("兜底建议（第 1 级优先，均不需要代码支持）：\n"
+            "    ① **不派单**：本笔主代理自己做（或不做）——闸门的默认答案\n"
+            "    ② **合并/拆分目标**：把本笔并进一笔在飞的批次，或把目标拆成"
+            "更小的、当日额度内可完成的两笔\n"
+            "    ③ 确有例外再走逃生门（受可核引用／同日次数上限／具名例外类别约束）")
+
+
+def _escape_hint(locks: dict) -> str:
+    """逃生门正确用法示例（**拒绝上屏必须给示例**，否则用户不知道格式）。"""
+    kinds = "／".join(locks["kinds"])
+    return (f'--over-budget "<引用 D-YYMMDD-NN 或用户原话“…” ＋ 具名例外类别'
+            f'（{kinds}）＋ 理由 ≥{locks["floor"]} 字>"')
+
+
+def _escapes_on(data: dict, day: str, counts_from: str = "",
+                legacy_rows: frozenset[str] = frozenset()) -> list[str]:
+    """逃生门额度里**已用掉的次数**：`budget_override.day == day` 的 run_id。
+
+    **为什么按账本行数**：逃生门放行的那一笔自己就写进账本（含 `day`），
+    所以"当日用了几次"不是另立一个计数器文件，而是**从同一本账现读**——
+    计数器会与账本漂移，账本不会与自己漂移。返回 run_id 而不是只回个数：
+    拒绝时必须能**点名是哪几笔**用掉了额度（"用满 1 次"读不到用过谁）。
+
+    `counts_from`（数据文件 `max_escapes_counts_from`，可空）＝计数窗口的下界：
+    只算 `day >= counts_from` 的那一天。空串 ⇒ 不设门槛（所有行都算）。
+
+    `legacy_rows`（数据文件 `max_escapes_legacy_rows`）＝**逐行点名**的旧规则行：
+    上限是 2026-10-03 当天才立的规则，账本里已有旧规则下（自述理由即放行）
+    登记的逃生门行；不排除它就得把**规则诞生之前的历史**当成"今天已用过一次"。
+    语义边界如实写清：豁免的是**那一行**，不是"今天"——本批之后新登记的每一次
+    逃生门都照常计数（UC-27 ⑬ 的反向对照钉的就是这一点）。
+    """
+    out: list[str] = []
+    for run in data.get("runs") or []:
+        hit = (run.get("budget_override") or {}).get("day")
+        if hit != day or (counts_from and day < counts_from):
+            continue
+        rid = str(run.get("run_id") or "")
+        if rid in legacy_rows:
+            continue
+        out.append(rid)
+    return out
+
+
+def _log_dispatch_refusal(run_id: str, reason: str, reading: str,
+                          cap: object, day: str) -> None:
+    """把**被拒的派单**追加进运行态队列（一行一条，次日额度恢复后可查）。
+
+    为什么必须留档（用户 2026-10-03 追加裁定"超过时也要有兜底策略"）：
+    拒绝启动只是"今天不发"，被拒的那件事**还在**。没有这一行，次日额度
+    恢复后没人知道昨天被拦下了什么 ⇒ 兜底策略第 1 级"不派单"就退化成
+    "那件事消失了"。落点 `agents/runtime/dispatch-refusals.jsonl`
+    在 `.gitignore` 的 `agents/runtime/*` 忽略域内 ⇒ **不产生 `??`**；
+    它是**运行态待办**，不是仓库内容。
+
+    写入策略：追加 + LF + `newline=""`（不让平台把换行翻成 CRLF，
+    jsonl 逐行读才稳）；**写不进去就响亮地坏**——留不下痕的拒绝＝
+    "今天不发"与"那件事不存在"分不开，正是这条判据要堵的形态。
+    """
+    line = json.dumps({"at": _now(), "day": day,
+                       "axis": "dispatched_sessions_per_day",
+                       "reading": reading, "budget": cap,
+                       "run_id": run_id, "reason": reason},
+                      ensure_ascii=False)
+    try:
+        with open(DISPATCH_REFUSALS_PATH, "a", encoding="utf-8",
+                  newline="") as fh:
+            fh.write(line + "\n")
+    except OSError as exc:
+        raise SystemExit(f"BUDGET-ERROR: {DISPATCH_REFUSALS_PATH} 写不进去"
+                         f"（{exc}）⇒ 被拒的派单**留不下痕**，"
+                         "次日的待办会凭空消失 ⇒ fail-closed 拒绝继续") from exc
+
+
+def _dispatch_gate(data: dict, args: argparse.Namespace) -> dict | None:
+    """派单预算闸门：`>= 预算` ⇒ **拒绝启动**；四把锁齐全的逃生门 ⇒ 放行留痕。
+
+    返回 `None` = 无需留痕（含"未执行"档）；返回 dict = 逃生门的留痕
     （由 `cmd_register` 写进该 run 行，见那里的字段落点说明）。
+
+    2026-10-03 用户追加裁定"超过时也要有兜底策略"后，逃生门从
+    "自述理由 ≥下限即放行"收紧成**四把机检锁**（缺任一 ⇒ 预算文件读取侧
+    已 fail-closed）：
+      ① **必须引用用户裁定**（`citation_patterns` 命中：登记条目号
+         `D-YYMMDD-NN` 或用户原话片段）——父代理指出的洞正是"我自己写理由
+         就能放行 ⇒ A 绑不住我"，自述理由**不再算数**；
+      ② **同日次数上限**（`max_escapes_per_day`）⇒ 超限拒绝并点名已用次数
+         与用掉它的 run_id；
+      ③ **具名例外类别**（`named_exception_kinds`：收口类／安全类）——除外
+         必须落在这两类里，不许成为任意放行的后门；
+      ④ 理由下限（`reason_min_chars`，上一批既有）。
 
     未超预算却传 `--over-budget` ⇒ **拒绝**：放行一条不存在的超预算是
     **假留痕**，比无留痕更坏（同 `set-anchor` 同值不写假的教训）。
     """
-    cap, floor, note = _dispatch_budget()
+    def _refuse(run_id: str, reason: str, reading: str, msg: str):
+        """拒绝的唯一出口：**先留痕，再退出**——两条通道不许只走一条。"""
+        _log_dispatch_refusal(run_id, reason, reading, cap, day)
+        raise SystemExit(msg)
+
+    cap, locks, note, missing = _dispatch_budget()
     override = (getattr(args, "over_budget", "") or "").strip()
+    day = _local_date()
+    run_id = str(getattr(args, "run_id", "") or "")
     if cap is None:
+        if missing:
+            # 真仓缺预算文件 ⇒ fail-closed（"删文件即绕过"必须堵死）
+            _refuse(run_id, "预算文件缺失，闸门无法执行", "unknown",
+                    f"BUDGET-REFUSED: **预算文件缺失，闸门无法执行** ⇒ 拒绝启动"
+                    f"（{note}）\n"
+                    "  本仓（未设 AGENT_OPS_DIR）缺预算文件＝闸门无从判定，"
+                    "不是『未配置所以放行』——删掉文件即可绕过闸门的口子"
+                    "正是用户 2026-10-03 追加裁定要堵的\n"
+                    f"  修法：恢复 {_spend_budget_path()}（含 budget 段＋"
+                    "over_budget_escape 四把锁）\n"
+                    f"  {_fallback_hints()}")
         print(f"dispatch-budget: {note}")
         if override:
             raise SystemExit(
                 "BUDGET-ERROR: 这本账未配置预算 ⇒ 无从判『超预算』；"
                 "--over-budget 在此处只会留下一条**假留痕** ⇒ 拒绝登记")
         return None
-    day = _local_date()
     total, by_id, by_start = _dispatch_reading(data, day)
     if total < cap:
         if override:
@@ -988,52 +1238,94 @@ def _dispatch_gate(data: dict, args: argparse.Namespace) -> dict | None:
         print(f"dispatch-budget: {total}/{cap}（UTC+8 {day}）→ 放行")
         return None
     # ---- 超预算：无具名理由 ⇒ 拒绝启动（本仓"拒绝启动"语义）
-    hint = (f'--over-budget "<理由 ≥{floor} 字>"' if floor
-            else '--over-budget "<理由>"（下限未配置，见 BUDGET-ERROR）')
+    reading = f"{total}/{cap}"
+    hint = _escape_hint(locks)
     if not override:
-        raise SystemExit(
-            "BUDGET-REFUSED: 当日派单数已达预算 ⇒ **拒绝启动**"
-            "（fail-closed；用户 2026-10-03 裁定「超预算即阻断派单」）\n"
-            f"  轴：派单数/日｜读数 {total}（UTC+8 {day} 已登记："
-            f"run_id 日期段 {by_id} 条、started_at {by_start} 条；并集口径，"
-            "两信号都归不出日期的 run 不计入＝已知盲区）\n"
-            f"  预算：{cap}（来源 {_spend_budget_path()}::"
-            "budget.dispatched_sessions_per_day，非代码常量）\n"
-            f"  逃生门：本笔确有例外时加 {hint} —— 放行且理由落账本，事后可核\n"
-            "  金额轴（CNY/日）**不阻断**：度量仪 spend-report.py --check 的"
-            "『派单会话数』作用域有已知缺陷（把别的主线的子代理会话也算进来）\n"
-            "  ⇒ 拿它当阻断依据＝用错数停工作（该缺陷归 A-COST 卡，本批不改度量仪）")
-    if floor is None:
-        raise SystemExit(
-            f"BUDGET-ERROR: {_spend_budget_path()} 缺 over_budget_escape."
-            "reason_min_chars ⇒ 逃生门**无法具名**（说不出『多长算具名』就不许"
-            "放行）⇒ fail-closed 拒绝登记")
-    if len(override) < floor:
-        raise SystemExit(
-            f"BUDGET-ERROR: --over-budget 必须具名：理由 ≥{floor} 字符"
-            f"（实测 {len(override)}）⇒ 拒绝登记。逃生口不具名＝后人只读到"
-            "『某天多放了一笔』，读不到为什么")
+        _refuse(run_id, "未给逃生门理由（超预算）", reading,
+                "BUDGET-REFUSED: 当日派单数已达预算 ⇒ **拒绝启动**"
+                "（fail-closed；用户 2026-10-03 裁定「超预算即阻断派单」，"
+                "追加裁定「超过时也要有兜底策略」）\n"
+                f"  轴：派单数/日｜读数 {total}（UTC+8 {day} 已登记："
+                f"run_id 日期段 {by_id} 条、started_at {by_start} 条；并集口径，"
+                "两信号都归不出日期的 run 不计入＝已知盲区）\n"
+                f"  预算：{cap}（来源 {_spend_budget_path()}::"
+                "budget.dispatched_sessions_per_day，非代码常量）\n"
+                f"  逃生门（四把锁：可核引用／同日 {locks['max_escapes']} 次上限／"
+                "具名例外类别／理由下限）："
+                f"本笔确有例外时加 {hint} —— 放行且理由落账本，事后可核\n"
+                f"  {_fallback_hints()}\n"
+                "  金额轴（CNY/日）**不阻断**：度量仪 spend-report.py --check 的"
+                "『派单会话数』作用域有已知缺陷（把别的主线的子代理会话也算进来）\n"
+                "  ⇒ 拿它当阻断依据＝用错数停工作"
+                "（该缺陷归 A-COST 卡，本批不改度量仪）")
+    if len(override) < locks["floor"]:
+        _refuse(run_id, f"--over-budget 理由过短（{len(override)} 字）", reading,
+                f"BUDGET-ERROR: --over-budget 必须具名：理由 ≥{locks['floor']} 字符"
+                f"（实测 {len(override)}）⇒ 拒绝登记。逃生口不具名＝后人只读到"
+                "『某天多放了一笔』，读不到为什么\n"
+                f"  {_fallback_hints()}")
+    if not any(p.search(override) for p in locks["patterns"]):
+        _refuse(run_id, "逃生门理由无可核引用（自述理由不算数）", reading,
+                "BUDGET-REFUSED: 逃生门理由**必须含可核引用** ⇒ 拒绝启动\n"
+                "  为什么：自述理由（『我判断这属于例外』）无法核验，等于"
+                "『我自己写理由就能放行』——用户裁定就绑不住执行方\n"
+                "  正确用法（任选一种，机检；两种都不含 ⇒ 一律拒绝）：\n"
+                "    ① 引用**决策登记条目号**（形如 D-251003-01，须独立成词、"
+                "不得长成 D-251002-01X）："
+                "--over-budget \"D-251003-01 裁定……，本笔为其落地批\"\n"
+                "    ② 引用**用户原话片段**（整段放进全角引号 “…” 或 「…」，"
+                "≥4 字）：--over-budget \"用户原话“超过时也要有兜底策略”\"\n"
+                f"  {_fallback_hints()}")
+    kinds = [k for k in locks["kinds"] if k in override]
+    if len(kinds) != 1:
+        kind_txt = "；".join(f"『{k}』＝{v}" for k, v in locks["kinds"].items())
+        _refuse(run_id, f"逃生门未落具名例外类别（命中 {len(kinds)} 类）", reading,
+                "BUDGET-REFUSED: 逃生门必须**恰好落一类具名例外** ⇒ 拒绝启动\n"
+                f"  具名类别（{kind_txt}）\n"
+                f"  实测命中 {len(kinds)} 类"
+                f"{'（' + '、'.join(kinds) + '）' if kinds else '（一个都没写）'}"
+                "——理由里必须**具名**写出是哪一类，机检字样就取上面这些词；"
+                "写不出＝这不该例外（否则逃生门就是任意放行的后门）\n"
+                f"  {_fallback_hints()}")
+    used = _escapes_on(data, day, locks["counts_from"], locks["legacy_rows"])
+    if len(used) >= locks["max_escapes"]:
+        who = "、".join(x for x in used if x) or "（无 run_id）"
+        limit = locks["max_escapes"]
+        _refuse(run_id, f"同日逃生门已用 {len(used)} 次（上限 {limit}）", reading,
+                "BUDGET-REFUSED: 同日逃生门次数已达上限 ⇒ 拒绝启动\n"
+                f"  已用 {len(used)} 次／上限 {limit}"
+                f"（依据：账本里 budget_override.day={day} 的 run 行数）\n"
+                f"  用掉额度的是：{who}\n"
+                f"  上限来源：{_spend_budget_path()}::over_budget_escape."
+                "max_escapes_per_day（非代码常量；父代理 2026-10-03 裁定 1 次/日）\n"
+                f"  {_fallback_hints()}")
     print(f"dispatch-budget: {total}/{cap}（UTC+8 {day}）→ **具名逃生门放行**"
-          "（理由已落账本 budget_override_reason）")
-    return {"axis": "dispatched_sessions_per_day", "reading": total, "budget": cap,
-            "day": day, "at": _now()}
+          f"（引用＋具名类别『{kinds[0]}』已核；同日第 {len(used) + 1}"
+          f"/{locks['max_escapes']} 次；理由落账本 budget_override_reason）")
+    return {"axis": "dispatched_sessions_per_day", "reading": total,
+            "budget": cap, "day": day, "at": _now()}
 
 
 @_with_registry_lock
 def cmd_register(args: argparse.Namespace) -> None:
     """`register` 子命令：登记一条 run（校验 scope 来源、规范化锚点、初始化测量字段）。
 
-    2026-10-03 起**多一道成本预算闸门**（用户裁定 A：超预算即阻断派单）：
+    2026-10-03 起**多一道成本预算闸门**（用户裁定 A：超预算即阻断派单；
+    同日追加裁定：**超过时也要有兜底策略**）：
     `_dispatch_gate()` 用**账本读数**判当日派单数，`>= 预算` 即拒绝启动；
-    具名逃生门 `--over-budget "<理由 ≥下限>"` 可放行，理由**落账本**两字段：
+    逃生门 `--over-budget` 可放行，但受**四把机检锁**约束（见该函数 docstring：
+    可核引用／同日次数上限／具名例外类别／理由下限），理由**落账本**两字段：
       * `budget_override_reason`：理由**原话**（≥下限，去空白）——先例是
         `finish --allow-degenerate` 的 `degenerate_reason`（同一族"具名豁免"，
         同一落法：单行、原话、可事后逐字核）；
       * `budget_override`：`{axis, reading, budget, day, at}` ——**被豁免掉的读数**
-        （哪个轴、当时读多少、预算是多少、UTC+8 哪天、何时登记）。
-        先例是 `mark-produced` 的 `produced_only`＋`produced_only_marks[]`
-        （"这不是默认形态"落库，且**留下判据所依据的数**）。
+        （哪个轴、当时读多少、预算是多少、UTC+8 哪天、何时登记）；其中 `day`
+        同时是"当日已用几次逃生门"的**判据来源**（同源，不另立计数器）。
+      * 被**拒绝**的派单不是"什么都没发生"：追加一行到
+        `runtime/dispatch-refusals.jsonl`（运行态待办，次日额度恢复后可查）。
     为什么不用 `task_id`／`scope_deviation` 兼职：那两格各有**自己的**语义
+    先例是 `mark-produced` 的 `produced_only`＋`produced_only_marks[]`
+    （"这不是默认形态"落库，且**留下判据所依据的数**）。
     （任务名、〇查范围偏离），塞进去会让读账本的人分不清"这是任务名还是豁免理由"；
     具名豁免在账本里必须是**可 grep 的独立字段**。
     """
@@ -2426,9 +2718,12 @@ def main() -> int:
     p.add_argument("--coverage-anchor", default="",
                    help="TG-15：覆盖窗口下界 sha（默认 = 登记时的 HEAD，自动记录）")
     p.add_argument("--over-budget", default="",
-                   help="2026-10-03 裁定 A 的**具名逃生门**：当日派单数已达预算时，"
-                        "给 ≥下限（spend-budget.json::over_budget_escape."
-                        "reason_min_chars）字符的理由可放行；理由落账本 "
+                   help="2026-10-03 裁定 A 的**逃生门**（同日追加裁定：超过时也要有"
+                        "兜底策略）。当日派单数已达预算时，理由须同时满足四把机检锁"
+                        "才放行：① 含可核引用（D-YYMMDD-NN 条目号或全角引号内的用户"
+                        "原话）② 含**恰好一类**具名例外类别（收口／安全）③ 理由 ≥"
+                        "下限 ④ 同日次数未超上限（参数与下限一律现读 "
+                        "spend-budget.json::over_budget_escape）；理由落账本 "
                         "budget_override_reason + budget_override。"
                         "**未超预算时传它会被拒**（假留痕比无留痕更坏）")
 

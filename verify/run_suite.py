@@ -152,7 +152,7 @@ SKIP_EXIT = 3    # 与 `verify_agentops.py::SKIP_EXIT` / `spend-report` 同码
 SKIP_NOT_PASS_MARK = "本档不是通过"
 SKIP_BANNER_RE = re.compile(r"^\S+ SKIP\[(?P<cat>[^\]]+)\]")
 BRANCH_ASSERTION_FLOORS: dict[tuple[str, bool], int] = {
-    ("verify_agentops.py", True): 198,
+    ("verify_agentops.py", True): 224,
     ("verify_card_index.py", True): 17, ("verify_card_index.py", False): 15,
     ("verify_decision_register.py", True): 32,
     ("verify_decision_register.py", False): 32,

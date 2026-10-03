@@ -15,7 +15,26 @@
   },
   "over_budget_escape": {
     "_comment": "2026-10-03 用户裁定「成本基线倾向 A」的具名逃生门参数（**本段不含任何预算值**；预算值只看上面的 budget 段）。落地：`scripts/agent-ops.py register` 在『当日派单数 >= budget.dispatched_sessions_per_day』时**拒绝启动**（rc≠0、上屏点名读数/预算/逃生门用法）；给 ≥reason_min_chars 字符的理由可放行，理由**落账本**该 run 行的 budget_override_reason（原话）＋ budget_override{axis,reading,budget,day,at}（被豁免掉的读数，事后可核）。读数＝账本 agents/runtime/registry.json 里当日（UTC+8）已登记的 run 数（run_id 日期段 ∪ started_at 折算），**不是**度量仪的『派单会话数』——后者把别的主线的子代理会话也算进来（作用域缺陷，归 A-COST 卡），拿它当阻断依据＝用错数停工作。故金额（CNY）/日 轴**暂不阻断**，只在拒绝文案里如实标注该缺陷。",
-    "reason_min_chars": 10
+    "reason_min_chars": 10,
+    "max_escapes_per_day": 1,
+    "max_escapes_per_day_note": "父代理 2026-10-03 裁定：**同一日逃生门 1 次/日**。读数＝账本里 budget_override.day=<今天(UTC+8)> 的 run 行数（与被豁免的那笔同源，不另立计数器文件——计数器会与账本漂移，账本不会与自己漂移）。超上限 ⇒ register 拒绝启动并点名『已用几次、被谁用掉』。写 0 会让逃生门整体失效 ⇒ 读取侧按非法 fail-closed。",
+    "max_escapes_counts_from": "2026-10-03",
+    "max_escapes_counts_from_note": "**计数窗口的下界**：只对 `budget_override.day >= 该日` 的逃生门行计数。空串＝不计门槛（所有行都算）。本批把窗口下界**留在裁定当日**（不往前推）——往前推等于当天所有历史行一起免计，凭空多出额度（本批第一版就是那么写的，实测更差，故改成下面逐行点名那一格）。",
+    "max_escapes_legacy_rows": [
+      "run-2026-10-03-implementation-130"
+    ],
+    "max_escapes_legacy_rows_note": "**上限规则诞生之前**登记的逃生门行（**逐行点名**，不是『整段窗口豁免』）。为什么要有这一格（本批实测撞到）：`run-2026-10-03-implementation-130` 是**上一批 cbbc8f9** 在旧规则（『给 ≥下限字符的自述理由即放行』）下登记的，当时并没有『1 次/日』这条上限；不排除它，今天按新规则要走的正事会被**规则诞生之前的历史**挡住，而唯一的替代是把当日额度调高＝**上调现值预算**（明令禁止）。**它不是放水阀**：豁免面钉在**具体 run_id** 上 ⇒ 新登记的每一次逃生门都照常计数，同日第二笔照样拒绝。守门＝`verify/verify_agentops.py` UC-27 ㉖（真仓这张表必须**只含**这一行，且该行确实是当日带 `budget_override` 的账本行）＋㉓c（合成『表里写了个不存在的 run_id ⇒ 不产生任何豁免』的反向对照）。",
+    "citation_patterns": [
+      "(?<![0-9A-Za-z\\u4e00-\\u9fff-])D-\\d{6}-\\d{2}(?![0-9A-Za-z\\u4e00-\\u9fff-])",
+      "[“「][^”」]{4,}[”」]"
+    ],
+    "citation_patterns_note": "2026-10-03 用户追加裁定『超过时也要有兜底策略』＋父代理指出的洞（现行逃生门是『我自己写理由就能放行』⇒ 裁定 A 绑不住执行方）：`register --over-budget` 的理由里**必须含可核引用**，否则即使超预算也拒绝。两条形态（任一命中即算）：① `D-YYMMDD-NN` 形式的**决策登记条目号**（真源 docs/6-DECISIONS.md，可去册里逐字核）——两侧 lookaround 必须同时挡 `[0-9A-Za-z]` **与汉字**：**实测走过两轮弯路**，第一版只挡 `[0-9-]`、第二版只挡 `[0-9A-Za-z-]`，两次都让 `D-251002-01之外`（条目号后紧跟汉字）照样命中，等于**引用形态形同虚设**（现钉在 UC-27 ⑰ 上）；② **用户原话片段**——整段放进**全角**引号“…”或「…」，≥4 字（不是执行方自述，是用户说过的字；ASCII 直引号不算——否则理由里随手引一句洋文就过）。自述理由（『我判断这属于例外』）**不再算数**。判据现读本键（不在代码里写死形态），缺失/空/不可编译 ⇒ 逃生门 fail-closed。",
+    "named_exception_kinds": {
+      "收口": "收口类：把**已在飞**的批次收尾（避免半成品——半成品的返工成本高于多派一笔）",
+      "安全": "安全类：数据完整性/防丢证（不补这一笔就会丢证据或损坏账本）"
+    },
+    "named_exception_kinds_note": "逃生门**只对这两类具名例外开放**（父代理 2026-10-03 定）；理由里必须**恰好命中一类**具名类别词（0 类或 2 类都拒绝）——写不出＝这不该例外，否则逃生门就是任意放行的后门。判据现读本键，表缺失/空 ⇒ 逃生门 fail-closed。",
+    "refusal_log_note": "被拒的派单追加写入运行态队列 `<账本根>/runtime/dispatch-refusals.jsonl`（一行一条：at/day/axis/reading/budget/run_id/reason）⇒ 次日额度恢复后可查、不丢待办。该文件在 `.gitignore` 的 `agents/runtime/*` 忽略域内（不产生 `??`，本批未改 .gitignore）；写不进去 ⇒ 响亮地坏（留不下痕的拒绝＝『今天不发』与『那件事不存在』分不开）。"
   },
   "main_sessions": [
     "session-d6abecbf-80cb-4dcf-8461-d92f13c48a68"

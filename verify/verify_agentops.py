@@ -25,7 +25,7 @@ clobber（一方删掉另一方正在用的探针 → 两边都 rc=1，
 """
 
 from __future__ import annotations
-VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1 起（**编号区间与条数以末行 `ALL PASS (N assertions)` 现跑为准，勿在本串写死**；离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库，UC-19=TG-8 离线开关：三入口拒绝+反向对照+配置面+两侧一致，UC-27=成本预算阻断（2026-10-03 用户裁定 A：**账本读数**当日派单数>=预算即拒绝 `register`（点名读数/预算/逃生门），具名 `--over-budget` 放行且理由落账本，含空账本第一笔/别的 role/逃生门/未超预算乱传/配置坏 fail-closed/未配置预算未执行 真驱动反向对照；金额轴不阻断并在文案里标注度量仪作用域缺陷））', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 20, 'routes': [], 'requires': ['none']}
+VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1 起（**编号区间与条数以末行 `ALL PASS (N assertions)` 现跑为准，勿在本串写死**；离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库，UC-19=TG-8 离线开关：三入口拒绝+反向对照+配置面+两侧一致，UC-27=成本预算阻断与**兜底阶梯**（2026-10-03 用户裁定 A：**账本读数**当日派单数>=预算即拒绝 `register`（点名读数/预算/逃生门），含空账本第一笔/别的 role/未超预算乱传/配置坏 fail-closed/未配置预算未执行 真驱动反向对照；金额轴不阻断并在文案里标注度量仪作用域缺陷。**同日追加裁定「超过时也要有兜底策略」**：逃生门收紧要**四把锁**——① 理由必须含可核引用（`D-YYMMDD-NN` 条目号或全角引号内的用户原话；**自述理由不算数**，且条目号两侧挡 [0-9A-Za-z] 与汉字，`D-251002-01之外` 不得冒充）② 同日次数上限（超限拒绝并点名已用几次/被谁用掉）③ 恰好一类具名例外类别（收口／安全）④ 理由下限；另含兜底建议上屏、被拒派单进 `dispatch-refusals.jsonl`（字段完整）、真仓缺预算文件 fail-closed vs `AGENT_OPS_DIR` 重定向档判未执行 两侧对照））', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 20, 'routes': [], 'requires': ['none']}
 
 import json
 import os
@@ -52,6 +52,35 @@ PROBE_SPECS = ("tg15-probe-role.md", "tg15-undeclared-role.md")
 # **不是**为了让夹具变绿而放宽守卫：守卫的拒绝路径由 UC-24 三条反向对照真跑。
 DEGEN_FIXTURE_REASON = "fixture: 同秒收尾，非真实测量（R-001）"
 DEGEN_FIXTURE_ARGS = ("--allow-degenerate", "--degenerate-reason", DEGEN_FIXTURE_REASON)
+
+# UC-27（2026-10-03 追加裁定「超过时也要有兜底策略」）：**兜底阶梯**的夹具常量。
+# 为什么放模块级：UC-27 的预算文件内容与"逃生门四把锁"的取值必须在**多处**
+# 用同一份字面量（正向放行／反向拒绝各用到），否则改一处忘一处会让判据自相矛盾。
+# 这两条形态本身**不是**政策真源（真源＝预算文件 `over_budget_escape`）；
+# 这里只是"夹具也照同一形态写"——真仓文件是否**带**这四把锁，由 UC-27 ⑫ 现读现核。
+UC27_PATTERNS = ["(?<![0-9A-Za-z\\u4e00-\\u9fff-])D-\\d{6}-\\d{2}"
+                 "(?![0-9A-Za-z\\u4e00-\\u9fff-])",
+                 "[\u201c\u300c][^\u201d\u300d]{4,}[\u201d\u300d]"]
+UC27_KINDS = {"\u6536\u53e3": "\u6536\u53e3\u7c7b\uff08\u5728\u98de\u6279\u6b21"
+                              "\u6536\u5c3e\uff09",
+              "\u5b89\u5168": "\u5b89\u5168\u7c7b\uff08\u6570\u636e\u5b8c\u6574"
+                              "\u6027/\u9632\u4e22\u8bc1\uff09"}
+# 「用户原话」形态的逃生门理由（引用＝全角引号内的用户原话片段）＋类别「收口」。
+UC27_ESCAPE_QUOTE = ("\u7528\u6237 2026-10-03 \u539f\u8bdd\u201c\u8d85\u8fc7"
+                     "\u65f6\u4e5f\u8981\u6709\u515c\u5e95\u7b56\u7565\u201d\uff1b"
+                     "\u672c\u7b14\u4e3a**\u6536\u53e3\u7c7b**\uff08\u5728\u98de"
+                     "\u6279\u6b21\u6536\u5c3e\uff09")
+# 「登记条目号」形态（引用＝`D-\d{6}-\d{2}`）＋具名类别「安全」。
+UC27_ESCAPE_ENTRY = ("D-251003-01 \u8981\u6c42\uff1b\u672c\u7b14\u4e3a**\u5b89"
+                     "\u5168\u7c7b**\uff08\u9632\u4e22\u8bc1\uff09")
+# 同日次数上限的**生效日**：必须早于"今天"（否则今天的行会不被计数 ⇒ 上限形同
+# 虚设；UC-27 ㉔ 把真仓那格钉成"过去的固定日期"）。
+UC27_COUNTS_FROM = "2020-01-01"
+# **自述理由**（无任何可核引用、无具名类别）——正是用户追加裁定要堵的形态。
+UC27_SELFREPORT = ("\u672c\u7b14\u786e\u5c5e\u4f8b\u5916\uff1a\u6211\u5224\u65ad"
+                   "\u8fd9\u662f\u7236\u4ee3\u7406\u88c1\u5b9a\u7684\u515c\u5e95"
+                   "\u9636\u68af\u9002\u7528\u60c5\u5f62\uff0c\u6545\u8d70\u672c"
+                   "\u9003\u751f\u95e8\u3002" + "\u5df2\u786e\u8ba4\u5b8c\u6bd5\u3002")
 
 # UC-20（行 16）选档夹具用的**固定时刻**（UTC 写法；UTC+8 = Asia/Shanghai）；
 # 2026-09-28 是周一：
@@ -2055,16 +2084,35 @@ def main() -> int:
         uc27.mkdir()
         uc27_budget = uc27 / "spend-budget.json"
 
-        def _uc27_payload(cap: object, floor: object = 10) -> str:
+        def _uc27_payload(cap: object, floor: object = 10,
+                          max_escapes: object = 1,
+                          patterns: object = None,
+                          kinds: object = None,
+                          legacy: object = None) -> str:
             """受控预算文件的**内容**（落点由调用方的字面量路径决定）。
 
             为什么不让本函数自己写盘：写盘目标必须是**静态可判定的落点**
             （`verify/verify_artifact_paths.py` 的动态目标棘轮在本文件上**零余量**：
             上限 5 = 现状 5）。把 `root` 当参数写盘会立刻顶破上限——本批实测踩到过。
+
+            2026-10-03 追加裁定后逃生门是**四把锁**（可核引用／同日次数上限／
+            具名例外类别／理由下限），故夹具默认把四把都写全；`None` 表示
+            "用默认形态"，显式传值用于反向对照（缺锁 ⇒ fail-closed）。
+            `legacy`＝逐行点名的旧规则豁免表（默认空表：夹具里不该出现豁免，
+            否则"同日第二笔仍被拒"那条对照会被它悄悄放行）。
             """
             return json.dumps(
                 {"budget": {"dispatched_sessions_per_day": cap},
-                 "over_budget_escape": {"reason_min_chars": floor}},
+                 "over_budget_escape": {
+                     "reason_min_chars": floor,
+                     "max_escapes_per_day": max_escapes,
+                     "max_escapes_counts_from": UC27_COUNTS_FROM,
+                     "max_escapes_legacy_rows": ([] if legacy is None
+                                                 else legacy),
+                     "citation_patterns": (UC27_PATTERNS if patterns is None
+                                           else patterns),
+                     "named_exception_kinds": (UC27_KINDS if kinds is None
+                                               else kinds)}},
                 ensure_ascii=False)
 
         def _uc27_day() -> str:
@@ -2107,7 +2155,6 @@ def main() -> int:
                     "--spec", spec, "--run-id", rid, *(extra or [])]
             return run(argv, {**base_env, "AGENT_OPS_DIR": str(root)}, raw=True)
 
-        uc27_reason = "探针：当日派单数已满，用户裁定 A 下的具名例外（验证逃生门）"
         uc27_budget.write_text(_uc27_payload(2), encoding="utf-8")
         # 种子①：**带日期 id**（= 今日，UTC+8）、**不给 `--start`**
         # ⇒ 它只能被 `run_id` 日期段计入（started_at 为空）。
@@ -2157,15 +2204,19 @@ def main() -> int:
            and "BUDGET-REFUSED" in (r_impl.stdout + r_impl.stderr)
            and "BUDGET-REFUSED" in (r_rev.stdout + r_rev.stderr),
            f"impl rc={r_impl.returncode} doc-audit rc={r_rev.returncode}")
-        r = _uc27_reg(uc27, "run-uc27-escape", extra=["--over-budget", uc27_reason])
+        r = _uc27_reg(uc27, "run-uc27-escape",
+                      extra=["--over-budget", UC27_ESCAPE_QUOTE])
         esc27 = next((x for x in _uc27_rows(uc27)
                       if x["run_id"] == "run-uc27-escape"), None)
-        ok("UC-27 ③逃生门：具名理由 ⇒ **放行**（rc=0）且上屏点名走了逃生门",
-           r.returncode == 0 and "逃生门放行" in r.stdout,
+        ok("UC-27 ③逃生门：引用用户原话 ＋ 具名『收口』类别 ⇒ **放行**（rc=0）"
+           "且上屏点名走了逃生门（含同日第几次）",
+           r.returncode == 0 and "逃生门放行" in r.stdout
+           and "第 1/1 次" in r.stdout,
            f"rc={r.returncode} out={r.stdout.strip()[:64]}")
         ok("UC-27 ③留痕（现读账本）：理由**原话**落 `budget_override_reason`"
            "（不是只上屏——先例＝`finish --allow-degenerate` 的 `degenerate_reason`）",
-           esc27 is not None and esc27.get("budget_override_reason") == uc27_reason,
+           esc27 is not None
+           and esc27.get("budget_override_reason") == UC27_ESCAPE_QUOTE,
            f"budget_override_reason={esc27 and esc27.get('budget_override_reason')!r}")
         ok("UC-27 ③留痕（现读账本）：`budget_override` 记下**被豁免掉的读数**"
            "（轴／读数 2／预算 2／UTC+8 日／登记时刻），事后可核",
@@ -2176,12 +2227,32 @@ def main() -> int:
            and esc27["budget_override"].get("day") == _uc27_day()
            and bool(str(esc27["budget_override"].get("at") or "").strip()),
            f"budget_override={esc27 and esc27.get('budget_override')}")
+        # ⑬ 同日第二次逃生门 ⇒ 拒绝并**点名已用次数与用掉它的 run_id**
         _rows27 = len(_uc27_rows(uc27))
-        r = _uc27_reg(uc27, "run-uc27-short", extra=["--over-budget", "太短了"])
-        ok("UC-27 ③反向对照：逃生门理由**过短** ⇒ 拒绝且**不留痕**"
-           "（说不出为什么就不许放行）",
+        r = _uc27_reg(uc27, "run-uc27-escape-2",
+                      extra=["--over-budget", UC27_ESCAPE_ENTRY])
+        ok("UC-27 ⑬同日第二次逃生门 ⇒ **拒绝**且点名『已用 1 次／上限 1』"
+           "（上限来自数据文件，不是代码常量）",
+           r.returncode != 0 and "同日逃生门次数已达上限" in r.stderr
+           and "已用 1 次" in r.stderr and "上限 1" in r.stderr,
+           f"rc={r.returncode} err={r.stderr.strip()[:64]}")
+        ok("UC-27 ⑬点名『被谁用掉』：必须给出用掉额度的 run_id（只报次数读不到现场）",
+           "run-uc27-escape" in r.stderr and len(_uc27_rows(uc27)) == _rows27,
+           f"rows={len(_uc27_rows(uc27))}（应仍为 {_rows27}，拒绝不半写）")
+        # ⑭ 理由过短 ⇒ 拒绝。**必须另起夹具**：本夹具的逃生门额度已被 ③ 用掉，
+        # 若沿用 uc27，这条会被"次数上限"先拦下 ⇒ 断言与它自述的判据不是同一件事
+        # （反向对照最容易退化成恒真式的地方）。新夹具把上限放到 2。
+        uc27e = tmp / "uc27e"
+        uc27e.mkdir()
+        uc27e_budget = uc27e / "spend-budget.json"
+        uc27e_budget.write_text(_uc27_payload(1, max_escapes=2), encoding="utf-8")
+        _uc27_reg(uc27e, f"run-{_uc27_day()}-uc27e-seed")
+        _rows27e = len(_uc27_rows(uc27e))
+        r = _uc27_reg(uc27e, "run-uc27-short", extra=["--over-budget", "太短了"])
+        ok("UC-27 ⑭反向对照：逃生门理由**过短** ⇒ 拒绝且**不留痕**"
+           "（说不出为什么就不许放行；与次数上限**分开**跑）",
            r.returncode != 0 and "BUDGET-ERROR" in r.stderr
-           and "≥10" in r.stderr and len(_uc27_rows(uc27)) == _rows27,
+           and "≥10" in r.stderr and len(_uc27_rows(uc27e)) == _rows27e,
            f"rc={r.returncode} err={r.stderr.strip()[:56]}")
         # ⑦ 未超预算却传逃生门 ⇒ 拒绝（否则"随手带上逃生门"就能把闸门架空）
         uc27b = tmp / "uc27b"
@@ -2264,6 +2335,268 @@ def main() -> int:
            and floor_real >= 1,
            f"cap={cap_real!r} reason_min_chars={floor_real!r}（**只核类型，不核取值**："
            f"预算值属用户政策，改它不该让本判据变红）")
+
+        # ⑮⑯⑰⑱ 2026-10-03 追加裁定「超过时也要有兜底策略」：逃生门**四把锁**。
+        # 四个夹具根**逐个字面写名**（同 ⑪ 的理由：动态落点会顶破本文件的棘轮上限）。
+        g27 = tmp / "uc27g"
+        h27 = tmp / "uc27h"
+        i27 = tmp / "uc27i"
+        j27 = tmp / "uc27j"
+        g27.mkdir()
+        h27.mkdir()
+        i27.mkdir()
+        j27.mkdir()
+        # ⑮ 自述理由（无任何可核引用）⇒ 拒绝 —— 父代理点名的洞就是这一条
+        (g27 / "spend-budget.json").write_text(_uc27_payload(1), encoding="utf-8")
+        _uc27_reg(g27, f"run-{_uc27_day()}-uc27g-seed")
+        r = _uc27_reg(g27, "run-uc27-selfreport",
+                      extra=["--over-budget", UC27_SELFREPORT])
+        ok("UC-27 ⑮**自述理由不算数**（追加裁定的核心）：理由超下限、"
+           "但无可核引用 ⇒ **拒绝**且点名要引用什么（用户裁定才绑得住执行方）",
+           r.returncode != 0 and "必须含可核引用" in r.stderr
+           and "D-251003-01" in r.stderr and "原话" in r.stderr,
+           f"rc={r.returncode} err={r.stderr.strip()[:64]}")
+        # ⑯ 引用形态②：登记条目号（`D-\\d{6}-\\d{2}`）独立成词 ⇒ 放行
+        (h27 / "spend-budget.json").write_text(_uc27_payload(1), encoding="utf-8")
+        _uc27_reg(h27, f"run-{_uc27_day()}-uc27h-seed")
+        r = _uc27_reg(h27, "run-uc27-entry",
+                      extra=["--over-budget", UC27_ESCAPE_ENTRY])
+        _esc27h = next((x for x in _uc27_rows(h27)
+                        if x["run_id"] == "run-uc27-entry"), None)
+        ok("UC-27 ⑯引用形态②『决策登记条目号』⇒ **放行**且逐字落账本"
+           "（两条形态任一命中即可，这是其中一条）",
+           r.returncode == 0 and "逃生门放行" in r.stdout and _esc27h is not None
+           and _esc27h.get("budget_override_reason") == UC27_ESCAPE_ENTRY,
+           f"rc={r.returncode} out={r.stdout.strip()[:56]}")
+        # ⑰ 引用形态的**边界**：命中必须独立成词。实测坑：不加 lookaround 时
+        # `D-251002-01 之外` 这种"更长 id 的前缀"也会被当命中 ⇒ 前缀可冒充条目号。
+        (i27 / "spend-budget.json").write_text(_uc27_payload(1), encoding="utf-8")
+        _uc27_reg(i27, f"run-{_uc27_day()}-uc27i-seed")
+        r = _uc27_reg(i27, "run-uc27-prefix",
+                      extra=["--over-budget", "D-251002-01之外的理由，本笔为安全类"])
+        ok("UC-27 ⑰引用**边界**：条目号后面紧跟字符（`D-251002-01之外`）**不得**"
+           "冒充条目号 ⇒ 拒绝（不加 lookaround 时它会命中，等于引用形态形同虚设）",
+           r.returncode != 0 and "必须含可核引用" in r.stderr,
+           f"rc={r.returncode} err={r.stderr.strip()[:56]}")
+        # ⑱ 具名例外类别：恰好一类才放行；0 类 ⇒ 拒绝
+        (j27 / "spend-budget.json").write_text(_uc27_payload(1), encoding="utf-8")
+        _uc27_reg(j27, f"run-{_uc27_day()}-uc27j-seed")
+        r_no = _uc27_reg(j27, "run-uc27-nokind",
+                         extra=["--over-budget",
+                                "用户原话“覆盖锚点必须显式设端点”"])
+        ok("UC-27 ⑱具名例外类别：有可核引用但**不属任何具名类别** ⇒ 拒绝"
+           "（两类之外不许借道——否则逃生门就是任意放行的后门）",
+           r_no.returncode != 0 and "恰好落一类具名例外" in r_no.stderr,
+           f"rc={r_no.returncode} err={r_no.stderr.strip()[:56]}")
+        r_ok = _uc27_reg(j27, "run-uc27-kind-entry",
+                         extra=["--over-budget", UC27_ESCAPE_ENTRY])
+        ok("UC-27 ⑱同一账本、同一读数：落进具名类别『安全』的那一笔 ⇒ 放行"
+           "（不是把正方向一起拒掉——判据只拦『不具名』）",
+           r_ok.returncode == 0 and "『安全』" in r_ok.stdout,
+           f"rc={r_ok.returncode} out={r_ok.stdout.strip()[:56]}")
+        # ⑲ 拒绝也要留痕：被拒的派单进运行态队列（一行一条、字段齐全、逐条可查）
+        _ref_file = g27 / "runtime" / "dispatch-refusals.jsonl"
+        _ref_rows = ([json.loads(x) for x in
+                      _ref_file.read_text(encoding="utf-8").splitlines() if x.strip()]
+                     if _ref_file.is_file() else [])
+        ok("UC-27 ⑲拒绝也要留下：被拒派单**追加进运行态队列**"
+           "（`dispatch-refusals.jsonl`，次日额度恢复后可查、不丢待办）",
+           len(_ref_rows) == 1
+           and _ref_rows[0].get("run_id") == "run-uc27-selfreport",
+           f"行数={len(_ref_rows)}")
+        _need27 = {"at", "day", "axis", "reading", "budget", "run_id", "reason"}
+        ok("UC-27 ⑲留痕字段完整：时点／axis／读数／预算／被拒 run_id／理由"
+           "（缺字段就没法在次日还原『当时为什么被拦』）",
+           bool(_ref_rows) and _need27 <= set(_ref_rows[0])
+           and _ref_rows[0]["axis"] == "dispatched_sessions_per_day"
+           and _ref_rows[0]["reading"] == "1/1"
+           and _ref_rows[0]["budget"] == 1
+           and _ref_rows[0]["day"] == _uc27_day()
+           and bool(str(_ref_rows[0]["reason"]).strip()),
+           f"字段={sorted(_ref_rows[0]) if _ref_rows else []}")
+        # ⑳ 兜底阶梯第 1、2 级（不派单／合并拆分）**必须出现在拒绝上屏里**：
+        # 读到拒绝的人要先试它们，再考虑逃生门。
+        ok("UC-27 ⑳兜底建议上屏：拒绝文案含『不派单』与『合并/拆分目标』两级"
+           "（这两级不需要代码支持，但必须先被读到）",
+           "不派单" in r_no.stderr and "合并/拆分目标" in r_no.stderr,
+           f"err={r_no.stderr.strip()[:48]}")
+        # ㉑ 分档依据＝账本根**身份**（是不是本仓 `agents/`），不是"环境变量在不在"。
+        # 为什么必须钉住这条：第一版按 env 判定，实测有洞——env 为空串/全空白时
+        # `Path("")` 会解析成**当前目录**，"设了个空的重定向"被当成真仓档。
+        # 这里用**纯探针**（子进程打印判定结果，不跑 register、不写任何文件）把
+        # 两个方向都钉住：真仓 ⇒ False（→ 缺文件即拒绝），别的根 ⇒ True（→ 未执行）。
+        _opspath = tmp / "uc27ops"
+        _opspath.mkdir()
+        _probe_src = ("import sys\n"
+                      "sys.path.insert(0, r'" + str(ROOT) + "')\n"
+                      "import importlib.util as u\n"
+                      "s = u.spec_from_file_location('opsp', r'" + str(CLI) + "')\n"
+                      "m = u.module_from_spec(s)\n"
+                      "s.loader.exec_module(m)\n"
+                      "print('REDIRECTED=' + str(m._redirected_ledger()))\n")
+        _probe_py = _opspath / "probe.py"
+        _probe_py.write_text(_probe_src, encoding="utf-8")
+        _probe_env = {k: v for k, v in base_env.items() if k != "AGENT_OPS_DIR"}
+        _probe_env["PYTHONUTF8"] = "1"
+        _real_probe = subprocess.run(
+            [sys.executable, str(_probe_py)], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", env=_probe_env, cwd=str(ROOT))
+        _redir_probe = subprocess.run(
+            [sys.executable, str(_probe_py)], capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
+            env={**_probe_env, "AGENT_OPS_DIR": str(_opspath)}, cwd=str(ROOT))
+        ok("UC-27 ㉑分档判据＝**账本根身份**：本仓 `agents/` ⇒ 真仓档（缺预算即拒绝）",
+           "REDIRECTED=False" in _real_probe.stdout,
+           f"out={_real_probe.stdout.strip()[:40]}"
+           f" err={_real_probe.stderr.strip()[:40]}")
+        ok("UC-27 ㉑分档判据：别的根 ⇒ 重定向档（缺预算判未执行，不误伤探针）",
+           "REDIRECTED=True" in _redir_probe.stdout,
+           f"out={_redir_probe.stdout.strip()[:40]}")
+        real27 = tmp / "uc27real"
+        (real27 / "agents" / "runtime").mkdir(parents=True)
+        ok("UC-27 ㉑前置：该档确实**没有**预算文件（否则测的是另一条分支）",
+           not (real27 / "agents" / "spend-budget.json").is_file())
+        r_redir_real = _uc27_reg(real27 / "agents", "run-uc27-redirect-again")
+        ok("UC-27 ㉑重定向档（账本根≠本仓 agents/）缺预算 ⇒ 判**未执行**且放行",
+           r_redir_real.returncode == 0 and "未执行" in r_redir_real.stdout
+           and "不是通过" in r_redir_real.stdout,
+           f"rc={r_redir_real.returncode} out={r_redir_real.stdout.strip()[:48]}")
+        _sentinel = real27 / "agents" / "spend-budget.json"
+        _sentinel.write_text("{}", encoding="utf-8")
+        r_bad = _uc27_reg(real27 / "agents", "run-uc27-real-empty-budget")
+        ok("UC-27 ㉑同一根、只把预算文件放回去（内容为 `{}`）⇒ **立刻改判**："
+           "缺 `budget` 键即 fail-closed 拒绝登记（证明上一条的放行是『文件缺失』"
+           "这一档，不是这条判据整体失效）",
+           r_bad.returncode != 0 and "BUDGET-ERROR" in r_bad.stderr,
+           f"rc={r_bad.returncode} err={r_bad.stderr.strip()[:56]}")
+        # ㉒ `AGENT_OPS_DIR` 重定向档缺预算 ⇒ **未执行**（不算通过）但仍放行：
+        # 夹具与 `%TEMP%` 探针没有预算文件，阻断它们＝把探针全卡死。
+        k27 = tmp / "uc27k"
+        k27.mkdir()
+        r_redir = _uc27_reg(k27, "run-uc27-redirect-nobudget")
+        ok("UC-27 ㉒重定向档（`AGENT_OPS_DIR`）缺预算 ⇒ 上屏点名"
+           "『未执行——不是通过』且**不阻断**（否则 verify 夹具全卡死）",
+           r_redir.returncode == 0 and "未执行" in r_redir.stdout
+           and "不是通过" in r_redir.stdout,
+           f"rc={r_redir.returncode} out={r_redir.stdout.strip()[:48]}")
+        ok("UC-27 ㉒重定向档**不写拒绝队列**（未执行≠拒绝；把两者混在一起"
+           "会让真待办里混进探针噪音）",
+           not (k27 / "runtime" / "dispatch-refusals.jsonl").is_file())
+        # ㉓ 四把锁**缺任一** ⇒ fail-closed（防"删掉一个键就把逃生门改回自述即放行"）
+        l27 = tmp / "uc27l"
+        l27.mkdir()
+        (l27 / "spend-budget.json").write_text(
+            _uc27_payload(1, patterns=[]), encoding="utf-8")
+        r_lock = _uc27_reg(l27, "run-uc27-nolock")
+        ok("UC-27 ㉓逃生门锁缺一（citation_patterns 空）⇒ **拒绝登记**"
+           "（缺锁＝逃生门退回『自述理由即放行』⇒ fail-closed）",
+           r_lock.returncode != 0 and "citation_patterns" in r_lock.stderr,
+           f"rc={r_lock.returncode} err={r_lock.stderr.strip()[:56]}")
+        # ㉓b 生效日**真会改判定**（不是只写了一格没人读）：把生效日推到**明天**
+        # ⇒ 今天那一笔逃生门不再计入额度 ⇒ 同一天的第二笔反而放行。这条对照的
+        # 意义正是把"放水阀"的形态**演出来**：谁把生效日往前推，判据就松成这样，
+        # 所以 ㉕ 才必须把它钉成"不晚于今天"。
+        m27 = tmp / "uc27m"
+        m27.mkdir()
+        _tomorrow = (datetime.now(timezone.utc) + timedelta(hours=8)
+                     + timedelta(days=1)).strftime("%Y-%m-%d")
+        (m27 / "spend-budget.json").write_text(
+            _uc27_payload(1).replace(UC27_COUNTS_FROM, _tomorrow),
+            encoding="utf-8")
+        _uc27_reg(m27, f"run-{_uc27_day()}-uc27m-seed")
+        _m_ok = _uc27_reg(m27, "run-uc27-m1", extra=["--over-budget",
+                                                    UC27_ESCAPE_QUOTE])
+        _m_again = _uc27_reg(m27, "run-uc27-m2", extra=["--over-budget",
+                                                       UC27_ESCAPE_ENTRY])
+        ok("UC-27 ㉓b生效日真会改判定：推到明天 ⇒ 今天的两笔逃生门都放行"
+           "（＝上限形同虚设）。这正是为什么 ㉕ 要求生效日**不晚于今天**",
+           _m_ok.returncode == 0 and _m_again.returncode == 0,
+           f"第一笔 rc={_m_ok.returncode} 第二笔 rc={_m_again.returncode}"
+           f"（正常档第二笔应为 1）")
+        # ㉓c 旧规则行豁免是**逐行点名**：把"已用过额度的那一行"写进豁免表 ⇒
+        # 新的一笔放行（这正是真仓那一行要的效果）；写一个**不存在的 run_id**
+        # ⇒ 不产生任何豁免（否则豁免表就成了"随便写点什么都能开局"的开关）。
+        n27 = tmp / "uc27n"
+        o27 = tmp / "uc27o"
+        n27.mkdir()
+        o27.mkdir()
+        (n27 / "spend-budget.json").write_text(
+            _uc27_payload(1, legacy=["run-uc27n-used"]), encoding="utf-8")
+        _uc27_reg(n27, f"run-{_uc27_day()}-uc27n-seed")
+        _n_used = _uc27_reg(n27, "run-uc27n-used",
+                            extra=["--over-budget", UC27_ESCAPE_QUOTE])
+        _n_next = _uc27_reg(n27, "run-uc27n-next",
+                            extra=["--over-budget", UC27_ESCAPE_ENTRY])
+        ok("UC-27 ㉓c旧规则行**逐行点名**豁免：被点名的 `run-uc27n-used` 不占额度"
+           "⇒ 其后新的一笔放行（豁免面钉在具体 run_id，不是整段窗口）",
+           _n_used.returncode == 0 and _n_next.returncode == 0,
+           f"被点名那笔 rc={_n_used.returncode} 新的一笔 rc={_n_next.returncode}")
+        ok("UC-27 ㉓c反向：表里写一个**不存在的 run_id** ⇒ 不产生任何豁免"
+           "（下一笔仍占额度、再一笔被拒）——豁免表不是随心开关",
+           _uc27_reg(n27, "run-uc27n-third",
+                     extra=["--over-budget", UC27_ESCAPE_QUOTE]
+                     ).returncode != 0)
+        (o27 / "spend-budget.json").write_text(
+            _uc27_payload(1, legacy=["run-does-not-exist"]), encoding="utf-8")
+        _uc27_reg(o27, f"run-{_uc27_day()}-uc27o-seed")
+        _o1 = _uc27_reg(o27, "run-uc27o-1", extra=["--over-budget",
+                                                  UC27_ESCAPE_QUOTE])
+        _o2 = _uc27_reg(o27, "run-uc27o-2", extra=["--over-budget",
+                                                   UC27_ESCAPE_ENTRY])
+        ok("UC-27 ㉓c对照②：豁免表里只有**不存在的 run_id** 时，额度照旧只给一笔"
+           "（第一笔放行、第二笔被拒——豁免没有把上限整个关掉）",
+           _o1.returncode == 0 and _o2.returncode != 0,
+           f"第一笔 rc={_o1.returncode} 第二笔 rc={_o2.returncode}")
+        # ㉔ 真仓契约（追加裁定的四把锁）：只核**键与类型**，不核取值
+        _pats_real = esc_real.get("citation_patterns")
+        _kinds_real = esc_real.get("named_exception_kinds")
+        _max_real = esc_real.get("max_escapes_per_day")
+        _from_real = str(esc_real.get("max_escapes_counts_from") or "")
+        _kinds_txt = str(sorted(_kinds_real) if isinstance(_kinds_real, dict)
+                         else _kinds_real)
+        ok("UC-27 ㉔真仓契约：追加裁定后 `over_budget_escape` 必须**四把锁齐全**"
+           "（理由下限／同日次数上限／可核引用正则／具名例外类别表）——缺任一键，"
+           "逃生门即退回『自述即放行』而本判据必须变红",
+           isinstance(_max_real, int) and not isinstance(_max_real, bool)
+           and _max_real >= 1
+           and isinstance(_pats_real, list) and bool(_pats_real)
+           and all(isinstance(p, str) and p.strip() for p in _pats_real)
+           and isinstance(_kinds_real, dict) and bool(_kinds_real),
+           f"max_escapes_per_day={_max_real!r} patterns={_pats_real!r} "
+           f"kinds={_kinds_txt}"
+           f"（**只核类型与存在性，不核取值**：次数上限属用户/父代理政策）")
+        # ㉕ 上限的**生效日**：必须是合法日期、且**不晚于今天**。为什么钉这条：
+        # 生效日＝"从哪天起开始计数"，把它推到未来＝今天的行全不计入＝上限形同
+        # 虚设（**放水阀**）。本批立这格是因为上限当天才立、而账本里已有旧规则下
+        # 登记的逃生门行（见预算文件该键的 note）——那一格是**迁移用途**，不是
+        # 可以随手往前推的开关。
+        _from_ok = bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", _from_real))
+        ok("UC-27 ㉕次数上限的生效日：合法 `YYYY-MM-DD` 且**不晚于今天**"
+           "（推到未来＝今天不计入＝上限形同虚设；往前推只会更严）",
+           _from_ok and _from_real <= _uc27_day(),
+           f"max_escapes_counts_from={_from_real!r} 今天={_uc27_day()}")
+        # ㉖ 真仓那张"旧规则行"豁免表：必须**只含**上一批那一行，且那一行确实是
+        # 当日带 `budget_override` 的账本行。为什么钉这么死：这一格是"规则诞生
+        # 之前的历史不追溯"的**唯一**出口，一旦它可以随手指向任何 run_id，
+        # 同日上限就等于没有（下次谁都能把今天用掉的那笔写进去）。
+        _legacy_real = esc_real.get("max_escapes_legacy_rows")
+        ok("UC-27 ㉖旧规则行豁免表**只许点名一条**（真仓现值：上一批那笔）"
+           "——多写一条它就不再是『不追溯历史』而是『取消上限』",
+           isinstance(_legacy_real, list) and len(_legacy_real) == 1
+           and all(isinstance(x, str) and x.strip() for x in _legacy_real),
+           f"max_escapes_legacy_rows={_legacy_real!r}")
+        _led_real = read_real_ledger(real_ledger_path())
+        if _led_real is None:
+            skip_ledger_absent("UC-27 ㉖旧规则行豁免表的逐行取证")
+        else:
+            _exempt_rows = [r for r in _led_real["runs"]
+                            if r.get("run_id") in set(_legacy_real or [])]
+            _ex_day = ((_exempt_rows[0].get("budget_override") or {}).get("day")
+                       if _exempt_rows else None)
+            ok("UC-27 ㉖被点名那一行**确实存在**且确实是**当日**带 `budget_override`"
+               "的账本行（豁免必须指向真实发生过的那一次，不许凭空写个 id）",
+               len(_exempt_rows) == 1 and _ex_day == _uc27_day(),
+               f"命中行={[r.get('run_id') for r in _exempt_rows]} day={_ex_day}")
 
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))
