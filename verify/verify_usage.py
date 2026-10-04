@@ -63,6 +63,7 @@ MODEL = "openai/deepseek-v4-flash"
 # 「改前」实现 = 本卡开工时的 HEAD（父代理指定 `1ed6f93`）。**钉 revision，不钉
 # `HEAD`**：本卡提交之后 `git show HEAD:…` 会拿到改后版本 ⇒「夜间减半」的对照自我作废。
 BEFORE_REV = "1ed6f937396eb81e7fc6a9e40d87fbdd139fa926"
+SKIP_EXIT = 3  # 具名 SKIP 的退出码（同 verify_agentops.py::SKIP_EXIT，第三态）
 USAGE_REL = "paper-qa-script/app/usage.py"
 # 行 25：改前实现的**run 级**载体目录（原实现只建不回收：每跑一次 %TEMP% 多一个
 # `g2l20-before-*`）。模块级赋值一次 ⇒ 落点可静态判定（动态目标棘轮只认这个形态）；
@@ -117,6 +118,12 @@ def _load_before():
     钉价表是必须的：从 `%TEMP%` 加载时 `prices_path()` 的 `parents[2]` 指不到仓库，
     会读到空价表 ⇒ 对照退化成"无价 vs 有价"，与选档无关。钉住后两边**只差代码版本**。
     """
+    reach = subprocess.run(["git", "-C", str(ROOT), "merge-base", "--is-ancestor",
+                            BEFORE_REV, "HEAD"], capture_output=True, text=True)
+    if reach.returncode != 0:
+        # 该 revision 不在本分支可达历史里（如同步到 main 后）⇒ 具名 SKIP，不硬崩：
+        # 硬崩会让 main 侧 CI 判红，而"该 rev 不可达"是**分支差异**、不是缺陷（CI-B1）。
+        return None
     proc = subprocess.run(["git", "-C", str(ROOT), "show", f"{BEFORE_REV}:{USAGE_REL}"],
                           capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0, f"git show 失败：{proc.stderr.strip()}"
@@ -336,6 +343,11 @@ def main() -> int:
     # ⑪2 真入口·夜间：同一 usage、同一入口（`hook_success` = litellm 调的那个函数），
     #     只差**代码版本**——改前 = 钉住的 revision，且价表两边钉成同一份
     before = _load_before()
+    if before is None:
+        print(f"SKIP[rev-absent-on-branch] 钉住的改前 revision {BEFORE_REV[:12]} 不在本分支"
+              f"可达历史里 ⇒ ⑪2 及其反证的**判据未执行**（同族：verify_agentops.py 的"
+              f" spec-absent 档）——**本档不是通过**（rc={SKIP_EXIT}）")
+        return SKIP_EXIT
     night = (_cst(2026, 9, 28, 22, 30), _cst(2026, 9, 28, 22, 31))
     old_night, new_night = _call(before, night), _call(U, night)
     ok("⑪2 前置：夜间用例**确实落在空闲窗口内**（落在高峰则本条不作数）",
