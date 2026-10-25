@@ -2589,14 +2589,48 @@ def main() -> int:
         if _led_real is None:
             skip_ledger_absent("UC-27 ㉖旧规则行豁免表的逐行取证")
         else:
+            def _uc27_legacy_ok(rows: list[dict], today: str) -> bool:
+                """豁免行须恰一条、带 budget_override、day 合法且不晚于今天。
+
+                为什么不要求"等于今天"：那条历史行生于规则诞生当日，按
+                "等于今天"判会在次日**永红**（实测 2026-10-25 仍然红）。
+                """
+                if len(rows) != 1:
+                    return False
+                day = (rows[0].get("budget_override") or {}).get("day")
+                if not isinstance(day, str):
+                    return False
+                try:
+                    datetime.strptime(day, "%Y-%m-%d")
+                except ValueError:
+                    return False
+                return day <= today
+
             _exempt_rows = [r for r in _led_real["runs"]
                             if r.get("run_id") in set(_legacy_real or [])]
+            _today8 = _uc27_day()
             _ex_day = ((_exempt_rows[0].get("budget_override") or {}).get("day")
                        if _exempt_rows else None)
-            ok("UC-27 ㉖被点名那一行**确实存在**且确实是**当日**带 `budget_override`"
-               "的账本行（豁免必须指向真实发生过的那一次，不许凭空写个 id）",
-               len(_exempt_rows) == 1 and _ex_day == _uc27_day(),
+            ok("UC-27 ㉖被点名那一行**确实存在**且带 `budget_override`，"
+               "其 day 合法且**不晚于今天**（不要求恰为今天）",
+               _uc27_legacy_ok(_exempt_rows, _today8),
                f"命中行={[r.get('run_id') for r in _exempt_rows]} day={_ex_day}")
+            _fake = {"run_id": "run-fake", "budget_override": {"day": _today8}}
+            _tmr = (datetime.strptime(_today8, "%Y-%m-%d")
+                    + timedelta(days=1)).strftime("%Y-%m-%d")
+            _bad = [
+                {**_fake, "budget_override": {"day": _tmr}},
+                {**_fake, "budget_override": {"day": "not-a-date"}},
+                {**_fake, "budget_override": None},
+                {**_fake, "budget_override": {"day": 20261025}},
+            ]
+            ok("UC-27 ㉖反向对照：明天／非法串／缺 day／非字符串／缺行／多行"
+               " ⇒ 同一谓词必须判 False（真行必须判 True）",
+               all(not _uc27_legacy_ok([r], _today8) for r in _bad)
+               and not _uc27_legacy_ok([], _today8)
+               and not _uc27_legacy_ok([_fake, _fake], _today8)
+               and _uc27_legacy_ok([_fake], _today8),
+               f"today={_today8} tomorrow={_tmr}")
 
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))
