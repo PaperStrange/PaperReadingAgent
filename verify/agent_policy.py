@@ -189,6 +189,7 @@ class CloseStep:
 
 @dataclass
 class Policy:
+    """解析后的策略：fanout 与 policy_file 两份数据。"""
     fanout: dict
     policy_file: dict
     spec_dir: Path

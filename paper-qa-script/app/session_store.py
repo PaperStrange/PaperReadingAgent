@@ -17,6 +17,8 @@ from paperqa import Docs, Settings
 
 @dataclass
 class SessionState:
+    """单个会话的状态载体：设置、索引、文档、两阶段会话与 run 记录都挂在这里。"""
+
     session_id: str
     settings: Settings | None = None
     search_index: Any | None = None
@@ -56,15 +58,18 @@ class MemorySessionStore(SessionStore):
         self._sessions: dict[str, SessionState] = {}
 
     def get_or_create(self, session_id: str | None = None) -> SessionState:
+        """按 id 取会话，不存在则新建；id 为 None 时生成 uuid。"""
         sid = session_id or str(uuid.uuid4())
         if sid not in self._sessions:
             self._sessions[sid] = SessionState(session_id=sid)
         return self._sessions[sid]
 
     def get(self, session_id: str) -> SessionState | None:
+        """只读查询：按 id 取会话，不存在返回 None（不新建）。"""
         return self._sessions.get(session_id)
 
     def reset(self, session_id: str) -> SessionState:
+        """以同一 id 重建空会话并返回（旧状态被丢弃）。"""
         state = SessionState(session_id=session_id)
         self._sessions[session_id] = state
         return state

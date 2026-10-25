@@ -13,6 +13,8 @@ OUT_DIR = Path("/Volumes/Extreme SSD/vscode_projects/PaperReading/paper-qa-scrip
 
 @dataclass
 class FunctionRecord:
+    """单个函数的静态分析记录（AST 扫描所得：定位、签名、doc 与调用关系）。"""
+
     id: str
     module: str
     file: str

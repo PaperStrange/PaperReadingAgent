@@ -127,6 +127,7 @@ class DefaultEmbeddingRecommender(EmbeddingRecommender):
     """默认实现：服务商策展 → HF 在线热门（带缓存）→ 策展兜底。"""
 
     async def recommend(self, provider: str | None) -> EmbeddingRecommendation:
+        """按服务商能力推荐 embedding 模型：有 API 用策展，否则 HF 热门加缓存兜底。"""
         cfg = get_provider_config(provider)
         if cfg.get("has_embedding_api"):
             model = cfg["embedding"]

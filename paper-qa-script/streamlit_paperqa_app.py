@@ -82,7 +82,10 @@ from provider_config import get_provider_config, PROVIDERS, DEFAULT_PROVIDER  # 
 
 
 class SessionLogHandler(logging.Handler):
+    """把日志记录转进 Streamlit 会话日志区的 handler（脱敏密钥并截断超长行）。"""
+
     def emit(self, record: logging.LogRecord) -> None:
+        """格式化并脱敏后追加到会话日志；截断超长行，异常静默不打断应用。"""
         try:
             msg = self.format(record)
             # Redact API keys in logs
