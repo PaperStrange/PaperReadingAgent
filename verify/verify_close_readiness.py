@@ -18,7 +18,7 @@ TG-11 ③b 版本把判据写成"按角色名逐条判断"——`CLOSE_ROLES` �
 需求来源（**只有两个**，本文件不再有角色名单）：
 
     agents/fanout.json :: sprint_close_pipeline   →
-    哪些关闭步骤/role/target 必填（`close_ledger`/`close_targets`）
+    哪些关闭步骤/role/target 必填（`close_ledger`；`close_targets` 字段已删）
     agents/functions/<role>.md frontmatter        → `scope_required`（谁必须声明 scope）
     、`coverage_window`
     agents/policy.json                            → 阈值与开关（偏离理由长度、
@@ -61,15 +61,25 @@ linkage 的判定域，**定义判定域的东西必须自己受判**——否�
 real-data 模式 N = 实际执行过的判据条数，由各判据自身登记）。
 
 **退出码**：0=通过；1=检出违规/自检断言未通过（逐条点名）；2=fail-closed 无法判定
-（Sprint 文档不存在、政策/覆盖例外表非法，或**断言被 `-O`/`PYTHONOPTIMIZE=1` 剥离**）。
+（Sprint 文档不存在、政策/覆盖例外表非法，或**断言被 `-O`/`PYTHONOPTIMIZE=1` 剥离**）；
+**3=SKIP**（`TG-19` M-B，2026-09-30 本批起）：走了 SKIP 档（账本不存在／向量表 spec
+不在本分支）⇒ 末行是 `CLOSE-READINESS SKIP[<分类>]…本档不是通过` 横幅，
+**退出码与判决行同口径**（`verdict_line`／`verdict_exit` 同一真源）——
+修前是"判决行说不是通过、退出码说成功"的两通道矛盾；
+**4=domain-unavailable**（M-A，`TG-19`）：**判定域无法由被判定物派生**——
+Sprint 身份推不出、该 Sprint 在账本里没有作用域 run、或窗口被次序判据弃用。
+退出码 4 时**不产出判定结论**：findings 即使上屏也只作**诊断**
+（前面有 `[domain-fallback]` 标记），不得被当成"本期有几项不合格"。
 """
 
 from __future__ import annotations
-VERIFY_META = {'features': 'TG-15 关闭前置闸门：C1 声明完备 / C2 指涉可核 / C3 覆盖闭环（锚点→HEAD 每提交有归属），需求全来自 fanout.json + spec frontmatter；含变异用例自 fanout 自动生成的反向对照', 'tier': 'offline', 'providers': [], 'est_seconds': 15, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
+VERIFY_META = {'features': 'TG-15 关闭前置闸门：C1 声明完备 / C2 指涉可核（含 A-M13 的"全账本 role 必有 spec"封闭世界）/ C3 覆盖闭环（锚点→域右端每提交有归属），需求全来自 fanout.json + spec frontmatter；含变异用例自 fanout 自动生成的反向对照；M-A（TG-19）：判定域必须由**被判定物**派生（Sprint 身份 + 该 Sprint 的作用域 run + 该 Sprint 的最后一条覆盖 run 作右端），域不可派生时退出码 4（domain-unavailable）且不产出结论；A-M13④：§9 在飞宽限内只提示不判（口径同 ledger_measurement.in_flight）', 'tier': 'offline', 'providers': [], 'est_seconds': 15, 'est_cost_cny': 0, 'routes': [], 'requires': ['none']}
 
+import atexit
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -89,6 +99,7 @@ from verify.agent_policy import (  # noqa: E402
     load_coverage_exceptions,
     load_policy,
     parse_frontmatter,
+    path_in_head,
 )
 from verify.agent_policy import Policy as AgentPolicy  # noqa: E402  （类型注解用；避免与下方局部名冲突）
 
@@ -113,6 +124,60 @@ if hasattr(sys.stdout, "reconfigure"):
 
 PASSED = 0
 CRITERIA_EXECUTED = 0
+# M-A（TG-19）：判定域无法由被判定物派生时的**专属退出码**——
+# 它必须与"检出违规(1)"和"无法判定(2)"区分开：前者问"本期有几项不合格"，
+# 本码的含义是"**本轮没有产生任何判定**"。
+DOMAIN_UNAVAILABLE_EXIT = 4
+# M-B（`TG-19` 反空转不变式）：本轮**是否走了 SKIP 档**。SKIP 不是成功 ⇒
+# 不打印机读证据行（`EVIDENCE:` 只属于"判据真的跑过且通过"），见 `main()`。
+_RUN_STATE: dict[str, bool] = {"skipped": False}
+# M-B 第二半（2026-09-30 本批）：SKIP 档的**退出码 ＝ 3**，与判决行同口径。
+# 修前两档都是 `rc=0 ＋ SKIP 横幅` ⇒ 判决行说"不是通过"、退出码说"成功"，
+# 只看 rc 的消费方（CI 步骤／`run_suite.py`）读成通过。取 3 与同族非零先例同码：
+# `verify_agentops.py::SKIP_EXIT`／`scripts/spend-report.py`／`run_suite.REFUSE_EXIT`。
+# **不是放宽判据**：真判据一条不少跑，只是把"退 0"收紧成"退 3"。
+SKIP_EXIT = 3
+# 自检侧的分支差异 SKIP（`spec=absent-on-branch`）：向量表 spec 落在 windows-only
+# 子树 ⇒ main 上这几条判据**无从执行**。口径与 `verify_agentops.py::SKIPPED` 一致：
+# 上屏点名、判决行**不得**打印 `ALL PASS`。**退出码走 `verdict_exit`（同一真源）**。
+SELF_SKIPPED: list[str] = []
+
+
+def verdict_line(skipped: list[str], assertions: int) -> str:
+    """判决行**单一真源**（三处共用：自检末行、缺账本档末行、退出码）。
+
+    两个通道不许互相矛盾（`TG-19` M-B）：有 SKIP ⇒ 判决行说"**本档不是通过**"，
+    退出码由 `verdict_exit` 同口径给出。横幅形态与 `verify_agentops.py::verdict_line`
+    **逐字同构**（`<NAME> SKIP[<分类>]…本档不是通过`）——`run_suite.py::skip_verdict`
+    两通道判据（rc=3 ＋ 末行命中该形态）认的就是它。分类**从 skip 原因派生**：
+    spec 不在本分支 ⇒ `spec-absent-on-branch`；其余（本档只有缺账本）⇒ `ledger-absent`。
+    """
+    cats = ("spec-absent-on-branch"
+            if any("spec=absent-on-branch" in s for s in skipped) else "ledger-absent")
+    if not skipped:
+        # 零 SKIP ⇒ 与既有形态**逐字一致**的 `ALL PASS`（成功路径不许被本函数改口径）。
+        return f"ALL PASS ({assertions} assertions)"
+    return (f"CLOSE-READINESS SKIP[{cats}]（{len(skipped)} 条判据未执行"
+            f"：{'；'.join(skipped)}）——其余 {assertions} 条已验，**本档不是通过**")
+
+
+def verdict_exit(skipped: list[str]) -> int:
+    """最终**退出码**（与 `verdict_line` 同一真源：SKIP 与 PASS 互斥）。
+
+    为什么是 3：判决行已经写"本档不是通过"，而修前 `return 0` ⇒ 两个通道矛盾；
+    套件的第三态判据要的正是**两通道同时**说"不是通过"（`run_suite.py::skip_verdict`：
+    rc=3 ＋ 末行是具名横幅，缺一不可），故这里把 rc 对齐到 3。
+    真判据全跑过（`skipped` 为空）⇒ 照旧 0 ＋ `ALL PASS` 横幅。
+    """
+    return SKIP_EXIT if skipped else 0
+
+
+def skip_spec_absent(criterion: str) -> None:
+    """spec 不在本分支 ⇒ 自检里显式 SKIP：上屏点名、不计入 `PASSED`。"""
+    SELF_SKIPPED.append(f"{criterion}（spec=absent-on-branch (SKIP)）")
+    print(f"SKIP[spec-absent-on-branch] {criterion}：{SPRINT_VECTOR_SPEC} 不在本分支"
+          f"（windows-only 治理子树）⇒ 该判据只在本机/windows 分支执行"
+          f"——**本行不是 PASS**")
 
 
 def ok(name: str, cond: bool, detail: str = "") -> None:
@@ -244,8 +309,337 @@ def close_step_order(policy: AgentPolicy) -> tuple[str, int, set[str], set[str]]
     return wanted, order, scope_roles, later_roles
 
 
-def scope_step_runs(policy: AgentPolicy, runs: list[dict]) -> list[dict]:
-    """作用域步骤的**全部候选 run**（role + target 过滤，target 口径同 N3：精确匹配）。"""
+SPRINT_ID_RE = re.compile(r"[Ss]print[-\s]?0*(\d+)")
+
+
+# 台账 E1 / 行 7：归一化本身是**生产逻辑**（写入侧 `scripts/agent-ops.py`
+# 的同名函数，位点用 `git grep -n "def _norm_sprint"` 现跑定位，不写死行号：
+# 行号会随切线位移）。本闸门**不得导入它**——判据导入被测实现就不再是判据。
+# 同义性改由**一致性向量**守：向量表在本档（唯一权威），两侧各自解析同一张表。
+SPRINT_VECTOR_SPEC = ("docs/iteration/phases/testing-governance/"
+                      "2026-09-26-sprint-id-normalization-spec.MD")
+
+
+def _vec_value(cell: str) -> object:
+    """向量表哨兵 → Python 值：`(null)` → None、`(empty)` → 空串。"""
+    if cell == "(null)":
+        return None
+    return "" if cell == "(empty)" else cell
+
+
+def _spec_lines() -> list[str]:
+    """本档的行（不存在 ⇒ 空表，调用方判 FAIL）。"""
+    path = ROOT / SPRINT_VECTOR_SPEC
+    if not path.is_file():
+        return []
+    return path.read_text(encoding="utf-8").splitlines()
+
+
+class SpecAbsentOnBranch(Exception):
+    """向量表 spec **不在本分支**（分支差异，不是缺陷）——复核 `run-…-105` critical 2。
+
+    同族第二处：`verify_agentops.py:94` 的 `SPRINT_VECTOR_SPEC` 是同一个 windows-only
+    路径。那里的故障形态是无保护 `read_text()` ⇒ `FileNotFoundError` rc=1；
+    这里的形态是 `_spec_lines()` 返回空表 ⇒ 误判成"向量表缺失/不可解析"。
+    两处都必须是**分支感知**：spec 不在本分支 ⇒ 显式 SKIP（上屏、不冒充 PASS）；
+    spec 在位 ⇒ 照旧真判（一个字不放宽）。
+    """
+
+
+def _spec_absent_on_branch() -> bool:
+    """spec 是"本分支没有"还是"被删"——证据都是 git（口径同判据三分法）。
+
+    True **仅当** spec 既不在工作区、也不在 `HEAD` 的提交树里（真·分支差异）。
+    在 HEAD 里存在而工作区没有 ⇒ 是**被删** ⇒ False，调用方照旧 fail-closed。
+    """
+    rel = Path(SPRINT_VECTOR_SPEC).as_posix()
+    return not (ROOT / rel).is_file() and not path_in_head(ROOT, rel)
+
+
+def _col_index(head: list[str], name: str) -> int:
+    """表头里定位列名。
+
+    表头单元格可能写成行内代码（`` `sprint` ``）——先剥反引号再比；
+    缺列返回 -1（调用方判 FAIL，不靠写死列号兜底）。
+    """
+    cells = [c.strip("`") for c in head]
+    return cells.index(name) if name in cells else -1
+
+
+def _is_data_row(cells: list[str]) -> bool:
+    """数据行判据：去掉对齐符后**还有内容**。
+
+    注意不能用 `set(joined) > set("-: ")`——`>` 是**真超集**判定，
+    而分隔行 `['---','---','---']` 与 `set("-: ")` 恰好相等 ⇒ 数据行会被静默丢掉。
+    """
+    return bool(set("".join(cells)) - set("-: "))
+
+
+def _table_slice(lines: list[str], section: str) -> list[list[str]]:
+    """取 `section` 之后的第一张表 → 逐行单元格（表头行、分隔行都在内）。
+
+    列位一律由**表头行**定位，不在数据行里找列名——
+    否则"给表加一列"会变成静默错位而非响亮失败。
+    """
+    hits = [i for i, line in enumerate(lines) if section in line]
+    if not hits:
+        return []
+    out: list[list[str]] = []
+    for line in lines[hits[0] + 1:]:
+        line = line.strip()
+        if not line.startswith("|"):
+            if out:
+                break
+            continue
+        if line.endswith("|"):
+            out.append([c.strip() for c in line[1:-1].split("|")])
+    return out
+
+
+def _vector_table(section: str, column: str = "输入"
+                  ) -> list[tuple[str, object, object]] | None:
+    """从本档解析一致性向量表 → `(id, 输入值, 期望值)`。
+
+    表 C（语义层）的输入列是 `sprint`，调用方显式传 `column="sprint"`
+    ——**不要**靠 section 文本猜列名（`"### 4.3 表 C"` 里没有"语义"二字，
+    猜错会静默取不到列，而不是响亮失败）。
+    缺表、缺列、无数据行 ⇒ None（调用方判 FAIL，不放行）。
+    **spec 整个不在本分支** ⇒ 抛 `SpecAbsentOnBranch`（调用方转显式 SKIP）：
+    那不是"表坏了"，是这条判据在本分支无从执行。
+    两侧脚本各自解析**同一张表**，故"同输入"由构造保证，不靠人抄两遍。
+    """
+    if _spec_absent_on_branch():
+        raise SpecAbsentOnBranch(SPRINT_VECTOR_SPEC)
+    raw_cells = _table_slice(_spec_lines(), section)
+    if not raw_cells:
+        return None
+    head = raw_cells[0]
+    i_id, i_in, i_want = (_col_index(head, k) for k in ("id", column, "期望值"))
+    if min(i_id, i_in, i_want) < 0:
+        return None
+    rows = [(c[i_id].strip("`"), _vec_value(c[i_in].strip("`")),
+             _vec_value(c[i_want].strip("`")))
+            for c in raw_cells[1:]
+            if len(c) > max(i_id, i_in, i_want) and _is_data_row(c)]
+    return rows or None
+
+
+def _vector_extra(section: str, column: str) -> list[object] | None:
+    """取某张向量表的一列（表 C 的第 3 列 `task_id`）。缺表/缺列 ⇒ None。"""
+    raw_cells = _table_slice(_spec_lines(), section)
+    if not raw_cells:
+        return None
+    i_col = _col_index(raw_cells[0], column)
+    if i_col < 0:
+        return None
+    out = [_vec_value(c[i_col].strip("`")) for c in raw_cells[1:]
+           if len(c) > i_col and _is_data_row(c)]
+    return out or None
+
+
+def _drift_pattern() -> str:
+    """反证用的"看似合理的收紧"模式（数字宽度限 4 位），只用于敏感度自检。"""
+    return SPRINT_ID_RE.pattern.replace("0*(\\d+)", "0*(?:0*)(\\d{0,4})")
+
+
+def _sprint_vector_problems() -> list[str]:
+    """向量守卫：本闸门对同一组输入必须与**规范期望值**同结论。
+
+    含**敏感度反证**（台账"向量必须有牙"）：把归一模式按 `_drift_pattern()` 收紧后
+    重跑，至少**一个**输入的结论必须改变。一个都没变 ⇒ 判 FAIL：本次一致不作数。
+
+    **spec 不在本分支 ⇒ 本例无从判定**（复核 `run-…-105` critical 2）：
+    旧实现此处返回"向量表缺失或不可解析"⇒ main 上 **C1/E1 直接 FAIL**，
+    把分支差异冒充成代码缺陷。分支差异与"表坏了"必须分开：
+    spec 在位而表缺失/列不齐 ⇒ 照旧返回问题（上面那条 fail-closed 不动）。
+    """
+    if _spec_absent_on_branch():
+        return []
+    rows = _vector_table("### 4.1 表 A") or []
+    rows += _vector_table("### 4.2 表 B") or []
+    if not rows:
+        return [f"向量表缺失或不可解析：{SPRINT_VECTOR_SPEC}（判据未被触发 ⇒ 不作数）"]
+    problems = [f"向量 {rid}: 输入 {raw!r} 期望 {want!r}，实测 {_norm_sprint(raw)!r}"
+                for rid, raw, want in rows if _norm_sprint(raw) != want]
+    if not any(want is not None for _, _, want in rows):
+        problems.append("向量一个接受例都没有 ⇒ 前置条件不成立 ⇒ 本次一致性不作数")
+    drift = re.compile(_drift_pattern())
+    changed = sum((drift.search(t).group(1) if drift.search(t)
+                   else (drift.fullmatch(t).group(1) if drift.fullmatch(t) else None))
+                  != want for _, raw, want in rows for t in [str(raw or "").strip()])
+    if not changed:
+        problems.append("向量对该漂移不敏感（收紧正则后无一例改变结论）"
+                        " ⇒ 本次一致不作数")
+    problems += _sprint_semantic_problems()
+    return problems
+
+
+def _sprint_semantic_problems() -> list[str]:
+    """表 C：读取侧**语义层**（`sprint` 字段缺失时回退 `task_id`）必须与期望同结论。
+
+    只测归一函数不测这条回退，等于没测"判定域是从哪来的"。
+    **spec 不在本分支 ⇒ 本例无从判定**（同 `_sprint_vector_problems` 的分支感知）。
+    """
+    if _spec_absent_on_branch():
+        return []
+    section = "### 4.3 表 C"
+    rows = _vector_table(section, "sprint") or []
+    tasks = _vector_extra(section, "task_id") or []
+    if not rows or len(rows) != len(tasks):
+        return [f"语义层向量缺失/列不齐：{SPRINT_VECTOR_SPEC}（判据未被触发 ⇒ 不作数）"]
+    problems = []
+    for (rid, sprint, want), task in zip(rows, tasks):
+        run = {"run_id": "vector", "sprint": sprint, "task_id": task}
+        got = run_sprint_identity(run)
+        if got != want:
+            problems.append(f"语义向量 {rid}: sprint={sprint!r} task_id={task!r} "
+                            f"期望 {want!r}，实测 {got!r}")
+    return problems
+
+
+def _norm_sprint(value: object) -> str | None:
+    """把 Sprint 标识归一成**纯编号字符串**。
+
+    例：`"Sprint-18"` / `"18"` / `"018"` → `"18"`。
+
+    **本函数是判据侧的独立镜像**，与写入侧同义但**不导入**它（台账 E1 / 行 7）；
+    两者的同义性由 `_sprint_vector_problems()` 用一致性向量守。
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+    m = SPRINT_ID_RE.search(text)
+    if m is None:
+        m = re.fullmatch(r"0*(\d+)", text)
+    return m.group(1) if m else None
+
+
+def sprint_identity_of_doc(path: Path | str) -> str | None:
+    """**被判定物**（Sprint 文档）自带的 Sprint 身份（M-A：域必须由被判定物派生）。
+
+    取文件名里的 `sprint-<N>`（本仓一律如此命名，如 `2026-09-21-sprint-17.md`）；
+    文件名给不出身份 → `None`（调用方 fail-closed 报 `domain-unavailable`，**不猜**）。
+    """
+    return _norm_sprint(Path(path).stem)
+
+
+def run_sprint_identity(run: dict) -> str | None:
+    """账本 run 的 Sprint 身份：优先**显式字段** `sprint`（`register --sprint` 写入），
+    否则从 `task_id` 派生（legacy 兼容：本仓历史关闭 run 的 `task_id`
+    一律含 `Sprint-<N>`）。
+
+    派生不出 → `None`。这类 run **不得被当成"别的 Sprint"排除**（那等于静默丢数据），
+    调用方按 fail-closed **保留**它们，并把条数上屏。
+    """
+    explicit = _norm_sprint(run.get("sprint"))
+    return explicit if explicit else _norm_sprint(run.get("task_id"))
+
+
+def domain_runs(runs: list[dict], sprint_id: str | None) -> tuple[list[dict], int]:
+    """本次判定的**域** = `(域内 run, 身份不可派生的 run 条数)`。
+
+    `sprint_id is None` ⇒ 返回全部（调用方在此之前已按 `domain-unavailable` 收口，
+    这里只做防御性返回）。身份不可派生的 run **保留**（fail-closed：宁多勿少），
+    但**计数上屏**，避免把"收窄"做成静默动作。
+    """
+    if sprint_id is None:
+        return list(runs), 0
+    kept: list[dict] = []
+    unknown = 0
+    for r in runs:
+        ident = run_sprint_identity(r)
+        if ident is None:
+            unknown += 1
+            kept.append(r)
+        elif ident == sprint_id:
+            kept.append(r)
+    return kept, unknown
+
+
+def _contributes_coverage(policy: AgentPolicy | None, run: dict) -> bool:
+    """该 run 是否**承担内容覆盖**——只有承担者才有资格界定域右端（M-A）。
+
+    实测事故（2026-09-25，`A-M13` 的 `implementation` 首跑）：`coverage_window: none` 的 run
+    在 `finish` 时会自动记下 `covers_through = 登记时 HEAD` ⇒ 那是一个**空窗口**，却因为
+    "域内最新一条"把 G2 的域右端拉到它自己那一刻。**空窗口不是覆盖声明，不能当边界用**。
+
+    三类排除（都是数据驱动）：
+      * `produced_only: true`（已如实标注为"不承担内容覆盖"）；
+      * spec 声明 `coverage_window: none`（实现类等）；
+      * **作用域类 role**（`close_gate.scope_ref_step` 那一步的 role）：按 B3 语义它只在
+        T0 界定本次关闭覆盖哪些变更，本身不承担内容覆盖。
+    """
+    if run.get("produced_only") is True:
+        return False
+    if policy is None:
+        return True
+    role = str(run.get("role") or "")
+    if str(_spec_of(policy, role).get("coverage_window") or "").strip() == "none":
+        return False
+    _step, _order, scope_roles, _later = close_step_order(policy)
+    return role not in scope_roles
+
+
+def domain_right_boundary(
+        runs: list[dict], *,
+        policy: AgentPolicy | None = None,
+        root: Path | None = None) -> tuple[str | None, str | None, list[str]]:
+    """域的**右端** = `(sha, 定义它的 run_id, 具名问题)`：域内**覆盖最远**那条 run 的
+    `covers_through`。
+
+    为什么右端必须取自域内（M-A 的第二半，2026-09-25 实测）：
+    C3 的判据是"锚点→HEAD 每个提交有归属"，而 `HEAD` 是**移动靶** ⇒ 下一个 Sprint 的提交
+    会掉进本 Sprint 的判据里（G2 开工当天的提交就会被算成 Sprint-17 的"未归属提交"）。
+    域既然由被判定物派生，右端就必须由**该 Sprint 自己的记录**界定。
+
+    **按覆盖远近，不按登记时间**（2026-09-25 独立复核 `run-…083` major）：
+    原实现取"`started_at` 最新那条" ⇒ **后登记一条覆盖更少的 run** 就能把 C3 的判定域
+    静默缩小（`_contributes_coverage` 只保证"它承担覆盖"，不保证"它覆盖得更远"）。
+    现按**祖先关系**取最远者：`X` 更远 ⇔ `X.covers_through` 是
+    `Y.covers_through` 的后代；
+    **不可比（分叉）⇒ 具名问题**（fail-closed，不猜谁更远）。
+    `root is None`（夹具/无 git）⇒ 退回"登记时间最新"并**在问题里点名该口径**，
+    自检仍可跑。
+    """
+    cands: list[dict] = []
+    for r in runs:
+        if not _contributes_coverage(policy, r):
+            continue
+        if re.fullmatch(r"[0-9a-fA-F]{40}", str(r.get("covers_through") or "").strip()):
+            cands.append(r)
+    if not cands:
+        return None, None, []
+    if root is None:
+        latest = max(cands, key=lambda r: str(r.get("started_at") or ""))
+        return (str(latest["covers_through"]), str(latest.get("run_id") or "?"),
+                ["[域右端] 无 git 根可比（夹具模式）⇒ 按**登记时间最新**取右端；"
+                 "真数据模式会做祖先比较"])
+    best = cands[0]
+    problems: list[str] = []
+    for cand in cands[1:]:
+        a = str(best["covers_through"])
+        b = str(cand["covers_through"])
+        if a == b:
+            continue
+        if _is_ancestor(root, a, b):
+            best = cand
+        elif not _is_ancestor(root, b, a):
+            problems.append(
+                f"[域右端] {best.get('run_id')} 的 covers_through {a[:10]} 与 "
+                f"{cand.get('run_id')} 的 {b[:10]} **不可比**（互不为祖先）"
+                f"⇒ 域右端无法判定"
+                f"（fail-closed：不猜哪个更远；查这两条 run 是否分属不同血统）")
+    return str(best["covers_through"]), str(best.get("run_id") or "?"), problems
+
+
+def scope_step_runs(policy: AgentPolicy, runs: list[dict], *,
+                    sprint_id: str | None = None) -> list[dict]:
+    """作用域步骤的**全部候选 run**（role + target 过滤，target 口径同 N3：精确匹配）。
+
+    `sprint_id` 非空时**再按 Sprint 身份过滤**（M-A）：作用域 run 必须属于**被判定物**
+    那个 Sprint——这是"跨 Sprint 窗口翻转"（G2 kickoff 〇查一登记就把 Sprint-17 的窗口
+    顶掉）的根治点。身份不可派生的 run **保留**（fail-closed）。
+    """
     wanted_step = str(policy.close_gate.get("scope_ref_step") or "").strip()
     if not wanted_step:
         return []
@@ -258,10 +652,34 @@ def scope_step_runs(policy: AgentPolicy, runs: list[dict]) -> list[dict]:
             wanted_targets = set(step.targets)
             bucket = [r for r in bucket if exact_target(r) in wanted_targets]
         candidates += bucket
+    if sprint_id is not None:
+        # 显式身份**优先于**无身份：有"本 Sprint"的候选时，绝不把无身份的 run 混进来
+        # （否则一条 task_id 为空的历史 run 会冒充本期作用域 run——实测：run-…-065
+        # 的 `task_id` 为空，曾把 Sprint-16 的窗口判成不可用）。只有当**一个带身份的
+        # 候选都没有**时，才回退到无身份候选（fail-closed：宁可算进来，也不要"因为
+        # 没写身份就当作本期没跑过"）。
+        identified = [r for r in candidates if run_sprint_identity(r) == sprint_id]
+        if identified:
+            return identified
+        return [r for r in candidates if run_sprint_identity(r) is None]
     return candidates
 
 
-def scope_window_problems(policy: AgentPolicy, runs: list[dict], candidate: dict) -> list[str]:
+def _terminal_statuses(policy: AgentPolicy) -> set[str]:
+    """政策里的**终态**状态集（真源 `agents/policy.json::ledger_status.terminal`）。
+
+    取不到时退回本仓默认三态——判据方向是 fail-closed（下面用它决定"坏时间戳该判红
+    还是该 SKIP"），故**不得**把"读不到"变成"没有终态"（那会让判据静默消失）。
+    """
+    try:
+        value = (policy._data("ledger_status") or {}).get("terminal")
+    except (AttributeError, PolicyError):
+        value = None
+    return {str(s) for s in value} if value else {"succeeded", "failed", "cancelled"}
+
+
+def scope_window_problems(policy: AgentPolicy, runs: list[dict], candidate: dict, *,
+                          sprint_id: str | None = None) -> list[str]:
     """候选作用域 run 能否当"本次关闭的起点"——**次序/时序**判据，违反即返回**具名问题**。
 
     为什么必须有上界（2026-09-25 独立复核 finding 2，major）：
@@ -283,6 +701,13 @@ def scope_window_problems(policy: AgentPolicy, runs: list[dict], candidate: dict
          `order` + role），不是写死的角色名；
       ③ **引用它的 run 不得比它更早**：`scope_source` 引用了候选 run 的后续步骤 run，其
          `started_at` 早于被引用者 ⇒ 引用不可能成立（数据被改过），窗口不可采信。
+         **但"未起跑"（`queued`／`started_at` 缺失或不可解析）不是"数据被改过"**：
+         这类 run 在次序里**没有位置**，一律**显式 SKIP**（上屏点名）并退出②③的比较
+         （复盘行 13 的反证 = **有 queued run 时整档不得 `rc=4`**）。
+         SKIP 的**例外**（复核 `run-…-105` major 3）：`status` 是**终态**的 run
+         必然跑过，
+         它的坏时间戳是账本数据缺陷 ⇒ **fail-closed 判红**，不得盖"未起跑"的章——
+         否则"把时间戳改坏"就成了把该 run 从次序判据里抹掉的绕过路径。
 
     ②的口径说明（**与复核建议的字面口径有一处有意分歧，已标注**）：
     字面上"晚于任何后续步骤
@@ -309,6 +734,49 @@ def scope_window_problems(policy: AgentPolicy, runs: list[dict], candidate: dict
             f"（未来时间戳会把全部当期 run 挤出窗口 = 静默放行）")
     _step, _order, _scope_roles, later_roles = close_step_order(policy)
     later = [r for r in runs if str(r.get("role") or "") in later_roles]
+    if sprint_id is not None:
+        # M-A：次序判据只在**同一 Sprint** 内比较。两类 run 的处理**故意不对称**：
+        #   * 候选作用域 run：身份不可派生的**保留**（fail-closed——它可能就是本期的，
+        #     排除它等于"换个 task_id 就能让窗口消失"）；
+        #   * 比较用的后续步骤 run：身份不可派生的**排除**（它无法被归属到本期的流水线，
+        #     留着它会让**每个新 Sprint 的 kickoff 〇查**都被判"晚于整条流水线"——
+        #     实测：Sprint-18 的 081 登记后，账本里 34 条历史后续步骤 run 全在它之前，
+        #     于是域被判不可用；这不是事故，是新 Sprint 的正常开局）。
+        later = [r for r in later if run_sprint_identity(r) == sprint_id]
+    # 复盘行 13：**未起跑**（`queued`／`started_at` 缺失或不可解析）的后续步骤 run
+    # 在流水线里**没有位置**——既不是"之前"也不是"之后"。旧实现把它交给 `_before`，
+    # 而 `_before` 对不可解析值退回**字典序** ⇒ `"" < 任何时间戳` 恒真 ⇒ 一条
+    # queued run 就能让判据③报"数据被改过"、窗口被弃用 ⇒ 整档 `rc=4`（域不可派生）。
+    # 现改为**显式 SKIP**：从次序比较中剔除并上屏点名（"未起跑"不是"数据被改过"）。
+    # **但是**（复核 `run-…-105` major 3）：SKIP 的谓词只读 `started_at` 的
+    # **可解析性**，
+    # 不读 `status` ⇒ 一条**终态** run（`succeeded`/`failed`/`cancelled`）的坏时间戳
+    # 被盖上"未起跑"的章、静默剔除。终态 run 必然**跑过** ⇒ 它的坏时间戳是
+    # **账本数据缺陷**（不是"还没起跑"），必须 fail-closed 判红：否则把时间戳改坏
+    # 就等于把这条 run 从次序判据里抹掉（"未起跑"的章成了绕过路径）。
+    # 非终态（`queued`/`running` 或状态缺失）仍走 SKIP——那是行 13 的原始语义。
+    _terminal = _terminal_statuses(policy)
+    positioned: list[dict] = []
+    for run in later:
+        if _ts(str(run.get("started_at") or "")) is None:
+            if str(run.get("status") or "") in _terminal:
+                problems.append(
+                    f"[窗口/时间戳] {run.get('run_id')} 是**终态** run"
+                    f"（status={run.get('status')!r}）却带坏时间戳"
+                    f"（started_at={run.get('started_at')!r}）⇒ 终态必然跑过，"
+                    f"这不是『未起跑』而是**账本数据缺陷**：不得按未起跑静默剔除"
+                    f"（那会把『把时间戳改坏』变成绕过次序判据的路径）——"
+                    f"请用 `agent-ops.py set-started-at --evidence … "
+                    f"--reason …` 受控回填")
+                continue
+            print(f"SKIP[窗口/未起跑] {run.get('run_id')}"
+                  f"（status={run.get('status')!r}，"
+                  f"started_at={run.get('started_at')!r}）"
+                  f"⇒ 它在流水线里没有位置，不参与次序比较"
+                  f"（行 13：未起跑 ≠ 数据被改过）")
+            continue
+        positioned.append(run)
+    later = positioned
     earlier = [r for r in later if _before(str(r.get("started_at") or ""), started)]
     after = [r for r in later if _before(started, str(r.get("started_at") or ""))]
     if earlier and not after:
@@ -331,7 +799,8 @@ def scope_window_problems(policy: AgentPolicy, runs: list[dict], candidate: dict
     return problems
 
 
-def scope_step_run(policy: AgentPolicy, runs: list[dict]) -> dict | None:
+def scope_step_run(policy: AgentPolicy, runs: list[dict], *,
+                   sprint_id: str | None = None) -> dict | None:
     """本次关闭的**作用域 run** = 作用域步骤
     （`close_gate.scope_ref_step`，本仓 = `scope`）在账本里**最新的**那条 run
     ——**只做筛选，不做次序判定**（次序判定见 `scope_window_problems`）。
@@ -340,29 +809,39 @@ def scope_step_run(policy: AgentPolicy, runs: list[dict]) -> dict | None:
     属于上一个 Sprint 的关闭（本仓实测：`lessons-learned` 的 058 是 **Sprint-16**
     关闭补跑的那条），不应被本 Sprint 的 §9 要求，也不应定义本 Sprint 的窗口。
 
+    **M-A（`TG-19`，2026-09-25）**：`sprint_id` 非空时，"最新"只在**同一 Sprint** 的
+    候选里取——原口径是"全账本最新一条"，于是**下一个 Sprint 的 kickoff 〇查一登记，
+    上一个 Sprint 的窗口就被顶掉**（实测：Sprint-17 的关闭读数由 1 项变 99 项，其中
+    98 项假红）。域由**被判定物**派生，而不是由"账本里最后发生了什么"派生。
+
     `step.targets` 非空时按 target **精确匹配**过滤（口径同 N3；本仓 `scope` 步无
     targets，故实际不过滤——但判据不能建立在"当前数据刚好没有 targets"上）。
     没有 run、或最新 run 没有 `started_at` → 返回 None（调用方 fail-closed）。
     """
-    candidates = scope_step_runs(policy, runs)
+    candidates = scope_step_runs(policy, runs, sprint_id=sprint_id)
     if not candidates:
         return None
     latest = max(candidates, key=lambda r: str(r.get("started_at") or ""))
     return latest if str(latest.get("started_at") or "") else None
 
 
-def derive_close_window(policy: AgentPolicy, runs: list[dict]) -> tuple[str | None, list[str]]:
+def derive_close_window(policy: AgentPolicy, runs: list[dict], *,
+                        sprint_id: str | None = None) -> tuple[str | None, list[str]]:
     """窗口起点 + **弃用原因**（`(started_at | None, problems)`）。
 
     问题非空 ⇒ 起点为 `None`（判定域退回全域，fail-closed）；
     作用域 run 缺席同样返回 `None`
     且**不报问题**（"缺 run"由 `check_requirements` 按 `fanout.json` 逐条点名，两处不重复报）。
+
+    `sprint_id` 非空 ⇒ 候选作用域 run 只在**同一 Sprint** 内挑（M-A），次序判据也只在
+    同一 Sprint 内比较；"该 Sprint 根本没有作用域 run"由调用方（`run_real_data`）按
+    `domain-unavailable` 收口，本函数仍只负责起点推导。
     """
     _criterion()
-    candidate = scope_step_run(policy, runs)
+    candidate = scope_step_run(policy, runs, sprint_id=sprint_id)
     if candidate is None:
         return None, []
-    problems = scope_window_problems(policy, runs, candidate)
+    problems = scope_window_problems(policy, runs, candidate, sprint_id=sprint_id)
     if problems:
         return None, problems
     return str(candidate.get("started_at")), []
@@ -421,14 +900,22 @@ def ledger_close_window(policy: AgentPolicy, runs: list[dict]) -> str | None:
 
 # --------------------------------------------------------------------- 判据
 
-def check_requirements(policy: AgentPolicy, runs: list[dict]) -> list[str]:
+def check_requirements(policy: AgentPolicy, runs: list[dict], *,
+                       window_start: str | None = None) -> list[str]:
     """需求侧（数据驱动）：关闭流水线的必填步骤 / role / target 是否都真的跑过。
 
     原先这些判据是 `if role == "code-review": 必须有 windows 和 main` 这样的代码；
     现在**从 `fanout.json` 推导**——加减步骤/分支只改数据。
+
+    `window_start` 非空 ⇒ 只认**窗口内**的 run（M-A）：域是按 Sprint 收窄的，若这里仍
+    认全域，一个**身份不可派生的历史 run**（例如多年前的同 role run）就能冒充"本期步骤
+    跑过了"——那是把"收窄"做成了"放行"。默认 `None` 保持历史调用口径（自检 fixture 用）。
     """
     _criterion()
     problems: list[str] = []
+    if window_start is not None:
+        runs = [r for r in runs
+                if str(r.get("started_at") or "") >= window_start]
     by_role: dict[str, list[dict]] = {}
     for r in runs:
         by_role.setdefault(str(r.get("role") or ""), []).append(r)
@@ -530,11 +1017,21 @@ def check_c1(policy: AgentPolicy, runs: list[dict],
     return problems
 
 
-def check_c2(policy: AgentPolicy, runs: list[dict]) -> list[str]:
-    """C2 指涉可核：外部引用解析到"存在且可用"的对象；运行数据 role 必须能落到 spec（不认角色名）。"""
+def check_c2(policy: AgentPolicy, runs: list[dict], *,
+             ledger: list[dict] | None = None) -> list[str]:
+    """C2 指涉可核：外部引用解析到"存在且可用"的对象；
+    运行数据 role 必须能落到 spec（不认角色名）。
+
+    `ledger` 非空 ⇒ "引用对象**是否存在**"按**全账本**判定（M-A）：
+    判定域是按 Sprint 收窄的，而被引用的对象天然可能属于上一个 Sprint
+    （本期 〇查完全可以沿用上一期的 scope 承担者）。
+    拿域内名单查存在性，会把**合法的跨期引用**判成"指向不存在的对象"——实测：Sprint-16 与
+    Sprint-18 的域里都因此各多出 1 条假红（072/081 引用 069）。**收窄判定域不等于收窄
+    "存在性"的判据范围**：前者问"本期该谁被要求"，后者问"这个名字在账本里有没有"。
+    """
     _criterion()
     problems: list[str] = []
-    by_id = {r.get("run_id"): r for r in runs}
+    by_id = {r.get("run_id"): r for r in (ledger if ledger is not None else runs)}
     for r in runs:
         source = str(r.get("scope_source") or "").strip()
         if not source or source == "self-chosen":
@@ -556,11 +1053,31 @@ def check_c2(policy: AgentPolicy, runs: list[dict]) -> list[str]:
         else:
             problems.append(f"[C2] {r.get('run_id')} 的 scope_source={source!r} 不匹配任何已知引用前缀"
                             f"{list(policy.scope_ref_sources)}（既非引用也非 self-chosen）")
-    unresolved = policy.unresolved_roles(str(r.get("role") or "") for r in runs)
+    # 封闭世界（A-M13 ②）：**账本里出现过的每个 role 都必须有 spec**。
+    # 与 C1/C3 不同，这条判据**按全账本**判定（`ledger`）：判定域可以按 Sprint 收窄，
+    # 但"这个角色名有没有 spec"是关于**整个账本**的事实——只看域内会把域外的野角色漏掉。
+    unresolved = policy.unresolved_roles(
+        str(r.get("role") or "") for r in (ledger if ledger is not None else runs))
     for role in unresolved:
         problems.append(f"[C2] 账本出现无 spec 的 role={role!r}（新增角色必须建 "
                         f"{policy.spec_dir.name}/<role>.md 并声明 scope_required）")
     return problems
+
+
+def _in_flight_grace_minutes(policy: AgentPolicy) -> float | None:
+    """§9 登记的**在飞宽限**（分钟）——`A-M13` ④：口径与 `ledger_measurement.in_flight`
+    的 `terminal_writeback_grace_minutes` **同一取值来源**（不得各写一个数）。
+
+    为什么需要：主代理是**边跑边登记** §9 的，于是"账本有 run、§9 还没写"在任何一次
+    复核 run 刚登记时**必然出现**——把它当缺陷就是与工作流互斥的结构性假红（同
+    `terminal_not_written_back` 的成因）。宽限内只提示（`INFO`，不计缺陷），超期照旧逐条 FAIL。
+    """
+    try:
+        lm = policy._data("ledger_measurement") or {}
+        value = (lm.get("in_flight") or {}).get("terminal_writeback_grace_minutes")
+        return float(value) if value is not None else None
+    except (AttributeError, TypeError, ValueError):
+        return None
 
 
 def check_linkage(policy: AgentPolicy, sprint: dict, runs: list[dict],
@@ -596,9 +1113,32 @@ def check_linkage(policy: AgentPolicy, sprint: dict, runs: list[dict],
 
     for rid in sorted(table_ids - set(by_id)):
         problems.append(f"[linkage] §9 写了 run 但账本无记录：{rid}")
+    grace = _in_flight_grace_minutes(policy)
+    now_epoch = datetime.now(timezone.utc).timestamp()
     for r in scoped:
-        if r.get("run_id") not in table_ids:
-            problems.append(f"[linkage] 账本有 run 但 §9 run 表未登记：{r.get('run_id')}")
+        if r.get("run_id") in table_ids:
+            continue
+        rid = r.get("run_id")
+        started = _ts(str(r.get("started_at") or ""))
+        age_min = (now_epoch - started.timestamp()) / 60 if started else None
+        if grace is not None and age_min is not None and 0 <= age_min < grace:
+            # A-M13 ④：在飞宽限内只提示（不计缺陷）——"刚登记、§9 还没写"是工作流的常态，
+            # 不是缺口；超期仍逐条 FAIL（宽限不是豁免）。
+            print(f"INFO[linkage-in-flight] {rid} 登记 {age_min:.0f} 分钟前、"
+                  f"§9 run 表尚未登记 ⇒ 宽限 {grace:.0f} 分钟内只提示不判"
+                  f"（口径同 ledger_measurement.in_flight）")
+            continue
+        if age_min is not None and age_min < 0:
+            # 2026-09-25 独立复核 `run-…083` major：宽限**没有下界**时，
+            # 一条 `started_at` 在未来的 run（`age_min` 为负）会**永久**落在宽限内
+            # ⇒ 它的 §9 登记要求被无限期豁免。
+            problems.append(
+                f"[linkage/未来] {rid} 的 started_at="
+                f"{r.get('started_at')!r} **晚于现在**"
+                f"（{age_min:.0f} 分钟）⇒ 未来的 run 不适用在飞宽限（宽限是给"
+                f"刚登记、§9 还没写的当期 run），照旧要求登记")
+            continue
+        problems.append(f"[linkage] 账本有 run 但 §9 run 表未登记：{rid}")
 
     # 区间比对（窗口**不得取自被校验文档自身**）：§9 最早一行晚于账本窗口起点 = 有人在用
     # "少写几行"缩小窗口。逐条点名在上面，这里给出窗口级结论（便于一眼看出是区间问题）。
@@ -612,7 +1152,8 @@ def check_linkage(policy: AgentPolicy, sprint: dict, runs: list[dict],
     return problems
 
 
-def check_c3(policy: AgentPolicy, sprint: dict, runs: list[dict], att: Attribution) -> list[str]:
+def check_c3(policy: AgentPolicy, sprint: dict, runs: list[dict], att: Attribution,
+             right_end: str | None = None) -> list[str]:
     """C3 覆盖闭环：锚点存在、每个提交有归属、且与 §9 声明的覆盖口径一致。"""
     _criterion()
     problems: list[str] = []
@@ -635,9 +1176,13 @@ def check_c3(policy: AgentPolicy, sprint: dict, runs: list[dict], att: Attributi
     unowned = att.unowned(globs)
     if unowned:
         # 失效方向反转（用户 P2 关切）：表没跟上 → 默认 FAIL 并**逐条点名**
+        # 右端标签（M-A）：`right_end` 非空时判据的上界来自**域内**最后一条覆盖 run，
+        # 不是仓库 HEAD——消息里必须说清是哪一个，否则读者会以为"HEAD 之后也检了"。
+        right_label = f"{right_end[:8]}（域右端）" if right_end else "HEAD"
         problems.append(
-            f"[C3] 锚点 {sprint['anchor'][:8]}→HEAD 有 {len(unowned)} 个提交无归属（run 窗口/例外表/"
-            f"doc-only 都不覆盖）：" + ", ".join(s[:10] for s in unowned[:8])
+            f"[C3] 锚点 {sprint['anchor'][:8]}→{right_label} 有 "
+            f"{len(unowned)} 个提交无归属（run 窗口/例外表/doc-only 都不覆盖）："
+            + ", ".join(s[:10] for s in unowned[:8])
             + (" …" if len(unowned) > 8 else ""))
 
     # §9 行声明的覆盖范围必须与账本一致（防"文档写了覆盖、账本没有窗口"）。
@@ -662,7 +1207,9 @@ def check_c3(policy: AgentPolicy, sprint: dict, runs: list[dict], att: Attributi
 
 
 def evaluate(policy: AgentPolicy, sprint: dict, runs: list[dict], *,
-             att: Attribution | None = None, check_coverage: bool = True) -> list[str]:
+             att: Attribution | None = None, check_coverage: bool = True,
+             sprint_id: str | None = None, right_end: str | None = None,
+             ledger: list[dict] | None = None) -> list[str]:
     """返回失败原因列表（空 = 通过）。三条不变式 + 需求（全部数据驱动）。
 
     **关闭窗口只推导一次**：C1 的判定域（D1）与 §9↔账本的区间比对（N6）
@@ -674,17 +1221,18 @@ def evaluate(policy: AgentPolicy, sprint: dict, runs: list[dict], *,
     既报出问题、又不静默收窄。
     """
     problems: list[str] = []
-    window_start, window_problems = derive_close_window(policy, runs)
+    window_start, window_problems = derive_close_window(
+        policy, runs, sprint_id=sprint_id)
     problems += window_problems
-    problems += check_requirements(policy, runs)
+    problems += check_requirements(policy, runs, window_start=window_start)
     problems += check_c1(policy, runs, window_start)
-    problems += check_c2(policy, runs)
+    problems += check_c2(policy, runs, ledger=ledger)
     problems += check_linkage(policy, sprint, runs, window_start)
     if check_coverage:
         if att is None:
             problems.append("[C3] 覆盖检查已启用但未提供归属计算结果（内部错误）")
         else:
-            problems += check_c3(policy, sprint, runs, att)
+            problems += check_c3(policy, sprint, runs, att, right_end=right_end)
     return problems
 
 
@@ -707,6 +1255,9 @@ FIXTURE_POLICY = {
         "transitions": {"queued": ["running"], "running": ["succeeded", "failed", "cancelled"]},
         "non_credible": ["failed", "cancelled"],
     },
+    # A-M13 ④（§9 在飞宽限）：与真政策同键同名——宽限判据必须能被自检打到，
+    # 否则"宽限内只提示"这条在 fixture 里永远走不到（假绿）。
+    "ledger_measurement": {"in_flight": {"terminal_writeback_grace_minutes": 120}},
     "close_gate": {
         "scope_ref_step": "scope",
         "coverage": {"exceptions_file": "coverage-exceptions.json",
@@ -909,6 +1460,7 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
     ledger_path = registry_path()
     ledger_missing = not ledger_path.is_file()
     if ledger_missing:
+        _RUN_STATE["skipped"] = True
         print(f"SKIP[ledger-absent] 账本不存在：{ledger_path}")
         print("  → C1/需求、linkage、C3 覆盖归属**本环境无从判定**（它们的数据源就是账本；"
               "`registry.json` 被 .gitignore 忽略 ⇒ 全新 checkout 没有它是正常状态）。")
@@ -922,14 +1474,77 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
             print("CLOSE-READINESS FAIL（1 项）：")
             print(f"  - [linkage] §9 表行结构非法（第 {row['line']} 行）：{row['text'][:60]}")
             return 1
-        print(f"CLOSE-READINESS SKIP-PASS（账本缺失档）：{path.name}（run 表 {len(sprint['rows'])} 行，"
+        print(f"CLOSE-READINESS SKIP 档读数：{path.name}（run 表 "
+              f"{len(sprint['rows'])} 行，"
               f"锚点 {str(sprint.get('anchor'))[:8]}；账本相关判据未执行）")
-        return 0
+        # 判决行必须落在**末行**：`run_suite.py::skip_verdict` 的判决行通道读末行，
+        # 横幅后面再挂一句话会让两通道对不上（实测形态见本档 §5）。
+        print(verdict_line(["C1/需求、linkage、C3 覆盖归属（ledger=absent (SKIP)）"],
+                           len(sprint["rows"])))
+        return verdict_exit(["ledger-absent"])
 
+    # ---- M-A（`TG-19`）：**判定域必须由被判定物派生** ------------------------------
+    # 原口径：作用域 run 取"全账本最新一条"，于是下一个 Sprint 的 kickoff 〇查一登记，
+    # 上一个 Sprint 的窗口就被顶掉（2026-09-25 实测：
+    # Sprint-17 的关闭读数由 1 项变 99 项，
+    # 其中 98 项是假红）。现在：域 = **本文档所属 Sprint** 的 run。
+    sprint_id = sprint_identity_of_doc(path)
+    if sprint_id is None:
+        print(f"DOMAIN-UNAVAILABLE：无法从被判定物派生 Sprint 身份"
+              f"（文件名 {path.name!r} 里没有 `sprint-<N>`）"
+              f"⇒ 不产出判定结论（退出码 {DOMAIN_UNAVAILABLE_EXIT}）。")
+        print("  → 域必须由被判定物派生；派生不出时 fail-closed，"
+              "**不得**退回全域，也不得把全域 findings 当成结论。")
+        return DOMAIN_UNAVAILABLE_EXIT
+    domain, unknown_ident = domain_runs(runs, sprint_id)
+    candidate = scope_step_run(policy, domain, sprint_id=sprint_id)
+    if candidate is None:
+        print(f"DOMAIN-UNAVAILABLE：账本里找不到 **Sprint-{sprint_id}** 的作用域 run"
+              f"（step={str(policy.close_gate.get('scope_ref_step'))!r}）"
+              f"⇒ 不产出判定结论（退出码 {DOMAIN_UNAVAILABLE_EXIT}）。")
+        print("  → 语义：本 Sprint 的关闭流水线**还没开始**"
+              "（或作用域 run 的 `task_id` 里没有 `Sprint-<N>`、"
+              "也未写显式 `sprint` 字段）。")
+        return DOMAIN_UNAVAILABLE_EXIT
+    window_start, window_problems = derive_close_window(
+        policy, domain, sprint_id=sprint_id)
+    # 无身份的 run 只在**该 Sprint 的窗口内**才算本期（M-A 的第二道过滤）：
+    # 身份过滤解决"别的 Sprint 的 run 混进来"，
+    # 窗口过滤解决"身份不可派生的陈旧 run 混进来"
+    # ——后者实测会让 Sprint-18 的域里出现 Sprint-17 的 code-review（其 scope_source 指向
+    # 不在域内的 069 ⇒ C2 报"指向不存在的对象"，纯属跨期串味）。
+    if window_start is not None:
+        domain = [r for r in domain
+                  if run_sprint_identity(r) is not None
+                  or str(r.get("started_at") or "") >= window_start]
+    print(f"[domain] Sprint-{sprint_id}；域内 run {len(domain)} 条"
+          f"（其中**身份不可派生、按 fail-closed 保留** {unknown_ident} 条——"
+          f"该计数是**全账本**里无 Sprint 身份的 run 数，不是域内子集；"
+          f"二查 run-…-087 minor 7：旧文案把两个数并列成『域内 8 条（保留 23 "
+          f"条）』自相矛盾）"
+          f"；作用域 run = {candidate.get('run_id')}；窗口起点 = {window_start}")
+    if window_problems:
+        print(f"DOMAIN-UNAVAILABLE：Sprint-{sprint_id} 的窗口被次序/时序判据弃用"
+              f"⇒ 不产出判定结论（退出码 {DOMAIN_UNAVAILABLE_EXIT}）：")
+        for p in window_problems:
+            print(f"  - {p}")
+        return DOMAIN_UNAVAILABLE_EXIT
+
+    right_problems: list[str] = []
     att = None
+    right_end: str | None = None
     if check_coverage:
         anchor = sprint.get("anchor") or ""
-        head = head_sha(ROOT)
+        right_end, right_run, right_problems = domain_right_boundary(
+            domain, policy=policy, root=ROOT)
+        right_end = right_end or None
+        head = right_end or head_sha(ROOT)
+        print(f"[domain] 右端 = {head[:12]}…"
+              + (f"（由域内**覆盖最远**的 run {right_run} 的 covers_through 界定；"
+                 f"其后提交属下一个 Sprint，不进入本期 C3）" if right_end else
+                 "（域内没有任何覆盖窗口 ⇒ 退回仓库 HEAD）"))
+        for note in right_problems:
+            print(f"  {note}")
         exceptions: list[dict] = []
         cov = (policy.close_gate.get("coverage") or {})
         exc_file = cov.get("exceptions_file")
@@ -939,9 +1554,12 @@ def run_real_data(sprint_file: Path, check_coverage: bool) -> int:
             except PolicyError as exc:
                 print(f"CLOSE-READINESS-ERROR: {exc}")
                 return 2
-        att = attribution(ROOT, anchor, head, runs, exceptions, policy=policy)
+        att = attribution(ROOT, anchor, head, domain, exceptions, policy=policy)
 
-    problems = evaluate(policy, sprint, runs, att=att, check_coverage=check_coverage)
+    problems = [*right_problems, *evaluate(policy, sprint, domain, att=att,
+                                           check_coverage=check_coverage,
+                                           sprint_id=sprint_id, right_end=right_end,
+                                           ledger=runs)]
     # D0-3(a)：已标注的"产出型 run"**逐条打印**——它让一条判据对该 run 失效，
     # 若只存在于账本 JSON 里，关闭报告就会"看着全绿"而无人知道有豁免在生效。
     notes = att.produced_only_notes() if att is not None else []
@@ -972,6 +1590,9 @@ def _selfcheck() -> int:
     global _FIXTURE_POLICY
 
     tmp = Path(tempfile.mkdtemp(prefix="verify_close_readiness_"))
+    # 行 8 顺带收口：本目录此前**从不回收**（实测 %TEMP% 里积了同前缀目录一批，
+    # 每跑一次套件多一个）。回收 = 结尾显式 `rmtree` + `atexit` 兜底。
+    atexit.register(shutil.rmtree, tmp, ignore_errors=True)
     policy = _load_fixture_policy(tmp)
     _FIXTURE_POLICY = policy  # `_att()` 默认带上它（B3 按 run 类别判空窗口）
     runs = _fixture_runs()
@@ -1135,6 +1756,49 @@ def _selfcheck() -> int:
        f"｜（该状态下「缺后续步骤 run」由 check_requirements 另行点名："
        f"{len(evaluate(policy, fresh_doc, fresh, att=None, check_coverage=False))} 项）")
 
+    # 复盘行 13：账本里出现 **queued** run（`started_at=None`，尚未起跑）时，
+    # 判据③**不得**把它当成"引用不可能成立（数据被改过）"——旧实现在此把空串交给
+    # `_before` 的字典序回退（`"" < 任何时间戳` 恒真）⇒ 窗口被弃用 ⇒ 整档 `rc=4`。
+    # 反证 = **有 queued run 时整档不得 rc=4**（窗口仍可推导、问题里没有"数据被改过"）。
+    pending = dict(_run("run-c-pending", "code-review", "branch:windows",
+                        "", "impact-assessment:run-k-001"),
+                   started_at=None, status="queued")
+    pending_runs = [*runs, pending]
+    window_pending, problems_pending = derive_close_window(policy, pending_runs)
+    ok("行 13 前置：该 run 确实 queued、确实无 started_at、且确实引用了作用域 run"
+       "（判据未被触发则本条不作数）",
+       pending["status"] == "queued" and pending["started_at"] is None
+       and any(pending["scope_source"].startswith(p)
+               for p in policy.scope_ref_sources)
+       and pending["role"] in close_step_order(policy)[3],
+       f"status={pending['status']} started={pending['started_at']!r}"
+       f" source={pending['scope_source']!r}")
+    ok("行 13：账本里有 queued run ⇒ 不得判「数据被改过」、窗口仍可推导"
+       "（反证：整档不得 rc=4；未起跑 = 显式 SKIP）",
+       window_pending == "2026-09-21T01:00:00+00:00"
+       and not any("数据被改过" in x for x in problems_pending),
+       f"window={window_pending} problems={problems_pending}")
+
+    # ---- 复核 `run-…-105` major 3：**终态** run 的坏时间戳必须 fail-closed --------
+    # 原始形态：SKIP 谓词只读 `started_at` 可解析性、**不读 `status`** ⇒
+    # `status='succeeded' + started_at='GARBAGE'` 被盖"未起跑"的章并静默剔除
+    # （现跑 `problems=[]`）。终态必然跑过 ⇒ 坏时间戳是**账本数据缺陷**，必须判红。
+    # 反证同时保留方向另一侧：**非终态**的坏时间戳仍走 SKIP
+    # （行 13 的口径不许被本条吃掉）。
+    bad_ts = dict(_run("run-c-badts", "code-review", "branch:windows",
+                       "GARBAGE", "impact-assessment:run-k-001"), status="succeeded")
+    _, problems_badts = derive_close_window(policy, [*runs, bad_ts])
+    ok("行 13 反向对照（major 3）：**终态** run（status='succeeded'）＋"
+       "坏时间戳 'GARBAGE' ⇒ FAIL（不得按『未起跑』静默剔除）",
+       any("终态" in p and "run-c-badts" in p for p in problems_badts),
+       f"problems={problems_badts}")
+    _, problems_queued_badts = derive_close_window(
+        policy, [*runs, dict(bad_ts, status="queued")])
+    ok("行 13 防假红（major 3）：**非终态**（status='queued'）＋同一个坏时间戳 ⇒ "
+       "仍不判「数据被改过」（SKIP 语义未被本条吃掉）",
+       not any("终态" in p for p in problems_queued_badts),
+       f"problems={problems_queued_badts}")
+
     # 反向对照 c：非作用域步骤的 run **再早**也不得定义窗口（旧口径正是被这条拖走的）
     earliest_other = min(str(r["started_at"]) for r in runs
                          if r.get("role") != scope_role)
@@ -1208,6 +1872,47 @@ def _selfcheck() -> int:
     ok(f"B3 反向对照（数据驱动）：把 scope_ref_step 改指 {other_step!r} → 同一 role "
        f"({other_role}) 的空窗口**转为不判问题**（作用是政策给的，不是代码认角色名）",
        att_flip.window_problems() == [], f"problems={att_flip.window_problems()[:1]}")
+
+    # ---- TG-17 G2 条目 1（2026-09-25 D4）：**倒挂窗口**必须具名 ------------------
+    # 形态：`covers_through` 比 `coverage_anchor` **更早**（序号更大）⇒ `covers()` 恒
+    # False，
+    # 而两个端点都是完整 40 位 sha、又都在序号表内 ⇒ "短 sha"与"锚点/上界不在范围内"
+    # 三条旧判据**一条都不报**，窗口静默贡献 0 覆盖。
+    # 只可能由 `set-anchor` 的受控回填造成（`register`/`finish`
+    # 的自动记录产不出该形态）。
+    # order_index([B, A]) ⇒ B 序号 0（更新）、A 序号 1
+    inv_late, inv_early = SHA_B, SHA_A
+    order_inv = order_index([inv_late, inv_early])
+
+    def _inverted_problems(role: str) -> list[str]:
+        w_inv = CoverageWindow(run_id=f"run-inv-{role}", role=role,
+                               anchor=inv_late, through=inv_early, from_run=True)
+        att_inv = Attribution(anchor=inv_late, head=inv_late, shas=[inv_early],
+                              order=order_inv, windows=[w_inv],
+                              exceptions=[], root=None, policy=policy)
+        return att_inv.window_problems()
+
+    ok("TG-17① 反向对照 a：**倒挂窗口**（covers_through 早于 coverage_anchor）"
+       "⇒ 具名问题且给修复指引（旧判据一条都不报 ⇒ 静默 0 覆盖）",
+       any("倒挂" in x and "set-anchor" in x and "恒 False" in x
+           for x in _inverted_problems("code-review")),
+       f"problems={_inverted_problems('code-review')[:1]}")
+    ok("TG-17① 反向对照 b：倒挂**不按 run 类别豁免**（与『短 sha』同族：数据自相矛盾，"
+       "不是覆盖声称问题）——作用域类 role 与内容评审类都必须被判",
+       bool(_inverted_problems(other_role))
+       and all(any("倒挂" in x for x in _inverted_problems(r))
+               for r in sorted(policy.review_roles)),
+       f"scope_role={_inverted_problems(other_role)[:1]}")
+    # 正向对照：正常窗口（两个端点都在表内且上界不早于锚点）不得误报。
+    order_ok = order_index([inv_late, inv_early])
+    w_ok = CoverageWindow(run_id="run-inv-ok", role="code-review", anchor=inv_early,
+                          through=inv_late, from_run=True)
+    att_ok = Attribution(anchor=inv_early, head=inv_late, shas=[inv_late],
+                         order=order_ok, windows=[w_ok],
+                         exceptions=[], root=None, policy=policy)
+    ok("TG-17① 正向对照：同两个端点**方向正确**时零问题（防假红）",
+       not any("倒挂" in x for x in att_ok.window_problems()),
+       f"problems={att_ok.window_problems()[:1]}")
 
     # ---- B5（2026-09-25 修复验证复核 BLOCKER）：
     # 左端点是**开区间** ⇒ "锚点比文档锚点更老"的窗口
@@ -1520,6 +2225,179 @@ def _selfcheck() -> int:
         ok(f"N6 反向对照 b：§9 第 3 行 {field} 写错（{bad!r}）→ FAIL（role/target 一并比对）",
            any(f"{field}={bad!r} 与账本" in x for x in p), f"problems={p[:1]}")
 
+    # ---- M-A（`TG-19`）：判定域必须由**被判定物**派生 -----------------------------
+    ok("M-A 身份解析 a：`2026-09-21-sprint-17.md` → '17'",
+       sprint_identity_of_doc("docs/iteration/sprint/2026-09-21-sprint-17.md") == "17")
+    ok("M-A 身份解析 b：文件名给不出身份 → None（不猜，由调用方报 domain-unavailable）",
+       sprint_identity_of_doc("docs/iteration/sprint/notes.md") is None)
+    ok("M-A 身份解析 c：run 的显式 `sprint` 字段**优先于** task_id",
+       run_sprint_identity({"sprint": "018", "task_id": "Sprint-7 close"}) == "18")
+    ok("M-A 身份解析 d：无显式字段时从 task_id 派生（legacy 兼容；派生不出 → None）",
+       run_sprint_identity({"task_id": "sprint-9-close"}) == "9"
+       and run_sprint_identity({"task_id": "cleanup"}) is None)
+
+    # **原始事故复现**（2026-09-25：G2 的 kickoff 〇查一登记，Sprint-17 的关闭读数
+    # 由 1 项变 99 项，其中 98 项假红）——注入形态 = "在流水线之后追加一条**下一个
+    # Sprint** 的作用域 run"。M-A 之后：上一个 Sprint 的窗口与问题清单**一字不变**。
+    s16 = [
+        _run("run-k-101", "impact-assessment", "Sprint-16 close scope",
+             "2026-09-20T01:00:00+00:00"),
+        _run("run-d-102", "doc-audit", "working-tree", "2026-09-20T02:00:00+00:00",
+             "impact-assessment:run-k-101"),
+        _run("run-c-103", "code-review", "branch:windows", "2026-09-20T02:10:00+00:00",
+             "impact-assessment:run-k-101"),
+        _run("run-c-104", "code-review", "branch:main", "2026-09-20T02:20:00+00:00",
+             "impact-assessment:run-k-101"),
+        _run("run-l-105", "lessons-learned", "sprint", "2026-09-20T03:00:00+00:00"),
+    ]
+    before_w = derive_close_window(policy, s16, sprint_id="16")
+    injected = s16 + [_run("run-k-106", "impact-assessment", "Sprint-17 close scope",
+                           "2026-09-20T04:00:00+00:00")]
+    after_w = derive_close_window(policy, injected, sprint_id="16")
+    ok("M-A 反向对照①（**原始事故复现**）：追加下一个 Sprint 的 kickoff 〇查 → "
+       "上一个 Sprint 的窗口一字不变",
+       before_w == after_w and before_w[0] == "2026-09-20T01:00:00+00:00",
+       f"before={before_w} after={after_w}")
+    ok("M-A 反向对照①b：同一条注入在**它自己的** Sprint 上仍是合法起点",
+       derive_close_window(policy, injected, sprint_id="17")[0]
+       == "2026-09-20T04:00:00+00:00")
+
+    p = evaluate(policy, parse_sprint(_doc(_rows(s16[:1]), SHA_A)), s16[:1], att=None,
+                 check_coverage=False, sprint_id="16")
+    ok("M-A 反向对照②：本期流水线未跑 → 逐条点名缺 run（**不是** PASS）",
+       sum("缺 run" in x for x in p) >= 3, f"problems={p[:3]}")
+    ok("M-A 反向对照③：该 Sprint 根本没有作用域 run → 起点 None"
+       "（fail-closed，不退化成全域）",
+       derive_close_window(policy, s16, sprint_id="99")[0] is None)
+
+    mixed = s16 + [_run("run-k-107", "impact-assessment", "cleanup",
+                        "2026-09-20T05:00:00+00:00")]
+    ok("M-A 反向对照④：无身份的**更晚**作用域 run 不得顶掉本期",
+       derive_close_window(policy, mixed, sprint_id="16")[0]
+       == "2026-09-20T01:00:00+00:00")
+    ok("M-A 反向对照④b：一个带身份的候选都没有时，才回退到无身份候选",
+       derive_close_window(policy, [_run("run-k-108", "impact-assessment", "cleanup",
+                                         "2026-09-20T06:00:00+00:00")],
+                           sprint_id="16")[0] == "2026-09-20T06:00:00+00:00")
+    right, right_run, right_notes = domain_right_boundary(s16)
+    ok("M-A 域右端 a：夹具模式（无 git 根）按**登记时间最新**取右端，并点明该口径",
+       right == SHA_D and right_run == "run-l-105" and len(right_notes) == 1,
+       f"right={right} run={right_run} "
+       f"notes={right_notes[:1]}")
+    tweaked = [*s16[:4], {**s16[4], "covers_through": SHA_C}]
+    ok("M-A 域右端 b：夹具模式下仍按登记时间（**真数据模式改为按祖先远近**——见 d/e）",
+       domain_right_boundary(tweaked)[0] == SHA_C)
+    ok("M-A 域右端 c：域内没有任何合法覆盖窗口 → None（调用方退回仓库 HEAD）",
+       domain_right_boundary([{"run_id": "x", "covers_through": ""}])[0] is None)
+    # ---- 2026-09-25 独立复核 `run-…083` 的两条 major：
+    # 域右端与在飞宽限的边界 ----------
+    # 域右端 d：**按覆盖远近**（真 git 祖先），不按登记时间——
+    # HEAD~1 那条 run 登记得更晚，
+    # 但它覆盖得更近 ⇒ 必须选 HEAD 那条（原实现会选"更晚登记"的，静默缩小判定域）。
+    import subprocess as _sp  # noqa: PLC0415 —— 只为取两个**真实**提交做反例
+    _head = _sp.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"],
+                    capture_output=True,
+                    text=True, encoding="utf-8").stdout.strip()
+    _parent = _sp.run(["git", "-C", str(ROOT), "rev-parse", "HEAD~1"],
+                      capture_output=True,
+                      text=True, encoding="utf-8").stdout.strip()
+    near_late = {"run_id": "run-right-near", "role": "code-review",
+                 "covers_through": _parent,
+                 "started_at": "2099-01-02T00:00:00+00:00"}
+    far_early = {"run_id": "run-right-far", "role": "code-review",
+                 "covers_through": _head,
+                 "started_at": "2026-01-01T00:00:00+00:00"}
+    got, got_run, got_notes = domain_right_boundary([near_late, far_early], root=ROOT)
+    ok("M-A 域右端 d（复核 major 的原始形态）：**后登记但覆盖更少**的 run "
+       "不得缩小判定域"
+       "——真 git 祖先比较选中覆盖更远者",
+       got == _head and got_run == "run-right-far" and not got_notes,
+       f"got={got[:10] if got else got} run={got_run} notes={got_notes[:1]}")
+    bogus = {"run_id": "run-right-bogus", "role": "code-review",
+             "covers_through": "f" * 40, "started_at": "2099-01-03T00:00:00+00:00"}
+    _, _, div_notes = domain_right_boundary([far_early, bogus], root=ROOT)
+    ok("M-A 域右端 e：两条覆盖端点**不可比**（互不为祖先）"
+       "⇒ 具名问题（fail-closed，不猜）",
+       any("不可比" in n for n in div_notes), f"notes={div_notes[:1]}")
+    # 域右端 d/e（2026-09-25 实测事故后补）：**不承担覆盖的 run 不得界定右端**——
+    # `produced_only` 与 `coverage_window: none` 两类各一条反向对照。
+    prod = {**s16[4], "run_id": "run-x-prod", "covers_through": SHA_E,
+            "started_at": "2099-01-01T00:00:00+00:00", "produced_only": True}
+    ok("M-A 域右端 f：`produced_only` run 不得界定域右端（它不是覆盖声明）",
+       domain_right_boundary([*s16, prod])[0] == SHA_D)
+    real_pol_r = load_policy()
+    # 载体 role 取自**政策里真实声明了** `coverage_window: none` 的 spec，而不是写死
+    # `implementation`（二查 `run-…-088` 的同类问题的另一半：`implementation.md` 是
+    # windows-only 内容 ⇒ 在没有它的分支上，这条自检会因为"找不到该 role"而红，
+    # 而判据本身没坏）。政策里一个都没有时**具名跳过**（不算通过）。
+    none_roles = sorted(r for r, spec in real_pol_r.specs.items()
+                        if spec.coverage_window == "none")
+    if none_roles:
+        impl = {"run_id": "run-x-impl", "role": none_roles[0], "covers_through": SHA_E,
+                "started_at": "2099-01-01T00:00:00+00:00"}
+        ok(f"M-A 域右端 g：`coverage_window: none` 的 "
+        f"role（{none_roles[0]}）不得界定域右端"
+           f"——它 finish 时会自动记下**空窗口**，却会因'最新一条'把域右端拉到它那一刻",
+           domain_right_boundary([*s16, impl], policy=real_pol_r)[0] == SHA_D)
+    else:
+        warn("M-A 域右端 g 未执行：本分支政策里没有声明 `coverage_window: none` 的 "
+        "role",
+             "（判据未跑 —— 不是通过）")
+    # 在飞宽限的**下界**（复核 major）：未来时间戳的 run 不得被宽限永久豁免。
+    future = [*s16[:1],
+              _run("run-c-111", "code-review", "branch:windows",
+                   "2099-01-01T00:00:00+00:00", "impact-assessment:run-k-101")]
+    p = check_linkage(policy, parse_sprint(_doc(_rows(s16[:1]), SHA_A)), future,
+                      "2026-09-20T01:00:00+00:00")
+    ok("A-M13④ 反向对照（复核 major 的原始形态）：**未来时间戳**的 run 不适用在飞宽限"
+       "（否则它永久免'§9 未登记'）",
+       any("run-c-111" in x and "未来" in x for x in p), f"problems={p[:1]}")
+
+    # ---- A-M13（实现类 role 落地后的三条判据）------------------------------------
+    # ① 封闭世界**按全账本**（域可以收窄，"这个角色名有没有 spec"不能收窄）
+    p = check_c2(policy, [], ledger=[{"run_id": "run-x-1", "role": "no-such-role"}])
+    ok("A-M13② C2 封闭世界：账本里出现无 spec 的 role ⇒ FAIL（即使它只在域外出现）",
+       any("no-such-role" in x for x in p), f"problems={p[:1]}")
+    # ② §9 在飞宽限：刚登记 ⇒ 只提示；超期 ⇒ 照旧 FAIL（宽限不是豁免）
+    fresh_iso = datetime.now(timezone.utc).isoformat()
+    fresh = [*s16[:1],
+             _run("run-c-109", "code-review", "branch:windows", fresh_iso,
+                  "impact-assessment:run-k-101")]
+    p = check_linkage(policy, parse_sprint(_doc(_rows(s16[:1]), SHA_A)), fresh,
+                      "2026-09-20T01:00:00+00:00")
+    ok("A-M13④ §9 在飞宽限：刚登记的 run 未写 §9 ⇒ 只提示不判"
+       "（口径同 ledger_measurement.in_flight）",
+       not any("未登记" in x for x in p), f"problems={p[:1]}")
+    old = [*s16[:1],
+           _run("run-c-110", "code-review", "branch:windows",
+                "2026-09-20T02:00:00+00:00",
+                "impact-assessment:run-k-101")]
+    p = check_linkage(policy, parse_sprint(_doc(_rows(s16[:1]), SHA_A)), old,
+                      "2026-09-20T01:00:00+00:00")
+    ok("A-M13④ 反向对照：超过宽限仍未登记 ⇒ 照旧 FAIL（宽限不是豁免）",
+       any("run-c-110" in x and "未登记" in x for x in p), f"problems={p[:1]}")
+
+    # ---- A-M13①（真政策，不是 fixture）：implementation spec 必须**被闸门消费** ----
+    # 二查 `run-…-088`：`implementation.md` 是 windows-only 内容 ⇒
+    # 在没有它的分支上这两条
+    # 自检会红，而**判据本身没坏**。改成"有则判、无则具名跳过（不算通过）"。
+    real_pol = load_policy()
+    if "implementation" in real_pol.specs:
+        ok("A-M13① `implementation` spec 被政策装载（不是只写文件）",
+           True, f"specs={len(real_pol.specs)}")
+        ok("A-M13① `implementation` 不是评审类 ⇒ C1 不再向它要 scope 声明",
+           "implementation" not in real_pol.review_roles,
+           "（这条假红正是本卡要消掉的）" + f"review_roles={sorted(real_pol.review_roles)}")
+    else:
+        warn("A-M13① 的两条自检未执行：本分支没有 `agents/functions/implementation.md`"
+             "（windows-only 内容）", "（判据未跑 —— 不是通过）")
+    real_reg = registry_path()
+    if real_reg.exists():
+        unknowns = sorted(real_pol.unresolved_roles(
+            str(r.get("role") or "") for r in load_runs(real_reg)))
+        ok("A-M13② 真数据封闭世界：账本里出现的每个 role 都有 spec",
+           not unknowns, f"无 spec 的 role={unknowns}")
+
     p = evaluate(policy, good, runs, att=_att(runs, unowned_extra=False),
                  check_coverage=False)
     ok("覆盖检查可关闭（CI 无 git 历史时的显式降级路径）", p == [], f"problems={p}")
@@ -1532,22 +2410,131 @@ def _selfcheck() -> int:
        probe.returncode == 2 and "CLOSE-READINESS-ERROR" in (probe.stdout + probe.stderr),
        f"rc={probe.returncode} out={(probe.stdout + probe.stderr).strip()[:60]}")
 
+    # M-B（`TG-19` 反空转不变式）反向对照：**账本缺失档**——CI 全新 checkout 的真实形态。
+    # 用**真子进程**打真入口（`AGENT_OPS_DIR` 指向空目录 ⇒ `registry.json` 不存在）。
+    # 判据三条：输出含 `SKIP[ledger-absent]`、**不含** `EVIDENCE:`（机读证据行不得由"跳过"产生）、
+    # 且不得出现 `CLOSE-READINESS PASS`。
+    empty_ops = Path(tempfile.mkdtemp(prefix="verify_close_readiness_noop_"))
+    # 行 33（复核 `run-…-104` minor 8）：本夹具此前**只有**结尾的显式 `rmtree`，
+    # 而同函数的另两个夹具（`tmp`、`close_sprint_root`）都另有 `atexit` 兜底 ⇒
+    # 本函数里任一 `ok()` 判红（`ok()` 是 `assert`，异常直接冒泡）都会跳过结尾回收，
+    # 在 `%TEMP%` 留下永久残留——与行 25「每跑一次多一个目录」同族。
+    # 现在两条路径齐备：`atexit` 兜底 ＋ 正常出口显式回收（函数末尾两行）。
+    atexit.register(shutil.rmtree, empty_ops, ignore_errors=True)
+    # 载体必须**自带**、不能写死 windows-only 的 Sprint 文档（二查 `run-…-088` critical
+    # 3：
+    # 第一版写死 `docs/iteration/sprint/2026-09-21-sprint-17.md` ⇒ 在没有
+    # `docs/iteration/**`
+    # 的分支（main）上，子进程拿到的是 `rc=2 Sprint 文档不存在` ⇒
+    # 自检自己红，而判据本身没坏）。
+    # 这里现写一份最小 Sprint 文档到 `%TEMP%`，两个分支都能跑同一条判据。
+    # 行 8：载体改动 **run 级唯一目录**（`mkdtemp`）——原实现是 `%TEMP%` 下的固定名
+    # `close-readiness-selftest-sprint.md`，并发实例互相覆盖同名文件（实测单实例
+    # 一次就覆盖掉别的进程种下的同名残留）。回收：结尾显式 `rmtree` + `atexit` 兜底。
+    close_sprint_root = Path(tempfile.mkdtemp(prefix="close-readiness-selftest-"))
+    atexit.register(shutil.rmtree, close_sprint_root, ignore_errors=True)
+    (close_sprint_root / "sprint.md").write_text(
+        "# Sprint fixture\n\n"
+        "三查锚点: b6198f5180561868e07989e6689185199f439d76\n\n"
+        "## 9. 关闭三查\n\n| run_id | role |\n|---|---|\n",
+        encoding="utf-8")
+    probe2 = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve()), "--sprint",
+         str(close_sprint_root / "sprint.md")],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env={**os.environ, "AGENT_OPS_DIR": str(empty_ops)})
+    blob = probe2.stdout + probe2.stderr
+    last2 = [ln.rstrip() for ln in blob.splitlines() if ln.strip()][-1:]
+    # 行 34 的第二半（2026-09-30 本批）：判决行与**退出码**必须**两通道同口径**
+    # （rc=3 ＋ 末行具名横幅）。修前是 `rc=0` ⇒ 判决行说"不是通过"、退出码说成功，
+    # 只看 rc 的消费方（CI 步骤／`run_suite.py`）读成通过。这里按
+    # `run_suite.py::skip_verdict` 的**同一判据**复算（横幅形态 ＋ rc 缺一不可），
+    # 而不是只断言含某子串。
+    ok("M-B 反向对照：账本缺失 ⇒ 输出 SKIP 且**不打印** EVIDENCE 行（跳过不得冒充通过）",
+       probe2.returncode == SKIP_EXIT and "SKIP[ledger-absent]" in blob
+       and "EVIDENCE:" not in blob and "CLOSE-READINESS PASS" not in blob,
+       f"rc={probe2.returncode} out={blob.strip()[:120]}")
+    ok("行 34 ②：SKIP 档**两通道同口径**——rc=3 ＋ 末行是 `SKIP[…]…本档不是通过` 横幅"
+       "（套件第三态判据认的就是这一形态；rc=0 的组合会被判『SKIP 冒充通过』）",
+       probe2.returncode == SKIP_EXIT and bool(last2)
+       and last2[0].startswith("CLOSE-READINESS SKIP[")
+       and "本档不是通过" in last2[0],
+       f"last={last2[0][:90] if last2 else '（无输出行）'}")
+    # 判决行／退出码**同一真源**（纯函数直接驱动）：有 SKIP ⇒ 横幅不含 `ALL PASS`
+    # 且退出码非 0；无 SKIP ⇒ 两者同时回到成功侧。
+    _sk = ["E1 向量表可解析（spec=absent-on-branch (SKIP)）"]
+    ok("行 34 ②：`verdict_line`／`verdict_exit` 同源——SKIP 档判决行无 `ALL PASS`"
+       "且退出码非 0；无 SKIP 档两者同时回成功侧",
+       not verdict_line(_sk, 7).startswith("ALL PASS")
+       and "spec-absent-on-branch" in verdict_line(_sk, 7)
+       and verdict_exit(_sk) == SKIP_EXIT and verdict_exit([]) == 0
+       and verdict_line([], 7).startswith("ALL PASS (7 assertions)"),
+       f"skip_rc={verdict_exit(_sk)} pass_rc={verdict_exit([])}")
+    # 行 8：回收本轮的两个 run 级目录（Sprint 载体 + 空账本目录）
+    shutil.rmtree(close_sprint_root, ignore_errors=True)
+    shutil.rmtree(empty_ops, ignore_errors=True)
+
+    # ---- 台账 E1 / 行 7：一致性向量（唯一权威 = 本档 §4）------------------
+    # 本闸门**不导入**写入侧实现；两侧各自解析本档同一张向量表。
+    # 分支感知（复核 `run-…-105` critical 2 的**同族第二处**）：spec 在
+    # `docs/iteration/**`（windows-only）⇒ main 上旧实现打出 `FAIL: 0 行`、
+    # 把分支差异冒充成"向量表缺失"。现在显式 SKIP 并上屏；spec 在位 ⇒ 照旧真判。
+    try:
+        rows = ((_vector_table("### 4.1 表 A") or [])
+                + (_vector_table("### 4.2 表 B") or []))
+        sem = _vector_table("### 4.3 表 C", "sprint") or []
+    except SpecAbsentOnBranch:
+        rows, sem = [], []
+        for _crit in ("E1 向量表可解析", "E1 归一化一致性向量",
+                      "E1 反证（收紧模式后结论必须改变）", "E1 语义层向量可解析",
+                      "E1 语义层一致性向量"):
+            skip_spec_absent(_crit)
+    else:
+        ok("E1 向量表可解析（缺表 = 判据未被触发 ⇒ 立即 FAIL，不放行）",
+           bool(rows), f"{len(rows)} 行 <- {SPRINT_VECTOR_SPEC}")
+        probs = _sprint_vector_problems()
+        ok("E1 归一化一致性向量：全部输入与规范期望值同结论",
+           not probs, f"{len(rows)} 行 problems={probs[:1]}")
+        # 反证（台账"向量必须有牙"）：把模式按 _drift_pattern() 收紧后，
+        # 至少一个输入的结论必须改变；一个都没变 ⇒ 判 FAIL。
+        drift = re.compile(_drift_pattern())
+
+        def _drift_hit(t: str) -> str | None:
+            m = drift.search(t) or drift.fullmatch(t)
+            return m.group(1) if m else None
+
+        changed = sum(_drift_hit(t) != want
+                      for _, raw, want in rows for t in [str(raw or "").strip()])
+        ok("E1 反证：收紧归一模式后向量结论必须改变（不敏感 ⇒ 本次一致不作数）",
+           changed > 0, f"changed={changed} 例")
+        ok("E1 语义层向量（sprint 缺失时回退 task_id）可解析",
+           bool(sem), f"{len(sem)} 行")
+        ok("E1 语义层一致性向量：域派生与规范期望值同结论",
+           not _sprint_semantic_problems(), f"{len(sem)} 行")
+
     real = registry_path()
     if real.exists():
         warn("真数据模式未在自检中执行（需 `--sprint <当前 Sprint 文档>`）",
              f"账本 {len(load_runs(real))} 条：{real}")
+    shutil.rmtree(tmp, ignore_errors=True)   # 行 8：回收本函数的 run 级夹具目录
+    if SELF_SKIPPED:
+        # M-B：SKIP 不是成功 ⇒ **不打印 `ALL PASS` 横幅**（口径同
+        # `verify_agentops.py::verdict_line`：二者互斥，跳过不得冒充通过）。
+        # 判决行与退出码同源（`verdict_line` / `verdict_exit`）。
+        print(f"\n{verdict_line(SELF_SKIPPED, PASSED)}")
+        return verdict_exit(SELF_SKIPPED)
     print(f"\nALL PASS ({PASSED} assertions)")
-    return 0
+    return verdict_exit([])
 
 
 def main() -> int:
     if "--sprint" in sys.argv:
         path = Path(sys.argv[sys.argv.index("--sprint") + 1])
         rc = run_real_data(path, check_coverage="--no-coverage" not in sys.argv)
-        if rc == 0:
+        if rc == 0 and not _RUN_STATE["skipped"]:
             # TG-6：**只在成功路径**打印机读证据行。real-data 模式的 assertions =
             # **实际执行过的判据条数**（该模式不跑 ok() 自检断言，
-            # 逐条判据各自 `_criterion()` 登记）。
+            # 逐条判据各自 `_criterion()` 登记）。SKIP 档不打印（`TG-19` M-B）。
             print(f"EVIDENCE: verify_close_readiness.py assertions={CRITERIA_EXECUTED} rc=0 "
                   f"mode=real-data criteria={CRITERIA_EXECUTED}")
         return rc
@@ -1559,7 +2546,8 @@ def main() -> int:
         print(f"CLOSE-READINESS FAIL（自检断言未通过）：{exc}")
         return 1
     if rc == 0:
-        print(f"EVIDENCE: verify_close_readiness.py assertions={PASSED} rc=0 mode=selfcheck")
+        print(f"EVIDENCE: verify_close_readiness.py assertions={PASSED} rc=0 "
+              f"mode=selfcheck")
     return rc
 
 

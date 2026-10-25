@@ -4,9 +4,9 @@
 - config 步**恒显式**携带 provider/api_base/model/vision_model/embedding——缺失 provider 或
   vision_model 时 vision 会回落默认服务商（3-LEARNED 1.46），基座从构造上杜绝该漂移。
 - 所有写盘一律二进制（3-LEARNED 1.47：Windows 文本模式写盘会静默翻译换行）。
-- **自举前端口自检（TG-8）**：`start_backend` 在拉起子进程**之前**先探测端口（8787 后端、
-  5173 前端 dev）——被占用即 **fail-fast 并点名**（哪个端口、占用进程 PID/镜像名、怎么释放或改端口），
-  **绝不静默复用**别人的服务（旧行为见 `wait_healthy` 的历史注释）。
+- **自举前端口自检（TG-8）**：`start_backend` 在拉起子进程**之前**先探测端口（本 run 的
+  后端端口 / 8787 / 5173 前端 dev）——占用即 **fail-fast 并点名**（端口、占用进程
+  PID/镜像名、怎么释放或改端口），**绝不静默复用**别人的服务（见 `wait_healthy`）。
 - 本文件是库而非测试，不参与覆盖矩阵收集（无 VERIFY_META）。
 """
 from __future__ import annotations
@@ -21,16 +21,34 @@ from pathlib import Path
 
 import httpx
 
-PORT = int(os.environ.get("PAPERQA_VERIFY_PORT", "8787"))
-# TG-8①：端口**可配置**（报告里给出的"改用其它端口"提示必须真的生效——否则提示是空头支票）。
-# 默认 8787 来自 `paper-qa-script/.../backend/main.py:252` 的 uvicorn 端口常量；改端口时两处都要改
-# （前端 dev 端口不在此列：Vite 默认 5173，本仓库 vite.config.mjs 未写死）。
+def alloc_port() -> int:
+    """run 级端口分配：向内核要一个**当前空闲**的端口（`bind(0)` → 读回 → 立即释放）。
+
+    为什么不是"从 8787 往上找第一个空闲端口"：那是**先探测后使用**，探测与实际绑定之间
+    有窗口，并发实例可能挑中同一个端口（行 24 的共享对象就是这么来的）。`bind(0)` 由
+    内核分配，天然不重复；若分配与实际绑定之间被第三方抢走，自举前的 `port_selfcheck`
+    会**明确失败并点名**（既不复用别人的服务，也不静默换一个）。
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+DEFAULT_PORT = 8787  # `backend/main.py:252` 的 uvicorn 常量（dev/生产默认端口）
+# TG-8①：端口**可配置**（"改用其它端口"的提示必须真的生效——否则是空头支票），
+# 且 `PAPERQA_VERIFY_PORT` 同时决定**后端子进程**的端口（见下方 `_BACKEND_BOOT`）。
+# 行 24：**默认端口改为 run 级分配**——固定端口是并发实例的共享对象（实测：两实例同跑，
+# 后到者要么自检失败、要么自举不出后端而**静默连上前一个实例的后端**）。
+# 前端 dev 端口不在此列（Vite 默认 5173，本仓库未写死）。
+_PORT_ENV = os.environ.get("PAPERQA_VERIFY_PORT", "").strip()
+PORT = int(_PORT_ENV) if _PORT_ENV else alloc_port()
 #
-# `BACKEND_PORTS` = 自举后端时**必须空着**的端口。前端 dev（Vite 默认 5173）一起查的理由是套件的
-# `gui` 档会同时占用两者（run_suite.py:197 的提示），而 dev 前端在跑时后端自举常常"看起来能跑"
-# ——实际前端连的是 dev 后端（2026-09-20 走查：后端两次消失即该形态）。
-# 顺序上 8787 在前：它是本基座直接依赖的服务，先报它信息量最大。
-BACKEND_PORTS = (PORT, 5173)
+# `BACKEND_PORTS` = 自举后端时**必须空着**的端口：本 run 的 `PORT` 在最前（本次要绑它，
+# 先报它信息量最大）；8787 仍在列 = dev 后端的默认落点，占用即 fail-fast（不静默复用）；
+# 前端 dev（Vite 默认 5173）一起查的理由是套件的 `gui` 档会同时占用两者
+# （run_suite.py:197），而 dev 前端在跑时后端自举常常"看起来能跑"——实际前端连的是
+# dev 后端（2026-09-20 走查：后端两次消失即该形态）。
+BACKEND_PORTS = (PORT, DEFAULT_PORT, 5173)
 # 占用进程查询命令行（Windows 自带；本仓库仅面向 Windows，见 1-WORKFLOW §2 双轨约定）。
 _PORT_OWNER_CMD = "Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue"
 
@@ -80,6 +98,12 @@ def _apply_offline_env() -> dict:
         return {}
 
 
+# 端口怎么传给后端子进程：**环境变量**——`main.py` 的 `__main__` 读 `PAPERQA_VERIFY_PORT`
+# （缺省 8787；该覆盖曾是"文档写了但代码不读"的死信，2026-09-28 `14603c2` 落地）。
+# 这里不动 argv：真入口仍是 `python main.py`，端口由**生产侧自己**解析，于是"改用其它端口"
+# 的提示端到端生效（TG-8①/TG-8.md:51 的判据），也不会自造一套与生产不一致的启动方式。
+# 生产侧哪天不再读该变量，失败形态是**响亮**的：后端绑 8787、`wait_healthy(PORT)` 超时
+# 返回 False（不会静默连错端口）。
 def start_backend(backend_path: Path, server_log: Path, root: Path) -> subprocess.Popen:
     # TG-8①：**先自检端口，再拉进程**——占用即明确报错并给出可操作提示（不复用、不换端口）。
     port_selfcheck(BACKEND_PORTS)
@@ -93,7 +117,8 @@ def start_backend(backend_path: Path, server_log: Path, root: Path) -> subproces
             cwd=str(root),
             stdout=fh,
             stderr=subprocess.STDOUT,
-            env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
+            env={**os.environ, "PAPERQA_VERIFY_PORT": str(PORT),
+                 "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
         )
     finally:
         fh.close()
@@ -126,11 +151,12 @@ def port_in_use(port: int, host: str = "127.0.0.1") -> bool:
     return False
 
 
-def port_owner(port: int, timeout_s: int = 15) -> str:
-    """查出占用 `port` 的进程（`PID=… 镜像名=…`；查不到就如实说"查不到"）。
+def list_owner_pids(port: int, timeout_s: int = 15) -> list[str]:
+    """查监听 `port` 的进程 PID 列表（查不到 = 空列表，不臆测）。
 
-    限制（如实标注）：`Get-NetTCPConnection` 需要提权才能看到**其它用户**的进程名；
-    本机开发场景（同一用户）可用。查不到时仍给出"怎么自己查"的命令，不假装知道。
+    限制（如实标注）：`Get-NetTCPConnection` 对**系统保留区间**里被占用的端口
+    （Hyper-V／WinNAT 的 excluded port range）可能查不到任何属主——此时返回空列表，
+    由调用方按"无属主"形态处理（见 `port_owner` / `port_selfcheck` 的②）。
     """
     query = _PORT_OWNER_CMD.format(port=int(port))
     try:
@@ -140,11 +166,22 @@ def port_owner(port: int, timeout_s: int = 15) -> str:
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=timeout_s, check=False,
         )
-        pids = [p.strip() for p in (proc.stdout or "").splitlines() if p.strip().isdigit()]
+        return [p.strip() for p in (proc.stdout or "").splitlines() if p.strip().isdigit()]
     except (OSError, subprocess.SubprocessError):
-        pids = []
+        return []
+
+
+def port_owner(port: int, timeout_s: int = 15) -> str:
+    """查出占用 `port` 的进程（`PID=… 镜像名=…`；查不到就如实说"查不到"）。
+
+    限制（如实标注）：`Get-NetTCPConnection` 需要提权才能看到**其它用户**的进程名；
+    本机开发场景（同一用户）可用。查不到时仍给出"怎么自己查"的命令，不假装知道——
+    返回文本以 `查不到占用进程（可自行运行：` 开头即"无属主"形态，`port_selfcheck`
+    据此分流（**单一真源**：这个前缀同时是渲染分支与断言分支的依据）。
+    """
+    pids = list_owner_pids(port, timeout_s)
     if not pids:
-        return f"查不到占用进程（可自行运行：{query}）"
+        return f"查不到占用进程（可自行运行：{_PORT_OWNER_CMD.format(port=int(port))}）"
     names = []
     for pid in pids[:4]:
         try:
@@ -164,25 +201,50 @@ def port_owner(port: int, timeout_s: int = 15) -> str:
 def port_selfcheck(ports=BACKEND_PORTS) -> None:
     """自举前端口自检（TG-8①）：任一端口被占用 → **fail-fast 并点名**（不静默复用、不换端口）。
 
-    报错内容必须包含三件可操作信息（本卡判据）：① **哪个端口**；② **被哪个进程占用**；
-    ③ **怎么改 / 怎么释放**。失败形态是 `RuntimeError`（调用方未捕获 → 进程退出码非 0），
-    且**在拉子进程之前**抛出：不会留下"半自举"的后端进程。
+    判据分**两类**，各自要求**具名**的可操作信息（2026-09-30 补充；**未弱化**：两类都
+    fail-fast、都不复用、都不换端口，且两份文案都出自本函数这一处真源）：
+
+      * **① 可归属占用**（查得到 PID／镜像名）：**照旧**要求三件齐全——
+        端口号 ＋ 占用进程 ＋ 怎么改/怎么释放；
+      * **② 无属主占用**（查询无 PID／镜像名，含**系统保留区间**）：**显式说明这一类**
+        （"被占用但查询不到属主进程：可能落在系统保留区间 excluded port range"）
+        并给出"怎么查保留区间／怎么改端口"。为什么不照旧强制要 PID：CI（Windows runner）
+        实测端口确实被占、却查不到属主 ⇒ 旧判据把**不存在的信息**当必要条件，是一条
+        从未被反向驱动过的隐含假设（"占用者一定可归属"）。
+
+    失败形态是 `RuntimeError`（调用方未捕获 → 进程退出码非 0），且**在拉子进程之前**
+    抛出：不会留下"半自举"的后端进程。
     """
     busy = [(p, port_owner(p)) for p in ports if port_in_use(p)]
     if not busy:
         return
+    noowner_mark = "查不到占用进程（可自行运行："
     lines = [
         "ERR: 端口自检失败——以下端口已被占用，本脚本**不会复用**它（TG-8①：占用即 fail-fast，不静默换端口）：",
     ]
     for port, owner in busy:
-        lines.append(f"  · 端口 {port}：被 {owner} 占用")
-    alt = (int(ports[0]) + 100) if ports else 0
+        if owner.startswith(noowner_mark):
+            lines.append(f"  · 端口 {port}：**无属主**——{owner}")
+            lines.append("    ⇒ 该端口**被占用但查询不到属主进程**（无 PID／镜像名）：可能落在"
+                         "**系统保留区间**（excluded port range，Hyper-V／WinNAT 预留），"
+                         "或属主属于其它用户／需提权才可见。")
+        else:
+            lines.append(f"  · 端口 {port}：被 {owner} 占用")
+    if any(owner.startswith(noowner_mark) for _, owner in busy):
+        lines += [
+            "  无属主占用的查法与处理：",
+            "    · 查系统保留区间：`netsh int ipv4 show excludedportrange protocol=tcp`"
+            "（在列 = 系统预留、非本机进程占用，杀进程无用）；",
+            "    · 在列或仍查不到属主 ⇒ 走下面 ② 换端口（或由管理员调整保留区间）；",
+        ]
+    alt = DEFAULT_PORT + 100
     lines += [
         "  解决方式（二选一）：",
         "    ① 释放端口：停掉上面的进程（如 dev 后端 `Ctrl+C`，或 `Stop-Process -Id <PID>`）后重跑；",
-        f"    ② 改用其它端口：设环境变量 `PAPERQA_VERIFY_PORT={alt}` 后重跑（本基座的 `PORT` 即读它），",
-        "       并同步改后端 uvicorn 端口（paper-qa-script/reactflow-paperqa-prototype/backend/main.py:252；"
-        "前端 dev 端口用 `npm run dev -- --port <端口>`，Vite 默认 5173 未在本仓库 vite.config.mjs 里写死）。",
+        f"    ② 改用其它端口：设 `PAPERQA_VERIFY_PORT={alt}` 后重跑",
+        "（本基座的 `PORT` 读它、`start_backend` 也按它拉起后端 ⇒ 端到端生效，",
+        "不必再改 main.py:252；前端 dev 端口用 `npm run dev -- --port <端口>`，",
+        "Vite 默认 5173 未在本仓库 vite.config.mjs 里写死）。",
     ]
     raise RuntimeError("\n".join(lines))
 

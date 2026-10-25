@@ -13,18 +13,29 @@
     `review_by` 过期同样 FAIL。cap **只许下调**；caps 键集必须与
     `lint_rules.report_only` **逐键相等**（少一条 = 该类无限放行；多一条 = 死数据）。
 
+    **BR-1 促改善（2026-10-25，M5 第一条落地）**：`review_by` **到期**（今天 ≥
+    到期日）时，每一项的实测值必须**严格小于**上一次重评的 `measured_value`，
+    否则 FAIL——补上"棘轮只防恶化、不促改善"的缺口。它复用既有
+    `measured_value`／`measured_at`／`review_by`，**不新增数据面**；缺
+    `measured_value` 或日期不可解析 ⇒ **fail-closed**（判不了就判红）。
+
     ⚠️ **计数会随正常改动漂移**（增删代码行/函数/字符串都改变数字）：本文件与卡片里
     手抄过的读数（610/1398、11/42/191~192/1774~1804）**实测都漂过**——一律以**当次
     实测**为准：先看 `[report-only C 级]` 行，再据实测值重评基线（只许下调）。
 
-**反向对照**（`TG-6` ⑤"倒过来试"，全部是**真实 ruff 调用**，不是读代码猜）：
+**反向对照**（`TG-6` ⑤"倒过来试"；①–⑤ 是**真实 ruff 调用**，⑥–⑫ 直接驱动纯函数
+`ratchet_problems`，都不是读代码猜）：
 
   ① 坏文件在 A 级判 FAIL、② 坏文件在 B 级判 FAIL、③ 好文件判 PASS（防假红）；
   ④ 干净副本 + **实测上限** → 棘轮零 problem（等价 rc=0，防假红）；
   ⑤ 临时副本里**注入 1 处新的 C 级违规**（缺 docstring 的公开函数、一行超长行）
      → 同一上限下必须 FAIL 并点名 D103/E501（cap 真的"咬得住"，不是摆设）；
   ⑥ `review_by` 设为过去 → FAIL；⑦ caps 少一类 → FAIL；⑧ caps 多出拼错的键 →
-     FAIL（棘轮基线自身不得被静默关掉）。
+     FAIL（棘轮基线自身不得被静默关掉）；
+  ⑨ 到期（今天 = `review_by`）且实测**等于** `measured_value` ⇒ FAIL 并点名
+     「到期未改善」；⑩ 到期且实测**严格小于** ⇒ 放行（防假红）；
+  ⑪ **未到期不判**（今天 < `review_by`，实测等于快照也放行）；
+  ⑫ **数据坏法 fail-closed**：缺 `measured_value`／日期不可解析 ⇒ FAIL。
 
 **机读证据行（TG-6，2026-09-25 立规）**：成功路径打印一行可 grep 的证据——
 `EVIDENCE: verify_lint.py assertions=N rc=0 …`（失败/SKIP 不打印；见 §6）。
@@ -38,14 +49,14 @@
 """
 
 from __future__ import annotations
-VERIFY_META = {'features': 'G1 Python ruff 闸门：A 级 E9/F63/F7/F82 与 B 级 F401/F811/F841/E702/E711/E712/E722/W292 全仓 0；C 级 D101-103/E501 改为棘轮（caps+review_by 来自 policy，计数>cap 即 FAIL 点名；含干净副本/注入违规/过期/缺键/多键五条反向对照）+ EVIDENCE 机读证据行', 'tier': 'offline', 'providers': [], 'est_seconds': 15, 'est_cost_cny': 0, 'routes': [], 'requires': ['ruff']}
+VERIFY_META = {'features': 'G1 Python ruff 闸门：A 级 E9/F63/F7/F82 与 B 级 F401/F811/F841/E702/E711/E712/E722/W292 全仓 0；C 级 D101-103/E501 改为棘轮（caps+review_by 来自 policy，计数>cap 即 FAIL 点名；含干净副本/注入违规/过期/缺键/多键/到期未改善/到期已改善/未到期不判/缺 measured_value 或日期不可解析 fail-closed 九条反向对照）；BR-1 促改善：review_by 到期时逐项实测须严格小于 measured_value；EVIDENCE 机读证据行；条数见末行 ALL PASS (N assertions)', 'tier': 'offline', 'providers': [], 'est_seconds': 15, 'est_cost_cny': 0, 'routes': [], 'requires': ['ruff']}
 
 import json
 import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -69,6 +80,13 @@ C_RULES: tuple[str, ...] = tuple(r.strip() for r in REPORT_ONLY.split(",") if r.
 C_CAPS: dict[str, int] = _POLICY.lint_readability_caps()
 C_REVIEW_BY: str = _POLICY.lint_readability_review_by()
 C_MEASURED_AT: str = str(_POLICY.lint_readability_ratchet["measured_at"])
+# BR-1：**上一次重评那一刻的实测快照**（到期促改善判据的比较基线）。这里只做
+# 搬运、不做校验——缺失/类型错/键集不等由 `ratchet_problems` 判 **fail-closed**
+# （判不了就判红：静默放行等于把"促改善"这条判据悄悄关掉）。
+_raw_measured = _POLICY.lint_readability_ratchet.get("measured_value")
+C_MEASURED: dict[str, object] = (
+    {str(k): v for k, v in _raw_measured.items()}
+    if isinstance(_raw_measured, dict) else {})
 
 # 项目权威时区 UTC+8（与账本/产物目录命名同口径，见 scripts/agent-ops.py 的 A5 说明）
 PROJECT_TZ = timezone(timedelta(hours=8))
@@ -140,17 +158,34 @@ def summarize(found: list[dict], limit: int = 6) -> str:
     return "; ".join(out) + (" …" if len(found) > limit else "")
 
 
+def _parse_day(raw: object) -> date | None:
+    """严格解析 `YYYY-MM-DD`；解析不出 ⇒ None（调用方 fail-closed，不猜）。"""
+    try:
+        return datetime.strptime(str(raw or "").strip(), "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return None
+
+
 def ratchet_problems(counts: dict[str, int], caps: dict[str, int], review_by: str,
-                     today: str, rules: tuple[str, ...] = C_RULES) -> list[str]:
+                     today: str, rules: tuple[str, ...] = C_RULES, *,
+                     measured_value: dict[str, object] | None = None,
+                     measured_at: str = "") -> list[str]:
     """C 级棘轮判定（**纯函数**：反向对照直接驱动它，不必往仓库里造几千条真违规）。
 
-    四条判据（每条都对应一种"棘轮被静默关掉"的形态）：
+    判据（每条都对应一种"棘轮被静默关掉"或"只防恶化不促改善"的形态）：
 
       * **caps 键集 ↔ 规则集逐键相等**：少一条 = 该规则**无限放行**
         （确已清零要显式写 0，不要删键）；
       * 多一条 = 死数据/拼写漂移（上限表与规则集分叉）；
       * **`计数 > cap` → FAIL 并点名**（规则号 + 实测 + 上限 + 超出条数）；
-      * **`review_by` 过期 → FAIL**（没有到期日的豁免就是永久豁免）。
+      * **`review_by` 过期 → FAIL**（没有到期日的豁免就是永久豁免）；
+      * **BR-1 促改善**：`review_by` 到期（`today >= review_by`）时，**每一项**的
+        实测值必须**严格小于**上一次重评的 `measured_value`，否则 FAIL。缺
+        `measured_value`／日期不可解析 ⇒ **fail-closed**（判不了就判红）。
+
+    `measured_value` 是**上一次重评那一刻的实测快照**（policy 既有字段），不是活
+    读数；活读数由调用方现测后传入 `counts`。两者串起来：到期日要求
+    `实测 < measured_value`，每日要求 `实测 <= cap`。
     """
     problems: list[str] = []
     expected, actual_keys = set(rules), set(caps)
@@ -170,6 +205,45 @@ def ratchet_problems(counts: dict[str, int], caps: dict[str, int], review_by: st
             problems.append(f"[棘轮/{code}] 实测 {count} > 上限 {cap}"
                             f"（超出 {count - cap} 条）—— cap 只许在重评基线时下调，"
                             f"不许为变绿上调；新违规请直接修掉")
+    # ---- BR-1 促改善：到期日实测必须严格小于上一次重评的 measured_value ----
+    snapshot: dict[str, int] = {}
+    if not isinstance(measured_value, dict) or not measured_value:
+        problems.append("[棘轮改善] 缺 measured_value —— 促改善判据无从执行 ⇒ FAIL"
+                        "（fail-closed：数据坏了要响亮地坏，不得静默放行）")
+    else:
+        for code, val in measured_value.items():
+            if isinstance(val, bool) or not isinstance(val, int) or val < 0:
+                problems.append(f"[棘轮改善] measured_value[{code!r}] 须为 ≥0 整数，"
+                                f"实际 {val!r} ⇒ FAIL（fail-closed）")
+            else:
+                snapshot[str(code)] = val
+        for missing in sorted(expected - set(snapshot)):
+            problems.append(f"[棘轮改善] measured_value 缺 {missing!r} —— 到期无从"
+                            f"比较 ⇒ FAIL（fail-closed；清零也要显式写 0）")
+        for extra in sorted(set(snapshot) - expected):
+            problems.append(f"[棘轮改善] measured_value 多出 {extra!r} —— 与 caps／"
+                            f"规则集不同步（死数据/拼写漂移）")
+    review_day = _parse_day(review_by)
+    measured_day = _parse_day(measured_at)
+    today_day = _parse_day(today)
+    for label, raw, day in (("review_by", review_by, review_day),
+                            ("measured_at", measured_at, measured_day),
+                            ("today", today, today_day)):
+        if day is None:
+            problems.append(f"[棘轮改善] {label}={raw!r} 不可解析为 YYYY-MM-DD ⇒ FAIL"
+                            f"（fail-closed：日期判不了，到期判据就不可信）")
+    if review_day and measured_day and measured_day > review_day:
+        problems.append(f"[棘轮改善] measured_at={measured_at} 晚于 "
+                        f"review_by={review_by} ⇒ FAIL（基线自相矛盾）")
+    elif today_day and review_day and today_day >= review_day and snapshot:
+        for code in sorted(expected & set(snapshot)):
+            count, last = int(counts.get(code, 0)), snapshot[code]
+            if count >= last:
+                problems.append(
+                    f"[棘轮/{code}] **到期未改善**：实测 {count} ≥ 上一次 "
+                    f"measured_value {last}（review_by={review_by}，今天 {today}）"
+                    f"—— 到期时实测必须严格小于上一次重评值；把 review_by 往后挪"
+                    f"或上调 measured_value 变绿不算改善")
     return problems
 
 
@@ -237,14 +311,18 @@ def ratchet_selfcheck(binary: list[str], today: str) -> None:
         clean_counts = codes_of(found_clean)
         caps = {code: int(clean_counts.get(code, 0)) for code in C_RULES}
         ok("自检 ④ 干净副本 + 实测上限 → 棘轮零 problem（等价 rc=0，防假红）",
-           ratchet_problems(clean_counts, caps, SELFTEST_VALID_UNTIL, today) == [],
+           ratchet_problems(clean_counts, caps, SELFTEST_VALID_UNTIL, today,
+                            measured_value=caps,
+                            measured_at=SELFTEST_VALID_UNTIL) == [],
            f"counts={clean_counts} caps={caps}")
 
         sample_file.write_text(CLEAN_COPY_FIXTURE + INJECTED_VIOLATION_FIXTURE,
                                encoding="utf-8")
         _, found_bad = run_ruff(binary, REPORT_ONLY, [str(copy)])
         injected_counts = codes_of(found_bad)
-        problems = ratchet_problems(injected_counts, caps, SELFTEST_VALID_UNTIL, today)
+        problems = ratchet_problems(injected_counts, caps, SELFTEST_VALID_UNTIL,
+                                    today, measured_value=caps,
+                                    measured_at=SELFTEST_VALID_UNTIL)
         hit = [code for code in ("D103", "E501")
                if any(f"[棘轮/{code}]" in p for p in problems)]
         ok("反向对照 ⑤ 临时副本注入 1 处缺 docstring 公开函数 + 1 行超长行 → "
@@ -253,18 +331,58 @@ def ratchet_selfcheck(binary: list[str], today: str) -> None:
            f"counts={injected_counts} caps={caps} 点名={hit} "
            f"首条={problems[0] if problems else '-'}")
 
-    expired = ratchet_problems(clean_counts, caps, "2020-01-01", today)
+    expired = ratchet_problems(clean_counts, caps, "2020-01-01", today,
+                               measured_value={code: 1 for code in C_RULES},
+                               measured_at="2020-01-01")
     ok("反向对照 ⑥ review_by 设为过去 → FAIL 且点名『已过期』（必须重评基线）",
        any("已过期" in p for p in expired), f"problems={expired[:1]}")
-    missing = ratchet_problems(clean_counts,
-                               {k: v for k, v in caps.items() if k != "D103"},
-                               SELFTEST_VALID_UNTIL, today)
+    reduced = {k: v for k, v in caps.items() if k != "D103"}
+    missing = ratchet_problems(clean_counts, reduced, SELFTEST_VALID_UNTIL, today,
+                               measured_value=reduced,
+                               measured_at=SELFTEST_VALID_UNTIL)
     ok("反向对照 ⑦ caps 少一类（漏 D103）→ FAIL（少一条上限 = 该类无限放行）",
        any("caps 缺" in p for p in missing), f"problems={missing[:1]}")
     typo = ratchet_problems(clean_counts, {**caps, "E5001": 0},
-                            SELFTEST_VALID_UNTIL, today)
+                            SELFTEST_VALID_UNTIL, today, measured_value=caps,
+                            measured_at=SELFTEST_VALID_UNTIL)
     ok("反向对照 ⑧ caps 多出拼错的键（E5001）→ FAIL（上限表与规则集不同步）",
        any("caps 多出" in p for p in typo), f"problems={typo[:1]}")
+
+    # ---- BR-1 促改善：四条反向对照（直接驱动纯函数，喂的是真实判定路径） ----
+    # 快照与计数都用**合成值**（每类 1 / 0），不绑当前 policy 读数：policy 将来
+    # 真的把某一类降到 0 时，这几条不应因为"0 无法再降"而假红（那是数据决策，
+    # 由到期时的实测与重评处理，不是自检该猜的）。
+    snapshot = {code: 1 for code in C_RULES}
+    due = "2026-10-31"
+    equal = {code: 1 for code in C_RULES}
+    lower = {code: 0 for code in C_RULES}
+    p_equal = ratchet_problems(equal, snapshot, due, due,
+                               measured_value=snapshot, measured_at="2026-09-25")
+    ok("反向对照 ⑨ 到期（今天 == review_by）且实测等于 measured_value → FAIL "
+       "并点名『到期未改善』",
+       any("到期未改善" in p for p in p_equal), f"problems={p_equal[:1]}")
+    p_lower = ratchet_problems(lower, snapshot, due, due,
+                               measured_value=snapshot, measured_at="2026-09-25")
+    ok("反向对照 ⑩ 到期且实测严格小于 measured_value → PASS（不判红，防假红）",
+       p_lower == [], f"problems={p_lower[:1]}")
+    p_undue = ratchet_problems(equal, snapshot, "2026-12-31", due,
+                               measured_value=snapshot, measured_at="2026-09-25")
+    ok("反向对照 ⑪ 未到期（今天 < review_by）→ 不判（等于快照也放行）",
+       p_undue == [], f"problems={p_undue[:1]}")
+    p_missing = ratchet_problems(lower, snapshot, due, due,
+                                 measured_value=None, measured_at="2026-09-25")
+    p_bad_review = ratchet_problems(lower, snapshot, "2026-13-40", due,
+                                    measured_value=snapshot,
+                                    measured_at="2026-09-25")
+    p_bad_measured = ratchet_problems(lower, snapshot, due, due,
+                                      measured_value=snapshot,
+                                      measured_at="2026-09-25x")
+    ok("反向对照 ⑫ 缺 measured_value／日期不可解析 → FAIL（fail-closed，不静默放行）",
+       any("缺 measured_value" in p for p in p_missing)
+       and any("不可解析" in p for p in p_bad_review)
+       and any("不可解析" in p for p in p_bad_measured),
+       f"missing={p_missing[:1]} bad_review={p_bad_review[:1]} "
+       f"bad_measured={p_bad_measured[:1]}")
 
 
 def main() -> int:
@@ -326,7 +444,14 @@ def main() -> int:
     ok("C 级计数被真实采集（>0 条；若归零说明规则选择或工具行为变了，需复核）",
        sum(counts_c.values()) > 0, f"counts={counts_c}")
 
-    ratchet = ratchet_problems(counts_c, C_CAPS, C_REVIEW_BY, today)
+    review_day, today_day = _parse_day(C_REVIEW_BY), _parse_day(today)
+    if review_day and today_day and today_day < review_day:
+        print(f"[棘轮改善] 未到期（review_by {C_REVIEW_BY}，今日 {today}）→ 本次不判；"
+              f"到期后每一项须**严格小于** measured_value（现读 {C_MEASURED}）")
+
+    ratchet = ratchet_problems(counts_c, C_CAPS, C_REVIEW_BY, today,
+                               measured_value=C_MEASURED,
+                               measured_at=C_MEASURED_AT)
     if ratchet:
         print(f"\nLINT FAIL（C 级可读性棘轮，{len(ratchet)} 项）：")
         for item in ratchet:
@@ -334,7 +459,9 @@ def main() -> int:
         print("  修法：① 棘轮只放行**历史既存债**——新违规请直接修掉"
               "（缺 docstring 补一行、长行折行）；② 确需重评基线时按**当次实测**"
               "下调 policy.json::lint_readability_ratchet.caps（不许上调）；"
-              "③ 到期后更新 review_by（不得静默延期）。")
+              "③ 到期后更新 review_by（不得静默延期）；④ 到期未改善：必须把该规则"
+              "实测**真的降下来**（严格小于 measured_value）再重评基线——"
+              "往后挪 review_by 或上调 measured_value 都不算改善。")
         return 1
 
     print(f"\nALL PASS ({PASSED} assertions)")

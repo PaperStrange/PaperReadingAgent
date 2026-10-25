@@ -55,7 +55,14 @@ def main() -> int:
         res = run(["register", "--run-id", run_id, "--role", "code-review", "--spec", spec, "--start",
                    "--deviation", "verify_ledger_rounds 合成 fixture（无真实评审范围）"], env)
         ok("① register 成功", res.returncode == 0 and reg.exists(), (res.stdout or res.stderr).strip()[:80])
-        res = run(["finish", run_id, "--status", "succeeded", "--output-chars", "12800"], env)
+        # R-001（G3）夹具声明（父代理 2026-09-26 授权的第三文件改动，仅此一处）：
+        # 本条 `register --start` 与 `finish` 紧邻、落在**同一秒** ⇒ `zero_duration`，
+        # 时长对它是**非测量**（本脚本断的是 rounds 追加/首轮快照/产出累加，不是时长）
+        # ⇒ 显式 `--allow-degenerate` + 具名理由；**不是**放宽守卫
+        # （守卫的拒绝路径由 verify_agentops.py 的 UC-24 三条反向对照真跑）。
+        res = run(["finish", run_id, "--status", "succeeded", "--output-chars", "12800",
+                   "--allow-degenerate", "--degenerate-reason",
+                   "fixture: 同秒收尾，非真实测量（R-001）"], env)
         ok("① finish(succeeded) 成功", res.returncode == 0, (res.stdout or "").strip()[:80])
         base = json.loads(reg.read_text(encoding="utf-8"))["runs"][0]
         base_end, base_out = base["ended_at"], base["output_chars"]

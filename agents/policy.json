@@ -4,6 +4,7 @@
   "spec_glob": "*.md",
   "spec_dir": "agents/functions",
   "scope_min_deviation_chars": 10,
+  "structure_ack_min_reason_chars": 10,
   "scope_ref_sources": [
     "impact-assessment:"
   ],
@@ -33,7 +34,7 @@
       "_comment": "退化值判定（时间戳口径），三类都是『不是测量值』：zero = started_at 与 ended_at 逐字节相同（dur 恰 0.00，把『未测得』写成『零耗时』）；round = dur 恰为 round_minutes_multiple 的整数倍（写入时刻凑整，2026-09-25 实测 3 例恰 10.00 分钟）；missing = 终态 run 缺任一端时间戳。",
       "round_minutes_multiple": 10
     },
-    "report_round_pattern": "(?:Round\\s*(\\d+)|第\\s*(\\d+)\\s*轮)",
+    "report_round_pattern": "(?m)^\\s*(?:#{1,6}\\s*|[-*]\\s*)?(?:Round\\s*(\\d+)|第\\s*(\\d+)\\s*轮)",
     "terminal_report_globs": ["*.report.md", "*report*.md", "*final*.md"],
     "run_dir_exceptions_file": "agents/policy/run-dir-exceptions.json",
     "dur_minutes_tolerance": 0.01,
@@ -59,7 +60,18 @@
         "missing_timestamp": 0,
         "rounds_mismatch": 1,
         "terminal_not_written_back": 0
-      }
+      },
+      "measured_value": {
+        "output_chars_zero": 12,
+        "missing_result_files_review": 9,
+        "zero_duration": 3,
+        "round_duration": 3,
+        "negative_duration": 0,
+        "missing_timestamp": 0,
+        "rounds_mismatch": 1,
+        "terminal_not_written_back": 0
+      },
+      "_measured_value_why": "M-C（TG-19，2026-09-25 D3）：重评基线那一刻的逐类实测值快照。判据：每个 cap ≤ 对应 measured_value、键集逐键相等、`measured_total`（若声明）同时等于两者之和；改任一侧必须带 `rebased_at` + `rebased_reason`。活读数由守门闸门 verify/verify_ledger_measurement.py 测并判 `实测 ≤ cap`。"
     }
   },
   "artifact_paths": {
@@ -91,12 +103,12 @@
       "env_names": ["TEMP", "TMP", "TMPDIR"],
       "literals": ["%TEMP%"]
     },
-    "dynamic_ratchet": {
+    "dynamic_ratchet":     {
       "_comment": "**动态目标棘轮**：写盘目标由函数参数/argv/运行时决定、无法静态判定者按**文件**计数设上限（2026-09-25 实测值，只许下调）。**未列入上限表的文件出现动态目标 = FAIL**（新脚本必须让产物落点可静态判定：用模块级常量拼路径，别把落点交给参数/argv）。`> 上限` = FAIL；`< 上限` 只提示收紧（不惩罚把动态目标改少的重构）。到期未重评 → FAIL。",
       "cutoff_local_date": "2026-09-25",
       "review_by": "2026-10-31",
       "measured_at": "2026-09-25",
-      "measured_total": 107,
+      "measured_total": 105,
       "_measured_how": "verify/verify_artifact_paths.py --report（真实仓库扫描集 89 个脚本 / 290 个写盘目标；其余 56 已忽略 + 119 %TEMP% + 3 已入库数据 + 1 无默认落点 + 4 仓库外绝对路径。闸门**不自我豁免**，故含它自己的 2 处）",
       "files": {
         "paper-qa-script/app/config_schema.py": 1,
@@ -112,7 +124,7 @@
         "scripts/refresh-providers.py": 12,
         "scripts/report-freshness.py": 2,
         "scripts/scheduled-tasks.py": 4,
-        "scripts/structure-guard.py": 5,
+        "scripts/structure-guard.py": 4,
         "src/collect_acl.py": 2,
         "src/collect_iclr_openreview.py": 2,
         "src/collect_neurips_proceedings.py": 2,
@@ -120,7 +132,7 @@
         "verify/run_suite.py": 3,
         "verify/verify_agentops.py": 5,
         "verify/verify_archive.py": 1,
-        "verify/verify_card_index.py": 2,
+        "verify/verify_card_index.py": 1,
         "verify/verify_checkpoint.py": 6,
         "verify/verify_checkpoint_index.py": 1,
         "verify/verify_close_readiness.py": 1,
@@ -133,7 +145,50 @@
         "verify/verify_providers.py": 1,
         "verify/verify_runner.py": 2,
         "verify/verify_artifact_paths.py": 2
-      }
+      },
+      "measured_value": {
+        "paper-qa-script/app/config_schema.py": 1,
+        "paper-qa-script/app/embedding_recommender.py": 2,
+        "paper-qa-script/app/orchestration.py": 11,
+        "paper-qa-script/app/remote_resolver.py": 3,
+        "paper-qa-script/manual_index_paper.py": 1,
+        "paper-qa-script/python_qa.py": 1,
+        "scripts/agent-ops.py": 7,
+        "scripts/card-inventory.py": 2,
+        "scripts/migrate-scope-declarations.py": 1,
+        "scripts/normalize-spec-eol.py": 1,
+        "scripts/refresh-providers.py": 12,
+        "scripts/report-freshness.py": 2,
+        "scripts/scheduled-tasks.py": 4,
+        "scripts/structure-guard.py": 4,
+        "src/collect_acl.py": 2,
+        "src/collect_iclr_openreview.py": 2,
+        "src/collect_neurips_proceedings.py": 2,
+        "verify/e2e_common.py": 2,
+        "verify/run_suite.py": 3,
+        "verify/verify_agentops.py": 5,
+        "verify/verify_archive.py": 1,
+        "verify/verify_card_index.py": 1,
+        "verify/verify_checkpoint.py": 6,
+        "verify/verify_checkpoint_index.py": 1,
+        "verify/verify_close_readiness.py": 1,
+        "verify/verify_freshness.py": 7,
+        "verify/verify_index_health.py": 5,
+        "verify/verify_ledger_measurement.py": 4,
+        "verify/verify_matrix.py": 1,
+        "verify/verify_md_tables.py": 1,
+        "verify/verify_no_policy_hardcode.py": 4,
+        "verify/verify_providers.py": 1,
+        "verify/verify_runner.py": 2,
+        "verify/verify_artifact_paths.py": 2
+      },
+      "rebased_at": "2026-09-25",
+      "rebased_reason": "M-C 收口（独立复核 run-2026-09-25-code-review-083 major ④）：本表此前未被 gate_integrity.ratchets 覆盖 ⇒ 声明 Σ=107 而现跑 105，存在 2 处静默配额。本次把 structure-guard 5→4、verify_card_index 2→1 收到当次实测（= 现跑 105），并把本表纳入棘轮判据（measured_value 逐键快照 + rebased_from 记录授权前的数值）。",
+      "rebased_from": {
+        "scripts/structure-guard.py": 5,
+        "verify/verify_card_index.py": 2
+      },
+      "_m_c_note": "本块自 2026-09-25 起进 `gate_integrity.ratchets`：缺 measured_value/measured_at、cap > measured_value、键集不等、提交态上调无署名（rebased_at/rebased_reason/rebased_from）都会被 verify/verify_gate_integrity.py 判 FAIL。"
     }
   },
   "offline_switch": {
@@ -172,7 +227,14 @@
       "D103": 205,
       "E501": 2494
     },
-    "_remeasure_2026_09_25_close": "关闭期**下调**（只减不增）：D103 207→205（补 10 处 public 函数 docstring）、E501 2631→2552（把本批新增/改写的长 CJK docstring 与注释行按**显示宽度**折行——ruff 的 E501 按显示宽度计、CJK 占 2 列）。上一版把 cap 记在实测之上（E501 2631 vs 冻结 HEAD 实测 2615）留下的**静默配额**已按 `docs/3-LEARNED.MD` 1.66 收掉：现在 **cap = 当次实测**（零余量）。**已知局限（复核 finding iv）**：`verify_gate_integrity.py` 的单调性判据与 `git HEAD` 比较 ⇒ 它只能拦住**未提交**的上调；一次**已提交**的放宽会成为新基线（要堵这一层需要『把实测值也钉进政策』，属 Sprint-18 候选）。**`measured_total` 必须等于四类 cap 之和**（该等式已由 `verify_gate_integrity.py` 机检——2026-09-25 复核 #3 实测它曾停在 2833 而实测合计 2815，属『没人读的第二份声明』，同族形态）。",
+    "measured_value": {
+      "D101": 12,
+      "D102": 46,
+      "D103": 205,
+      "E501": 2494
+    },
+    "_measured_value_why": "M-C（TG-19，2026-09-25 D3）：把**重评基线那一刻的实测值**钉进政策。判据（verify/verify_gate_integrity.py）：`cap ≤ measured_value` 逐键成立、`measured_value` 键集与 `caps` 逐键相等、`measured_total` 同时等于 Σcaps 与 Σmeasured_value；**改 caps 或 measured_value 必须带 `rebased_at` + `rebased_reason`**（提交态的放宽因此成为一次**具名事件**，不再是盲区）。**它不是活读数**：活读数由守门闸门（`verify_lint.py`）测并判 `实测 ≤ cap`；三者串起来即 `实测 ≤ cap ≤ 重评时实测`。",
+    "_remeasure_2026_09_25_close": "关闭期**下调**（只减不增）：D103 207→205（补 10 处 public 函数 docstring）、E501 2631→2494（把本批新增/改写的长 CJK docstring 与注释行按**显示宽度**折行——ruff 的 E501 按显示宽度计、CJK 占 2 列；中间一度到 2552，最终值以 `verify_lint.py` 现跑为准）。上一版把 cap 记在实测之上（E501 2631 vs 冻结 HEAD 实测 2615）留下的**静默配额**已按 `docs/3-LEARNED.MD` 1.66 收掉：现在 **cap = 当次实测**（零余量）。**原『已知局限』（复核 finding iv：单调性只与 `git HEAD` 比较 ⇒ 提交态放宽是新基线）已于 2026-09-25 D3 由 `TG-19` M-C 收口**：棘轮必须带 `measured_value`/`measured_at`，提交态上调必须带 `rebased_at` + `rebased_reason` + `rebased_from`（署名绑定到它授权的那组数值）。**`measured_total` 必须同时等于四类 cap 之和与 `measured_value` 之和**（两者都由 `verify_gate_integrity.py` 机检）。",
     "measured_total": 2757
   },
   "archive_role_prefix": "tech-research",
@@ -218,6 +280,10 @@
   "md_table_coverage": {
     "_comment": "A10（审核 N1/R1）：`md_table_docs` + `md_table_globs` 的**范围声明**，用于与文件系统做**双向差集**。roots = 递归纳入其下全部 `.md`/`.MD` 的目录；include_files = 目录之外的单个文件（必须存在）。闸门实测『应扫 N / 实扫 M』并要求 N==M：差集非空即 FAIL 并逐条点名——这正是 N1 的形态（政策只写了 4 条窄 glob，阶段级 `.MD` 与分析类文档从不自动纳入，实测漏 29/160，其中 7 处是真缺陷）。根是**独立声明**的：删掉某条 glob 不会连带缩小应扫集，故『少扫一棵树』也会被抓。",
     "roots": ["docs", "verify"],
+    "conditional_roots": {
+      "_comment": "TG-17 G2 条目 3（2026-09-25 D5）：**按分支可能不存在的子树**（windows-only）。缺席时的判据**不靠**『应扫==实扫』那种自洽式结论，而靠 git 里的直接证据：① 该路径在 `HEAD` 的树里**存在**而工作区没有 ⇒ **FAIL（被删）**；② `HEAD` 里也没有 ⇒ 该根按设计缺席，记一条**具名 SKIP**（判决行不得再打 `MD-TABLE PASS`）。为什么必需：实测在没有 `docs/iteration/` 的树里（main 检出）同一份政策打印『应扫 8 / 实扫 8 → PASS』——少审 156 个文件这件事在读数里不可见（机制反例档案例 3）。",
+      "docs/iteration": "windows-only：`main` 分支按设计没有这棵树（CI 在 main 上跑同一份政策）"
+    },
     "include_files": ["agents/README.md"]
   },
   "hardcode_scan_coverage": {
@@ -234,14 +300,24 @@
     "agents/README.md"
   ],
   "md_table_legacy_files": {
-    "_comment": "棘轮（ratchet）基线：这些**历史 Sprint/验收文档**里的表格结构缺陷是既存的（2026-09-23 扩覆盖时首次被扫到，共 15 处：内容里的管道未转义 / 表头与数据行列数不符）。避免为了让闸门变绿而改写已关闭 Sprint 的历史记录（2026-09-23 实测过一次越界改写，已 revert）。A2 修法（finding M-a/N2/R3，2026-09-25）：**按文件设上限**——`files` 由路径列表改为 `{路径: 缺陷数上限}`，闸门对基线文件也判 `len(found) > cap → FAIL`（棘轮只许变紧：上限只减不增，且**不许用「修好一处、新增一处」把总量顶回上限**——上限值本身只能在重评基线时下调）。上限来源＝各文件实测缺陷数。**新文件/新改动一律判失败**；清这批历史债需另开卡逐处人工修（每处需人判：补表头列 / 转义内容管道 / 合并单元格）。",
+    "_comment": "棘轮（ratchet）基线：这些**历史 Sprint/验收文档**里的表格结构缺陷是既存的（2026-09-23 扩覆盖时首次被扫到，共 15 处：内容里的管道未转义 / 表头与数据行列数不符）。避免为了让闸门变绿而改写已关闭 Sprint 的历史记录（2026-09-23 实测过一次越界改写，已 revert）。A2 修法（finding M-a/N2/R3，2026-09-25）：**按文件设上限**——`files` 由路径列表改为 `{路径: 缺陷数上限}`，闸门对基线文件也判 `len(found) > cap → FAIL`（棘轮只许变紧：上限只减不增，且**不许用「修好一处、新增一处」把总量顶回上限**——上限值本身只能在重评基线时下调）。上限来源＝各文件实测缺陷数。**新文件/新改动一律判失败**；清这批历史债需另开卡逐处人工修（每处需人判：补表头列 / 转义内容管道 / 合并单元格）。**2026-09-25 D3 更新**：`TG-18` 已把这 15 处**逐处清零**（4 个文件现跑『问题 0』），本表四个上限相应置 **0**（+ `rebased_at`/`rebased_reason`）——现在的语义是『这四个文件不得再出现表格缺陷』，见 `_measured_value_why`。",
     "review_by": "2026-10-31",
     "files": {
-      "docs/iteration/sprint/2026-08-30-sprint-6.md": 1,
-      "docs/iteration/sprint/2026-09-07-sprint-15.md": 12,
-      "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD": 1,
-      "docs/iteration/sprint/2026-09-12-sprint-16.md": 1
-    }
+      "docs/iteration/sprint/2026-08-30-sprint-6.md": 0,
+      "docs/iteration/sprint/2026-09-07-sprint-15.md": 0,
+      "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD": 0,
+      "docs/iteration/sprint/2026-09-12-sprint-16.md": 0
+    },
+    "measured_at": "2026-09-25",
+    "measured_value": {
+      "docs/iteration/sprint/2026-08-30-sprint-6.md": 0,
+      "docs/iteration/sprint/2026-09-07-sprint-15.md": 0,
+      "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD": 0,
+      "docs/iteration/sprint/2026-09-12-sprint-16.md": 0
+    },
+    "rebased_at": "2026-09-25",
+    "rebased_reason": "TG-18：15 处历史表格缺陷逐处清零后，把四个文件的上限由 1/12/1/1 置 0（等价于删表——任何**新增**缺陷即 FAIL，不留静默配额）；依据 verify_md_tables.py 现跑「4 个文件 / 问题 0」。保留本键而非删表：删键会一并丢掉它的 review_by 与 measured_value 判据（M-C 的快照/到期两条），效果反而更松。",
+    "_measured_value_why": "M-C：上限来源＝各文件实测缺陷数。**2026-09-25 之后本表全 0**（TG-18 清零），因此它现在的语义是『这四个文件不得再出现表格缺陷』，与 `artifact_paths.dynamic_ratchet` 的『上限 0 且确无目标』同构。"
   },
   "deduction_rates": {
     "_comment": "§2.1.1（用户 2026-09-25 采纳 v0）：**未闭环 critical/major 的扣率**。这是**政策数据**——不是文档举例、不是脚本常量；闸门与将来的结算调用一律从这里读（政策数据化，见 docs/1-WORKFLOW.MD §6）。守门闸门 = verify/verify_deduction_rates.py；条文见 docs/iteration/sprint/2026-09-21-governance-batch-plan.MD §2.1.1 与 cards/TG-15.md（两处**只引用本键，不复制数值**）。计分口径：以**被判级的卡**为对象，`扣分 = 卡点数 × Σ(未闭环发现的比例)`；比例只按**级别**取，不按条数线性累加。",
@@ -313,8 +389,9 @@
     "_comment": "『派生数字不得手抄』（2026-09-25，Sprint-17 关闭期；根因＝一查 run-2026-09-25-doc-audit-070 finding 1/2）：文档里引用**派生数字**（断言数/卡数/文件数/脚本数/字节数/C 级条数/棘轮计数）只有两种合法形态——① **复现命令 + 以该命令输出为准**；② **标明时点的历史读数**（同行带日期或 sha）。写成『现测 <数字>』『实测 <数字>』这类**当期主张**即违规。闸门 = verify/verify_derived_numbers.py（offline）。`baseline` 按文件设违规处数上限：**只减不增**（与 git HEAD 版逐项比较，上调即 FAIL），`review_by` 到期即 FAIL；未列入 baseline 的文件上限 = `default_cap`（新文档一处都不许有）。规则条文 = docs/1-WORKFLOW.MD §6『派生数字不得手抄』。baseline 初值 = 2026-09-25 全仓实测（32 个历史文件 / 111 处，其余文档 0 处）。",
     "scan_globs": ["docs/**/*.md", "docs/**/*.MD"],
     "generated_files": ["verify/TEST-MATRIX.MD"],
-    "time_anchor_regex": "(?:20\\d\\d-\\d\\d-\\d\\d|`[0-9a-f]{7,40}`|以现跑为准|以命令输出为准|现跑为准|现值以|以该命令输出为准)",
+    "time_anchor_regex": "(?:20\\d\\d-\\d\\d-\\d\\d|`[0-9a-f]{7,40}(?:\\.\\.[0-9a-f]{7,40})?`|以现跑为准|以命令输出为准|现跑为准|现值以|以该命令输出为准)",
     "default_cap": 0,
+    "_patterns_087_minor_9": "二查 run-2026-09-25-code-review-087 minor 9 的『四类形态』（原文 :48）= gate_required / E501=N/N / N 条反向对照 / +N/-N、N 提交；2026-09-26 G2 关闭批补齐（本批四类逐条对应 id：gate_required / ratchet_pair / replay_count / diffstat）。口径三则（**都是本次裁定的**）：① ratchet_pair 与 ratchet_counts 用负向前瞻分工（成对写 `E501=N/N` 只记 1 处，不双计；只写 `E501=N` 仍记 1 处 —— 覆盖面不减、计数不虚增）；② replay_count 只认 087 原文的字面序（`N 条反向对照`）；反序形态（`反向对照 N 条`）实测会新增 5 个文档判红、其中 4 个已无棘轮余量（cards/TG-17.md 3→6、cards/TG-20.md 0→1、sprint-17.md 1→2、G2 计划书 0→1）⇒ **本批不采纳**，列为待文档清理批后再做的扩展；③ diffstat 只认 087 原文的变更集复合式（`+N/-N、N 提交`）；裸 `+N/-N` 的扩展实测会新增 3 个已无余量的文档判红（3-LEARNED 8→9、sprint-9 2→3、sprint-16 6→7）⇒ 同上不采纳。`time_anchor_regex` 的两处口径：④ **豁免只到行级、且必须同行可见**（数字在前、锚点在后一行不算）；⑤ sha 区间（反引号包的 `sha1..sha2`）与单个 sha 同等有效（原文写『带 sha』，区间同样把读数钉在提交上；旧正则认不出区间 ⇒ 对 `+N/-N、N 提交（sha1..sha2）` 这种合规写法是假阳性）。**明确未改的口径**：行首的日期（含 sprint 表格行的首个日期单元格）仍算时点锚 —— 收窄的两个方案已实测其代价（『日期须伴随声明』= 25 个文档判红；『行首表格日期不算锚』= 1 个文档判红且该行日期本就是行自己的时点、属假阳性）⇒ 需专门批次的文档清理，不在本批。",
     "patterns": [
       {"id": "claim_count", "regex": "(?:现测|实测|当前|现有)\\s*[:：]?\\s*\\**\\s*\\d+\\s*(?:张卡|卡\\b|个阶段|脚本|个文件|文件|份|条|B\\b)", "hint": "改成『复现命令 + 以该命令输出为准』，或在同一行标注时点（日期/sha）"},
       {"id": "all_pass", "regex": "ALL\\s*PASS\\s*\\(\\s*\\d+\\s*assertions?", "hint": "断言数以现跑末行为准，不要在文档里固化"},
@@ -322,10 +399,50 @@
       {"id": "evidence_line", "regex": "EVIDENCE:[^\\n]*assertions=\\d+", "hint": "机读证据行由脚本现跑打印，不抄进文档"},
       {"id": "matrix_check", "regex": "CHECK OK:\\s*\\d+\\s*脚本", "hint": "脚本数以 verify_matrix.py check 现跑为准"},
       {"id": "suite_scripts", "regex": "SUITE PASSED\\s*\\(\\s*\\d+", "hint": "套件脚本数以现跑为准"},
-      {"id": "ratchet_counts", "regex": "(?:E501|D10[123])\\s*=\\s*\\d+", "hint": "棘轮计数以 EVIDENCE 行现跑为准"},
-      {"id": "c_level_total", "regex": "C\\s*级[^\\n]{0,24}?\\d{3,}\\s*条", "hint": "C 级条数以 verify_lint.py 报告行现跑为准"}
+      {"id": "ratchet_counts", "regex": "(?<![\\w])(?:E501|D10[123])\\s*=\\s*\\d+(?![\\d]*\\s*/\\s*\\d)", "hint": "棘轮计数以 EVIDENCE 行现跑为准"},
+      {"id": "c_level_total", "regex": "C\\s*级[^\\n]{0,24}?\\d{3,}\\s*条", "hint": "C 级条数以 verify_lint.py 报告行现跑为准"},
+      {"id": "gate_required", "regex": "(?<![\\w])(?:guard_required|gate_required)\\s*=\\s*\\d+", "hint": "闸门必需数以 verify_gate_integrity.py 现跑末行为准（087 minor 9 第①类）"},
+      {"id": "ratchet_pair", "regex": "(?<![\\d/])(?:E501|D10[123])\\s*=\\s*\\d+\\s*/\\s*\\d+", "hint": "棘轮计数的 N/N 两值都要由现跑派生（087 minor 9 第②类）"},
+      {"id": "replay_count", "regex": "(?<![\\w])\\d+\\s*条\\s*\\**\\s*反向对照", "hint": "反向对照条数以各闸门 --selftest 末行为准（087 minor 9 第③类）"},
+      {"id": "diffstat", "regex": "(?<![\\w])[+＋]\\s*\\d+\\s*[/／]\\s*[−–-]\\s*\\d+\\s*[、,，]\\s*\\**\\s*\\d+\\s*\\**\\s*提交", "hint": "变更集统计以 git diff --shortstat / rev-list --count 现跑为准（087 minor 9 第④类）"}
     ],
     "baseline": {
+      "docs/3-LEARNED.MD": 8,
+      "docs/4-ALGORITHM.MD": 4,
+      "docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-learned.MD": 3,
+      "docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-runs.MD": 1,
+      "docs/iteration/phases/refactor-analysis/2026-09-21-fac13-14-impact.MD": 1,
+      "docs/iteration/phases/refactor-analysis/backlog.MD": 1,
+      "docs/iteration/phases/refactor-analysis/cards/F-AC10.md": 1,
+      "docs/iteration/phases/testing-governance/2026-09-25-d2d3-independent-review.MD": 1,
+      "docs/iteration/phases/testing-governance/2026-09-25-governance-exit-evidence.MD": 3,
+      "docs/iteration/phases/testing-governance/2026-09-25-open-items-check.MD": 3,
+      "docs/iteration/phases/testing-governance/cards/TG-10.md": 1,
+      "docs/iteration/phases/testing-governance/cards/TG-13.md": 1,
+      "docs/iteration/phases/testing-governance/cards/TG-14.md": 1,
+      "docs/iteration/phases/testing-governance/cards/TG-17.md": 3,
+      "docs/iteration/phases/testing-governance/cards/TG-6.md": 2,
+      "docs/iteration/phases/testing-governance/cards/TG-7.md": 4,
+      "docs/iteration/phases/testing-governance/cards/TG-8.md": 3,
+      "docs/iteration/pre-research/tech/2026-08-31-testing-governance.MD": 1,
+      "docs/iteration/pre-research/tech/2026-09-21-lint-deps-security-check.MD": 1,
+      "docs/iteration/sprint/2026-08-30-sprint-8.md": 4,
+      "docs/iteration/sprint/2026-08-30-sprint-9.md": 2,
+      "docs/iteration/sprint/2026-08-31-f2-acceptance-guide.MD": 3,
+      "docs/iteration/sprint/2026-08-31-sprint-10.md": 1,
+      "docs/iteration/sprint/2026-08-31-sprint-11.md": 5,
+      "docs/iteration/sprint/2026-08-31-sprint-12.md": 3,
+      "docs/iteration/sprint/2026-08-31-sprint-13.md": 5,
+      "docs/iteration/sprint/2026-08-31-sprint-14.md": 5,
+      "docs/iteration/sprint/2026-09-07-sprint-15.md": 19,
+      "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD": 5,
+      "docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD": 9,
+      "docs/iteration/sprint/2026-09-12-sprint-16.md": 6,
+      "docs/iteration/sprint/2026-09-21-sprint-17.md": 1
+    },
+    "measured_at": "2026-09-25",
+    "_measured_value_why": "M-C（TG-19，2026-09-25 D3）：重评基线那一刻的逐文件实测值快照；判据 = 每个 cap ≤ 对应 measured_value、键集逐键相等，改任一侧必须带 `rebased_at` + `rebased_reason`。",
+    "measured_value":     {
       "docs/3-LEARNED.MD": 8,
       "docs/4-ALGORITHM.MD": 4,
       "docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-learned.MD": 3,
@@ -372,7 +489,9 @@
       "verify/verify_derived_numbers.py",
       "verify/verify_gate_integrity.py",
       "verify/verify_artifact_paths.py",
-      "verify/verify_close_readiness.py"
+      "verify/verify_close_readiness.py",
+      "verify/verify_close_tax_reading.py",
+      "verify/verify_decision_register.py"
     ],
     "probe_gate": "verify/verify_gate_integrity.py",
     "probe_args": ["--selftest"],
@@ -380,7 +499,8 @@
       {"pointer": "lint_readability_ratchet.caps", "review_by_pointer": "lint_readability_ratchet.review_by"},
       {"pointer": "md_table_legacy_files.files", "review_by_pointer": "md_table_legacy_files.review_by"},
       {"pointer": "ledger_measurement.legacy_ratchet.caps", "review_by_pointer": "ledger_measurement.legacy_ratchet.review_by"},
-      {"pointer": "derived_numbers.baseline", "review_by_pointer": "derived_numbers.review_by"}
+      {"pointer": "derived_numbers.baseline", "review_by_pointer": "derived_numbers.review_by"},
+      {"pointer": "artifact_paths.dynamic_ratchet.files", "review_by_pointer": "artifact_paths.dynamic_ratchet.review_by"}
     ]
   }
 }
