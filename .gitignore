@@ -66,6 +66,6 @@ paper-qa-script/paperqa_function_interfaces.json
 paper-qa-script/paperqa_function_inventory.json
 docs/iteration/sprint/config_schema.json
 # 截图留证（本地留存，不入库）
-docs/iteration/sprint/*.png
+# docs/iteration/sprint/*.png — 2026-10-25 取消排除：sprint 文档 16 处图片链接在全新 clone 上需要这些文件（A-EXCL 缺口①）
 verify/*.png
 
