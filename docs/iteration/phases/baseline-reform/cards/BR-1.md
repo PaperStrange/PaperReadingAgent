@@ -232,3 +232,73 @@ registered run-try-entry (status=queued)
 - **未决①（口径向你确认）**：`max_escapes_legacy_rows` 这一格是"不追溯历史"的**唯一**出口。本批把它钉成"只许一条 ＋ 必须指向真实存在的当日豁免行"，但**是否认这个口径**属政策决定（我按"不追溯既往 ＋ 逐行点名"实现并上屏报备）。若不认，替代路径是：本批按第 1 级兜底"不派单"、run 记为上一笔的延续。
 - **未决②**：逃生门引用的是**条目号/用户原话**，仍**判不了**那笔工作是否真的属于收口/安全类——四把锁把"任意放行"收成了"必须落进两类之一且引用可核"，但"分类是否正确"仍靠事后复核（与 `--allow-degenerate`／`retract --reason` 同族约束）。
 - **未决③**：`AGENT_OPS_DIR=""` 这类**空重定向**现在按"重定向档"处理（判未执行）。是否该把它当配置错误 fail-closed，留给后续裁定。
+
+### 9. 落地记录（2026-10-25 批：M5 `baseline-reform` 第一条改造——C 级棘轮补「到期必须改善」）
+
+> 本节**只追加**；上文（含 §2 的分类、§6「本批没做的事」）一个字未删。选型与父代理指示存在一处**分类偏差**，如实记在「选了哪条」里，不粉饰成"本来就该如此"。
+
+**选了哪条**：`agents/policy.json::lint_readability_ratchet`（`D101/D102/D103/E501` 四类；消费者 `verify/verify_lint.py::ratchet_problems`）。**分类偏差（如实记）**：BR-1 §2 把 ① 归为「**承重**」，**不在**「锁住债务」类（§2 把 ②⑦⑨ 列为锁住债务）。父代理指示"优先 C 级棘轮、可自选"与本卡分类不一致——本批按指示选 ①，**不改分类标签**，偏差交父代理裁。
+
+**为什么选它（四条）**：
+
+1. **三联字段唯一齐备**：10 条里只有它同时有 `measured_at`／`review_by`／`measured_value`；方向 A 的前置条件是"复用已有字段、不新增数据面"，选它是唯一能**不动 `agents/policy.json`** 就落地的（本批对该文件零改动）。
+2. **到期日不是结构性死锁**：四项 `measured_value` 现读均 > 0（见下「咬合点」），"严格小于"有解；若某类为 0，判据在到期时**不可满足**，属需重评时改判据的数据决策（见残余风险 R2）。
+3. **有真实返工留痕**：§1 ① 记过 `E501` 2631→2494 的两次折行费、`D103` 207→205 的 docstring 费——不是"无留痕案例"的自律性基线（§2 的"承重"分类据此）。
+4. **判据可纯函数驱动**：四条反控不必往仓库里造几千条真违规，`ratchet_problems` 直接驱动 = **每次跑闸门都重跑一遍**（不会腐烂成注释）。
+
+**为什么不选另外两条（按「锁住债务」的 ②⑦⑨ 逐条答）**：
+
+- **② `run_suite.py::BRANCH_ASSERTION_FLOORS`**：没有 `measured_value`／`review_by`／`measured_at` 三联，也没有"上一次实测"这个数——要加"到期严格下降"就必须**新增数据面**（方向 A 明确要复用）；且"断言条数必须逐期上涨"会把"本批没写新断言"判红，方向错。**本批只做了该表的一处补登记**：`verify_lint.py` 此前**不在下限表里**（删掉本批四条反控仍判绿）⇒ 新增 `("verify_lint.py", True/False): 15`，并把 `BRANCH_VERDICT_SCOPE_MIN` 由 5 抬到 6（2026-10-25 现跑；只增不减）。
+- **⑦ `spend-budget` 成本基线**：`agents/spend-budget.json` 与 `scripts/**` **都不在本批授权写入集**；该文件自述基线"仅用于对照、不作为判据"，升级它要先由用户裁"成本能否阻断派单"（§7 已把**派单数**做成阻断、**金额轴**仍故意不阻断，理由是其作用域缺陷归 `A-COST`）。本批**一个字节未碰**。
+- **⑨ `close_tax` 的 9 例 WARN**：9 例是**存量账本**缺陷（评审类 run 无产物），"改善"= 补历史产物或逐条认账，不是代码可自动判的"严格小于上一次"；其 `measured_value` 与 `caps` 现读相等（9/9，以现跑为准），到期即要求清掉至少一例历史债，代价与授权都不在本批。本批**不碰**。
+
+**判据形态（可判定口径）**：
+
+- **比较方向**：`today >= review_by` ⇒ 对**每一项**判 `活读数 < measured_value`；任一项不成立 ⇒ FAIL 并点名 `[棘轮/<code>] **到期未改善**`。`today < review_by` ⇒ **不判**（上屏 `[棘轮改善] 未到期 … 本次不判`）。`today == review_by` **算到期**（取严；既有"过期"判据仍是 `today > review_by`，**未改**）。
+- **fail-closed 面**：`measured_value` 缺失/空/非整数/键集与 `caps` 不等；`review_by`／`measured_at`／`today` 不可解析；`measured_at` 晚于 `review_by` ⇒ 一律 FAIL（判不了就判红）。
+- **未放宽任何既有判据、未上调任何上限**：`caps` 四值、`measured_value` 四值、`measured_at`／`review_by` **逐字节未动**；既有四条判据（caps 键集相等、多键、`计数 > cap`、`review_by` 过期）逐字保留。`ratchet_problems` 的**签名**新增 keyword-only `measured_value`／`measured_at`（不传或传空 ⇒ **更严**，不是更松）。
+
+**四条反向对照（真驱动；既在本批现跑记录里，也是 `verify_lint.py` 每次运行都重跑的自检 ⑨–⑫）**：
+
+| # | 对照（驱动方式） | 现跑结果（2026-10-25） |
+|---|---|---|
+| ① | **到期且未改善**：`today == review_by`，活读数**等于** `measured_value`（自检用合成快照 1/1，走同一纯函数） | FAIL：`[棘轮/D101] **到期未改善**：实测 1 ≥ 上一次 measured_value 1 …`（自检 ⑨ 每次真跑；端到端见下） |
+| ② | **到期且已改善**：活读数**严格小于**快照 | PASS：`problems=[]`（自检 ⑩；端到端 `B_due_improved_today` rc=0） |
+| ③ | **未到期**：`today < review_by`，活读数等于快照 | 不判：`problems=[]`，并上屏 `[棘轮改善] 未到期 … 本次不判`（自检 ⑪；端到端 `C_not_due` rc=0） |
+| ④ | **数据坏法**：缺 `measured_value`／`review_by` 不可解析／`measured_at` 不可解析 | 三种都 FAIL 并点名 fail-closed（自检 ⑫；端到端 `D1_missing_mv` rc=1、`D2_bad_review` rc=1） |
+
+**端到端（真 CLI 子进程；policy 用 `%TEMP%` 副本经 `PAPERQA_AGENT_POLICY` 重定向，仓内 policy 零改动）**：
+
+- `A_due_equal_today`（`review_by` = 今天、`measured_value` = 本批现读数）⇒ `rc=1`，`LINT FAIL` **4 项**：D101 12≥12、D102 46≥46、D103 203≥203、E501 2494≥2494。
+- `B_due_improved_today`（`review_by` = 今天、`measured_value` = 13/47/205/2495）⇒ `rc=0`，末行 `ALL PASS (N assertions)`（2026-10-25 实读 15）。
+- `C_not_due`（`review_by` = 2026-12-31）⇒ `rc=0`，上屏 `[棘轮改善] 未到期`。
+- `D1_missing_mv` ⇒ `rc=1`，点名「缺 measured_value」；`D2_bad_review`（`2026-13-40`）⇒ `rc=1`，点名「不可解析」。
+
+**咬合点（本批最该被看见的数）**：以**本批时点读数**（2026-10-25 的 `EVIDENCE` 行，现值以现跑为准）代入 `today = review_by = 2026-10-31`，纯函数返回 **3 项**：D101 12≥12、D102 46≥46、E501 2494≥2494；D103 203<205 通过。**类数会随现读数漂**（例如并行批改动使 E501 在收尾现跑为 2493 ⇒ 届时该类已低于快照，只余 D101／D102 两项），故判据的稳定表述是：**到期日凡「实测 ≥ 其 measured_value」的类，都必须真降**。这正是"促改善"的咬合点，本批**没有**为躲它改 caps／measured_value。改善路径具体且小（补 1 处 module docstring、补 1 处 method docstring、折 1 行长行），但**本批不做**（授权是"只加判据"；这些应由重评批连同基线一起做）。
+
+**断言数与下限（同批齐抬；现值一律以现跑为准）**：
+
+- `verify_lint.py`：11 → **15** 条断言（2026-10-25 现跑末行；新增 ⑨–⑫ 四条反控）。
+- `verify/run_suite.py::BRANCH_ASSERTION_FLOORS`：新增 `("verify_lint.py", True)：15`／`("verify_lint.py", False)：15`（此前**无此行**）；`verify_gate_integrity.py` 现跑仍 **88**（本批未改它，故未抬——"只增不减"不要求无变化也抬）。
+- `BRANCH_VERDICT_SCOPE_MIN`：5 → **6**（两分支同值；`verify_lint.py` 自陈"条数见末行"后，删掉它的自陈就必须红）。
+- `VERIFY_META.features` 改了 ⇒ 同批 `verify_matrix.py derive` ＋ `check`。
+
+**门槛末行**（下列每行都是 **2026-10-25 时点读数**，**不得当作现值**；现值一律由各命令现跑产生）：
+
+- `py_compile verify/verify_lint.py verify/run_suite.py verify/verify_gate_integrity.py` ⇒ `rc=0`（2026-10-25）。
+- `verify/verify_lint.py` ⇒ 通过档判决句（2026-10-25：`ALL PASS (15 assertions)`）；本批新增/改写的行**均未新增超宽行**（`E501` 不因本批上升；现值以现跑 EVIDENCE 行为准——并行批对 `verify_usage.py` 的改动会让该计数漂 1，本批不把它算进自己的账）。
+- `verify/verify_gate_integrity.py --selftest` ⇒ 通过档判决句（2026-10-25：`ALL PASS (88 assertions)`；**本批未改它，故下限仍 88**）；现值以现跑末行为准。
+- `verify/run_suite.py --tier offline` ⇒ `SUITE PASSED (26 scripts)`、rc=0（2026-10-25 收尾现跑；行 34 六个自陈脚本的条数全部 ≥ 下限）。**期间的如实记**：并行批（同日 windows→main 同步干跑）一度把 `verify/verify_usage.py` 改成 `BEFORE_REV=000…0`（05:52:51–05:56:46），使一次现跑出现 `verify_usage.py[rev-absent-on-branch]` 具名 SKIP（rc=3）；该文件恢复后复跑即 26/26 全绿。**本批 6 个改动文件不含它**。
+- `verify/verify_matrix.py derive` ＋ `check` ⇒ `CHECK OK: 57 脚本`（2026-10-25；**改了 `VERIFY_META` 故同批 derive**）。
+- `verify/verify_md_tables.py` ⇒ `MD-TABLE PASS`（2026-10-25：195 个文件解析通过）。
+- `verify/verify_derived_numbers.py` ⇒ `ALL PASS (19 assertions)`，本批新增文档 0 处违规（2026-10-25；现值以现跑为准）。
+- `verify/verify_decision_register.py` ⇒ `ALL PASS (32 assertions)`、`quotes_drift=10`（2026-10-25；与批前持平 ⇒ **漂移净新增 0**）。
+- `verify/verify_close_readiness.py --sprint docs/iteration/sprint/2026-09-25-sprint-18.md` ⇒ `CLOSE-READINESS PASS`（2026-10-25 收尾前现跑：右端 `f763f82b…`、覆盖提交 87、run 表 29 行）⇒ **非空关闭窗口**；收尾（`finish` 之后）再跑一次的状态见回执。
+
+**残余风险（如实记）**：
+
+- **R1 到期日红是设计后果，不是事故**：2026-10-31 起，凡实测 ≥ `measured_value` 的类（写本卡时点：D101／D102／E501；现值以现跑为准）不真降即红（见「咬合点」）。本批**没有**改上限来迁就。若父代理不接受这个时间点，唯一合规选项是**在到期前真做各 1 条改善**，或回退本批——**不得**上调 measured_value／caps。
+- **R2 零值类不可满足**：某类 `measured_value` 若为 0，"严格小于 0"无解 ⇒ 到期必红。现四类均 > 0，故本批不受影响；将来重评若某类归零，必须先裁"该类是否改用别的促改善形态"（本批不预设）。
+- **R3 延期不豁免，但署名放宽仍可能**：把 `review_by` 往后挪**不会**消掉义务（下次到期仍要与**同一** `measured_value` 比）；但 `verify_gate_integrity.py` 允许**带 `rebased_at`＋`rebased_reason` 的** `measured_value` 上调（具名事件，不是静默）。该口子的堵法属下一次重评的政策问题，本批不擅自加锁。
+- **R4 不区分"谁降的"/四类独立**：判据逐类比较、互不透支（比"总量下降"更严），但同一类内"先涨后降"仍可被合法化为刚好低于快照——棘轮族共有局限。
+- **R5 只在本闸门执行**：`verify_lint.py` 缺席 ruff 时走 fail-closed 退出 2（或显式 `--allow-missing` 跳过，套件不这么调）；`agents/policy.json` 若被删/读不出，装载器先报 `POLICY-ERROR`（退出 2）。两条都不是本批引入的。

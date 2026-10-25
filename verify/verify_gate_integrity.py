@@ -1724,10 +1724,16 @@ def selftest() -> int:
        "floors 空")
     ok("行 34 对照⑥：非零退出**不**由本条重复报（退出码已由既有判据判红）",
        verdict_problems("verify_agentops.py", [], 1, True) == [], "code=1")
-    ok("行 34 反向对照⑦：自陈脚本数 5 = 本分支下限 ⇒ 无缺陷；4 < 5 ⇒ FAIL"
-       "（删掉 features 里的自陈字样 = 把该脚本移出棘轮 ⇒ 这条钉住）",
-       verdict_scope_problems(5, True) == [] and bool(verdict_scope_problems(4, True)),
-       f"下限={BRANCH_VERDICT_SCOPE_MIN.get(True)}")
+    # 自陈脚本数下限也**从下限表派生**（2026-10-25 BR-1 批：这里曾写死 `5`，
+    # 下限抬到 6 后反向对照当场假红——与上面 `174→177` 是同一个病：同一个数
+    # 出现在两处必然漂移）。
+    scope_min = BRANCH_VERDICT_SCOPE_MIN[True]
+    ok(f"行 34 反向对照⑦：自陈脚本数 {scope_min} = 本分支下限 ⇒ 无缺陷；"
+       f"{scope_min - 1} < {scope_min} ⇒ FAIL（删掉 features 里的自陈字样 = "
+       "把该脚本移出棘轮 ⇒ 这条钉住）",
+       verdict_scope_problems(scope_min, True) == []
+       and bool(verdict_scope_problems(scope_min - 1, True)),
+       f"下限={scope_min}")
     ok("行 34 反向对照⑧：分支感知——同一读数在 absent 侧（下限 15）放行、"
        "在 present 侧（下限 17）判红（「全局一个数」必然误判一边）",
        verdict_problems("verify_card_index.py", ["ALL PASS (15 assertions)"],

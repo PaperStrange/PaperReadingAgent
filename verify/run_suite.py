@@ -106,6 +106,9 @@ BRANCH_EST_OVERRIDES: dict[tuple[str, bool], float] = {
 #     windows-only 卡文件的判据）——正是"下限必须分支感知"的实例。
 #   * `verify_decision_register.py` 32／32、`verify_derived_numbers.py` 19／19、
 #     `verify_gate_integrity.py` 88／88（两侧同值：它们的断言不依赖 `docs/iteration`）。
+#   * `verify_lint.py` 15／15（**2026-10-25 BR-1 促改善落地时补登记**：此前**没有**
+#     这一行——删掉到期促改善的四条反控仍判绿，等于本批白做；该脚本的断言只依赖
+#     ruff 与 policy，不依赖 `docs/iteration`，故两侧同值）。
 #     **2026-09-30 本批同步（复核 `run-…-114` minor 2）**：该键此前写 **68**，而现跑
 #     已是 **75**（`6a0cfc9` 加了 7 条判据却没抬下限）⇒ 与本表其它项（`verify_agentops.py`
 #     174→177 同步抬）做法不一致，也违反本文件 `:93-94` 自陈的"只增不减"：
@@ -158,8 +161,9 @@ BRANCH_ASSERTION_FLOORS: dict[tuple[str, bool], int] = {
     ("verify_decision_register.py", False): 32,
     ("verify_derived_numbers.py", True): 19, ("verify_derived_numbers.py", False): 19,
     ("verify_gate_integrity.py", True): 88, ("verify_gate_integrity.py", False): 88,
+    ("verify_lint.py", True): 15, ("verify_lint.py", False): 15,
 }
-BRANCH_VERDICT_SCOPE_MIN: dict[bool, int] = {True: 5, False: 5}
+BRANCH_VERDICT_SCOPE_MIN: dict[bool, int] = {True: 6, False: 6}
 TAIL_KEEP = 60                  # 每个脚本留最后 60 行（判决句判据只读末尾数行）
 
 
@@ -623,7 +627,8 @@ def main() -> int:
                      for ln in tail):
                 # 打印了判决句却没自陈 ⇒ 未纳入条数棘轮。**上屏可见**（不判红：
                 # 纳入棘轮要
-                # 先给两侧实测下限，那是逐脚本的登记工作，本批只登记自陈的那 5 个）。
+                # 先给两侧实测下限，那是逐脚本的登记工作，本批登记自陈的那 6 个
+                # （2026-10-25 起含 verify_lint.py）。
                 undeclared_printers.append(p.name)
 
         metrics = _read_metrics(metrics_path)
@@ -653,7 +658,8 @@ def main() -> int:
 
     summary["finished_at"] = time.time()
     # 行 34 判据④（自陈脚本数棘轮）只对 offline 档判：Declared 集合是 offline 档的
-    # 5 个脚本（gui/network 档不选它们 ⇒ 比较两个不同的清单没有意义）。
+    # 6 个脚本（2026-10-25 起含 verify_lint.py；gui/network 档不选它们 ⇒ 比较两个
+    # 不同的清单没有意义）。
     if args.tier == "offline":
         print(f"\n== 行 34 判决句／条数棘轮（分支判据 `{PROBE_KEY}` "
               f"在树里={branch_present}）==")
