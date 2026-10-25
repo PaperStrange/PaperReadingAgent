@@ -458,3 +458,26 @@ python verify/run_suite.py --tier offline
 6. **未测 `structure-guard.py verify --from-git` 在 main push 事件下的真跑**（依赖 `github.event.before`，本地无法等价复现）。
 
 **未决（等用户裁定）**：D1–D9 全部；其中 **D1／D3／D6 是本方案能否落地的三条硬前提**。
+
+---
+
+## 执行记录（2026-10-25；本档决策点已全部兑现）
+
+> 21 天后恢复执行。人类裁定记录：**允许开 `sync/*` 分支**、**PR 等流程走完再开**、**步骤 5/6 调换（PR 先于走查）**、
+> **`docs/6-DECISIONS.md` 纳入同步**、**CI-B1/B2 先修后走查**、**合并批准**。
+
+- **D1／D2 已兑现**：`docs/6-DECISIONS.md` **已进 main**（blob `10160495…`）；`docs/1-WORKFLOW.MD:52` 的排除项③
+  **已就地翻转**（行数不变的同一行改写，理由栏写明"旧理由已被 2026-10-25 干跑实测推翻"）。
+- **D3／D4／D5 已兑现**：建 `sync/main-20261025` 并开 **PR #54**（草稿 → 必需检查绿 → 标记 ready → **merge commit 合并**）；
+  `main` 保护经 API 现读：必需检查 `Offline suite + builds (Windows)`、`enforce_admins=true`、禁强推/禁删 ⇒ **路径②技术上不可行**。
+- **D6 已兑现**：CI-B1 修法＝`verify_usage.py` 在钉住 revision 不可达时打 **`USAGE SKIP[rev-absent-on-branch]`**（具名 SKIP + rc=3）；
+  CI-B2 因 D1 纳入而**不再出现**（同步树现跑 `DECISION-REGISTER PASS`、`drift=0`、1106 指针走行 39 棘轮）。
+- **D7／D8／D9**：H1 行号漂移、H2 `dynamic_ratchet` 口径、H3 已按本档结论执行；日期口径采用实际日期；未重跑 105 报告。
+- **新增发现（本档未预见）**：`structure-guard` 在 `pull_request` 事件下把 `github.event.before` 当基线（实测解析到
+  **windows 顶端**）⇒ 拿含 186 个 `docs/iteration/**` 的基线去比"按设计排除该子树"的同步树 ⇒ **186 项误判"文件消失"**，
+  PR 必需检查因此红过一次。修法＝PR 事件改取 **`pull_request.base.sha`**，已进 main。
+- **结果**：同步提交 `15314c6`（**单亲**，父 `bc31219`）＋ CI 修复 → merge commit **`cdec4d2`**（父 `bc31219` ＋ `15314c6`）
+  ⇒ main 树 `docs/iteration/**` **0 条**、4 个 mac 启动脚本 **4/4**、`6-DECISIONS.md` **在库**；PR CI **success**（run `40199570380`）、
+  main 合并后 CI **success**。
+- **已知缺口（未在本轮修）**：`docs/iteration/sprint/*.png` 已于同日取消排除并入库（16 处图片链接不再断）；
+  `ci_fail_log.txt` 的忽略规则形状漏网仍在 `A-EXCL` 卡上待办。
