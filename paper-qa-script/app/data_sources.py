@@ -47,6 +47,7 @@ class RemoteSourceConfig(BaseModel):
     dois: list[str] = Field(default_factory=list)
 
     def to_specs(self) -> list[SourceSpec]:
+        """把三类远程源摊平成统一的 SourceSpec 列表（URL、arXiv、DOI 顺序）。"""
         specs: list[SourceSpec] = []
         specs.extend(SourceSpec(kind=SourceKind.URL, value=u) for u in self.urls)
         specs.extend(SourceSpec(kind=SourceKind.ARXIV_ID, value=a) for a in self.arxiv_ids)
@@ -54,6 +55,7 @@ class RemoteSourceConfig(BaseModel):
         return specs
 
     def is_empty(self) -> bool:
+        """三类远程源是否全为空。"""
         return not (self.urls or self.arxiv_ids or self.dois)
 
 

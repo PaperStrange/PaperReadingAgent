@@ -108,14 +108,17 @@ class RemoteResolveReport(BaseModel):
 
     @property
     def ok_count(self) -> int:
+        """成功解析或下载的源数量。"""
         return sum(1 for r in self.results if r.ok)
 
     @property
     def fail_count(self) -> int:
+        """失败数量（总数减去成功数）。"""
         return len(self.results) - self.ok_count
 
     @property
     def failures(self) -> list[str]:
+        """失败项的可读摘要列表（形如 kind: value -> error）。"""
         return [f"{r.kind.value}: {r.value} -> {r.error}" for r in self.results if not r.ok]
 
 

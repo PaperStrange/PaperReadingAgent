@@ -48,6 +48,7 @@ class RunEventBroker:
         self._subscribers: dict[tuple[str, str], set[asyncio.Queue]] = {}
 
     def publish(self, key: tuple[str, str], event: dict[str, Any]) -> None:
+        """把事件追加进历史（超长或超键数时淘汰旧项）并推给当前订阅者。"""
         if key not in self._history and len(self._history) >= self._MAX_KEYS:
             self._history.pop(next(iter(self._history)), None)
         history = self._history.setdefault(key, [])
@@ -60,11 +61,13 @@ class RunEventBroker:
                 pass
 
     def subscribe(self, key: tuple[str, str]) -> tuple[asyncio.Queue, list[dict[str, Any]]]:
+        """注册订阅者并返回 (队列, 已有历史快照)，先补历史再收实时事件。"""
         q: asyncio.Queue = asyncio.Queue()
         self._subscribers.setdefault(key, set()).add(q)
         return q, list(self._history.get(key, []))
 
     def unsubscribe(self, key: tuple[str, str], q: asyncio.Queue) -> None:
+        """移除订阅者；该键下没有订阅者时连同键一起清掉。"""
         if key not in self._subscribers:
             return
         self._subscribers[key].discard(q)
@@ -79,6 +82,8 @@ ORCHESTRATOR = make_orchestrator(store=SESSIONS)
 
 
 class TranslatePreviewRequest(BaseModel):
+    """翻译预览请求体：会话 id 与待翻译原文。"""
+
     session_id: str
     text: str
 
@@ -147,6 +152,8 @@ async def config_schema() -> dict[str, Any]:
 
 
 class ConfigValidateRequest(BaseModel):
+    """配置校验请求体：待校验的参数表（params 原样透传）。"""
+
     params: dict[str, Any]
 
 

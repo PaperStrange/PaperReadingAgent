@@ -51,6 +51,11 @@ verify/suite_result.json
 .idea/
 .vscode/
 verify/*.log
+# A-EXCL 缺口②（2026-10-25 修）：上面这条只覆盖 `verify/` 下的 `*.log` **形状**；仓库根的
+# `verify_checkpoint_run.log` 与 `ci_fail_log.txt` 是两次真实误入库的产物（位置 + 后缀都不同 ⇒ 命中不了）。
+# 按**具名**补，不写 `*.log` 通配：那会把 `verify/*.log` 之外的合法文件一并扫掉。
+/verify_checkpoint_run.log
+/ci_fail_log.txt
 # Sprint-7 review 修正：验收生成物不入库（每次运行都变，会污染 PR diff）
 verify/verify_e2e_result.json
 verify/verify_e2e_openai_result.json
@@ -66,6 +71,6 @@ paper-qa-script/paperqa_function_interfaces.json
 paper-qa-script/paperqa_function_inventory.json
 docs/iteration/sprint/config_schema.json
 # 截图留证（本地留存，不入库）
-docs/iteration/sprint/*.png
+# docs/iteration/sprint/*.png — 2026-10-25 取消排除：sprint 文档 16 处图片链接在全新 clone 上需要这些文件（A-EXCL 缺口①）
 verify/*.png
 

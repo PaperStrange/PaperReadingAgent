@@ -810,6 +810,7 @@ def target_bad(candidate: str, *, is_folder: bool) -> bool:
 # ------------------------------------------------------------------ 审计
 
 class Finding:
+    """一条命中：相对路径、行号、调用名与说明。"""
     def __init__(self, rel: str, line: int, call: str, detail: str) -> None:
         self.rel, self.line, self.call, self.detail = rel, line, call, detail
 

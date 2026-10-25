@@ -11,6 +11,8 @@ ROOT = Path("/Volumes/Extreme SSD/vscode_projects/PaperReading/paper-qa/src/pape
 
 @dataclass
 class Counts:
+    """函数计数累加器：总数、顶层函数、类方法、嵌套函数与 async 函数五项。"""
+
     total: int = 0
     top_level: int = 0
     class_methods: int = 0
@@ -18,6 +20,7 @@ class Counts:
     async_functions: int = 0
 
     def add(self, other: "Counts") -> None:
+        """把另一份计数的五项逐项累加进本对象（原地修改，不返回新对象）。"""
         self.total += other.total
         self.top_level += other.top_level
         self.class_methods += other.class_methods
@@ -27,6 +30,8 @@ class Counts:
 
 @dataclass
 class FunctionItem:
+    """单个函数的定位信息（文件、限定名、行号、种类与是否 async）。"""
+
     file: str
     name: str
     lineno: int

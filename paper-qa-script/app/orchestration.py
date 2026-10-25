@@ -37,6 +37,8 @@ try:
     from runtime_trace import RuntimeTracer
 except Exception:
     class RuntimeTracer:  # type: ignore[no-redef]
+        """RuntimeTracer 导入失败时的空实现：只保留上下文管理器接口，不记录事件。"""
+
         def __init__(self, on_event: Callable[[dict[str, Any]], None] | None = None) -> None:
             self.events: list[dict[str, Any]] = []
 
