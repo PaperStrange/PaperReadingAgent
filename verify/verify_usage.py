@@ -344,9 +344,11 @@ def main() -> int:
     #     只差**代码版本**——改前 = 钉住的 revision，且价表两边钉成同一份
     before = _load_before()
     if before is None:
-        print(f"SKIP[rev-absent-on-branch] 钉住的改前 revision {BEFORE_REV[:12]} 不在本分支"
-              f"可达历史里 ⇒ ⑪2 及其反证的**判据未执行**（同族：verify_agentops.py 的"
-              f" spec-absent 档）——**本档不是通过**（rc={SKIP_EXIT}）")
+        print(f"USAGE SKIP[rev-absent-on-branch] 钉住的改前 revision"
+              f" {BEFORE_REV[:12]} 不在本分支可达历史里"
+              f" ⇒ ⑪2 及其反证的判据未执行"
+              f"（同族：agentops 的 spec-absent 档）"
+              f"——本档不是通过（rc={SKIP_EXIT}）")
         return SKIP_EXIT
     night = (_cst(2026, 9, 28, 22, 30), _cst(2026, 9, 28, 22, 31))
     old_night, new_night = _call(before, night), _call(U, night)
