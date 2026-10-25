@@ -338,9 +338,16 @@ jobs:
           # 故这里用 **git 当基线**复核本次 push 的整个提交范围：不需要任何本地快照
           # （快照是本地运行态），基线来自已经存在的事实。有意删除须在提交信息里署名
           # `Structure-Removal: <路径> :: <理由≥10 字符>`（具名事件；无署名即 FAIL）。
-          # 基线取 push 事件的 before（新分支/强推/取不到时回退 HEAD~1）；解析失败由脚本
+          # 基线取 push 事件的 before、PR 事件取 base.sha（新分支/强推/取不到时回退 HEAD~1）；解析失败由脚本
           # fail-closed 成 rc=2——"比不了"不得伪装成 PASS。
+          # ⚠️ 2026-10-25（PR #54 实测）：`pull_request` 事件的 `github.event.before` 会解析成
+          # 源分支/其它分支的提交（实测拿到 windows 顶端），于是守卫拿"含 docs/iteration/** 的
+          # 基线"去比同步树（该子树按设计排除）⇒ 误判 186 项"文件消失"。PR 的语义基线是
+          # **合并目标**（base），故 PR 事件显式取 `pull_request.base.sha`。
           $guardBase = "${{ github.event.before }}"
+          if ("${{ github.event_name }}" -eq "pull_request") {
+            $guardBase = "${{ github.event.pull_request.base.sha }}"
+          }
           if (-not $guardBase -or $guardBase -match '^0{40}$') { $guardBase = "HEAD~1" }
           # `rev-parse` 在这里是**探测**：非零退出不得让本步骤提前中止（Step 级 fail-closed 由
           # 最后那条 structure-guard 调用负责），故临时关掉原生命令的终止语义，探完立刻还原。
