@@ -245,6 +245,8 @@ class _Patch:
 
 
 class RuntimeTracer(AbstractContextManager):
+    """运行时追踪器：monkey-patch paperqa 目标函数并逐次调用发事件。"""
+
     TARGETS = [
         "paperqa.agents.main.agent_query",
         "paperqa.agents.main.run_agent",

@@ -149,9 +149,11 @@ class LocalVendorAdapter(EngineAdapter):
 
     @property
     def version(self) -> str:
+        """当前 vendor 的 paperqa 版本号。"""
         return paperqa.__version__
 
     def make_settings(self, params: dict[str, Any]) -> Settings:
+        """把节点参数翻译为 paperqa Settings（服务商、密钥、模型与索引在此定）。"""
         # 统一服务商切换：provider 参数 / PAPERQA_PROVIDER 环境变量；显式参数仍可覆盖
         provider_cfg = get_provider_config(params.get("provider"))
 
@@ -323,15 +325,19 @@ class LocalVendorAdapter(EngineAdapter):
         )
 
     async def get_directory_index(self, settings: Settings, build: bool) -> Any:
+        """建或取论文目录索引（build=True 时构建，否则只加载已有索引）。"""
         return await get_directory_index(settings=settings, build=build)
 
     async def query_index(self, search_index: Any, query: str, top_n: int) -> Any:
+        """在已建索引上检索，返回带文件名的前 top_n 条结果。"""
         return await search_index.query(query, top_n=top_n, keep_filenames=True)
 
     def new_docs(self) -> Docs:
+        """新建空的 Docs 容器。"""
         return Docs()
 
     async def add_doc(self, docs: Docs, path: str, settings: Settings) -> str:
+        """解析并向量化单个文件（pdf/txt/md/html），返回 docname。"""
         return await docs.aadd(path=path, settings=settings)
 
     def export_doc(self, docs: Docs, docname: str) -> dict[str, Any] | None:
@@ -367,9 +373,11 @@ class LocalVendorAdapter(EngineAdapter):
         return bool(ok), len(texts)
 
     async def get_evidence(self, docs: Docs, question: str, settings: Settings) -> Any:
+        """对已加载的 docs 做证据检索，返回 paperqa 的证据结果对象。"""
         return await docs.aget_evidence(question, settings=settings)
 
     async def query_answer(self, docs: Docs, evidence_session: Any, settings: Settings) -> Any:
+        """基于证据会话生成答案，返回 paperqa 的答案会话对象。"""
         return await docs.aquery(evidence_session, settings=settings)
 
     async def run_agent(
@@ -380,6 +388,7 @@ class LocalVendorAdapter(EngineAdapter):
         agent_type: Any = None,
         **kwargs: Any,
     ) -> Any:
+        """Agent 模式提问：转调 paperqa 的 agent_query（agent_type 可覆盖默认值）。"""
         from paperqa.agents.main import agent_query
 
         if agent_type is not None:

@@ -302,3 +302,60 @@ registered run-try-entry (status=queued)
 - **R3 延期不豁免，但署名放宽仍可能**：把 `review_by` 往后挪**不会**消掉义务（下次到期仍要与**同一** `measured_value` 比）；但 `verify_gate_integrity.py` 允许**带 `rebased_at`＋`rebased_reason` 的** `measured_value` 上调（具名事件，不是静默）。该口子的堵法属下一次重评的政策问题，本批不擅自加锁。
 - **R4 不区分"谁降的"/四类独立**：判据逐类比较、互不透支（比"总量下降"更严），但同一类内"先涨后降"仍可被合法化为刚好低于快照——棘轮族共有局限。
 - **R5 只在本闸门执行**：`verify_lint.py` 缺席 ruff 时走 fail-closed 退出 2（或显式 `--allow-missing` 跳过，套件不这么调）；`agents/policy.json` 若被删/读不出，装载器先报 `POLICY-ERROR`（退出 2）。两条都不是本批引入的。
+
+### 10. 租金支付记录（2026-10-25 批：D101／D102 真降，§9「到期必须改善」的第一笔还款）
+
+> 本节**只追加**，上文（含 §9 的「咬合点」与「本批不做」）一个字未删。§9 立的是判据（到期日凡实测 ≥ `measured_value` 的类都必须真降）；本节记**真降本身**：`caps`／`measured_value`／`measured_at`／`review_by` 四个数据面**逐字节未动**，本批只在 `paper-qa-script/**` 加 docstring。
+
+**为什么现在付**：`review_by=2026-10-31`，今天 2026-10-25（UTC+8）——D101／D102 正压在快照上（2026-10-25 开工现跑 `12/12`、`46/46`），不真降就只剩「到期必红」一条路。§9 写的唯一合规路径就是到期前真做改善，本批走这条。
+
+**四项读数（同一命令 `verify/verify_lint.py`；2026-10-25 现跑，修前＝开工时点、修后＝本批收尾时点）**
+
+| 规则 | 修前 | 修后 | `measured_value` | 到期判据（实测 < 快照） |
+|---|---|---|---|---|
+| D101 | 12 | 0 | 12 | 满足 |
+| D102 | 46 | 23 | 46 | 满足 |
+| D103 | 203 | 203 | 205 | 满足（开工前已低于快照） |
+| E501 | 2493 | 2493 | 2494 | 满足（零新增超宽行，余量仍为 1 行） |
+
+**D101 的 12→0 只有 9 条是本批的（如实记）**：12 条里 3 条在 `verify/**`（`verify/agent_policy.py`、`verify/verify_artifact_paths.py`、`verify/verify_no_policy_hardcode.py`），**不在本批授权写入集**；同一工作树里另一个并行写入者在这 3 个文件各加了一行类 docstring（`LastWriteTime=2026-10-25 07:45:42`；`git diff` 显示每个文件只 +1 行 docstring）。⇒ 12→0 是两方合成，本批只认领 `paper-qa-script/**` 的 9 条，`verify/**` 一个字节未碰。
+
+**改动清单（11 个文件 / 32 条 docstring：D101 9 条 ＋ D102 23 条；只加 docstring，无逻辑／签名／行为改动）**
+
+| 文件 | 条数 | 类型 |
+|---|---|---|
+| `paper-qa-script/app/engine.py` | 9 | D102 |
+| `paper-qa-script/reactflow-paperqa-prototype/backend/main.py` | 5 | D101 2 ＋ D102 3 |
+| `paper-qa-script/app/session_store.py` | 4 | D101 1 ＋ D102 3 |
+| `paper-qa-script/app/remote_resolver.py` | 3 | D102 |
+| `paper-qa-script/count_paperqa_functions.py` | 3 | D101 2 ＋ D102 1 |
+| `paper-qa-script/app/data_sources.py` | 2 | D102 |
+| `paper-qa-script/streamlit_paperqa_app.py` | 2 | D101 1 ＋ D102 1 |
+| `paper-qa-script/analyze_paperqa_system.py` | 1 | D101 |
+| `paper-qa-script/app/orchestration.py` | 1 | D101 |
+| `paper-qa-script/runtime_trace.py` | 1 | D101 |
+| `paper-qa-script/app/embedding_recommender.py` | 1 | D102 |
+
+**跳过的 D102（23 条，全部因授权而非语义）**：余下 23 条 D102 全在 `verify/**`——`verify/agent_policy.py` 18 条、`verify/verify_artifact_paths.py` 3 条、`verify/verify_no_policy_hardcode.py` 2 条；授权写入集不含 `verify/**`，本批一条未碰。`paper-qa-script/**` 里那 23 条**全部语义可判**（薄委托／计数累加／SSE 发布订阅／请求体），没有一条因「看不出职责」被跳过。
+
+**反向对照（两条，均现跑）**
+
+1. **按文件回退 ⇒ 计数回到修前原值**：本批 11 个文件先逐字节备份并记 `git hash-object` → `git checkout --` 这 11 个文件 → 全仓 `verify_lint.py` 现跑 **D101 9／D102 46**（D102 精确回到修前原值；D101 为 9 而非 12，只因并行写入者那 3 条仍在树里，见上）→ `paper-qa-script` 子集现跑 **D101 9／D102 23**（＝ HEAD 原值）→ 从备份逐字节还原，11 个 `git hash-object` **全部一致**，读数回到 **D101 0／D102 23**。
+2. **删单条 docstring ⇒ 恰好 +1**：临时删掉 `app/engine.py::version` 的 docstring（整行）→ `paper-qa-script` 子集 D102 23→**24**（Δ=1，证明数字就是这条 docstring 降的，扫描集未变）；还原后 `git hash-object` ＝ `4ce5f29ab23da587725ea04efd985318f9906ba6`，读数回到 23。
+
+**E501 余量（硬约束）**：新增 32 行逐行按**显示宽度**（CJK 记 2 列）核算，最长 86 列（含缩进）⇒ 全部 ≤88，E501 修前修后同为 2493（cap 2494，余量仍为 1 行）。**没有**加 `# noqa`，**没有**改 `report_only`。
+
+**同批 A-EXCL 缺口②（`.gitignore` 形状漏网）**：`verify/*.log` 覆盖不到仓库根的 `verify_checkpoint_run.log` 与 `ci_fail_log.txt`；本批加两条**具名**项 `/verify_checkpoint_run.log`、`/ci_fail_log.txt`（不用 `*.log` 通配，以免扫掉 `verify/*.log` 之外的合法文件）。现跑：`git check-ignore --no-index -v -- verify_checkpoint_run.log` 与 `-- ci_fail_log.txt` 均 **rc=0**（修前均 rc=1）；`git ls-files -z \| git check-ignore --no-index -z --stdin` **零命中** ⇒ 578 个已跟踪文件零误伤；`verify/verify_artifact_paths.py` 与 `verify/verify_no_policy_hardcode.py` 仍全绿。
+
+**门槛末行（下列均为 2026-10-25 时点读数，现值以各命令现跑为准）**
+
+- `py_compile`（本批 11 个 `.py`）⇒ 2026-10-25 现跑 `rc=0`。
+- `verify/verify_lint.py` ⇒ 2026-10-25 现跑 `ALL PASS (15 assertions)`，`EVIDENCE` 行 `c_ratchet=D101=0/12 D102=23/46 D103=203/205 E501=2493/2494`。
+- `verify/run_suite.py --tier offline` ⇒ 2026-10-25 收尾现跑 `SUITE PASSED (26 scripts)`、rc=0。
+- `verify/verify_md_tables.py` ⇒ 2026-10-25 现跑 `MD-TABLE PASS`（A-EXCL 那行曾因**未转义管道**判 FAIL，改成 `\|` 后转绿——本批自己引起的红，如实记）。
+- `verify/verify_derived_numbers.py` ⇒ 2026-10-25 现跑 `ALL PASS (19 assertions)`（本节读数同行带日期锚，未新增违规）。
+- `verify/verify_card_index.py` ⇒ 2026-10-25 现跑 `ALL PASS (17 assertions)`。
+- `verify/verify_artifact_paths.py` ⇒ 2026-10-25 现跑 `ALL PASS (13 assertions)`；`verify/verify_no_policy_hardcode.py` ⇒ 2026-10-25 现跑 `ALL PASS (22 assertions)`。
+- `verify/verify_close_readiness.py --sprint docs/iteration/sprint/2026-09-25-sprint-18.md` ⇒ 见本 run 报告末节（`set-anchor` 显式设端点后现跑）。
+
+**本批未做（如实记）**：未改 `caps`／`measured_value`／`measured_at`／`review_by`；未加 `# noqa`；未改 `report_only`；未碰 `verify/**`、`scripts/**`、`agents/policy.json`、`.github/**`、`docs/1-WORKFLOW.MD`、`docs/6-DECISIONS.md`、sprint 档；未 `git add/commit/push`。**未决**：`verify/**` 里剩余 23 条 D102 需另一次授权；A-EXCL 卡的 H2 行（`:53`）仍留着修前读数——授权只允许改「缺口②那行」，故未动。

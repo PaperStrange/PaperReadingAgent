@@ -186,6 +186,7 @@ def _num_const(node: ast.AST) -> float | None:
 
 
 class Detector(ast.NodeVisitor):
+    """遍历 AST 收集硬编码策略值的访问器。"""
     def __init__(self, known_roles: set[str] | None = None) -> None:
         self.findings: list[dict] = []
         # **角色名词表 = 仓库里实际存在的 spec 文件名**（`agents/functions/*.md`）。
