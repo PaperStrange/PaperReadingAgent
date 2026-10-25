@@ -1,0 +1,87 @@
+{
+  "_readme": "义务索引（obligation index）——把『改了某个数据源文档⇒必须做哪些下游动作』变成机器可读。用户 2026-09-26 认可『义务索引可以做成独立的 spec』；本条先落**数据面**，配套判据 `verify/verify_obligations.py` 与 spec `agents/functions/obligation-index.md` 随后。**为什么需要**：2026-09-26 我改了 `docs/3-LEARNED.MD` 却没跑它的下游义务（MM-4 提取），由用户次日指出——**义务只活在卡片/我的记忆里 ⇒ 上下文一压缩就消失**（机制反例档案例 24）。",
+  "_semantics": {
+    "source": "数据源文档（相对仓库根的路径或 glob）",
+    "obligation": "该数据源被改动时必须做的事",
+    "trigger": "改动形态：any-change / added-entry / removed-entry",
+    "checker": "可执行判据（命令或路径）；『none』= 尚无执行点，属**已知缺口**，必须显式写 not_implemented",
+    "status": "enforced（有判据）/ partial（半自动）/ text-only（仅文字，尚未机械化）",
+    "evidence_required": "义务已履行时，凭证必须落成可核形态（path:line / run id / 命令输出），不得只写『已完成』"
+  },
+  "obligations": [
+    {
+      "id": "OBL-001",
+      "source": "docs/3-LEARNED.MD",
+      "obligation": "每次追加/修改条目 ⇒ 增量提取候选思维模型（MM-4），产出带**来源条目号**，落 docs/iteration/phases/mental-models/models/<date>-from-learned-*.MD",
+      "origin": "用户 2026-09-07 原话『思维模型来源：我的输入，我们的探讨交流，由你主管每次经验文档更新时』（登记册 D-250926-02）",
+      "trigger": "any-change",
+      "checker": "none",
+      "status": "text-only",
+      "not_implemented": "尚无判据：`verify/verify_obligations.py` 未落地（G3 首批）。当前执行点仅为 docs/3-LEARNED.MD 头部的义务块声明。",
+      "evidence_required": "model 文件路径 + 覆盖的条目号区间",
+      "last_discharged": "2026-09-26（models/2026-09-26-from-learned-1.67-1.69.MD，覆盖 1.67/1.68/1.69 ＋ 1.31 再版注记）"
+    },
+    {
+      "id": "OBL-002",
+      "source": "docs/3-LEARNED.MD",
+      "obligation": "条目若隐含一条『应当被遵守的规则』⇒ 必须归入 A-M11 ② 的『只有文字 / 有可执行检查点』两格之一并写进盘点表",
+      "origin": "卡 A-M11 ② 的盘点口径（TG-11 结论：有规则 ≠ 有执行点）",
+      "trigger": "added-entry",
+      "checker": "none",
+      "status": "partial",
+      "not_implemented": "盘点产物 docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-learned.MD 自述只覆盖 1.1~1.63，**1.64 及以后未覆盖**（登记册 V-051 备注已点名）。",
+      "evidence_required": "盘点文件的条目号覆盖范围"
+    },
+    {
+      "id": "OBL-003",
+      "source": "docs/3-LEARNED.MD",
+      "obligation": "不得写死当期派生读数（『实测 N 条』这类）⇒ 必须写成『复现命令 + 以输出为准』或带日期/sha 的时点读数",
+      "origin": "1-WORKFLOW.MD §6『派生数字不得手抄』；政策键 derived_numbers.baseline 对本文件设上限",
+      "trigger": "any-change",
+      "checker": "verify/verify_derived_numbers.py",
+      "status": "enforced",
+      "evidence_required": "该闸门现跑 PASS（cap ≤ 实测，上限只减不增）"
+    },
+    {
+      "id": "OBL-004",
+      "source": "docs/6-DECISIONS.md",
+      "obligation": "新增/修改条目 ⇒ 必填 8 字段齐备、状态取受控词、`path:line` 指针可核、§4.1 引文与出处逐字相符",
+      "origin": "TG-20 ③（登记册机检判据）",
+      "trigger": "any-change",
+      "checker": "verify/verify_decision_register.py",
+      "status": "enforced",
+      "evidence_required": "该闸门现跑 PASS（含『待回填 N 条』读数）"
+    },
+    {
+      "id": "OBL-005",
+      "source": "agents/policy.json",
+      "obligation": "上限/棘轮类键的任何**上调**必须带 rebased_at + ≥10 字符理由 + rebased_from（逐键绑定父提交数值）；cap 不得高于同批 measured_value",
+      "origin": "TG-19 M-C（棘轮完整性）；3-LEARNED 1.66",
+      "trigger": "any-change",
+      "checker": "verify/verify_gate_integrity.py",
+      "status": "enforced",
+      "evidence_required": "该闸门现跑 PASS（ratchets 条数与 guard_required 条数）"
+    },
+    {
+      "id": "OBL-006",
+      "source": "agents/functions/*.md",
+      "obligation": "新增/改动 spec ⇒ frontmatter 合法（name/scope_required/coverage_window 等）且被政策装载",
+      "origin": "C2 封闭世界（账本出现过的 role 必有 spec）；A-M13",
+      "trigger": "any-change",
+      "checker": "scripts/agent-ops.py validate-spec",
+      "status": "enforced",
+      "evidence_required": "validate-spec 现跑 PASS 行"
+    }
+  ],
+  "_known_gaps": [
+    "OBL-001 / OBL-002 尚无机器判据（status ≠ enforced）⇒ 本文件当前是**声明**而非**约束**；把 status 变成 enforced 是 G3 首批交付物。",
+    "判据真源仍是『人读这个文件』——在 verify/verify_obligations.py 落地前，**不得**把本文件当作『义务已被守住』的证据引用。"
+  ],
+  "meta": {
+    "created_at": "2026-09-26",
+    "created_by": "main-agent",
+    "authority": "用户 2026-09-26：『finding 依赖图，义务索引都可以做成独立的spec，我认可』",
+    "companion_spec": "agents/functions/obligation-index.md（待建，G3 首批）",
+    "companion_checker": "verify/verify_obligations.py（待建，G3 首批）"
+  }
+}

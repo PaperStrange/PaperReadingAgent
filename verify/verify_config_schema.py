@@ -4,7 +4,7 @@
 1. get_config_schema() 结构完整：version=1、7 分组、字段必含 key/label/type、关键字段默认值正确；
 2. assert_schema_consistency() 无 pydantic_path 漂移；
 3. validate_config() 的 errors/warnings/hints 行为（非法 enum/范围外/未知参数/远程源未切 remote）；
-4. **M7 收敛（Sprint-13 US-13.1 版）**：前端 App.jsx Config 节点**零硬编码**（16 个配置键不得以字面量出现在 n1 块）；
+4. **M7 收敛（Sprint-13 US-13.1 版）**：前端 App.jsx Config 节点**零硬编码**（**不得含任何配置键字面量**——守卫键集合由 `get_config_schema()` 派生、覆盖全部 schema 字段；字段总数以本脚本 `PASS: schema 字段总数` 行现跑为准）；
    provider_config 的 deepseek 条目 api_base/model 与 schema 默认一致（provider 默认值的 SSOT 归属）；
 5. **Settings 升级护栏（Sprint-13 US-13.2）**：Settings 全字段路径与基线快照 `verify/settings_baseline.json` 比对——
    升级 paperqa 后出现新增/删除字段时 FAIL 并打印 diff（提示重新策展 GROUPS 后 `--regen-baseline` 重建基线）。

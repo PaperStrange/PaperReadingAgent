@@ -34,10 +34,13 @@
   --reason <理由>
   python scripts/agent-ops.py mark-produced <run_id> --reason <理由> [--undo]   #
   D0-3(a)：逐条标注「产出型 run」
+  python scripts/agent-ops.py retract <run_id> --reason <理由> --evidence <路径>
+  复盘行 19：受控撤回误登记的 run（删账本行 ＋ 产物移入隔离区 ＋ 留痕 retractions[]）
   python scripts/agent-ops.py validate-spec <file.md>
   python scripts/agent-ops.py fetch-spec <file.md> [--offline]
   python scripts/agent-ops.py parse-report <file.md>
-  python scripts/agent-ops.py prices-derive
+  python scripts/agent-ops.py prices-derive [--apply]
+  （默认 dry-run：只算 + 上屏差异，**不写盘**；`--apply` 才落盘）
 
 测量口径（TG-13，真源 `agents/policy.json::ledger_measurement`）：
   dur      = `ended_at - started_at`（累计**墙钟**；`round` 追加会前移到末轮）。
@@ -70,6 +73,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -87,6 +91,21 @@ RUNTIME_DIR = _AGENTS_BASE / "runtime"
 REGISTRY_PATH = RUNTIME_DIR / "registry.json"
 PRICES_PATH = RUNTIME_DIR / "prices.json"
 RUNS_DIR = _AGENTS_BASE / "runs"
+# 复盘行 19：被撤回 run 的产物**隔离区**（同根、git 忽略域内、不在 `runs/` 判定域里）。
+# 撤回必须"删账本行但不销毁产物"——产物是那次动作唯一的现场。
+QUARANTINE_DIR = RUNTIME_DIR / "retracted-runs"
+# 用户 2026-10-03 追加裁定（"超过时也要有兜底策略"）：**被拒派单的运行态队列**。
+# 一行一条 JSONL：时点／axis／读数／预算／被拒 run_id／理由 ⇒ 次日额度恢复后可查、
+# 不丢待办（只"拒绝启动"而不留痕＝那件事凭空消失）。**跟账本根走**（`RUNTIME_DIR`
+# 同源）：拒绝记录必须与被拒的那本账在一起，否则夹具/探针的拒绝会写进真仓队列。
+# 落点在 `.gitignore` 的 `agents/runtime/*` 忽略域内 ⇒ 不产生 `??`（本批未改
+# `.gitignore`）。**写成模块级常量而不是函数**：`verify_artifact_paths.py` 的
+# "动态写盘目标"棘轮只认静态可判定的落点，函数返回的落点会被记成动态目标
+# （本批实测：写成函数时 scripts/agent-ops.py 的动态目标 7 → 8，顶破上限）。
+DISPATCH_REFUSALS_PATH = RUNTIME_DIR / "dispatch-refusals.jsonl"
+# 复盘行 19：`retract` 只认**显式点名的单条 run**——通配/批量/前缀/路径一律拒绝
+# （`*?[]`、空白、`..`＋分隔符都不在字符集里）。
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 _CHARS_PER_TOKEN = 4.0  # UC-4 兜底：无 token 上报时 tokens ≈ chars/4
 
@@ -106,7 +125,8 @@ _CHARS_PER_TOKEN = 4.0  # UC-4 兜底：无 token 上报时 tokens ≈ chars/4
 # 规则见 1-WORKFLOW.MD §6（政策数据化）。
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from verify.agent_policy import load_policy, parse_frontmatter  # noqa: E402
+from verify.agent_policy import (load_policy, parse_frontmatter,  # noqa: E402
+                                path_in_head)
 from verify.outbound_guard import refuse_or_exit  # noqa: E402
 
 _POLICY = None
@@ -209,6 +229,226 @@ def _duration_minutes(start: str, end: str) -> float | None:
         return None
 
 
+# ------------------------------------------------ 价表多档：按时段选档（TG-20 行 16）
+# 真源 = docs/iteration/phases/agents-infra/2026-09-26-price-tier-spec.MD
+# （§3.1 选档 / §3.2 时间戳缺失 / §3.3 跨档时间加权）。
+# 档位窗口**不写死在这里**：取 `scraped.<provider>._peak_windows`（政策/数据化，
+# §6 政策数据化）——写死一份就等于同一概念两处定义（3-LEARNED 1.62）。
+_TIER_PEAK = "peak"
+_TIER_OFF = "off_peak"
+_TIER_MIXED = "mixed"
+_TIER_FLAT = "flat"
+_WEEKDAY_KEYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
+def _parse_ts(value: object) -> datetime | None:
+    """ISO-8601 → 带时区的 datetime；`None`/空/不可解析 → None（调用方按缺失处理）。"""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip())
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+
+
+def _hm_minutes(text: object) -> int | None:
+    """`"09:00"` → 540；非法 → None（fail-closed，绝不当成 0）。"""
+    if not isinstance(text, str) or ":" not in text:
+        return None
+    try:
+        hh, mm = (int(x) for x in text.split(":", 1))
+    except ValueError:
+        return None
+    return hh * 60 + mm if 0 <= hh <= 24 and 0 <= mm < 60 else None
+
+
+def provider_of_model(prices: dict, model: str) -> str | None:
+    """该模型的价来自哪个 `scraped.<provider>`（键口径与 `_prices_for` **相同**：
+    `manual` 非 null 优先、其后按 `scraped` 的 provider 顺序取**精确**模型名，
+    **不做**别名归一化）。
+
+    这条"窗口随价走"是行 31 修正的结构保证：选档窗口必须与计价用的那条价目同属一个
+    provider。`manual` 非 null（它才是价源）与 `auto` 兜底 ⇒ `None`——那两种来源
+    **没有** provider 级的档位政策，也就没有选档窗口可言（`manual` 的档位语义仍是
+    "扁平键"，见 `2026-09-26-price-tier-spec.MD` §9.5 未决点 2）。
+
+    与 `paper-qa-script/app/usage.py::provider_of` 的差异是**具名的价格键解析差异**：
+    那边要认 litellm 报出的别名（`openai/deepseek-v4-flash`），故走名字候选归一化；
+    账本里的模型名本就是价表键，故这边按精确键（详见 `verify/verify_usage.py` ⑪14）。
+    """
+    if (prices.get("manual") or {}).get(model):
+        return None
+    for name, prov in (prices.get("scraped") or {}).items():
+        if isinstance(prov, dict) and model in (prov.get("models") or {}):
+            return str(name)
+    return None
+
+
+def peak_windows_from_prices(prices: dict, model: str) -> tuple[list, str] | None:
+    """**该模型所属 provider** 的 `(_peak_windows, 时区名)`；无该元数据 → None。
+
+    G2 复盘行 31（二查 `code-review-104` minor 6）修正：原实现按"第一个带窗口的
+    `scraped.*`"取**一组**窗口、再套到**所有**模型头上。今天只因 deepseek 是唯一
+    带 `_peak_windows` 的 provider 而**恰好**等价于正确口径（成本读数因此没错）——
+    那是**数据巧合**，不是结构保证：给 dashscope 补一组自己的窗口、或给它名下任一模型
+    补 `_tiers`，同一段代码立刻把 A 的峰谷时段算到 B 的头上。
+
+    窗口是 **provider 的**政策属性（爬取时随该 provider 的价目页写回，见
+    `fetch-prices.py::_provider_meta`），故这里**按 provider 取**。`manual` 非 null /
+    `auto` 兜底的模型没有 provider ⇒ `None`（= 不按档计费、如实标 `flat`，与
+    `2026-09-26-price-tier-spec.MD` §9.5 未决点 2／3 的口径一致）。
+    """
+    name = provider_of_model(prices, model)
+    if name is None:
+        return None
+    prov = (prices.get("scraped") or {}).get(name)
+    if not isinstance(prov, dict):
+        return None
+    windows = prov.get("_peak_windows")
+    if isinstance(windows, list) and windows:
+        return windows, str(prov.get("_tier_timezone") or "Asia/Shanghai")
+    return None
+
+
+# 价表**顶层**的多档键（白名单）。`prices-derive` 重建顶层 dict——不列在这里的新顶层键
+# 会被**静默丢弃**（spec §4 红字 A），故这里有两条纪律：
+#   ① 已知的多档键逐键列出（转发时也 print，让"活着派生出去"可观测）；
+#   ② 出现**未入册**的顶层下划线键时**报警**（不静默丢、也不静默过）。
+# 只认下划线前缀（`currency` 这类历史误用形态报警只会变噪音，见 4-ALGORITHM.MD:627）。
+_TOP_LEVEL_TIER_KEYS = ("_tiers", "_tier_scheme", "_tier_timezone", "_peak_windows",
+                        "_off_peak_windows")
+_TIER_SCHEME_SINGLE = "single_tier"
+
+
+def top_level_tier_keys(prices: dict) -> list[str]:
+    """价表里出现的顶层多档键（按白名单顺序，实测存在才算）。"""
+    return [k for k in _TOP_LEVEL_TIER_KEYS if k in prices]
+
+
+def unregistered_top_level_keys(prices: dict) -> list[str]:
+    """顶层里**未入册**的下划线键——它们在 `prices-derive` 重建顶层时会被丢掉。"""
+    known = {"auto", "manual", "scraped", "meta", *_TOP_LEVEL_TIER_KEYS}
+    return sorted(k for k in prices if k.startswith("_") and k not in known)
+
+
+def tier_scheme_of(prices: dict) -> dict[str, str]:
+    """每个 scraped provider 的档位方案（`_tier_scheme`，缺失按 `single_tier` 记）。"""
+    out: dict[str, str] = {}
+    for name, prov in (prices.get("scraped") or {}).items():
+        if isinstance(prov, dict):
+            out[name] = str(prov.get("_tier_scheme") or _TIER_SCHEME_SINGLE)
+    return out
+
+
+def _window_index(windows: list) -> dict[str, list[tuple[int, int]]] | None:
+    """窗口清单 → `{星期键: [(起, 止) 分钟]}`；形状非法 → None（调用方按缺失处理）。
+
+    形状非法必须与"窗口为空"区分开：`[]` 是合法的"全时段空闲"，
+    而**拼错/读不到**必须 fail-closed 成"按高峰计"（§3.2 的保守方向）。
+    """
+    index: dict[str, list[tuple[int, int]]] = {}
+    for win in windows:
+        if not isinstance(win, dict):
+            return None
+        start, end = _hm_minutes(win.get("start")), _hm_minutes(win.get("end"))
+        days = win.get("days")
+        if start is None or end is None or not isinstance(days, list) or not days:
+            return None
+        if not set(days) <= set(_WEEKDAY_KEYS):
+            return None
+        for day in days:
+            index.setdefault(day, []).append((start, end))
+    return index
+
+
+def is_peak_at(stamp: datetime, windows: list, tzname: str) -> bool:
+    """§3.1：`Asia/Shanghai` 周一至周五 `09:00-12:00`／`14:00-18:00` ⇒ 高峰。
+
+    **区间左闭右开**（09:00 整高峰、12:00 整空闲）；其余（周末、午间、夜间）⇒ 空闲。
+    """
+    from zoneinfo import ZoneInfo
+
+    local = stamp.astimezone(ZoneInfo(tzname))
+    index = _window_index(windows)
+    if index is None:
+        return True  # 窗口读不出来 ⇒ 保守按高峰（fail-closed，不许静默变便宜）
+    minutes = local.hour * 60 + local.minute
+    day = _WEEKDAY_KEYS[local.weekday()]
+    return any(start <= minutes < end for start, end in index.get(day, []))
+
+
+def _peak_seconds(start: datetime, end: datetime, windows: list, tzname: str) -> float:
+    """§3.3：与高峰窗口重叠的墙钟秒数（按分钟切步，与窗口边界同精度）。"""
+    total = (end - start).total_seconds()
+    if total <= 0:
+        return 0.0
+    hit = 0.0
+    cursor = start
+    while cursor < end:
+        nxt = min(cursor + timedelta(minutes=1), end)
+        if is_peak_at(cursor, windows, tzname):
+            hit += (nxt - cursor).total_seconds()
+        cursor = nxt
+    return hit
+
+
+def peak_frac_for(run: dict, windows: list, tzname: str) -> float | None:
+    """run 的高峰时间占比；`None` = §3.2 的"时间戳缺失"（调用方按高峰计并标记）。
+
+    三种情形必须分开（否则会把"量不出来"当成"量出来是高峰"）：
+      * 任一端点缺失/不可解析 ⇒ `None`（§3.2：拿不到真值，按高峰 + `tier_assumed`）；
+      * 时长为 0（`started_at == ended_at`，同秒收尾）⇒ **按起点那一刻判档**：
+        这是"零长度的 run 落在哪一档"，**不是**"时间戳缺失"（本仓同秒收尾很常见，
+        一律按高峰会把夜间 run 重新算成 2 倍——正是本卡要修的那个偏差）；
+      * 末态早于起点（时钟退化）⇒ `None`（负时长排不出区间，按高峰并标记）。
+    """
+    start, end = _parse_ts(run.get("started_at")), _parse_ts(run.get("ended_at"))
+    if start is None or end is None:
+        return None
+    if end == start:
+        return 1.0 if is_peak_at(start, windows, tzname) else 0.0
+    if end < start:
+        return None
+    total = (end - start).total_seconds()
+    return round(_peak_seconds(start, end, windows, tzname) / total, 6)
+
+
+def _tiered(prices: dict, tier: str) -> dict | None:
+    """`_tiers.<tier>` 四键齐全才认（缺键 = 数据不全 ⇒ 退回扁平键，不静默补 0）。"""
+    tiers = prices.get("_tiers")
+    block = tiers.get(tier) if isinstance(tiers, dict) else None
+    if not isinstance(block, dict):
+        return None
+    keys = ("input_cost_per_token", "output_cost_per_token",
+            "cache_read_input_token_cost", "cache_creation_input_token_cost")
+    return block if all(k in block for k in keys) else None
+
+
+def _blend(a: dict, b: dict, frac_a: float) -> dict:
+    """逐键线性混合（`frac_a` = 取 a 档的占比）——§3.3 的 `usage × [frac×价]`。"""
+    return {k: (a.get(k) or 0) * frac_a + (b.get(k) or 0) * (1 - frac_a) for k in a}
+
+
+def _tier_prices(prices: dict, frac: float | None) -> tuple[dict, str, float | None]:
+    """`(计费用的四键价, 档位标签, peak_frac)`。
+
+    无 `_tiers` ⇒ 扁平键原样 + `flat`（该模型就是单档，**不**假装分过档）；
+    `frac` 为 None ⇒ §3.2 的"时间戳缺失"（调用方按高峰计价并打 `tier_assumed`）；
+    否则 §3.3：`peak_frac` ∈ (0,1) 时逐键时间加权。
+    """
+    peak, off = _tiered(prices, _TIER_PEAK), _tiered(prices, _TIER_OFF)
+    if peak is None or off is None:
+        return prices, _TIER_FLAT, None
+    if frac is None:
+        return peak, _TIER_PEAK, None
+    if frac >= 1.0:
+        return peak, _TIER_PEAK, frac
+    if frac <= 0.0:
+        return off, _TIER_OFF, frac
+    return _blend(peak, off, frac), _TIER_MIXED, frac
+
+
 # ------------------------------------------------ TG-13：账本『测量化』
 # （来源/退化/unknown）
 
@@ -284,6 +524,63 @@ def _apply_measurement(run: dict) -> None:
     run["measurement_source"] = source
     run["measurement_flags"] = flags
     run["dur_minutes"] = mins
+
+
+# G3/R-001：写入口 fail-closed 的**判据集**。这三类标记的含义统一是
+# "时长落不出值"（`measurement_of()` 是唯一产出点，此处只做同名比对，不另立口径）。
+_DEGENERATE_FLAGS = ("zero_duration", "missing_timestamp", "negative_duration")
+
+
+def _refuse_degenerate_finish(run: dict, args: argparse.Namespace) -> str:
+    """G3/R-001：`finish` 的**写入口 fail-closed** 守卫；放行时返回具名豁免的说明串。
+
+    病根（2026-09-26 实测 `run-2026-09-26-code-review-092`）：`register` 漏 `--start`
+    ⇒ `update`(running) 与 `finish` 落在**同一自然秒** ⇒ `zero_duration`。
+    此前只打 `⚠退化=` 警告就写库，于是"未测得"被写成"零耗时"——本仓最忌讳的假读数
+    （`1-WORKFLOW.MD` §6 第 12 条：读数必须有来源，编造更禁止）。
+
+    判据 = 终态测量标记命中 `_DEGENERATE_FLAGS`（此时 `dur_minutes` 必为 null）。
+    两条出路，都不做 ⇒ 拒绝，且**连终态一起不写**（半条终态比不写更难审计）：
+      ① 该 run 确实跑过 ⇒ 先 `set-started-at` 受控回填真实起点（要证据），再收尾；
+      ② 确实无法测量（同秒收尾的夹具、从未起跑的 run） ⇒ 具名逃生口：
+         `--allow-degenerate --degenerate-reason <≥10 字符理由>`；
+         理由去空白后 <10 字符 ⇒ 同样拒绝（说不清"为什么不可测"就不许放行）。
+
+    为什么具名理由**写进账本**（复盘行 18，2026-09-27 改）：此前理由只上屏，
+    账本行里只有 `measurement_flags=['zero_duration']` + `measurement_source='declared'`
+    ——**"这不是测量值"落库了，但"为什么不可测"没有**。于是事后读账本（或读看板）
+    只能看到"零耗时"，看不到它是**具名豁免**；而唯一的解释留在某一次终端输出里。
+    ⇒ 放行时把理由写进该行 `degenerate_reason`（原话、去空白后 ≥10 字符），
+    字段集口径同步在 `verify/verify_ledger_measurement.py` 的 F 组：
+    `declared` + 退化标记 ⇒ `degenerate_reason` 必填；无退化标记却带该字段 ⇒ FAIL。
+    """
+    deg = [f for f in (run.get("measurement_flags") or []) if f in _DEGENERATE_FLAGS]
+    if not deg:
+        return ""
+    tag = "/".join(deg)
+    rid = run.get("run_id")
+    reason = (getattr(args, "degenerate_reason", "") or "").strip()
+    if not getattr(args, "allow_degenerate", False):
+        raise SystemExit(
+            f"FINISH-ERROR: 时间戳退化 [{tag}] ⇒ 拒绝写库"
+            "（终态也没写）——「未测得」不得写成「零耗时」（R-001）。\n"
+            "两条修法，选一条：\n"
+            "① 该 run 确实跑过 ⇒ 先受控回填真实起点，再收尾：\n"
+            f"   agent-ops.py set-started-at {rid} --at <真实开始>"
+            " --evidence <可核凭据> --reason <理由>\n"
+            "② 确实无法测量（同秒收尾的夹具 / 从未起跑的 run） ⇒ 显式记账：\n"
+            "   再加 --allow-degenerate --degenerate-reason <≥10 字符理由>\n"
+            "（两条都不做 ⇒ 闸门会对该 run 判 FAIL：缺口比假读数可审计）")
+    if len(reason) < 10:
+        raise SystemExit(
+            "FINISH-ERROR: --allow-degenerate 必须具名："
+            f"--degenerate-reason ≥10 字符（实测 {len(reason)}）⇒ 拒绝写库。\n"
+            "逃生口不具名 = 后人只会读到「零耗时」；"
+            "例：--degenerate-reason "
+            "\"fixture: 同秒收尾，非真实测量（R-001）\"")
+    # 行 18：理由**落账本**（不是只上屏）——具名豁免必须可事后查阅。
+    run["degenerate_reason"] = reason
+    return f"{tag} | reason={reason}"
 
 
 @contextlib.contextmanager
@@ -420,24 +717,49 @@ def _fx_usd_cny() -> float:
 
 def _estimate_cost(entry: dict) -> dict:
     """UC-4：usage x 价表；无 usage 用 chars/4 兜底；无价表标 pending_price。
-    输出单位 = CNY（USD 单价 × meta.fx_usd_cny 换算，用户决策 2026-08-30）。"""
+    输出单位 = CNY（USD 单价 × meta.fx_usd_cny 换算，用户决策 2026-08-30）。
+
+    TG-20 行 16：**按 run 自身的时间戳选档**（spec §3）——价表的扁平键镜像高峰，
+    夜间/周末的 run 若继续用它就是约 2 倍高估（本次要修的钱的问题）。
+    """
     usage = entry.get("usage") or {}
     model = entry.get("model") or ""
     prices = _prices_for(model)
     if not prices:
-        return {"total": None, "currency": "CNY", "estimated": True, "pending_price": True, "model": model}
+        return {"total": None, "currency": "CNY", "estimated": True,
+                "pending_price": True, "model": model}
+    meta: dict = {}
+    tariff, tier, frac = prices, _TIER_FLAT, None
+    # 行 31：选档窗口按**该模型所属 provider** 取（不是"第一个带窗口的 provider"套全体）
+    windows = peak_windows_from_prices(_load_prices(), model)
+    if windows is not None:
+        frac = peak_frac_for(entry, windows[0], windows[1])
+        tariff, tier, frac = _tier_prices(prices, frac)
+        if tier == _TIER_FLAT:
+            # 该模型没有 _tiers（如 dashscope/openrouter 段）：单档价，如实标 flat
+            meta["tier"] = _TIER_FLAT
+        else:
+            meta["tier"] = tier
+            if frac is None:
+                # §3.2：时间戳缺失 ⇒ 按高峰计 + 可见标记（不得静默挑便宜的档）
+                meta["tier_assumed"] = True
+            elif 0.0 < frac < 1.0:
+                # §3.3：跨档 ⇒ 记录分摊比例（可复算：读者据它复核 total）
+                meta["peak_frac"] = frac
+    q = tariff.get
+    cr, cw = q("cache_read_input_token_cost"), q("cache_creation_input_token_cost")
     cost = {
-        "input": (usage.get("input_tokens") or 0) * (prices.get("input_cost_per_token") or 0),
-        "output": (usage.get("output_tokens") or 0) * (prices.get("output_cost_per_token") or 0),
-        "cache_read": (usage.get("cache_read_tokens") or 0) * (prices.get("cache_read_input_token_cost") or 0),
-        "cache_write": (usage.get("cache_write_tokens") or 0) * (prices.get("cache_creation_input_token_cost") or 0),
+        "input": (usage.get("input_tokens") or 0) * (q("input_cost_per_token") or 0),
+        "output": (usage.get("output_tokens") or 0) * (q("output_cost_per_token") or 0),
+        "cache_read": (usage.get("cache_read_tokens") or 0) * (cr or 0),
+        "cache_write": (usage.get("cache_write_tokens") or 0) * (cw or 0),
     }
     estimated = False
     if not any(usage.values()):
         ic = entry.get("input_chars") or 0
         oc = entry.get("output_chars") or 0
-        cost["input"] = (ic / _CHARS_PER_TOKEN) * (prices.get("input_cost_per_token") or 0)
-        cost["output"] = (oc / _CHARS_PER_TOKEN) * (prices.get("output_cost_per_token") or 0)
+        cost["input"] = (ic / _CHARS_PER_TOKEN) * (q("input_cost_per_token") or 0)
+        cost["output"] = (oc / _CHARS_PER_TOKEN) * (q("output_cost_per_token") or 0)
         estimated = True
     fx = _fx_usd_cny()
     # review 修正（Sprint-9 三查 P1）：分项同样 ×fx 转 CNY，
@@ -445,7 +767,7 @@ def _estimate_cost(entry: dict) -> dict:
     # 口径不一致）
     cny = {k: round(v * fx, 8) for k, v in cost.items()}
     return {**cny, "total": round(sum(cny.values()), 8), "currency": "CNY",
-            "estimated": estimated, "pending_price": False, "model": model}
+            "estimated": estimated, "pending_price": False, "model": model, **meta}
 
 
 def parse_scope_ref(source: str, prefixes: tuple[str, ...]) -> str | None:
@@ -522,9 +844,491 @@ def _validate_scope(args: argparse.Namespace, data: dict) -> tuple[str, str | No
 
 
 
+def _norm_sprint(value: object) -> str | None:
+    """Sprint 标识归一成**纯编号字符串**（`"Sprint-18"` / `"18"` / `"018"` → `"18"`）。
+
+    **本函数是这条口径的唯一写入侧实现**（台账 E1 / 行 7）。读取侧
+    `verify/verify_close_readiness.py` 保留**独立**镜像——
+    判据导入被测实现就不成其为判据；两者的同义性由**一致性向量**守：
+    向量表在 `docs/iteration/phases/testing-governance/`
+    `2026-09-26-sprint-id-normalization-spec.MD`，两侧各自解析同一张表。
+    位点一律用 `git grep -n "def _norm_sprint"` **现跑定位**，不写死行号
+    （行号会随切线位移）。改这里的语义必须同改镜像与向量表，否则
+    `verify/verify_close_readiness.py` 对同一文档会给出**不同的域**。
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+    m = re.search(r"[Ss]print[-\s]?0*(\d+)", text)
+    if m is None:
+        m = re.fullmatch(r"0*(\d+)", text)
+    return m.group(1) if m else None
+
+
+# ------------------- 成本预算闸门（2026-10-03 用户裁定「成本基线倾向 A」）
+# 裁定要点：超预算 ⇒ **阻断派单**。本节实现口径（父代理已定，不得另设计）：
+#   * 阻断轴**只有一条**——**派单数/日**，读数**取自账本**（本命令在锁内刚读的
+#     `runtime/registry.json` 里当日已登记的 run 数），**不**取度量仪
+#     `scripts/spend-report.py --check` 的"派单会话数"；
+#   * 金额（CNY）/日 轴**暂不阻断**，只在拒绝文案里如实标注该轴的已知缺陷；
+#   * 具名逃生门 `--over-budget "<理由 ≥下限>"` ⇒ 放行且**理由落账本**；
+#   * 预算值/理由下限一律**现读数据文件**，代码里不写死
+#     （`verify/verify_no_policy_hardcode.py` 守这条）。
+# 为什么阻断轴必须用账本（父代理裁定的实测依据）：度量仪把**别的主线的子代理
+# 会话**也算进本主线的派单数（作用域缺陷，归 `A-COST` 卡）⇒ 拿它当阻断依据
+# ＝**用错数停工作**；账本读数才是本主线自己的登记事实。
+# 为什么"未配置预算"不阻断登记：隔离账本（verify 夹具／`%TEMP%` 探针）没有
+# 预算文件，阻断它＝把测试与探针全卡死。故该档判**未执行**并上屏点名
+# （口径同 `spend-report --check` 的 SKIP：**不算通过**，也不冒充 PASS）。
+def _spend_budget_path() -> Path:
+    """预算数据文件 = `<账本根>/spend-budget.json`（默认 `agents/spend-budget.json`）。
+
+    **为什么跟着账本根走**：预算与账本必须**同源**，否则会拿另一本账的预算去判
+    这本账的读数——那正是度量仪作用域缺陷的同一种病。`AGENT_OPS_DIR` 重定向
+    （verify 夹具）时两者一起搬，夹具因此能用受控预算**真驱动**闸门。
+    """
+    return _AGENTS_BASE / "spend-budget.json"
+
+
+def _redirected_ledger() -> bool:
+    """本进程的账本根是否**不是**真仓（＝被 `AGENT_OPS_DIR` 重定向的夹具/探针档）。
+
+    判据是**身份**（解析后的绝对路径 ≠ 真仓 `agents/`），**不是**"环境变量存不存在"：
+    第一版按 env 判定，实测有洞——`AGENT_OPS_DIR` 为空串/全空白时 `os.environ.get`
+    返回假值，而 `Path("")` 会解析成**当前目录**，于是"设了一个空的重定向"被当成
+    真仓档；更糟的是**任何**同源判定都经不起"再来一个变量"的推演。
+    改成指向比较后：真仓档＝`_AGENTS_BASE` 就是 `<仓库>/agents`；只要落点不是它
+    （含空值、相对路径、别的绝对目录），一律按重定向档判"未执行"。
+    **为什么不是"路径长得像不像 %TEMP%"**：探针可以落在任意目录，形状不是判据。
+    """
+    try:
+        here = _AGENTS_BASE.resolve()
+        real = (REPO_ROOT / "agents").resolve()
+    except OSError:      # resolve 失败（不存在的盘符/权限）⇒ 按重定向档（更宽松的那档）
+        return True
+    return here != real
+
+
+def _legacy_escapes(raw: object) -> frozenset[str]:
+    """`max_escapes_legacy_rows` 读成 run_id 集合（拒绝队列式的**显式点名**）。
+
+    这一格只为一件事存在：上限是 2026-10-03 **当天**才立的规则，而账本里
+    已有**旧规则下**（自述理由即放行）登记的逃生门行 —— 不把那一行排除，
+    上限就会把**规则诞生之前的历史**当成"今天已经用过一次"来拦今天的正事。
+    为什么不把整段计数窗口往前推（本批第一版就是那么写的，**实测证明它更差**：
+    生效日一旦前置，当天所有历史行一起免计，等于凭空多出额度）：
+    逐行点名把豁免面**钉在具体 run_id** 上——新增的每一次逃生门都照常计数
+    （UC-27 ⑬ 仍判拒绝），而豁免表本身写在数据文件里、可逐行核。
+    非列表/元素非字符串 ⇒ 抛（配置坏了不得静默把豁免面放大或缩小）。
+    """
+    if raw is None:
+        return frozenset()
+    if not isinstance(raw, list):
+        raise SystemExit("BUDGET-ERROR: over_budget_escape.max_escapes_legacy_rows"
+                         f"={raw!r} 非法（须为 run_id 字符串数组）⇒ fail-closed")
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            raise SystemExit("BUDGET-ERROR: over_budget_escape."
+                             f"max_escapes_legacy_rows 含非法元素 {item!r}"
+                             "（须为 run_id 字符串）⇒ fail-closed")
+    return frozenset(x.strip() for x in raw)
+
+
+def _esc_nonneg_int(esc: dict, key: str) -> int | None:
+    """`over_budget_escape[key]` 读成 ≥0 整数；缺失/非整数/布尔 ⇒ `None`。"""
+    raw = esc.get(key)
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+        return None
+    return raw
+
+
+def _esc_patterns(esc: dict) -> list[re.Pattern[str]] | None:
+    """逃生门理由的**可核引用**正则（现读数据文件，不在代码里写死形态）。"""
+    raw = esc.get("citation_patterns")
+    if not isinstance(raw, list) or not raw:
+        return None
+    out: list[re.Pattern[str]] = []
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            return None
+        try:
+            out.append(re.compile(item))
+        except re.error:
+            return None
+    return out
+
+
+def _named_exception_kinds(esc: dict) -> dict[str, str]:
+    """逃生门的**具名例外类别**表（类别词 → 说明），来自预算文件。
+
+    具名类别是"这算不算例外"的机检判据；表为空 ⇒ 逃生门 fail-closed
+    （没有任何可机检的例外类别 ⇒ 不许放行），不许回落成"随便写理由"。
+    """
+    raw = esc.get("named_exception_kinds")
+    if not isinstance(raw, dict) or not raw:
+        return {}
+    out: dict[str, str] = {}
+    for key, val in raw.items():
+        if isinstance(key, str) and key.strip() and isinstance(val, str):
+            out[key.strip()] = val
+    return out
+
+
+def _dispatch_budget() -> tuple:
+    """读当日**派单数**预算 ＋ 逃生门四把锁：`(预算, 锁, 未执行原因)`。
+
+    四种"读不到"必须分开（混成一个 `None`/`0` 就是把闸门静默关掉）：
+      * **文件不存在** ⇒ `(None, <未执行标记>, <原因>, "")`：分两档——
+        **真仓**（账本根＝本仓 `agents/`，见 `_redirected_ledger()`）⇒ 原因放空串，
+        调用侧**拒绝启动**（"删预算文件即绕过"必须堵死）；**重定向档**（verify
+        夹具／`%TEMP%` 探针，账本根指向别处）⇒ 判据**未执行**（上屏点名"不是
+        通过"，但不阻断：那些档本就没有预算文件，阻断它＝把探针卡死）；
+      * **文件在、预算键缺失/非法** ⇒ 抛 `SystemExit`（fail-closed）：配置坏了
+        必须响亮地坏——回落 0/None 会让"超预算阻断"无声消失；
+      * **文件在、逃生门四把锁缺任一** ⇒ 同样 fail-closed（理由下限／可核引用
+        正则／同日次数上限／具名例外类别表，缺一把就等于把逃生门改回"自述即
+        放行"）；
+      * 正常 ⇒ `(预算, 锁, "", "")`。
+
+    "锁"是一个 dict（`floor`/`patterns`/`max_escapes`/`kinds`），只影响逃生门
+    那条路径；例行判据照跑。`"未执行"` 标记只用于"预算文件不存在"，不冒充
+    "锁齐全"。
+    """
+    path = _spend_budget_path()
+    if not path.is_file():
+        note = (f"{path} 不存在（这本账未配置成本预算）"
+                "⇒ 本判据**未执行**——**不是通过**"
+                "（口径同 spend-report --check 的 SKIP）")
+        return None, {"未执行": True}, note, ("" if _redirected_ledger()
+                                              else note)
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise SystemExit(f"BUDGET-ERROR: {path} 读不出或不是合法 JSON：{exc}"
+                         "（预算读不到 ⇒ fail-closed，不得静默放行派单）") from exc
+    budget = doc.get("budget") if isinstance(doc, dict) else None
+    cap = None
+    if isinstance(budget, dict):
+        cap = budget.get("dispatched_sessions_per_day")
+    if isinstance(cap, bool) or not isinstance(cap, int) or cap < 0:
+        raise SystemExit(
+            f"BUDGET-ERROR: {path} 的 budget.dispatched_sessions_per_day={cap!r} 非法"
+            "（须为 ≥0 的整数）——缺它/写坏它就等于把『超预算阻断』静默关掉 ⇒ "
+            "fail-closed 拒绝登记")
+    esc = doc.get("over_budget_escape")
+    esc = esc if isinstance(esc, dict) else {}
+    missing = [k for k in ("reason_min_chars", "max_escapes_per_day",
+                           "citation_patterns", "named_exception_kinds")
+               if k not in esc]
+    if missing:
+        raise SystemExit(
+            f"BUDGET-ERROR: {path} 的 over_budget_escape 缺键 {missing}"
+            "——逃生门四把锁（理由下限／同日次数上限／可核引用正则／具名例外"
+            "类别表）缺一把就等于把它改回『自述理由即放行』⇒ fail-closed")
+    floor = _esc_nonneg_int(esc, "reason_min_chars")
+    if floor is None or floor < 1:
+        raise SystemExit(f"BUDGET-ERROR: {path} 的 over_budget_escape."
+                         f"reason_min_chars={esc.get('reason_min_chars')!r} 非法"
+                         "（须为 ≥1 的整数）⇒ fail-closed")
+    patterns = _esc_patterns(esc)
+    if patterns is None:
+        raise SystemExit(f"BUDGET-ERROR: {path} 的 over_budget_escape."
+                         "citation_patterns 非法（须为非空字符串数组且逐条可编译）"
+                         "——说不出『什么算可核引用』就不许放行 ⇒ fail-closed")
+    kinds = _named_exception_kinds(esc)
+    if not kinds:
+        raise SystemExit(f"BUDGET-ERROR: {path} 的 over_budget_escape."
+                         "named_exception_kinds 非法（须为非空『类别词: 说明』表）"
+                         "⇒ 逃生门 fail-closed")
+    max_escapes = _esc_nonneg_int(esc, "max_escapes_per_day")
+    if max_escapes is None or max_escapes < 1:
+        raise SystemExit(f"BUDGET-ERROR: {path} 的 over_budget_escape."
+                         "max_escapes_per_day="
+                         f"{esc.get('max_escapes_per_day')!r} 非法"
+                         "（须为 ≥1 的整数；写 0 会让逃生门整体失效）⇒ fail-closed")
+    counts_from = esc.get("max_escapes_counts_from")
+    if counts_from is not None and not re.fullmatch(r"\d{4}-\d{2}-\d{2}",
+                                                   str(counts_from)):
+        raise SystemExit(f"BUDGET-ERROR: {path} 的 over_budget_escape."
+                         f"max_escapes_counts_from={counts_from!r} 非法"
+                         "（须为 `YYYY-MM-DD`）——生效日写错会让『同日几次』数出"
+                         "一个假的数（多算或少算都是假读数）⇒ fail-closed")
+    locks = {"floor": floor, "patterns": patterns, "max_escapes": max_escapes,
+             "kinds": kinds, "counts_from": (str(counts_from)
+                                             if counts_from is not None else ""),
+             "legacy_rows": _legacy_escapes(esc.get("max_escapes_legacy_rows"))}
+    return cap, locks, "", ""
+
+
+# run_id 的 UTC+8 日期段（`_local_date()` 在登记当时写下；A5 的 id↔目录同口径）。
+# 注意：它只是**当日读数**的其中一个信号，无日期段的 id 由 `started_at` 兜底。
+_RUN_ID_DAY = re.compile(r"^run-(\d{4}-\d{2}-\d{2})-")
+
+
+def _dispatch_reading(data: dict, day: str) -> tuple[int, int, int]:
+    """当日（UTC+8）已登记 run 数：`(合计, run_id 日期段命中, started_at 命中)`。
+
+    **为什么两个信号取并集**（少一个就有一条刷单路径）：
+      * `run_id` 日期段 = **登记当时**由 `_local_date()`（UTC+8）写下的留痕，
+        id 落地后不再变；
+      * `started_at` 是账本里唯一的时间戳（UTC）⇒ 换算 UTC+8 后同样指向登记日；
+      * **只用 id** ⇒ `--run-id` 不带日期段的 run 全部不计数（合成夹具里就有）；
+      * **只用 started_at** ⇒ 漏 `--start` 的 run（`started_at=None`）不计数，
+        即"不传 `--start` 就能刷单"，闸门形同不存在。
+    两个信号都归不出日期的 run **不计入**——这是本判据的已知盲区，写在拒绝文案
+    与 BR-1 卡里，不假装覆盖。
+
+    `data` = 本命令**自己**在锁内刚读的账本（"现读"＝这一次 load，不是缓存、
+    不是派生文件）；计数与追加同在一把锁内 ⇒ 无 TOCTOU。
+    """
+    total = by_id = by_start = 0
+    for run in data.get("runs") or []:
+        hit = False
+        m = _RUN_ID_DAY.match(str(run.get("run_id") or ""))
+        if m and m.group(1) == day:
+            by_id += 1
+            hit = True
+        started = _parse_ts(run.get("started_at"))
+        if started is not None:
+            local = (started.astimezone(timezone.utc)
+                     + timedelta(hours=_TZ_OFFSET_HOURS)).strftime("%Y-%m-%d")
+            if local == day:
+                by_start += 1
+                hit = True
+        total += 1 if hit else 0
+    return total, by_id, by_start
+
+
+def _fallback_hints() -> str:
+    """兜底阶梯第 1、2 级（**不需要代码支持**，只在拒绝上屏里给建议）。
+
+    为什么写在拒绝文案里：读到拒绝的人（下一个我）第一反应是"那我再加一次
+    逃生门"。父代理定的阶梯要求先试前两级——它们在**编排层**做（不派单／
+    合并拆分目标），闸门判不了，所以闸门的义务是把它们**说到**。
+    """
+    return ("兜底建议（第 1 级优先，均不需要代码支持）：\n"
+            "    ① **不派单**：本笔主代理自己做（或不做）——闸门的默认答案\n"
+            "    ② **合并/拆分目标**：把本笔并进一笔在飞的批次，或把目标拆成"
+            "更小的、当日额度内可完成的两笔\n"
+            "    ③ 确有例外再走逃生门（受可核引用／同日次数上限／具名例外类别约束）")
+
+
+def _escape_hint(locks: dict) -> str:
+    """逃生门正确用法示例（**拒绝上屏必须给示例**，否则用户不知道格式）。"""
+    kinds = "／".join(locks["kinds"])
+    return (f'--over-budget "<引用 D-YYMMDD-NN 或用户原话“…” ＋ 具名例外类别'
+            f'（{kinds}）＋ 理由 ≥{locks["floor"]} 字>"')
+
+
+def _escapes_on(data: dict, day: str, counts_from: str = "",
+                legacy_rows: frozenset[str] = frozenset()) -> list[str]:
+    """逃生门额度里**已用掉的次数**：`budget_override.day == day` 的 run_id。
+
+    **为什么按账本行数**：逃生门放行的那一笔自己就写进账本（含 `day`），
+    所以"当日用了几次"不是另立一个计数器文件，而是**从同一本账现读**——
+    计数器会与账本漂移，账本不会与自己漂移。返回 run_id 而不是只回个数：
+    拒绝时必须能**点名是哪几笔**用掉了额度（"用满 1 次"读不到用过谁）。
+
+    `counts_from`（数据文件 `max_escapes_counts_from`，可空）＝计数窗口的下界：
+    只算 `day >= counts_from` 的那一天。空串 ⇒ 不设门槛（所有行都算）。
+
+    `legacy_rows`（数据文件 `max_escapes_legacy_rows`）＝**逐行点名**的旧规则行：
+    上限是 2026-10-03 当天才立的规则，账本里已有旧规则下（自述理由即放行）
+    登记的逃生门行；不排除它就得把**规则诞生之前的历史**当成"今天已用过一次"。
+    语义边界如实写清：豁免的是**那一行**，不是"今天"——本批之后新登记的每一次
+    逃生门都照常计数（UC-27 ⑬ 的反向对照钉的就是这一点）。
+    """
+    out: list[str] = []
+    for run in data.get("runs") or []:
+        hit = (run.get("budget_override") or {}).get("day")
+        if hit != day or (counts_from and day < counts_from):
+            continue
+        rid = str(run.get("run_id") or "")
+        if rid in legacy_rows:
+            continue
+        out.append(rid)
+    return out
+
+
+def _log_dispatch_refusal(run_id: str, reason: str, reading: str,
+                          cap: object, day: str) -> None:
+    """把**被拒的派单**追加进运行态队列（一行一条，次日额度恢复后可查）。
+
+    为什么必须留档（用户 2026-10-03 追加裁定"超过时也要有兜底策略"）：
+    拒绝启动只是"今天不发"，被拒的那件事**还在**。没有这一行，次日额度
+    恢复后没人知道昨天被拦下了什么 ⇒ 兜底策略第 1 级"不派单"就退化成
+    "那件事消失了"。落点 `agents/runtime/dispatch-refusals.jsonl`
+    在 `.gitignore` 的 `agents/runtime/*` 忽略域内 ⇒ **不产生 `??`**；
+    它是**运行态待办**，不是仓库内容。
+
+    写入策略：追加 + LF + `newline=""`（不让平台把换行翻成 CRLF，
+    jsonl 逐行读才稳）；**写不进去就响亮地坏**——留不下痕的拒绝＝
+    "今天不发"与"那件事不存在"分不开，正是这条判据要堵的形态。
+    """
+    line = json.dumps({"at": _now(), "day": day,
+                       "axis": "dispatched_sessions_per_day",
+                       "reading": reading, "budget": cap,
+                       "run_id": run_id, "reason": reason},
+                      ensure_ascii=False)
+    try:
+        with open(DISPATCH_REFUSALS_PATH, "a", encoding="utf-8",
+                  newline="") as fh:
+            fh.write(line + "\n")
+    except OSError as exc:
+        raise SystemExit(f"BUDGET-ERROR: {DISPATCH_REFUSALS_PATH} 写不进去"
+                         f"（{exc}）⇒ 被拒的派单**留不下痕**，"
+                         "次日的待办会凭空消失 ⇒ fail-closed 拒绝继续") from exc
+
+
+def _dispatch_gate(data: dict, args: argparse.Namespace) -> dict | None:
+    """派单预算闸门：`>= 预算` ⇒ **拒绝启动**；四把锁齐全的逃生门 ⇒ 放行留痕。
+
+    返回 `None` = 无需留痕（含"未执行"档）；返回 dict = 逃生门的留痕
+    （由 `cmd_register` 写进该 run 行，见那里的字段落点说明）。
+
+    2026-10-03 用户追加裁定"超过时也要有兜底策略"后，逃生门从
+    "自述理由 ≥下限即放行"收紧成**四把机检锁**（缺任一 ⇒ 预算文件读取侧
+    已 fail-closed）：
+      ① **必须引用用户裁定**（`citation_patterns` 命中：登记条目号
+         `D-YYMMDD-NN` 或用户原话片段）——父代理指出的洞正是"我自己写理由
+         就能放行 ⇒ A 绑不住我"，自述理由**不再算数**；
+      ② **同日次数上限**（`max_escapes_per_day`）⇒ 超限拒绝并点名已用次数
+         与用掉它的 run_id；
+      ③ **具名例外类别**（`named_exception_kinds`：收口类／安全类）——除外
+         必须落在这两类里，不许成为任意放行的后门；
+      ④ 理由下限（`reason_min_chars`，上一批既有）。
+
+    未超预算却传 `--over-budget` ⇒ **拒绝**：放行一条不存在的超预算是
+    **假留痕**，比无留痕更坏（同 `set-anchor` 同值不写假的教训）。
+    """
+    def _refuse(run_id: str, reason: str, reading: str, msg: str):
+        """拒绝的唯一出口：**先留痕，再退出**——两条通道不许只走一条。"""
+        _log_dispatch_refusal(run_id, reason, reading, cap, day)
+        raise SystemExit(msg)
+
+    cap, locks, note, missing = _dispatch_budget()
+    override = (getattr(args, "over_budget", "") or "").strip()
+    day = _local_date()
+    run_id = str(getattr(args, "run_id", "") or "")
+    if cap is None:
+        if missing:
+            # 真仓缺预算文件 ⇒ fail-closed（"删文件即绕过"必须堵死）
+            _refuse(run_id, "预算文件缺失，闸门无法执行", "unknown",
+                    f"BUDGET-REFUSED: **预算文件缺失，闸门无法执行** ⇒ 拒绝启动"
+                    f"（{note}）\n"
+                    "  本仓（未设 AGENT_OPS_DIR）缺预算文件＝闸门无从判定，"
+                    "不是『未配置所以放行』——删掉文件即可绕过闸门的口子"
+                    "正是用户 2026-10-03 追加裁定要堵的\n"
+                    f"  修法：恢复 {_spend_budget_path()}（含 budget 段＋"
+                    "over_budget_escape 四把锁）\n"
+                    f"  {_fallback_hints()}")
+        print(f"dispatch-budget: {note}")
+        if override:
+            raise SystemExit(
+                "BUDGET-ERROR: 这本账未配置预算 ⇒ 无从判『超预算』；"
+                "--over-budget 在此处只会留下一条**假留痕** ⇒ 拒绝登记")
+        return None
+    total, by_id, by_start = _dispatch_reading(data, day)
+    if total < cap:
+        if override:
+            raise SystemExit(
+                f"BUDGET-ERROR: 当日派单读数 {total} < 预算 {cap} ⇒ **不是超预算**，"
+                "无需逃生门（具名逃生门只对**真实超预算**开放；放行一条不存在的"
+                "超预算是假留痕，比无留痕更坏）⇒ 拒绝登记")
+        print(f"dispatch-budget: {total}/{cap}（UTC+8 {day}）→ 放行")
+        return None
+    # ---- 超预算：无具名理由 ⇒ 拒绝启动（本仓"拒绝启动"语义）
+    reading = f"{total}/{cap}"
+    hint = _escape_hint(locks)
+    if not override:
+        _refuse(run_id, "未给逃生门理由（超预算）", reading,
+                "BUDGET-REFUSED: 当日派单数已达预算 ⇒ **拒绝启动**"
+                "（fail-closed；用户 2026-10-03 裁定「超预算即阻断派单」，"
+                "追加裁定「超过时也要有兜底策略」）\n"
+                f"  轴：派单数/日｜读数 {total}（UTC+8 {day} 已登记："
+                f"run_id 日期段 {by_id} 条、started_at {by_start} 条；并集口径，"
+                "两信号都归不出日期的 run 不计入＝已知盲区）\n"
+                f"  预算：{cap}（来源 {_spend_budget_path()}::"
+                "budget.dispatched_sessions_per_day，非代码常量）\n"
+                f"  逃生门（四把锁：可核引用／同日 {locks['max_escapes']} 次上限／"
+                "具名例外类别／理由下限）："
+                f"本笔确有例外时加 {hint} —— 放行且理由落账本，事后可核\n"
+                f"  {_fallback_hints()}\n"
+                "  金额轴（CNY/日）**不阻断**：度量仪 spend-report.py --check 的"
+                "『派单会话数』作用域有已知缺陷（把别的主线的子代理会话也算进来）\n"
+                "  ⇒ 拿它当阻断依据＝用错数停工作"
+                "（该缺陷归 A-COST 卡，本批不改度量仪）")
+    if len(override) < locks["floor"]:
+        _refuse(run_id, f"--over-budget 理由过短（{len(override)} 字）", reading,
+                f"BUDGET-ERROR: --over-budget 必须具名：理由 ≥{locks['floor']} 字符"
+                f"（实测 {len(override)}）⇒ 拒绝登记。逃生口不具名＝后人只读到"
+                "『某天多放了一笔』，读不到为什么\n"
+                f"  {_fallback_hints()}")
+    if not any(p.search(override) for p in locks["patterns"]):
+        _refuse(run_id, "逃生门理由无可核引用（自述理由不算数）", reading,
+                "BUDGET-REFUSED: 逃生门理由**必须含可核引用** ⇒ 拒绝启动\n"
+                "  为什么：自述理由（『我判断这属于例外』）无法核验，等于"
+                "『我自己写理由就能放行』——用户裁定就绑不住执行方\n"
+                "  正确用法（任选一种，机检；两种都不含 ⇒ 一律拒绝）：\n"
+                "    ① 引用**决策登记条目号**（形如 D-251003-01，须独立成词、"
+                "不得长成 D-251002-01X）："
+                "--over-budget \"D-251003-01 裁定……，本笔为其落地批\"\n"
+                "    ② 引用**用户原话片段**（整段放进全角引号 “…” 或 「…」，"
+                "≥4 字）：--over-budget \"用户原话“超过时也要有兜底策略”\"\n"
+                f"  {_fallback_hints()}")
+    kinds = [k for k in locks["kinds"] if k in override]
+    if len(kinds) != 1:
+        kind_txt = "；".join(f"『{k}』＝{v}" for k, v in locks["kinds"].items())
+        _refuse(run_id, f"逃生门未落具名例外类别（命中 {len(kinds)} 类）", reading,
+                "BUDGET-REFUSED: 逃生门必须**恰好落一类具名例外** ⇒ 拒绝启动\n"
+                f"  具名类别（{kind_txt}）\n"
+                f"  实测命中 {len(kinds)} 类"
+                f"{'（' + '、'.join(kinds) + '）' if kinds else '（一个都没写）'}"
+                "——理由里必须**具名**写出是哪一类，机检字样就取上面这些词；"
+                "写不出＝这不该例外（否则逃生门就是任意放行的后门）\n"
+                f"  {_fallback_hints()}")
+    used = _escapes_on(data, day, locks["counts_from"], locks["legacy_rows"])
+    if len(used) >= locks["max_escapes"]:
+        who = "、".join(x for x in used if x) or "（无 run_id）"
+        limit = locks["max_escapes"]
+        _refuse(run_id, f"同日逃生门已用 {len(used)} 次（上限 {limit}）", reading,
+                "BUDGET-REFUSED: 同日逃生门次数已达上限 ⇒ 拒绝启动\n"
+                f"  已用 {len(used)} 次／上限 {limit}"
+                f"（依据：账本里 budget_override.day={day} 的 run 行数）\n"
+                f"  用掉额度的是：{who}\n"
+                f"  上限来源：{_spend_budget_path()}::over_budget_escape."
+                "max_escapes_per_day（非代码常量；父代理 2026-10-03 裁定 1 次/日）\n"
+                f"  {_fallback_hints()}")
+    print(f"dispatch-budget: {total}/{cap}（UTC+8 {day}）→ **具名逃生门放行**"
+          f"（引用＋具名类别『{kinds[0]}』已核；同日第 {len(used) + 1}"
+          f"/{locks['max_escapes']} 次；理由落账本 budget_override_reason）")
+    return {"axis": "dispatched_sessions_per_day", "reading": total,
+            "budget": cap, "day": day, "at": _now()}
+
+
 @_with_registry_lock
 def cmd_register(args: argparse.Namespace) -> None:
-    """`register` 子命令：登记一条 run（校验 scope 来源、规范化锚点、初始化测量字段）。"""
+    """`register` 子命令：登记一条 run（校验 scope 来源、规范化锚点、初始化测量字段）。
+
+    2026-10-03 起**多一道成本预算闸门**（用户裁定 A：超预算即阻断派单；
+    同日追加裁定：**超过时也要有兜底策略**）：
+    `_dispatch_gate()` 用**账本读数**判当日派单数，`>= 预算` 即拒绝启动；
+    逃生门 `--over-budget` 可放行，但受**四把机检锁**约束（见该函数 docstring：
+    可核引用／同日次数上限／具名例外类别／理由下限），理由**落账本**两字段：
+      * `budget_override_reason`：理由**原话**（≥下限，去空白）——先例是
+        `finish --allow-degenerate` 的 `degenerate_reason`（同一族"具名豁免"，
+        同一落法：单行、原话、可事后逐字核）；
+      * `budget_override`：`{axis, reading, budget, day, at}` ——**被豁免掉的读数**
+        （哪个轴、当时读多少、预算是多少、UTC+8 哪天、何时登记）；其中 `day`
+        同时是"当日已用几次逃生门"的**判据来源**（同源，不另立计数器）。
+      * 被**拒绝**的派单不是"什么都没发生"：追加一行到
+        `runtime/dispatch-refusals.jsonl`（运行态待办，次日额度恢复后可查）。
+    为什么不用 `task_id`／`scope_deviation` 兼职：那两格各有**自己的**语义
+    先例是 `mark-produced` 的 `produced_only`＋`produced_only_marks[]`
+    （"这不是默认形态"落库，且**留下判据所依据的数**）。
+    （任务名、〇查范围偏离），塞进去会让读账本的人分不清"这是任务名还是豁免理由"；
+    具名豁免在账本里必须是**可 grep 的独立字段**。
+    """
     data = _load_registry()
     # review 修正（Sprint-8 三查）：显式 run_id 查重（_find_run 只命中第一条）
     if any(r["run_id"] == args.run_id for r in data["runs"]):
@@ -535,6 +1339,10 @@ def cmd_register(args: argparse.Namespace) -> None:
     if not re.fullmatch(r"[A-Za-z0-9._-]+", run_id):
         raise SystemExit(f"run_id 含非法字符（仅允许字母数字 . _ -）：{run_id!r}")
     scope_source, scope_deviation = _validate_scope(args, data)
+    # 成本预算闸门（2026-10-03 裁定 A）：放在**纯输入校验之后、任何写盘之前**
+    # ——这样"输入本身有错"（run_id 字符集／scope 缺失）永远报它自己的错，
+    # 不会被预算档盖住；而超预算时账本一个字节都不会动（拒绝启动＝不半写）。
+    budget_override = _dispatch_gate(data, args)
     # TG-15 ③ 锚点自动化：run 登记时自动记覆盖锚点（= 登记时的 HEAD），
     # 无需人往 Sprint 文档手抄。
     # `--coverage-anchor` 可显式覆盖（补录历史 run / fixture）；
@@ -557,11 +1365,23 @@ def cmd_register(args: argparse.Namespace) -> None:
         coverage_anchor = resolved
     else:
         coverage_anchor = _git_head()
+    # M-A（TG-19）：**显式 Sprint 身份**——判定域由此派生（闸门侧 `run_sprint_identity()`
+    # 优先读本字段，读不到才退回从 `task_id` 猜）。给不出合法编号即 fail-closed：
+    # 一个拼错的身份会让该 run 在**所有** Sprint 的判定域里都"不可派生"，
+    # 从而被 fail-closed 保留进别的 Sprint（静默噪音），比当场报错难查得多。
+    raw_sprint = (getattr(args, "sprint", "") or "").strip()
+    sprint_id = _norm_sprint(raw_sprint) if raw_sprint else None
+    if raw_sprint and sprint_id is None:
+        raise SystemExit(
+            f"SPRINT-ID-ERROR: --sprint {raw_sprint!r} 归不出 Sprint 编号"
+            "（接受形如 `Sprint-18` / `18` / `018`）；身份宁可留空也不要写错")
     entry = {
         "run_id": run_id,
         "task_id": args.task or "",
         "role": args.role,
         "spec_source": args.spec,
+        # M-A：判定域派生用的显式身份（可空 = 未声明；闸门会退回 task_id 派生）
+        "sprint": sprint_id,
         "scope_source": scope_source,
         "scope_deviation": scope_deviation,
         # TG-15：覆盖窗口为**自动记录**字段；covered(run) = (coverage_anchor,
@@ -590,6 +1410,11 @@ def cmd_register(args: argparse.Namespace) -> None:
     # TG-13：测量来源（此刻只有 started_at、没有 ended_at → unknown，
     # 禁止写 0.00 冒充测量值）
     _apply_measurement(entry)
+    # 逃生门留痕（仅**真的**超预算且具名放行时才落这两格；正常 run 不多出键，
+    # 故既有 run 行的字段集一字不变）
+    if budget_override is not None:
+        entry["budget_override_reason"] = (args.over_budget or "").strip()
+        entry["budget_override"] = budget_override
     data["runs"].append(entry)
     _save_registry(data)
     print(f"registered {run_id} (status={entry['status']})")
@@ -784,6 +1609,101 @@ def cmd_set_scope(args: argparse.Namespace) -> None:
 
 
 @_with_registry_lock
+def cmd_set_sprint(args: argparse.Namespace) -> None:
+    """受控回填：给**已登记** run 补/改 `sprint`（Sprint 身份；`TG-19` M-A 收尾）。
+
+    **为什么需要这个口**：M-A 的判定域按 Sprint 身份派生，而 2026-09-25 实测出三条
+    身份缺口（见 `cards/TG-19.md`「交付落地」节的数据缺口 2/3）：
+
+      * `run-…-065` 的 `task_id` **为空**（B1 记录里它是 Sprint-17 的作用域 run）
+        ⇒ 身份不可派生；
+      * `run-…-code-review-074`~`-080`（修复验证复核）的 `task_id` 不含 Sprint
+        ⇒ 会被"窗口内保留"规则带进**上一个** Sprint 的域
+        （实测把 Sprint-16 的域右端拉到 Sprint-17 的提交）；
+      * `run-…-062`（TG-15 改动面评估）同族。
+
+    与 `set-scope` / `set-anchor` **同构**：必须 `--reason`（≥10 字符）；同值 = 无操作
+    （不改库、不留痕、报"无变化"）；每次实际变更追加 `sprint_backfills`
+    （field/from/to/reason/by）。
+    `role` 不参与本判据（身份是**既成事实**，不是角色属性），故不由命令行覆盖。
+    """
+    data = _load_registry()
+    r = _find_run(data, args.run_id)
+    reason = (args.reason or "").strip()
+    if len(reason) < 10:
+        raise SystemExit(
+            "回填必须给 --reason（≥10 字符的理由）：为什么回填、依据哪份记录/卡")
+    new = _norm_sprint(args.sprint)
+    if new is None:
+        raise SystemExit(
+            f"SPRINT-ID-ERROR: --sprint {args.sprint!r} 归不出 Sprint 编号"
+            "（接受形如 `Sprint-17` / `17` / `017`）；身份宁可留空也不要写错")
+    old = r.get("sprint")
+    if (old or None) == new:
+        print(f"set-sprint {r['run_id']}: 无变化（未写盘；现值={new!r}）")
+        return
+    r["sprint"] = new
+    r.setdefault("sprint_backfills", []).append(
+        {"at": _now(), "field": "sprint", "from": old, "to": new,
+         "reason": reason, "by": args.by})
+    _save_registry(data)
+    print(f"sprint updated {r['run_id']}: {old!r} -> {new!r} "
+          f"(backfills={len(r['sprint_backfills'])})")
+
+
+@_with_registry_lock
+def cmd_set_result_files(args: argparse.Namespace) -> None:
+    """受控回填：给**已收尾** run 补 `result_files`
+    （评审产物未归档时的唯一合法修复路径）。
+
+    **为什么需要**（2026-09-25 实测）：`finish --result-file` 是**当时**唯一写入口，
+    而 `verify/verify_ledger_measurement.py` 对**终态评审类 run** 严格判
+    `[missing_result_files_review]`——"账本说做过了、产物不见了"。
+    我 `finish run-2026-09-25-code-review-083` 时忘了带 `--result-file`，
+    随后 `finish` 拒绝二次收尾（`非法流转 succeeded -> succeeded`，
+    这条 fail-closed 是对的），
+    于是该问题**不可修** = 永久红——与 `set-output-chars` 当初面对的是同一形态
+    （见其 docstring）。故补一个**受控**入口：必须给 `--reason`（≥10 字符）、
+    文件**必须真实存在**、每次变更追加 `result_files_backfills` 留痕、同值 = 无操作。
+
+    **路径口径**：账本里存量值一律是**相对 `agents/` 根**的
+    `runs/<run_id>/<role>.report.md`
+    （`agent-ops.py` 的 `_AGENTS_BASE`；`verify_ledger_measurement.py` 的
+    `REVIEW_REPORT_REL` 同此口径）。故本命令**只认这一种**：既有值怎么写的，
+    新值就怎么写——不做"仓库根也行"的宽容解析（两套根 = 同一个字段两种读法，
+    正是"同一个数值两处写死"的变体）。
+    """
+    data = _load_registry()
+    r = _find_run(data, args.run_id)
+    reason = (args.reason or "").strip()
+    if len(reason) < 10:
+        raise SystemExit(
+            "回填必须给 --reason（≥10 字符的理由）：为什么补、依据哪份产物")
+    wanted = list(dict.fromkeys(str(f) for f in (args.file or [])))
+    if not wanted:
+        raise SystemExit(
+            "set-result-files 至少要给一个 --file <产物路径>（否则是无操作）")
+    for rel in wanted:
+        if not (_AGENTS_BASE / rel).is_file():
+            raise SystemExit(
+                f"RESULT-FILE-ERROR: {rel!r} 不存在于 agents 根下"
+                f"（期望 {_AGENTS_BASE / rel}）；fail-closed：产物路径必须可核，"
+                f"且口径与存量值一致 = 相对 agents/ 根写 "
+                f"`runs/<run_id>/<role>.report.md`")
+    old = list(r.get("result_files") or [])
+    if old == wanted:
+        print(f"set-result-files {r['run_id']}: 无变化（未写盘；现值 {len(old)} 条）")
+        return
+    r["result_files"] = wanted
+    r.setdefault("result_files_backfills", []).append(
+        {"at": _now(), "field": "result_files", "from": old, "to": wanted,
+         "reason": reason, "by": args.by or "main-agent"})
+    _save_registry(data)
+    print(f"result_files updated {r['run_id']}: {len(old)} -> {len(wanted)} 条 "
+          f"(backfills={len(r['result_files_backfills'])})")
+
+
+@_with_registry_lock
 def cmd_set_output_chars(args: argparse.Namespace) -> None:
     """受控回填：修正**已收尾** run 的 `output_chars`（产出未测量时写 0 会冒充"无产出"）。
 
@@ -823,6 +1743,73 @@ def cmd_set_output_chars(args: argparse.Namespace) -> None:
                   "reason": reason})
     _save_registry(data)
     print(f"output_chars updated {args.run_id}: {old} -> {new} (backfills={len(trail)})")
+
+
+def cmd_set_started_at(args: argparse.Namespace) -> None:
+    """受控回填：修正**已收尾** run 的 `started_at`（不得用手估值冒充测量）。
+
+    **要解决的是什么**：`verify/verify_ledger_measurement.py` 判 `[zero_duration]`
+    （`started_at == ended_at` ⇒ "未测得被写成零耗时"）与 `[missing_timestamp]`。
+    真实事故：`run-2026-09-26-code-review-092` —— `register` 漏 `--start` ⇒ `started_at`
+    为空 ⇒ `update --status running` 把它置为"此刻" ⇒ `finish` 在同一秒写 `ended_at`。
+    而 `started_at` 只在 `register --start` / `update` 当时可写，**已收尾的 run 没有合法
+    修复路径** ⇒ 闸门报的问题不可修 = 永久红（同 `set-output-chars` 的形态）。
+
+    **覆盖边界（`2026-09-26-g2-close-retro.MD` §7 已备案，引用时不得省略）**：
+    本命令是**修复工具、不是预防机制**——它解决"有真值可回填"的场景（如上例），
+    **不解决**"run 从未起跑（真值 = 未知）"、"时钟/时区不一致"，且它**自身**能写出
+    "可信但为假"的测量（现有闸门只判合理、判不了真实）。故：
+
+    约束（比 `set-output-chars` 更严——**必须有证据**）：
+      * `--at` 必须是**带时区**的 ISO8601，且**不得晚于 `ended_at`、不得晚于现在**；
+      * `--evidence <path>` **必须存在**（如 `agents/runs/<id>/` 的产物文件）——
+        证据是"这个时刻从哪来"的可核凭据；拿不出证据就**不得回填**（不知道就写不知道）；
+      * `--reason` ≥ 10 字符（谁测的、怎么测的、依据哪条发现）；
+      * 值有变化才追加 `started_at_backfills[]{at, by, old, new, evidence, reason}`；
+        同值回填不改库、不留痕（假留痕比无留痕更坏）。
+    """
+    from datetime import datetime, timezone
+
+    data = _load_registry()
+    r = _find_run(data, args.run_id)
+    raw = (args.at or "").strip()
+    try:
+        new_dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        raise SystemExit("SET-STARTED-AT-ERROR: --at 必须是 ISO8601（如 "
+                         "2026-09-26T05:07:00+00:00）") from None
+    if new_dt.tzinfo is None:
+        raise SystemExit("SET-STARTED-AT-ERROR: --at 必须带时区"
+                         "（本仓曾因 UTC / UTC+8 混写而误读时刻）")
+    new = new_dt.astimezone(timezone.utc).isoformat()
+    ended = r.get("ended_at")
+    if ended:
+        end_dt = datetime.fromisoformat(str(ended).replace("Z", "+00:00"))
+        if new_dt > end_dt:
+            raise SystemExit(f"SET-STARTED-AT-ERROR: --at 晚于 ended_at（{ended}）"
+                             f"——先核对证据")
+    if new_dt > datetime.now(timezone.utc):
+        raise SystemExit("SET-STARTED-AT-ERROR: --at 是未来时刻（不写未来时间戳）")
+    ev = (args.evidence or "").strip()
+    if not ev:
+        raise SystemExit("SET-STARTED-AT-ERROR: 必须给 --evidence <path>——"
+                         "回填值必须来自可核凭据（产物 mtime / 作业日志），"
+                         "拿不出证据就不得回填")
+    if not Path(ev).exists():
+        raise SystemExit(f"SET-STARTED-AT-ERROR: --evidence 指向的路径不存在：{ev}")
+    reason = (args.reason or "").strip()
+    if len(reason) < 10:
+        raise SystemExit("回填必须给 --reason（≥10 字符）：怎么测的、依据哪条发现")
+    old = r.get("started_at")
+    if old == new:
+        print(f"set-started-at {args.run_id}: 已是 {new}（无变化，未追加留痕）")
+        return
+    r["started_at"] = new
+    trail = r.setdefault("started_at_backfills", [])
+    trail.append({"at": _now(), "by": args.by or "main-agent", "old": old, "new": new,
+                  "evidence": ev, "reason": reason})
+    _save_registry(data)
+    print(f"started_at updated {args.run_id}: {old} -> {new} (backfills={len(trail)})")
 
 
 def cmd_mark_produced(args: argparse.Namespace) -> None:
@@ -919,9 +1906,291 @@ def cmd_mark_produced(args: argparse.Namespace) -> None:
           f" (marks={len(r['produced_only_marks'])})")
 
 
+def _result_file_cites_run(rel: object, rid: str) -> bool:
+    """该 `result_files` 条目是否指进 `runs/<rid>/`（引用链的第二类载体）。
+
+    复核 `run-…-105` major 5：旧实现只普查 `scope_source`，而 `result_files` 才是
+    承载 run 目录引用的那一列（真数据 79 行这样写）。判据按**路径分段**比，
+    不做裸子串匹配（那样 `run-x-1` 会被 `run-x-10` 命中）。
+    同时认 canonical 形态（`runs/<rid>/…`）与"条目就是 run_id 或它下面的相对路径"。
+    """
+    text = str(rel or "").strip().replace("\\", "/").lstrip("./")
+    if not text:
+        return False
+    parts = [p for p in text.split("/") if p]
+    return rid in parts
+
+
+def _retract_cited_by(data: dict, rid: str) -> list[str]:
+    """哪些**其余** run 引用了 `rid`（撤回前必须为空）——**引用链的两类载体都查**。
+
+    删掉被引用者，引用者就会指向不存在的对象——那是把一条误登记换成一条真缺陷，
+    不是撤回的目的。
+
+    ① `scope_source`（`impact-assessment:<run_id>`）——旧实现只查这一类；
+    ② `result_files` 里指进 `runs/<rid>/` 的条目（复核 `run-…-105` major 5）：
+       被引用者的**产物目录**是引用者的产物来源，撤掉它等于让引用者的产物凭空消失。
+       实测绕过路径：先撤引用者、再撤被引用者，旧码 rc=0。
+    """
+    prefixes = _scope_ref_prefixes()
+    citing: list[str] = []
+    for other in data["runs"]:
+        other_id = str(other.get("run_id") or "")
+        if other_id == rid:
+            continue
+        if parse_scope_ref(str(other.get("scope_source") or ""), prefixes) == rid:
+            citing.append(other_id or "?")
+            continue
+        if any(_result_file_cites_run(rel, rid)
+               for rel in (other.get("result_files") or [])):
+            citing.append(other_id or "?")
+    return citing
+
+
+def _evidence_sha256(path: Path) -> str:
+    """凭据文件的**内容摘要**（复核 `run-…-105` major 4）。
+
+    为什么必须记摘要：`--evidence` 此前只核"路径存在"，于是留痕里的证据**事后可改写
+    而不可察**——撤回的理由就变成一句不可复核的话。摘要让"当时凭的是哪份字节"成为
+    可核事实（改一个字节即不一致），且 `retract` 每次调用都会**重核全部既有留痕**。
+    """
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _evidence_rel(path: Path) -> str | None:
+    """证据路径 → **仓库相对路径**（不在仓库里 ⇒ None）。
+
+    留痕里的证据可能是绝对路径（`--evidence` 收的就是调用方给的字符串）；要问
+    "本分支的提交树里有没有它"必须先归一到 `posix` 相对路径。
+    """
+    try:
+        return path.resolve().relative_to(REPO_ROOT.resolve()).as_posix()
+    except (ValueError, OSError):
+        return None
+
+
+def retraction_trace_problems(data: dict, backfilled: list[str] | None = None,
+                              ) -> list[str]:
+    """既有 `retractions[]` 留痕的可核性（每条撤回前都重跑一遍）。
+
+    判据：留痕里的 `evidence` 必须指向一个**文件**，且其内容摘要必须与留痕记录的
+    `evidence_sha256` 一致。
+
+    缺摘要的**旧留痕**（本判据落地前写的）走**补记**路径，不是硬拒也不是静默放过：
+    用现读到的内容补齐 `evidence_sha256`，并在留痕里写下 `evidence_sha256_backfill`
+    （补记时刻／执行者／依据）＋把条目名追加进 `backfilled`（调用方据此落盘与上屏）。
+    硬拒会让存量 3 条旧留痕永久堵死撤回路径；静默放过等于摘要判据对存量无效。
+    证据内容**与已记摘要不一致** ⇒ 照旧判问题（那是"事后被改写"，不是"当时没记"）。
+
+    **分支差异与数据缺陷必须分开**（复核 `run-…-105` critical 1/2 的同族口径）：
+    证据文件不在工作区时，先问它的路径在**本分支 `HEAD`** 里有没有——
+      * 树里也没有 ⇒ 本分支本就没有这条路径（如 main 上没有 `docs/iteration/**`）
+        ⇒ **不计入问题**，但要**上屏说明**（"未核"必须可见，不冒充已核）；
+      * 树里有、工作区没有 ⇒ **被删** ⇒ 照旧 fail-closed 判问题。
+    """
+    problems: list[str] = []
+    for item in data.get("retractions") or []:
+        rid = str(item.get("run_id") or "?")
+        raw = str(item.get("evidence") or "").strip()
+        if not raw:
+            problems.append(f"[撤回留痕] {rid} 的 evidence 为空（不可核）")
+            continue
+        path = Path(raw)
+        if not path.is_file():
+            rel = _evidence_rel(path)
+            if rel and not path_in_head(REPO_ROOT, rel):
+                print(f"NOTE[撤回留痕/分支差异] {rid} 的证据 {raw} 不在本分支"
+                      f"（{rel} 在 `HEAD` 的提交树里也没有，如 windows-only 子树）"
+                      f"⇒ 本条摘要**未核**（不是通过，也不是伪造）")
+                continue
+            problems.append(f"[撤回留痕] {rid} 的 evidence 不是文件：{raw}"
+                            f"（目录/缺失都不构成可核凭据）")
+            continue
+        want = str(item.get("evidence_sha256") or "").strip()
+        got = _evidence_sha256(path)
+        if not want:
+            # 本判据落地前的旧留痕**豁免"当时没记"，不豁免"可核"**（major 4）：
+            # 硬拒会让存量旧留痕永久堵死撤回路径（把修复变成新的锁），
+            # 静默放过又等于摘要判据对存量无效。故：按**现读到的内容**补齐摘要，
+            # 并在留痕里**具名标注**何时补的、依据是什么。
+            item["evidence_sha256"] = got
+            item["evidence_sha256_backfill"] = {
+                "at": _now(), "by": "agent-ops retract",
+                "reason": "本判据落地前的旧留痕没有内容摘要；本次按**现读到的内容**补齐"
+                          "（补的是当时记的那份，但不冒充撤回当时就记过——"
+                          "补记时刻与依据都写在留痕里）"}
+            backfilled.append(rid)
+            print(f"NOTE[撤回留痕/补记] {rid} 的 evidence 缺内容摘要 ⇒ "
+                  f"已按现读内容补齐 sha256={got[:12]}…"
+                  f"（补记时刻与依据写进留痕；此后可核）")
+        elif want != got:
+            problems.append(f"[撤回留痕] {rid} 的 evidence **与留痕记录不一致**："
+                            f"{raw}（记 {want[:12]}… 实测 {got[:12]}…）⇒ "
+                            f"证据事后被改写（留痕不可信）")
+    return problems
+
+
+def retract_guard_problems(data: dict, rid: str) -> list[str]:
+    """撤回 `rid` 前必须为空的两条**引用链不变式**（纯函数，真入口与反证共用同一实现）。
+
+    ① 既有 `retractions[]` 留痕必须可核（见 `retraction_trace_problems`；
+       缺摘要的旧留痕**就地补记**并追加进 `data["_backfilled_traces"]`）；
+    ② `rid` 不得被其余 run 引用（见 `_retract_cited_by`：`scope_source`
+       与 `result_files` 两类载体都算）。
+
+    为什么抽成纯函数：这条判据原来只在 `cmd_retract` 里"现场看一眼"，
+    于是"先撤引用者、再撤被引用者"能把引用链断开而不被察觉（复核 `run-…-105` major 5
+    探针 rc=0）。抽出来之后，**同一条实现**既守 CLI、又能被反向对照直接驱动
+    （不靠造一份手改账本 —— 手改会被完整性校验拦下，那样测的是 UC-7 而不是本条）。
+    """
+    backfilled: list[str] = []
+    problems = retraction_trace_problems(data, backfilled)
+    if backfilled:
+        # 让调用方知道"这次判据顺带改了留痕" ⇒ 必须落盘（否则补记只活在内存里）。
+        data["_backfilled_traces"] = backfilled
+    citing = _retract_cited_by(data, rid)
+    if citing:
+        problems.append(
+            f"{rid} 被其余 run 引用（{citing[:3]}{'…' if len(citing) > 3 else ''}）"
+            f"——先处理引用者：撤回被引用者会让引用者指向不存在的对象"
+            f"（`scope_source` 与 `result_files` 两类载体都算引用）")
+    return problems
+
+
+@_with_registry_lock
+def cmd_retract(args: argparse.Namespace) -> None:
+    """复盘行 19：**受控撤回**——误登记 run 的唯一合法删除路径。
+
+    （账本原先只能加、不能减。）
+
+    **要解决的是什么**：价表批的验收 run `097`~`099` 是**探针误写入生产账本**的
+    （正确形态 = 隔离账本 `AGENT_OPS_DIR=%TEMP%`）⇒ `verify_ledger_measurement.py`
+    判它们 `zero_duration`，而该闸门在关闭窗口内**严格判定、无上限** ⇒ 套件与 CI 恒红。
+    账本当时**没有合法的删除路径**：手改会被 `_load_registry()` 的完整性校验拒（UC-7），
+    而 `set-started-at` 回填时间戳是**伪造测量值**（父代理已否决）⇒ 误登记 = 永久污染
+    判定域。本命令把"撤回"变成**一条受控、留痕、可审计的路径**，而不是"不许删"。
+
+    **四条硬约束**（缺一条就不是受控撤回）：
+      * ① `--reason` ≥10 字符（同 `set-started-at`/`mark-produced` 口径）；
+      * ② **必须留痕**：顶层 `retractions[]{at, by, run_id, reason, evidence,
+        evidence_sha256, status_at_retraction, quarantine}`——账本行删了，痕不能删；
+        **每次撤回都重核全部既有留痕**（内容摘要不符 ⇒ 拒绝追加新痕）；
+      * ③ **只认显式点名的单条 `run_id`**：正则白名单 `_RUN_ID_RE`，通配/批量/前缀
+        /路径一律拒绝（`*?[]`、空白、路径分隔符都不在字符集里）；
+      * ④ `--evidence <path>` **必须存在且必须是文件**（复核 `run-…-105` major 4）：
+        撤回要能指出"凭什么说这条是误登记"（探针脚本产物、隔离账本对照记录）；
+        拿不出证据就不得撤回。目录不算凭据（没有内容摘要 ⇒ 留痕不可核），
+        且文件内容摘要记进 `evidence_sha256`——"当时凭的是哪份字节"可复核。
+
+    **产物不销毁**：`runs/<id>/` 整体**移到** `runtime/retracted-runs/<id>/`
+    （同根、git 忽略域、且不在 `runs/` 判定域里）。撤回删的是**账本行**，
+    不是那次动作的现场；移动目标同时写进留痕的 `quarantine`。
+
+    **fail-closed 三处**（由 `retract_guard_problems` 一处实现，不是三处各写一遍）：
+    ① 既有 `retractions[]` 留痕不可核 ⇒ 拒绝追加新撤回（痕不可信则新痕也不算数）；
+    ② 被其余 run 引用的 run 不得撤回——`scope_source` **与** `result_files`
+       两类载体都算引用（复核 `run-…-105` major 5；只查前者时"先撤引用者、
+       再撤被引用者"能绕过，探针 rc=0）；
+    ③ 已撤回过的 run 不得重复撤回（不做假留痕，同 B2 的教训）。
+    """
+    rid = str(args.run_id or "")
+    if not _RUN_ID_RE.match(rid):
+        raise SystemExit(
+            f"RETRACT-ERROR: run_id={rid!r} 不是**显式点名的单条 run**"
+            "（只接受 `[A-Za-z0-9][A-Za-z0-9._-]*`：通配符/批量/前缀/路径一律拒绝）")
+    reason = (args.reason or "").strip()
+    if len(reason) < 10:
+        raise SystemExit(
+            "RETRACT-ERROR: 撤回必须给 --reason（≥10 字符）：凭什么说这条是误登记"
+            "（例：探针误写入生产账本，正确形态是隔离账本）")
+    ev = (args.evidence or "").strip()
+    if not ev:
+        raise SystemExit("RETRACT-ERROR: 必须给 --evidence <path>——撤回必须指出可核凭据"
+                         "（探针脚本产物 / 隔离账本对照记录）；拿不出证据就不得撤回")
+    ev_path = Path(ev)
+    if not ev_path.exists():
+        raise SystemExit(f"RETRACT-ERROR: --evidence 指向的路径不存在：{ev}")
+    # 复核 `run-…-105` major 4：`Path(ev).exists()` 让**目录**也算凭据，
+    # 而目录没有内容摘要 ⇒ 留痕不可核。必须是**文件**；且必须留下内容摘要。
+    if not ev_path.is_file():
+        raise SystemExit(
+            f"RETRACT-ERROR: --evidence 必须是**文件**（实际是目录：{ev}）"
+            "——目录没有可核的内容摘要，撤回理由会变成一句不可复核的话")
+    ev_sha = _evidence_sha256(ev_path)
+    data = _load_registry()
+    # 复核 major 4/5 的**不变式化**：引用链保护不是"撤回时快照看一眼"，而是每次撤回
+    # 都重核①既有留痕的可核性②被引用者是否仍被引用（含 result_files 列）。
+    guard = retract_guard_problems(data, rid)
+    # 补记摘要的落盘：`retract_guard_problems` 只改内存里的留痕（纯函数），
+    # 这里把它**落盘**——否则"补记"只活在这次进程里，下次又是"缺摘要"。
+    # 走 `_save_registry`（原子写 ＋ 重算 integrity），故不是手改账本。
+    if data.pop("_backfilled_traces", None):
+        _save_registry(data)
+        print(f"NOTE[撤回留痕/补记已落盘] 既有留痕的内容摘要已补齐并写回账本"
+              f"（retractions={len(data.get('retractions') or [])}）")
+    if guard:
+        raise SystemExit("RETRACT-ERROR: 引用链不变式不成立，拒绝撤回"
+                         "（既有留痕必须可核、被引用者不得撤回）：\n  - "
+                         + "\n  - ".join(guard[:5]))
+    if any(str(x.get("run_id") or "") == rid for x in (data.get("retractions") or [])):
+        raise SystemExit(f"RETRACT-ERROR: {rid} 已撤回（留痕已在 retractions[]）"
+                         "——不重复撤回、不留假痕")
+    r = _find_run(data, rid)
+    src = RUNS_DIR / rid
+    dest = QUARANTINE_DIR / rid
+    quarantine = None
+    if src.is_dir():
+        if dest.exists():
+            raise SystemExit(f"RETRACT-ERROR: 隔离区已有同名目录 {dest}"
+                             "（fail-closed：不覆盖既有现场）")
+        QUARANTINE_DIR.mkdir(parents=True, exist_ok=True)
+        # 落点写**模块常量**（不是 `QUARANTINE_DIR / rid`）：目录已存在 ⇒
+        # `shutil.move` 把 `src` 移进它里面（仍是 `<隔离区>/<run_id>/`，语义不变），
+        # 而落点表达式**可静态判定**——`verify_artifact_paths.py` 的动态目标棘轮
+        # **只许下调**，新增动态落点会让闸门红（本批实测：8 > 上限 7）。
+        shutil.move(str(src), str(QUARANTINE_DIR))
+        quarantine = str(dest.relative_to(_AGENTS_BASE))
+    status_before = str(r.get("status") or "")
+    data["runs"] = [x for x in data["runs"] if str(x.get("run_id") or "") != rid]
+    trail = data.setdefault("retractions", [])
+    trail.append({"at": _now(), "by": args.by or "main-agent", "run_id": rid,
+                  "reason": reason, "evidence": ev,
+                  "evidence_sha256": ev_sha,
+                  "status_at_retraction": status_before, "quarantine": quarantine})
+    _save_registry(data)
+    print(f"retracted {rid}（status_at_retraction={status_before}）"
+          f" 产物隔离={quarantine or '（无产物目录）'}"
+          f" (retractions={len(trail)})")
+    print(f"  reason={reason}")
+    print(f"  evidence={ev} sha256={ev_sha[:16]}…")
+
+
+def _copy_result_file(run: dict, src: Path) -> None:
+    """把 `--result-file` 的产物**按字节**归档到 `runs/<run_id>/<role>.report.md`。
+
+    只在 `finish` 的守卫**放行之后**调用（复盘行 17：拒绝路径不得留孤儿产物）。
+
+    审核 N10（2026-09-25）：**按字节复制**，不得改写换行。
+    原实现是 `dest.write_text(rel.read_text(encoding="utf-8"), encoding="utf-8")`：
+    `read_text` 做 universal-newline 转换（CRLF→LF），`write_text` 又把 `\n` 写回
+    `os.linesep`（Windows = CRLF）——于是**仓库基线 LF 的报告被静默改成 CRLF**
+    （实测 35721 B → 35913 B / 192 行）。
+    这与 D1 的 EOL 事故同族（`2206f376` 修过同一族的另一处，漏了这里），
+    而且是"最不该动字节"的一步：归档动作改变了产物本身。
+    复制实现按字节，源是 LF 就存 LF、源是 CRLF 就存 CRLF（不反向破坏），BOM 亦原样保留。
+    基准用 `_AGENTS_BASE`（`AGENT_OPS_DIR` 重定向时不再崩溃）。
+    """
+    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    dest = RUNS_DIR / run["run_id"] / f"{run['role']}.report.md"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(src.read_bytes())
+    run["result_files"] = [str(dest.relative_to(_AGENTS_BASE))]
+
+
 @_with_registry_lock
 def cmd_finish(args: argparse.Namespace) -> None:
-    """`finish` 子命令：写终态、按**字节**保留原 EOL 归档结果文件、记录 `covers_through`。"""
+    """`finish` 子命令：写终态、按**字节**保留原 EOL 归档结果文件（行 17：守卫之后）、
+    记录 `covers_through`。"""
     data = _load_registry()
     r = _find_run(data, args.run_id)
     if args.status not in _terminal():
@@ -951,28 +2220,17 @@ def cmd_finish(args: argparse.Namespace) -> None:
     if args.error:
         r["error"] = args.error
     _apply_usage(r, args)
+    # 复盘行 17：`--result-file` 的**按字节复制**推迟到守卫**之后**
+    # （见下方 `_copy_result_file`）。
+    # 旧序是"先复制、后守卫" ⇒ 守卫拒绝时 `runs/<id>/` 已多出一份产物，而账本行仍是
+    # `running`（终态没写、产物却落了盘）= 孤儿产物：账本与目录互相矛盾。
+    # 此处只记"_待复制的源"，**不落盘、不建目录**（`RUNS_DIR.mkdir` 也一并推迟）。
+    result_src: Path | None = None
     if args.result_file:
         rel = Path(args.result_file)
         r["result_files"] = [str(rel)]
         if rel.exists():
-            RUNS_DIR.mkdir(parents=True, exist_ok=True)
-            dest = RUNS_DIR / r["run_id"] / f"{r['role']}.report.md"
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            # 审核 N10（2026-09-25）：**按字节复制**，不得改写换行。
-            # 原实现是 `dest.write_text(rel.read_text(encoding="utf-8"),
-            # encoding="utf-8")`：
-            # `read_text` 做 universal-newline 转换（CRLF→LF），`write_text` 又把 `\n` 写回
-            # `os.linesep`（Windows = CRLF）——于是**仓库基线 LF 的报告被静默改成 CRLF**
-            # （实测 35721 B → 35913 B / 192 行）。
-            # 这与 D1 的 EOL 事故同族（`2206f376` 修过
-            # 同一族的另一处，漏了这里），而且是"最不该动字节"的一步：
-            # 归档动作改变了产物本身。
-            # 复制实现按字节，源是 LF 就存 LF、源是 CRLF 就存 CRLF（不反向破坏），
-            # BOM 亦原样保留。
-            dest.write_bytes(rel.read_bytes())
-            # review 修正（Sprint-8 三查）：
-            # 基准用 _AGENTS_BASE（AGENT_OPS_DIR 重定向时不再崩溃）
-            r["result_files"] = [str(dest.relative_to(_AGENTS_BASE))]
+            result_src = rel
     if args.cost_override is not None:
         r["cost_est"] = {"total": args.cost_override, "currency": "CNY", "estimated": False, "override": True}
     else:
@@ -980,12 +2238,21 @@ def cmd_finish(args: argparse.Namespace) -> None:
     # TG-13：终态 → 算测量值（可测 = wall-clock + dur_minutes；
     # 退化 = declared + 标记 + null）
     _apply_measurement(r)
+    # G3/R-001：退化时间戳**拒绝写库**（逃逸口须具名；返回值非空 = 已具名豁免）。
+    _deg_note = _refuse_degenerate_finish(r, args)
+    # 行 17：守过去了才归档产物（拒绝路径 = 无复制、无新建目录、无写库）。
+    if result_src is not None:
+        _copy_result_file(r, result_src)
     _save_registry(data)
     flags = ",".join(r.get("measurement_flags") or [])
     print(f"finished {args.run_id} -> {r['status']} (cost_est={r['cost_est']})"
           f" dur={r.get('dur_minutes')} min msrc={r.get('measurement_source')}"
           + (f" ⚠退化={'+'.join(r['measurement_flags'])}"
              "（该时长不是测量值，闸门会对新 run 判 FAIL，请检查时钟/时间戳来源）" if flags else ""))
+    if _deg_note:
+        print(f"⚠已具名豁免退化：{_deg_note}"
+              "（该时长不是测量值；账本按 declared/null 记，"
+              "理由入该行 `degenerate_reason`）")
 
 
 @_with_registry_lock
@@ -1320,8 +2587,49 @@ def cmd_parse_report(args: argparse.Namespace) -> None:
     print(f"--- parsed {len(items)} findings ---")
 
 
+# `prices-derive` 重建 `auto` 段时逐键白名单。**每加一个 `auto` 键都要在这里登记**：
+# 未登记的键会在下次派生时**静默消失**（本键集过去只覆盖 5 个扁平价键，
+# 多档落地时正是靠这张表决定"派生后档位还在不在"——spec §4 红字 A / 台账 E9）。
+_AUTO_KEY_WHITELIST = ("max_input_tokens", "input_cost_per_token",
+                       "output_cost_per_token", "cache_read_input_token_cost",
+                       "cache_creation_input_token_cost", "_tiers", "_tier_scheme")
+
+
+def _prices_diff_lines(before: dict, after: dict) -> list[str]:
+    """`before` → `after` 的差异（只列键路径，不列值：价表里有长字典）。
+
+    修复验证复核 `run-…-114` minor 3：dry-run 档要能说清"会改什么"，
+    否则"默认不写盘"只是把风险换成"我不知道它会写什么"。
+    """
+    lines: list[str] = []
+
+    def walk(prefix: str, a: object, b: object) -> None:
+        if isinstance(a, dict) and isinstance(b, dict):
+            for key in sorted(set(a) | set(b)):
+                walk(f"{prefix}.{key}" if prefix else str(key),
+                     a.get(key), b.get(key))
+            return
+        if a != b:
+            lines.append(f"  {prefix}: {a!r} -> {b!r}")
+
+    walk("", before, after)
+    return lines
+
+
 def _derive_prices(args: argparse.Namespace | None = None) -> None:
-    """UC-10：从 litellm 捆绑价表派生 prices.json（人工覆盖段保留）。"""
+    """UC-10：从 litellm 捆绑价表派生 prices.json（人工覆盖段保留）。
+
+    TG-20 行 16：派生**不得丢档**。三条守卫见 `_AUTO_KEY_WHITELIST`、
+    `top_level_tier_keys` 与末尾的"派生后档位仍在"自检。
+
+    **默认 dry-run（修复验证复核 `run-…-114` minor 3）**：此前本命令**不带任何开关
+    也会写盘**（`args` 甚至没被读过），而它与 `fetch-prices --apply` 是同族命令 ——
+    "写盘"要靠 `--apply` 显式表达。取证时正是踩到这一点：在真仓跑了一次
+    `prices-derive`，`agents/runtime/prices.json` 被改写（语义逐键相同、仅字节层）。
+    现在：不带 `--apply` ⇒ 只算+上屏差异并打印"prices.json 未改动"；带 `--apply`
+    才在锁内落盘并回读"派生后档位仍在"。
+    """
+    apply = bool(getattr(args, "apply", False))
     prices = _load_prices()
     auto = {}
     litellm_json = None
@@ -1334,19 +2642,47 @@ def _derive_prices(args: argparse.Namespace | None = None) -> None:
         table = json.loads(litellm_json.read_text(encoding="utf-8"))
         for model in ("gpt-4o-mini", "text-embedding-3-large"):
             src = table.get(model, {})
-            auto[model] = {k: src.get(k) for k in
-                           ("max_input_tokens", "input_cost_per_token", "output_cost_per_token",
-                            "cache_read_input_token_cost", "cache_creation_input_token_cost")}
+            auto[model] = {k: src.get(k) for k in _AUTO_KEY_WHITELIST}
     else:
         print("WARN: 未找到 litellm 价表，仅保留人工覆盖段")
+    # 顶层多档键：入册的逐键转发；未入册的**点名报警**（不静默丢）
     out = {"auto": auto, "manual": prices.get("manual", {}),
            "scraped": prices.get("scraped", {}),  # M9：派生不丢弃官网抓取段
            "meta": prices.get("meta", {"currency": "USD", "fx_usd_cny": 7.2})}
+    carried = top_level_tier_keys(prices)
+    for key in carried:
+        out[key] = prices[key]
+    lost = unregistered_top_level_keys(prices)
+    if lost:
+        print(f"WARN: 顶层未入册的键 {lost} —— `prices-derive` 重建顶层时"
+              "**丢弃**它们。请加进 `_TOP_LEVEL_TIER_KEYS`（多档）或挪进对应段内。")
+    payload = json.dumps(out, ensure_ascii=False, indent=2).encode("utf-8")
+    if not apply:
+        # **默认档不落盘**：`PRICES_PATH.write_bytes` 只出现在 `--apply` 分支里
+        # （静态可核：本行与下一条打印合起来就是"dry-run 面真的不写"的证据）。
+        print("DRY-RUN（未带 `--apply`）：只计算并上屏差异，**不写盘**。")
+        for line in _prices_diff_lines(prices, out)[:20]:
+            print(line)
+        print(f"prices.json 未改动（dry-run）：auto={sorted(auto)}"
+              f" manual={sorted(out['manual'])}"
+              f" top_level_tier_keys={sorted(carried)}"
+              f"（字节数 would-be={len(payload)}）")
+        if lost:
+            print("WARN: dry-run 完成，但有未入册顶层键**将被丢弃**"
+                  "（见上）——档位可能已不完整")
+        return
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     with _prices_lock():  # 035：与 fetch-prices --apply 互斥
         # write_bytes：LF 字节写盘（1.47——文本模式在 Windows 会把 \n 翻成 \r\n）
-        PRICES_PATH.write_bytes(json.dumps(out, ensure_ascii=False, indent=2).encode("utf-8"))
-    print(f"prices.json 已派生：auto={sorted(auto)} manual={sorted(out['manual'])}")
+        PRICES_PATH.write_bytes(payload)
+    # 落盘后**回读**：判据 = "派生后档位仍在"（不是"我以为我写对了"）
+    scheme = tier_scheme_of(_load_prices())
+    two_tier = sorted(k for k, v in scheme.items() if v != _TIER_SCHEME_SINGLE)
+    print(f"prices.json 已派生：auto={sorted(auto)} manual={sorted(out['manual'])}"
+          f" top_level_tier_keys={sorted(carried)}"
+          f" two_tier_providers={two_tier}")
+    if lost:
+        print("WARN: 派生完成，但有未入册顶层键被丢弃（见上）——档位可能已不完整")
 
 
 def main() -> int:
@@ -1372,12 +2708,24 @@ def main() -> int:
     p.add_argument("--context-input-tokens", type=int)
     p.add_argument("--context-max-tokens", type=int)
     p.add_argument("--run-id", default="")
+    p.add_argument("--sprint", default="",
+                   help="TG-19 M-A：该 run 属于哪个 Sprint（判定域派生的显式身份；"
+                        "可空 = 未声明，闸门退回从 task_id 派生）")
     p.add_argument("--scope-source", default="",
                    help="TG-11：评审类 run 的 scope 来源，形如 impact-assessment:<run_id>")
     p.add_argument("--deviation", default="",
                    help="TG-11：自选/偏离〇查范围的理由（评审类 run 缺 scope-source 时必填）")
     p.add_argument("--coverage-anchor", default="",
                    help="TG-15：覆盖窗口下界 sha（默认 = 登记时的 HEAD，自动记录）")
+    p.add_argument("--over-budget", default="",
+                   help="2026-10-03 裁定 A 的**逃生门**（同日追加裁定：超过时也要有"
+                        "兜底策略）。当日派单数已达预算时，理由须同时满足四把机检锁"
+                        "才放行：① 含可核引用（D-YYMMDD-NN 条目号或全角引号内的用户"
+                        "原话）② 含**恰好一类**具名例外类别（收口／安全）③ 理由 ≥"
+                        "下限 ④ 同日次数未超上限（参数与下限一律现读 "
+                        "spend-budget.json::over_budget_escape）；理由落账本 "
+                        "budget_override_reason + budget_override。"
+                        "**未超预算时传它会被拒**（假留痕比无留痕更坏）")
 
     p = sub.add_parser("update")
     p.add_argument("run_id")
@@ -1400,6 +2748,20 @@ def main() -> int:
     p.add_argument("--usage-cache-write", type=int)
     p.add_argument("--covers-through", default="",
                    help="TG-15：覆盖窗口上界 sha（默认 = 收尾时的 HEAD，自动记录）")
+    p.add_argument("--allow-degenerate", action="store_true",
+                   help="R-001：退化时间戳仍写终态，须配 ≥10 字符理由")
+    p.add_argument("--degenerate-reason", default="",
+                   help="R-001：为何这条时长不可测（≥10 字符；不具名即拒）")
+
+    p = sub.add_parser("retract",
+                       help="复盘行 19：受控撤回**误登记**的 run"
+                            "（删账本行 ＋ 产物移入隔离区 ＋ 留痕 retractions[]）")
+    p.add_argument("run_id")
+    p.add_argument("--reason", required=True,
+                   help="撤回理由（≥10 字符）：凭什么说这条是误登记")
+    p.add_argument("--evidence", required=True,
+                   help="可核凭据路径（必须存在）：探针脚本产物 / 隔离账本对照记录")
+    p.add_argument("--by", default="main-agent")
 
     p = sub.add_parser("list")
     p.add_argument("--status")
@@ -1437,6 +2799,20 @@ def main() -> int:
                    help="回填理由（≥10 字符）：谁测的、怎么测的、依据哪条审核发现")
     p.add_argument("--by", default="main-agent")
 
+    p = sub.add_parser("set-started-at",
+                       help="2026-09-26 关闭期：受控回填已收尾 run 的 started_at"
+                            "（时间戳写坏 ⇒ zero_duration/missing_timestamp；"
+                            "**必须有 --evidence**，覆盖边界见 G2 复盘 §7）")
+    p.add_argument("run_id")
+    p.add_argument("--at", required=True,
+                   help="真实开始时刻（带时区的 ISO8601；不得晚于 ended_at / 现在）")
+    p.add_argument("--evidence", required=True,
+                   help="可核凭据路径（必须存在）：产物 mtime / 作业日志——"
+                        "拿不出证据就不得回填")
+    p.add_argument("--reason", required=True,
+                   help="回填理由（≥10 字符）：谁测的、怎么测的、依据哪条发现")
+    p.add_argument("--by", default="main-agent")
+
     p = sub.add_parser("set-anchor",
                        help="审核 N5/F1 + B2：受控回填已登记 run 的覆盖窗口端点 "
                             "coverage_anchor / covers_through（必须给理由）")
@@ -1465,6 +2841,28 @@ def main() -> int:
     p.add_argument("--reason", required=True,
                    help="回填理由（≥10 字符）：为什么回填、依据哪份记录/卡")
     p.add_argument("--by", default="main-agent")
+    p = sub.add_parser("set-sprint",
+                       help="TG-19 M-A 收尾：受控回填 run 的 Sprint 身份"
+                            "——判定域按它派生；必须给理由，同值=无操作")
+    p.add_argument("run_id")
+    p.add_argument("--sprint", required=True,
+                   help="新 Sprint 身份（`Sprint-17` / `17` / `017`；"
+                        "归不出编号即 fail-closed）")
+    p.add_argument("--reason", required=True,
+                   help="回填理由（≥10 字符）：为什么回填、依据哪份记录/卡")
+    p.add_argument("--by", default="main-agent")
+    p = sub.add_parser("set-result-files",
+                       help="受控回填**已收尾** run 的 result_files（产物漏归档时的"
+                            "唯一合法修复路径；文件须存在+必带理由+留痕）")
+    p.add_argument("run_id")
+    p.add_argument("--file", action="append", required=True,
+                   help="产物路径（**相对 agents/ 根**，形如 "
+                   "`runs/<run_id>/<role>.report.md`；"
+                        "可重复；每个都必须真实存在。二查 run-…-087 minor：这里原文写"
+                        "『相对仓库根』，与实现只认 agents 根的口径不符）")
+    p.add_argument("--reason", required=True,
+                   help="回填理由（≥10 字符）：为什么补、依据哪份产物")
+    p.add_argument("--by", default="main-agent")
     p = sub.add_parser("mark-produced",
                        help="D0-3(a)/TG-17⑤：把已登记 run **逐条**标注为「产出型 run」"
                             "（实现类工作挂评审 role，不承担内容覆盖）；必带理由+留痕")
@@ -1481,7 +2879,9 @@ def main() -> int:
     p.add_argument("--offline", action="store_true")
     p = sub.add_parser("parse-report")
     p.add_argument("report_file")
-    sub.add_parser("prices-derive")
+    sub.add_parser("prices-derive").add_argument(
+        "--apply", action="store_true",
+        help="真的写盘（默认只算 + 上屏差异，不落盘——复核 run-…-114 minor 3）")
 
     args = ap.parse_args()
     {
@@ -1490,8 +2890,12 @@ def main() -> int:
         "parse-report": cmd_parse_report, "prices-derive": _derive_prices,
         "round": cmd_round, "interrupt": cmd_interrupt, "close-sync": cmd_close_sync,
         "set-anchor": cmd_set_anchor, "set-scope": cmd_set_scope,
+        "set-sprint": cmd_set_sprint,
+        "set-result-files": cmd_set_result_files,
         "set-output-chars": cmd_set_output_chars,
+    "set-started-at": cmd_set_started_at,
         "mark-produced": cmd_mark_produced,
+        "retract": cmd_retract,
     }[args.cmd](args)
     return 0
 

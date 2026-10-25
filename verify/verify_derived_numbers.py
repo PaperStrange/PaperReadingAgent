@@ -22,12 +22,21 @@
 不参与；
 4. **上限只许下调**：与 `git HEAD` 版政策逐项比较，任何**上调**即 FAIL（防"把上限调高即变绿"）；
 5. **到期必须重评**：`review_by` 过期即 FAIL（没有到期日的豁免就是永久豁免）；
-6. **死键**：`baseline` 里指向已不存在文件的条目即 FAIL（失效条目必须删除）。
+6. **死键**：`baseline` 里指向已不存在文件的条目即 FAIL（失效条目必须删除）；
+7. **四类形态**（二查 `run-2026-09-25-code-review-087` minor 9 的原文 `:48`，2026-09-26
+   补齐）：`guard_required=N` / `E501=N/N` / `N 条反向对照` / `+N/−N、N 提交`——原先
+   `patterns` 只覆盖另外八类，这四类写成当期主张时**没有任何判据看得见**。
+   三则口径（裁定与实测见 policy 的 `_patterns_087_minor_9`）：`E501=N/N` 与
+   `ratchet_counts` 用负向前瞻分工（**不双计**）；`N 条反向对照` 只认 087 的字面序；
+   `+N/−N、N 提交` 只认变更集复合式（裸 `+N/−N` 的扩展会判红 3 个已无棘轮余量的文档，
+   本批不采纳）。
 
 ## 反向对照（`--selftest`，全自动 fixture）
 
 往合规文档注入 1 处"现测 N 卡"→ 必 FAIL 并点名文件:行；合规形态（命令 + "以输出为准"/
-带 sha 的时点读数）→ 必须 PASS；上限上调 → FAIL；`review_by` 过期 → FAIL；死键 → FAIL。
+带 sha 的时点读数）→ 必须 PASS；上限上调 → FAIL；`review_by` 过期 → FAIL；死键 → FAIL；
+四类形态各自命中一次、且 `E501=N/N` 不双计；锚口径的三条边界（同行豁免／邻行不豁免／
+sha 区间豁免）各一条；条数见末行 `ALL PASS (N assertions)`。
 
 ## 用法
 
@@ -38,7 +47,7 @@
 
 from __future__ import annotations
 
-VERIFY_META = {'features': '派生数字不得手抄：按文件棘轮约束"现测/实测 <数字>"式当期主张（断言数/卡数/文件数/脚本数/字节/C 级条数/棘轮计数）；生成物豁免、上限只减不增、review_by 到期即 FAIL；含 6 条反向对照自检', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 4, 'routes': [], 'requires': ['none']}
+VERIFY_META = {'features': '派生数字不得手抄：按文件棘轮约束"现测/实测 <数字>"式当期主张（断言数/卡数/文件数/脚本数/字节/C 级条数/棘轮计数）；生成物豁免、上限只减不增、review_by 到期即 FAIL；反向对照条数见末行 `ALL PASS (N assertions)`', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 4, 'routes': [], 'requires': ['none']}
 
 import json
 import re
@@ -50,7 +59,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from verify.agent_policy import load_policy  # noqa: E402
+from verify.agent_policy import load_policy, path_in_head  # noqa: E402
 
 if not __debug__:  # noqa: SIM108 —— -O/PYTHONOPTIMIZE 会剥离 assert；守卫必须是普通语句，不能是 assert
     raise SystemExit("本闸门不得在 -O/PYTHONOPTIMIZE 下运行（`__debug__` 为 False ⇒ 判据会被整体剥离）——见 3-LEARNED 1.65")
@@ -105,9 +114,17 @@ def doc_files(root: Path = ROOT) -> list[Path]:
 def scan_text(text: str) -> list[tuple[int, str, str, str]]:
     """返回 [(行号, 判据 id, 命中文本, hint)]。
 
-    **时点豁免（行级）**：同一行里带**时点锚**（日期 / sha / "以…为准"）的读数属规范允许的
-    "② 标明时点的历史读数"，不判违规——判据治的是"把某个数字当成**当期**事实"这种写法。
-    豁免只到行级、且必须同行可见：把数字写在前面、锚点写在下一段不算。
+    **时点豁免（行级、必须同行可见）**：同一行里带**时点锚**（日期 / sha / sha 区间 /
+    "以…为准"）的读数属规范允许的"② 标明时点的历史读数"，不判违规——判据治的是
+    "把某个数字当成**当期**事实"这种写法。豁免只到行级：把数字写在前面、锚点写在
+    下一行不算。
+
+    **口径裁定（2026-09-26，G2 关闭批；实测见 policy 的 `_patterns_087_minor_9`）**：
+    行首的日期（含 sprint 表格行的首个日期单元格）**仍算**时点锚。收窄它有两个方案，
+    都实测过、都**不在本批**采纳：①"日期必须伴随声明（时点读数/不得当作现值…）"
+    ⇒ 一批历史文档立刻判红（棘轮无余量、无法在批内收平）；②"行首表格日期不算锚"
+    ⇒ 也会判红一个文档，而那一行的日期本就是该行自己的时点（属假阳性）。
+    两者都需要专门的文档清理批次，不能靠收窄判据替代。
     """
     hits: list[tuple[int, str, str, str]] = []
     for i, line in enumerate(text.splitlines(), start=1):
@@ -182,21 +199,56 @@ def evaluate(counts: dict[str, list[tuple[int, str, str, str]]], *, baseline: di
             if path in existing_files:
                 continue
             # **分支差异 ≠ 死键**（C6，2026-09-25 sync PR #53 的 CI 实测）：
-            # baseline 里大量条目在
-            # `docs/iteration/**`（windows-only）下，
-            # 而 `main`/同步分支没有该目录 ⇒ 这些条目"文件不在"
-            # 是**分支差异**，不是"失效条目"。判据改为按**父目录**是否存在区分（不猜、
-            # 不含糊）：
-            #   * 父目录存在、文件不在 → 真死键 → FAIL（原判据，方向不变）；
-            # * 父目录也不存在 → 该文件所属的树在本分支根本没有 → 记一条 NOTE，
-            # 不判问题。
-            parent = (root / path).parent if root is not None else None
-            if parent is not None and not parent.exists():
-                warnings.append(f"{path}: 所属目录不存在（分支差异，如 windows-only 的 "
-                                f"`docs/iteration/**`）→ 跳过死键判据")
+            # baseline 里大量条目在 `docs/iteration/**`（windows-only）下，而
+            # `main`/同步分支
+            # 没有该目录 ⇒ 这些条目"文件不在"是**分支差异**，不是"失效条目"。
+            #
+            # **判据换成直接证据（TG-17 G2 条目 7，2026-09-25
+            # D5）**：旧实现按"**父目录**是否存在"
+            # 区分，于是把"分支本就没有"与"**本分支上被整目录删除**"混为一谈——复核实测在
+            # windows
+            # 提交的临时 worktree 里 `rm -r docs/iteration/pre-research` 后闸门仍
+            # rc=0（只报 NOTE），
+            # 而修前那是硬 FAIL；更糟的是**在不存在目录下新增一个基线键 =
+            # 静默预留豁免**。
+            # 现按 `git ls-tree HEAD -- <路径>` 判：
+            #   * 该文件**或其所属目录**在 HEAD 的树里存在、工作区却没有 → **被删** ⇒
+            # FAIL；
+            #   * HEAD 里也没有 → 该树在本分支根本没有 ⇒
+            # NOTE（真分支差异，且**不允许**在这里新增键，
+            #     见 `baseline_fresh_keys` 判据）。
+            if path_in_head(root, path):
+                problems.append(
+                    f"[棘轮] baseline 里的 {path} 在 `HEAD` "
+                    f"的提交树里**存在**、工作区却不存在 ⇒ "
+                    f"这是**被删**（不是分支差异）→ "
+                    f"FAIL：要么恢复文件，要么删除该失效条目"
+                    f"（留着它等于给一个未来同名文件预留豁免）")
                 continue
-            problems.append(f"[棘轮] baseline 里的 {path} 已不存在（死键）→ 失效条目必须删除"
-                            f"（留着它等于给一个未来同名文件预留豁免）")
+            parent = str(Path(path).parent).replace("\\", "/")
+            if parent not in (".", "") and path_in_head(root, parent):
+                problems.append(
+                    f"[棘轮] baseline 里的 {path} 已不存在，而它的目录 {parent} 在 "
+                    f"`HEAD` 里存在 ⇒ "
+                    f"该文件**在本分支上被删**（死键）→ 失效条目必须删除"
+                    f"（别用『父目录也不存在』这种间接推断放行）")
+                continue
+            if previous is not None and path not in previous:
+                # F2
+                # 的**第二个洞**（复核原文）：旧放宽让"在不存在目录下新增一个基线键"变成
+                # 静默预留豁免——现在"路径在 HEAD
+                # 里根本不存在"与"这个键是新加的"两条同时成立
+                # ⇒ 直接 FAIL。旧键（`previous` 里已有）才允许按分支差异记 NOTE。
+                problems.append(
+                    f"[棘轮] baseline **新增**了 {path}，而该路径在本分支的 `HEAD` "
+                    f"树里根本不存在 ⇒ "
+                    f"**在不存在的地方新增上限 = 静默预留豁免**（复核 F2 的第二个洞）→ "
+                    f"FAIL："
+                    f"删掉这个键，或先把文件真实建出来")
+                continue
+            warnings.append(f"{path}: 该路径与其所属目录在 `HEAD` 的树里都不存在"
+                            f"（分支差异，如 windows-only 的 `docs/iteration/**`）→ "
+                            f"跳过死键判据")
     return problems, warnings
 
 
@@ -235,6 +287,34 @@ def selftest() -> int:
     ok("反向对照 F 基线死键（文件已不存在）→ FAIL",
        any("死键" in p for p in problems), f"problems={problems[:1]}")
 
+    # ---- TG-17 G2 条目 7（复核 F2；2026-09-25 D5）：分支差异 vs 被删——证据来自
+    # git（`git ls-tree HEAD`），不是"父目录在不在"这种间接推断
+    def _ev_case(baseline: dict[str, int], previous: dict[str, int] | None):
+        return evaluate({}, baseline=baseline, default_cap=0, review_by="2099-01-01",
+                        today="2026-09-25", previous=previous, existing_files=set(), root=ROOT)
+
+    problems, _ = _ev_case({"docs/1-WORKFLOW.MD": 0}, {"docs/1-WORKFLOW.MD": 0})
+    ok("反向对照 J 基线键指向的文件在 `HEAD` 里存在、工作区被删 → FAIL 且点名『被删』"
+       "（旧实现按父目录推断，会把它当分支差异放行）",
+       any("被删" in p for p in problems), f"problems={problems[:1]}")
+    # K 的载体必须**在任何分支的 `HEAD` 里都存在**（二查 `run-…-088` critical 2 的实测：
+    # 第一版用 `docs/iteration/**`——那是 windows-only 子树 ⇒ 在 main 上 `path_in_head()`
+    # 为假 ⇒ 判据不触发、自检自己红，而真数据判据本来是 PASS 的）。`docs/` 两个分支都有。
+    problems, _ = _ev_case({"docs/no-such-file-xyz.md": 0},
+                           {"docs/no-such-file-xyz.md": 0})
+    ok("反向对照 K 目录在 `HEAD` 里存在、文件不在 → FAIL 且点名『在本分支上被删』"
+       "（载体取 `docs/`，两个分支的 `HEAD` 都有 ⇒ main 上同样可跑）",
+       any("在本分支上被删" in p for p in problems), f"problems={problems[:1]}")
+    problems, _ = _ev_case({"docs/no-such-tree-xyz/a.md": 0}, {})
+    ok("反向对照 L **新增**基线键而该路径在 `HEAD` 里根本不存在 → FAIL"
+       "（『在不存在的地方新增上限 = 静默预留豁免』，F2 的第二个洞）",
+       any("静默预留豁免" in p for p in problems), f"problems={problems[:1]}")
+    _, warnings = _ev_case({"docs/no-such-tree-xyz/a.md": 0},
+                           {"docs/no-such-tree-xyz/a.md": 0})
+    ok("反向对照 M 同一条目若是**旧键**（HEAD 政策里已有）→ 只记 NOTE"
+       "（真分支差异，不误报）",
+       any("分支差异" in w for w in warnings), f"warnings={warnings[:1]}")
+
     with tempfile.TemporaryDirectory() as td:
         fixture = Path(td) / "docs" / "x.md"
         fixture.parent.mkdir(parents=True, exist_ok=True)
@@ -252,6 +332,41 @@ def selftest() -> int:
         ok("反向对照 I 同行带时点锚（日期/sha）的读数 → 豁免（规范允许的『② 时点读数』形态）",
            scan_text(fixture.read_text(encoding="utf-8")) == [],
            f"hits={scan_text(fixture.read_text(encoding='utf-8'))[:1]}")
+
+    # ---- 087-minor-9 的四类形态 + 锚口径（2026-09-26 G2 关闭批）----------------
+    # 四类逐条对应 087 原文 `:48`；判据 id 与口径见 policy 的 `_patterns_087_minor_9`。
+    four = ("`.venv\\Scripts\\python.exe verify\\verify_gate_integrity.py` ⇒ "
+            "guard_required=9；棘轮 `E501=2493/2494`；"
+            "`--selftest` 自检 9 条反向对照；变更集 +5565/−147、24 提交")
+    got = [pid for _ln, pid, _t, _h in scan_text(four + "\n")]
+    ok("反向对照 N 087 的四类形态（guard_required / E501=N/N / N 条反向对照 / "
+       "+N/−N、N 提交）各自命中且**只命中一次**",
+       sorted(got) == ["diffstat", "gate_required", "ratchet_pair", "replay_count"],
+       f"ids={got}")
+    pair_hits = scan_text("棘轮 `E501=2493/2494` 见末行\n")
+    single_hits = scan_text("棘轮 `E501=2493` 见末行\n")
+    ok("反向对照 N2 `E501=N/N` 不与 `ratchet_counts` 双计"
+       "（成对写法记 1 处、单值写法仍记 1 处 ⇒ 覆盖面不减、计数不虚增）",
+       [pid for _l, pid, _t, _h in pair_hits] == ["ratchet_pair"]
+       and [pid for _l, pid, _t, _h in single_hits] == ["ratchet_counts"],
+       f"pair={pair_hits[:1]} single={single_hits[:1]}")
+    same_line = scan_text("2026-09-25 时点读数：guard_required=9\n")
+    next_line = scan_text("guard_required=9\n2026-09-25 时点读数\n")
+    ok("反向对照 N3 豁免**只到行级、必须同行可见**：锚点在下一行 ⇒ 不豁免",
+       same_line == [] and next_line != [],
+       f"same={same_line[:1]} next={next_line[:1]}")
+    ok("反向对照 N4 sha **区间**（`` `sha1..sha2` ``）与单个 sha 同等有效 ⇒ 该行豁免"
+       "（旧正则认不出区间 ⇒ 对合规的变更集写法是假阳性）",
+       scan_text("变更集 +5565/−147、24 提交（`1cad0b7..9945d6d`）\n") == [],
+       f"hits={scan_text('变更集 +5565/−147、24 提交（`1cad0b7..9945d6d`）')[:1]}")
+    problems, _ = evaluate({"docs/a.md": scan_text("guard_required=9 见末行\n")},
+                           baseline={}, default_cap=0, review_by="2099-01-01",
+                           today="2026-09-26", previous=None,
+                           existing_files={"docs/a.md"})
+    ok("反向对照 N5 四类形态走真判据（`evaluate`，上限 0）"
+       "⇒ FAIL 并点名文件:行与判据 id",
+       any("docs/a.md" in p and "gate_required" in p for p in problems),
+       f"problems={problems[:1]}")
     print(f"\nALL PASS ({PASSED} assertions)")
     return 0
 
@@ -276,6 +391,10 @@ def main() -> int:
                                   root=ROOT)
     for w in warnings[:20]:
         print(f"WARN: {w}")
+    # 截断必须**自曝**（复核 `088` minor：WARN 被 `[:20]` 吞掉后，
+    # 屏幕上与"只有 20 条"不可区分——静默截断即"没查也说查过了"）。
+    if len(warnings) > 20:
+        print(f"WARN: … 另有 {len(warnings) - 20} 项未列出（本行是截断计数，不是全部）")
     if problems:
         print(f"DERIVED-NUMBERS FAIL（{len(problems)} 项）：")
         for p in problems[:40]:

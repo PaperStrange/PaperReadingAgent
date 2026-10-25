@@ -25,14 +25,16 @@ clobber（一方删掉另一方正在用的探针 → 两边都 rc=1，
 """
 
 from __future__ import annotations
-VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1~UC-19（离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库，UC-19=TG-8 离线开关：三入口拒绝+反向对照+配置面+两侧一致）', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 20, 'routes': [], 'requires': ['none']}
+VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1 起（**编号区间与条数以末行 `ALL PASS (N assertions)` 现跑为准，勿在本串写死**；离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库，UC-19=TG-8 离线开关：三入口拒绝+反向对照+配置面+两侧一致，UC-27=成本预算阻断与**兜底阶梯**（2026-10-03 用户裁定 A：**账本读数**当日派单数>=预算即拒绝 `register`（点名读数/预算/逃生门），含空账本第一笔/别的 role/未超预算乱传/配置坏 fail-closed/未配置预算未执行 真驱动反向对照；金额轴不阻断并在文案里标注度量仪作用域缺陷。**同日追加裁定「超过时也要有兜底策略」**：逃生门收紧要**四把锁**——① 理由必须含可核引用（`D-YYMMDD-NN` 条目号或全角引号内的用户原话；**自述理由不算数**，且条目号两侧挡 [0-9A-Za-z] 与汉字，`D-251002-01之外` 不得冒充）② 同日次数上限（超限拒绝并点名已用几次/被谁用掉）③ 恰好一类具名例外类别（收口／安全）④ 理由下限；另含兜底建议上屏、被拒派单进 `dispatch-refusals.jsonl`（字段完整）、真仓缺预算文件 fail-closed vs `AGENT_OPS_DIR` 重定向档判未执行 两侧对照））', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 20, 'routes': [], 'requires': ['none']}
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -43,9 +45,61 @@ FUNCTIONS = ROOT / "agents" / "functions"
 # 便于"启动即清理历史遗留 + 收尾断言从未创建"两处共用同一份字面量。
 PROBE_SPECS = ("tg15-probe-role.md", "tg15-undeclared-role.md")
 
+# R-001（G3）：`finish` 的写入口 fail-closed 落库后，**同秒收尾**的夹具会被
+# （正确地）拒绝（`_now()` 秒级截断 ⇒ `started_at == ended_at` ⇒ `zero_duration`）。
+# 本文件的合成夹具断的是**别的**判据（流转/价表/字节/EOL/窗口/留痕），
+# 时长对它们**本无意义** ⇒ 逐条显式传下面这组参数，即"显式记账为非测量"，
+# **不是**为了让夹具变绿而放宽守卫：守卫的拒绝路径由 UC-24 三条反向对照真跑。
+DEGEN_FIXTURE_REASON = "fixture: 同秒收尾，非真实测量（R-001）"
+DEGEN_FIXTURE_ARGS = ("--allow-degenerate", "--degenerate-reason", DEGEN_FIXTURE_REASON)
+
+# UC-27（2026-10-03 追加裁定「超过时也要有兜底策略」）：**兜底阶梯**的夹具常量。
+# 为什么放模块级：UC-27 的预算文件内容与"逃生门四把锁"的取值必须在**多处**
+# 用同一份字面量（正向放行／反向拒绝各用到），否则改一处忘一处会让判据自相矛盾。
+# 这两条形态本身**不是**政策真源（真源＝预算文件 `over_budget_escape`）；
+# 这里只是"夹具也照同一形态写"——真仓文件是否**带**这四把锁，由 UC-27 ⑫ 现读现核。
+UC27_PATTERNS = ["(?<![0-9A-Za-z\\u4e00-\\u9fff-])D-\\d{6}-\\d{2}"
+                 "(?![0-9A-Za-z\\u4e00-\\u9fff-])",
+                 "[\u201c\u300c][^\u201d\u300d]{4,}[\u201d\u300d]"]
+UC27_KINDS = {"\u6536\u53e3": "\u6536\u53e3\u7c7b\uff08\u5728\u98de\u6279\u6b21"
+                              "\u6536\u5c3e\uff09",
+              "\u5b89\u5168": "\u5b89\u5168\u7c7b\uff08\u6570\u636e\u5b8c\u6574"
+                              "\u6027/\u9632\u4e22\u8bc1\uff09"}
+# 「用户原话」形态的逃生门理由（引用＝全角引号内的用户原话片段）＋类别「收口」。
+UC27_ESCAPE_QUOTE = ("\u7528\u6237 2026-10-03 \u539f\u8bdd\u201c\u8d85\u8fc7"
+                     "\u65f6\u4e5f\u8981\u6709\u515c\u5e95\u7b56\u7565\u201d\uff1b"
+                     "\u672c\u7b14\u4e3a**\u6536\u53e3\u7c7b**\uff08\u5728\u98de"
+                     "\u6279\u6b21\u6536\u5c3e\uff09")
+# 「登记条目号」形态（引用＝`D-\d{6}-\d{2}`）＋具名类别「安全」。
+UC27_ESCAPE_ENTRY = ("D-251003-01 \u8981\u6c42\uff1b\u672c\u7b14\u4e3a**\u5b89"
+                     "\u5168\u7c7b**\uff08\u9632\u4e22\u8bc1\uff09")
+# 同日次数上限的**生效日**：必须早于"今天"（否则今天的行会不被计数 ⇒ 上限形同
+# 虚设；UC-27 ㉔ 把真仓那格钉成"过去的固定日期"）。
+UC27_COUNTS_FROM = "2020-01-01"
+# **自述理由**（无任何可核引用、无具名类别）——正是用户追加裁定要堵的形态。
+UC27_SELFREPORT = ("\u672c\u7b14\u786e\u5c5e\u4f8b\u5916\uff1a\u6211\u5224\u65ad"
+                   "\u8fd9\u662f\u7236\u4ee3\u7406\u88c1\u5b9a\u7684\u515c\u5e95"
+                   "\u9636\u68af\u9002\u7528\u60c5\u5f62\uff0c\u6545\u8d70\u672c"
+                   "\u9003\u751f\u95e8\u3002" + "\u5df2\u786e\u8ba4\u5b8c\u6bd5\u3002")
+
+# UC-20（行 16）选档夹具用的**固定时刻**（UTC 写法；UTC+8 = Asia/Shanghai）；
+# 2026-09-28 是周一：
+#   OFF  = 00:30Z→00:35Z = 08:30→08:35 CST → 高峰前（空闲）；
+#   PEAK = 02:00Z→02:05Z = 10:00→10:05 CST → 上午高峰窗口内；
+#   SPAN = 03:00Z→05:00Z = 11:00→13:00 CST → 前 1h 高峰 + 后 1h 空闲（§3.3 跨档）。
+# 固定值而不是 `now()`：判据必须**可复跑**（用当前时刻的闸门会在白天自己变红）。
+_SH = timezone(timedelta(hours=8))
+ISO_OFF_PEAK = "2026-09-28T00:30:00+00:00"
+ISO_OFF_END = "2026-09-28T00:35:00+00:00"
+ISO_PEAK = "2026-09-28T02:00:00+00:00"
+ISO_PEAK_END = "2026-09-28T02:05:00+00:00"
+ISO_SPAN_START = "2026-09-28T03:00:00+00:00"
+ISO_SPAN_END = "2026-09-28T05:00:00+00:00"
+
 sys.path.insert(0, str(ROOT))
 
-from verify.agent_policy import ENV_POLICY, Attribution, load_policy  # noqa: E402
+from verify.agent_policy import (ENV_POLICY, Attribution, load_policy,  # noqa: E402
+                                 path_in_head)
 
 # TG-15：角色集合**不再在本文件复制一份**（原先这里写死 {"code-review","doc-audit"}，与
 # agent-ops.py 的 `_REVIEW_ROLES`、verify_close_readiness.py 的 `CLOSE_ROLES` 三处并存 →
@@ -56,6 +110,92 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 PASSED = 0
+# M-B（`TG-19` 反空转不变式）：**真账本**判据"没执行"的具名原因。
+# 空 = 真账本判据真的跑过；非空 = 本环境没有账本。
+# 它决定**最终判决行**的措辞（有 SKIP 时不得打印 `ALL PASS` 横幅；口径同
+# `verify_card_index.py::verdict_line` 的判决行单一真源）**与最终退出码**
+# （`verdict_exit`：判决行说"不是通过"，rc 就必须同口径，两个通道不许互相矛盾）。
+SKIPPED: list[str] = []
+LEDGER_REL = "agents/runtime/registry.json"
+# M-B（`TG-19` 反空转不变式）：SKIP 档的**退出码**。判决行说"本档不是通过"、
+# 退出码就必须同口径（见 `verdict_exit` 的推导）。3 ＝ 本仓既有的"判据未执行"
+# 非零码（`scripts/spend-report.py` / `agents/spend-budget.json --check`）。
+SKIP_EXIT = 3
+
+# 台账 E1 / 行 7：归一化是**生产逻辑**，本文件是写入侧的真入口测试
+# （`register --sprint` / `set-sprint`）。一致性向量表在 spec（唯一权威），
+# 与读取侧 `verify_close_readiness.py` 解析**同一张表**——两侧不共用实现、
+# 只共用输入与期望值，这样"判据不导入被测实现"与"两侧同输入同输出"同时成立。
+SPRINT_VECTOR_SPEC = ROOT / ("docs/iteration/phases/testing-governance/"
+                             "2026-09-26-sprint-id-normalization-spec.MD")
+
+
+def _vec_value(cell: str) -> object:
+    """向量表哨兵 → Python 值：`(null)` → None、`(empty)` → 空串。"""
+    if cell == "(null)":
+        return None
+    return "" if cell == "(empty)" else cell
+
+
+class SpecAbsentOnBranch(Exception):
+    """向量表 spec **不在本分支**（不是缺陷，是分支差异）。
+
+    复核 `run-…-105` critical 2：spec 落在 `docs/iteration/**`（windows-only
+    治理子树），
+    main 上根本没有 ⇒ 旧实现的无保护 `read_text()` 直接 `FileNotFoundError`、
+    **rc=1**（CI 上必红），而正确语义是"这条判据在本分支无从执行 = 显式 SKIP"。
+    """
+
+
+def spec_branch_absent() -> bool:
+    """spec 是"本分支没有"还是"被删"——证据都是 git（口径同
+    `verify_decision_register.py` 的三分法）。
+
+    返回 True **仅当** spec 既不在工作区、也不在本分支 `HEAD` 的提交树里
+    （真·分支差异）。在 HEAD 里存在而工作区没有 ⇒ 是**被删** ⇒ 返回 False，
+    调用方照旧 FAIL（分支差异不是"删了也能放行"的后门）。
+    """
+    rel = SPRINT_VECTOR_SPEC.relative_to(ROOT).as_posix()
+    return not path_in_head(ROOT, rel)
+
+
+def skip_spec_absent(criterion: str) -> None:
+    """spec 不在本分支 ⇒ 显式 SKIP：上屏点名、**不计入 `PASSED`**、判决行可见。"""
+    reason = f"{criterion}（spec=absent-on-branch (SKIP)）"
+    if reason not in SKIPPED:
+        SKIPPED.append(reason)
+    print(f"SKIP[spec-absent-on-branch] {criterion}："
+          f"{SPRINT_VECTOR_SPEC.relative_to(ROOT).as_posix()} 不在本分支"
+          f"（windows-only 治理子树）⇒ 该判据只在本机/windows 分支执行"
+          f"——**本行不是 PASS**")
+
+
+def _spec_vector(section: str) -> list[tuple[str, object, object]]:
+    """从 spec 解析 `(id, 输入, 期望值)`；列位由**表头行**定位。
+
+    读不到 → 抛（调用方判 FAIL）：判据未被触发时**不得**当通过。
+    spec 不在本分支 ⇒ 抛 `SpecAbsentOnBranch`（调用方转显式 SKIP，**不是 PASS**）。
+    """
+    if spec_branch_absent():
+        raise SpecAbsentOnBranch(section)
+    lines = SPRINT_VECTOR_SPEC.read_text(encoding="utf-8").splitlines()
+    hits = [i for i, line in enumerate(lines) if section in line]
+    if not hits:
+        raise AssertionError(f"向量表缺该节：{section}")
+    rows: list[list[str]] = []
+    for line in lines[hits[0] + 1:]:
+        line = line.strip()
+        if not line.startswith("|"):
+            if rows:
+                break
+            continue
+        if line.endswith("|"):
+            rows.append([c.strip() for c in line[1:-1].split("|")])
+    head = [c.strip("`") for c in rows[0]]
+    i_id, i_in, i_want = (head.index(k) for k in ("id", "输入", "期望值"))
+    return [(c[i_id].strip("`"), _vec_value(c[i_in].strip("`")),
+             _vec_value(c[i_want].strip("`")))
+            for c in rows[1:] if set("".join(c)) - set("-: ")]
 
 
 def run(args: list[str], env: dict, check: bool = False, raw: bool = False) -> subprocess.CompletedProcess:
@@ -85,6 +225,124 @@ def ok(name: str, cond: bool, detail: str = "") -> None:
     assert cond, f"{name} FAIL: {detail}"
     PASSED += 1
     print(f"PASS: {name} {detail}")
+
+
+def real_ledger_path() -> Path:
+    """**真实**账本路径（区别于 `AGENT_OPS_DIR` 下的夹具账本）。"""
+    return ROOT / LEDGER_REL
+
+
+def read_real_ledger(path: Path) -> dict | None:
+    """读真账本：**文件不存在** → `None`；坏账本 → 抛（fail-closed）。
+
+    两种"没有"必须分开（口径同 `verify_ledger_measurement.py`）：
+      * 不存在 = 本环境没有账本可比（fresh clone：`.gitignore` 忽略
+        `agents/runtime/*` ⇒ CI 全新 checkout 必然没有）；
+      * 存在但 JSON 非法 / 顶层结构非法 = **真缺陷** ⇒ 照旧抛出。
+
+    返回 `None` 是**唯一**的 SKIP 条件（调用方转 `skip_ledger_absent`）。
+    """
+    if not path.is_file():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or not isinstance(data.get("runs"), list):
+        raise AssertionError(f"真账本结构非法（顶层须含 runs 数组）：{path}")
+    return data
+
+
+def skip_ledger_absent(criterion: str) -> None:
+    """账本不存在 ⇒ 显式 SKIP：上屏点名、**不计入 `PASSED`**、判决行可见。"""
+    reason = f"{criterion}（ledger=absent (SKIP)）"
+    if reason not in SKIPPED:
+        SKIPPED.append(reason)
+    print(f"SKIP[ledger-absent] {criterion}：{LEDGER_REL} 不存在"
+          f"（fresh clone：`.gitignore` 忽略 `agents/runtime/*`）"
+          f"⇒ 该判据只在本机/有账本的环境执行——**本行不是 PASS**")
+
+
+def verdict_line(assertions: int, skipped: list[str]) -> str:
+    """最终判决行（**单一真源**：SKIP 优先于 PASS，二者互斥）。
+
+    横幅从 skip 原因里**派生**（不是写死 `ledger-absent`）：两种 SKIP 都要可见——
+    `ledger-absent`（`agents/runtime/*` 被 gitignore，fresh clone 无账本）与
+    `spec-absent-on-branch`（向量表 spec 在 windows-only 子树、main 上没有）。
+    两处都用同一句"**本档不是通过**"。
+    """
+    if skipped:
+        spec_absent = any("spec=absent-on-branch" in s for s in skipped)
+        cats = "spec-absent-on-branch" if spec_absent else "ledger-absent"
+        return (f"AGENTOPS SKIP[{cats}]（{len(skipped)} 条判据未执行"
+                f"：{'；'.join(skipped)}）——其余 {assertions} 条已验，"
+                f"**本档不是通过**")
+    return f"ALL PASS ({assertions} assertions)"
+
+
+def verdict_exit(skipped: list[str]) -> int:
+    """最终**退出码**（**单一真源**，与 `verdict_line` 同口径：SKIP 与 PASS 互斥）。
+
+    要治的是什么（本批实测，2026-09-30）：判决行**已经**写"本档不是通过"，
+    但 `main()` 照旧 `return 0` ⇒ 两个通道互相矛盾：
+
+      * **判决行通道**说"不是通过"；**退出码通道**说"成功"。
+      * 只看 rc 的消费方（CI 步骤、shell `&&`、以及 `run_suite.py` 的
+        "非零退出 ⇒ 判红"那条既有判据）会把它读成**通过**。
+      * `run_suite.py` 行 34 的判据②正是为这一形态写的（"具名 SKIP 横幅 ＋ 退 0"），
+        所以套件**本来就**会判红——但它给的是"SKIP 冒充通过"这条红，
+        而不是"该判据在本分支未执行"这条红。**两处口径不一致本身就是缺陷**。
+
+    为什么是 3（而不是照抄 `verify_close_readiness.py` 当年的 rc=0）：
+      本仓对"判据没被执行就不算通过"既有的**非零**先例就是 `rc=3`：
+      `scripts/spend-report.py`（复盘 §5 行 40）与 `agents/spend-budget.json --check`
+      （行 37）的 SKIP 档一律 rc=3。故这里沿用 3，让两个通道同口径。
+      **2026-09-30 本批**：`verify_close_readiness.py` 的 SKIP 档（同族第二处、
+      absent 侧实测的既有实例）也已按这里的同一真源做法收紧为 rc=3——
+      它的 `verdict_line`／`verdict_exit` 与判决行同源，"判决行说不是通过、
+      退出码说成功"这一形态在本仓**不再有任何在册实例**。
+
+    **不是放宽判据**：这是把"退 0"收紧成"退 3"；真判据一条不少跑（windows 上
+    spec 在位 ⇒ `skipped` 为空 ⇒ 照旧 rc=0 ＋ `ALL PASS`）。
+    """
+    return SKIP_EXIT if skipped else 0
+
+
+def price_shape_problems(frozen: dict, real: dict) -> list[str]:
+    """冻结副本解析结果 ↔ 真实价表模型的**形状契约**（纯函数，反向对照直接驱动）。
+
+    判据只有三条，都是"改了一边没改另一边"**必然**踩到的：
+      * 模型集（名字＋个数）——页面换模型/改列数时两侧立刻分叉；
+      * 每模型的两档键都在（`_tiers.peak` / `_tiers.off_peak`）——掉档位即分叉；
+      * 两档的四键**键集**相同。
+    值只比一条**本仓不变量**：扁平键 == `_tiers.peak`（镜像高峰）。
+    官方单价本身不比——它随调价变，比它等于把闸门变成"价格没变"的哨兵。
+
+    别名条目（真实价表里的 `_alias_of`，如 `deepseek-v4-flash`）**不参与**：
+    页面不会列出别名，把它们算进"模型集"就是把本仓的别名约定当成官方形状。
+    """
+    problems: list[str] = []
+    real = {k: v for k, v in real.items()
+            if not (isinstance(v, dict) and v.get("_alias_of"))}
+    if set(frozen) != set(real):
+        problems.append(f"模型集不同：副本={sorted(frozen)} 真实={sorted(real)}")
+    for name in sorted(set(frozen) & set(real)):
+        tiers, ftiers = real[name].get("_tiers"), frozen[name].get("_tiers")
+        if not isinstance(tiers, dict) or not isinstance(ftiers, dict):
+            got = f"副本={type(ftiers).__name__} 真实={type(tiers).__name__}"
+            problems.append(f"{name}: 缺 _tiers（{got}）")
+            continue
+        if set(tiers) != set(ftiers):
+            problems.append(f"{name}: 档位键不同 副本={sorted(ftiers)}"
+                            f" 真实={sorted(tiers)}")
+            continue
+        for tier in sorted(tiers):
+            if set(tiers[tier]) != set(ftiers[tier]):
+                problems.append(f"{name}.{tier}: 四键集不同 副本={sorted(ftiers[tier])}"
+                                f" 真实={sorted(tiers[tier])}")
+        cost_keys = ("input_cost_per_token", "output_cost_per_token",
+                     "cache_read_input_token_cost", "cache_creation_input_token_cost")
+        flat = {k: real[name].get(k) for k in cost_keys}
+        if any(v is not None for v in flat.values()) and flat != tiers.get("peak"):
+            problems.append(f"{name}: 扁平键未镜像 _tiers.peak（本仓不变量）")
+    return problems
 
 
 def _window_problems(run: dict) -> list[str]:
@@ -166,8 +424,27 @@ def main() -> int:
             json.dumps({"auto": {}, "manual": {"deepseek-v4-flash": None}}, ensure_ascii=False),
             encoding="utf-8",
         )
-        run(["prices-derive"], base_env, check=True)
-        prices = json.loads((runtime / "prices.json").read_text(encoding="utf-8"))
+        # UC-26（复核 `run-…-114` minor 3）：`prices-derive` 的**默认档不得写盘**。
+        # 修前形态：该命令不带任何开关也写文件（`args` 甚至没被读过），取证时正是
+        # 在真仓踩到这一点（`agents/runtime/prices.json` 被改写、已还原）。
+        # 装置：本夹具的 `prices.json` 已就位 ⇒ 先记字节，再跑**不带 `--apply`** 的一次，
+        # 断言**字节逐字节不变**；然后跑带 `--apply` 的一次作**正向对照**
+        # （证明"不写"不是因为命令本来就写不动）。
+        _pjson = runtime / "prices.json"
+        _before = _pjson.read_bytes()
+        _r_dry = run(["prices-derive"], base_env, check=True)
+        ok("UC-26 反向对照：`prices-derive` **不带 `--apply`** ⇒ 文件字节不变",
+           _pjson.read_bytes() == _before,
+           f"before={len(_before)}B after={len(_pjson.read_bytes())}B")
+        ok("UC-26 默认档自陈：上屏明说这是 dry-run 且文件未改动",
+           "DRY-RUN" in _r_dry.stdout and "prices.json 未改动" in _r_dry.stdout,
+           _r_dry.stdout.strip().splitlines()[0][:60])
+        _r_apply = run(["prices-derive", "--apply"], base_env, check=True)
+        ok("UC-26 正向对照：`prices-derive --apply` ⇒ **真的写盘**"
+           "（否则上一条的『不变』是命令空转的假绿）",
+           _pjson.read_bytes() != _before and "已派生" in _r_apply.stdout,
+           f"after={len(_pjson.read_bytes())}B")
+        prices = json.loads(_pjson.read_text(encoding="utf-8"))
         ok("UC-10 价表派生", "gpt-4o-mini" in prices["auto"] and "text-embedding-3-large" in prices["auto"],
            "auto 提取 gpt-4o-mini/text-embedding-3-large")
         ok("UC-10 人工覆盖段保留", "deepseek-v4-flash" in prices["manual"], "manual 段不被派生覆盖")
@@ -202,7 +479,12 @@ def main() -> int:
         run(["update", run_id, "--status", "running"], base_env, check=True)
         r = run(["update", run_id, "--status", "queued"], base_env)
         ok("UC-3 非法流转 running→queued 拒绝", r.returncode != 0, (r.stdout + r.stderr).strip()[:60])
-        run(["finish", run_id, "--status", "succeeded", "--output-chars", "2000"], base_env, check=True)
+        # R-001 夹具①（非测量）：UC-3 断的是"queued→running→终态"的**流转**与
+        # output_chars；本 run 的 update/finish 落在同一秒 ⇒ 时长本无意义。
+        run(["finish", run_id, "--status", "succeeded", "--output-chars", "2000",
+             *DEGEN_FIXTURE_ARGS], base_env, check=True)
+        # R-001：本条**不传** flag——它断的是"终态再 finish 被状态机拒"，
+        # 在守卫之前就退出（断言的是 `非法流转`，不是退化文案）。
         r = run(["finish", run_id, "--status", "failed"], base_env)
         ok("UC-3 终态再 finish 拒绝", r.returncode != 0 and "非法流转" in (r.stdout + r.stderr),
            (r.stdout + r.stderr).strip()[:60])
@@ -216,8 +498,10 @@ def main() -> int:
              "--model", "gpt-4o-mini", "--start"], base_env, check=True)
         data = json.loads(registry.read_text(encoding="utf-8"))
         run2 = data["runs"][1]["run_id"]
+        # R-001 夹具②（非测量）：UC-4 断的是**价表算术**（usage × 单价 × fx），
+        # 本 run 是 `register --start` 后同秒收尾 ⇒ 时长不是被测对象。
         run(["finish", run2, "--status", "succeeded", "--usage-in", "1000", "--usage-out", "2000",
-             "--output-chars", "100"], base_env, check=True)
+             "--output-chars", "100", *DEGEN_FIXTURE_ARGS], base_env, check=True)
         cost = json.loads(registry.read_text(encoding="utf-8"))["runs"][1]["cost_est"]
         ok("UC-4 价表精确值（CNY）", abs(cost["total"] - 0.00972) < 1e-9 and not cost["estimated"]
            and cost["currency"] == "CNY",
@@ -232,7 +516,9 @@ def main() -> int:
         run(["register", "--role", "doc-audit", "--task", "docs", "--spec", "doc-audit@1.0.0",
              "--model", "gpt-4o-mini", "--input-chars", "4000", "--start"], base_env, check=True)
         run3 = json.loads(registry.read_text(encoding="utf-8"))["runs"][2]["run_id"]
-        run(["finish", run3, "--status", "succeeded", "--output-chars", "4000"], base_env, check=True)
+        # R-001 夹具③（非测量）：断的是 chars/4 兜底成本，时长与本判据无关。
+        run(["finish", run3, "--status", "succeeded", "--output-chars", "4000",
+             *DEGEN_FIXTURE_ARGS], base_env, check=True)
         cost3 = json.loads(registry.read_text(encoding="utf-8"))["runs"][2]["cost_est"]
         ok("UC-4 chars/4 兜底（CNY）", cost3["estimated"] and abs(cost3["total"] - 0.0054) < 1e-9,
            f"total={cost3['total']} estimated={cost3['estimated']}（期望 0.0054）")
@@ -241,7 +527,9 @@ def main() -> int:
         run(["register", "--role", "code-review", "--task", "pr:1", "--spec", "code-review@1.0.0",
              "--model", "deepseek-v4-flash", "--start"], base_env, check=True)
         run4 = json.loads(registry.read_text(encoding="utf-8"))["runs"][3]["run_id"]
-        run(["finish", run4, "--status", "succeeded"], base_env, check=True)
+        # R-001 夹具④（非测量）：断的是无价模型的 `pending_price` 标记，时长无关。
+        run(["finish", run4, "--status", "succeeded", *DEGEN_FIXTURE_ARGS],
+            base_env, check=True)
         cost4 = json.loads(registry.read_text(encoding="utf-8"))["runs"][3]["cost_est"]
         ok("UC-4 pending_price", cost4.get("pending_price") is True, f"cost_est={cost4}")
 
@@ -254,7 +542,9 @@ def main() -> int:
         run(["register", "--role", "code-review", "--task", "pr:2", "--spec", "code-review@1.0.0",
              "--model", "gpt-4o-mini", "--start"], base_env, check=True)
         run6 = json.loads(registry.read_text(encoding="utf-8"))["runs"][4]["run_id"]
-        run(["finish", run6, "--status", "succeeded", "--usage-in", "1000", "--usage-out", "2000"],
+        # R-001 夹具⑤（非测量）：断的是"人工价覆盖 auto"（0.036 CNY），时长无关。
+        run(["finish", run6, "--status", "succeeded", "--usage-in", "1000", "--usage-out", "2000",
+             *DEGEN_FIXTURE_ARGS],
             base_env, check=True)
         cost6 = json.loads(registry.read_text(encoding="utf-8"))["runs"][4]["cost_est"]
         ok("三查修正 manual 覆盖 auto（CNY）", abs(cost6["total"] - 0.036) < 1e-9, f"total={cost6['total']}（期望 0.036）")
@@ -265,6 +555,8 @@ def main() -> int:
         runX = json.loads(registry.read_text(encoding="utf-8"))["runs"][5]["run_id"]
         r = run(["update", runX, "--status", "succeeded"], base_env)
         ok("三查修正 update 终态拒绝", r.returncode != 0, (r.stdout + r.stderr).strip()[:60])
+        # R-001：本条**不传** flag——它断的是"queued 直接 finish 必须被状态机拒"
+        # （断言文案含 `running`），在守卫之前就退出，退化标记根本没被算出来。
         r = run(["finish", runX, "--status", "succeeded"], base_env)
         ok("三查修正 queued→finish 拒绝", r.returncode != 0 and "running" in (r.stdout + r.stderr),
            (r.stdout + r.stderr).strip()[:60])
@@ -296,7 +588,10 @@ def main() -> int:
              "--model", "gpt-4o-mini", "--context-input-tokens", "1000", "--context-max-tokens", "8000",
              "--start"], base_env, check=True)
         run5 = json.loads(registry.read_text(encoding="utf-8"))["runs"][6]["run_id"]
-        run(["finish", run5, "--status", "succeeded", "--cost-override", "0.5"], base_env, check=True)
+        # R-001 夹具⑥（非测量）：断的是上下文占用 ratio 与 `--cost-override` 落账，
+        # 本 run 是 `register --start` 后同秒收尾 ⇒ 时长不是被测对象。
+        run(["finish", run5, "--status", "succeeded", "--cost-override", "0.5",
+             *DEGEN_FIXTURE_ARGS], base_env, check=True)
         e5 = json.loads(registry.read_text(encoding="utf-8"))["runs"][6]
         ok("UC-9 上下文 ratio", e5["context_occupancy"]["ratio"] == 0.125, f"ratio={e5['context_occupancy']['ratio']}")
         ok("UC-9 成本覆盖", e5["cost_est"]["total"] == 0.5 and e5["cost_est"].get("override") is True,
@@ -349,24 +644,28 @@ def main() -> int:
         r = run(["list"], base_env, check=True)
         ok("UC-12 并发后完整性有效", r.returncode == 0, "list 加载通过完整性校验")
 
-        # UC-13（M9）：fetch-prices 解析器（deepseek 表格 / openrouter JSON）
-        # + 合并与优先级
+        # UC-13（M9 / TG-20 行 15+16）：fetch-prices 解析器（deepseek / openrouter）
+        # + 合并与优先级 + **价表形状契约**（台账 E9：这段 HTML 是旧表形状的冻结副本）
         spec_fp = importlib.util.spec_from_file_location("fetch_prices", ROOT / "scripts" / "fetch-prices.py")
         fp = importlib.util.module_from_spec(spec_fp)
         assert spec_fp.loader is not None
         spec_fp.loader.exec_module(fp)
+        # 冻结副本 = **现行官网表形状**（2 模型 / 每资源两档 / 12 金额，`<tr>` 平铺）：
+        # 旧副本是"3 模型 + 18 个 `$`"，而 2026-09-26 起官网是 2 模型 / 12 金额 ⇒ 解析器
+        # 恒返回 `{}`（红字 B）。副本不改就等于"闸门全绿而解析器已换成永不命中的那个"。
         deepseek_html = (
-            '<table><tr><td colspan="3" style="text-align:center">MODEL</td>'
-            "<td>deepseek-v4-flash</td><td>deepseek-v4-pro</td><td>deepseek-v4-flash-vision-exp</td></tr>"
-            '<tr><td rowspan="6">PRICING</td><td rowspan="2">1M INPUT TOKENS<br>(CACHE HIT)</td>'
-            "<td>OFF-PEAK</td><td>$0.007</td><td>$0.022</td><td>$0.007</td></tr>"
-            "<tr><td>PEAK</td><td>$0.014</td><td>$0.044</td><td>$0.014</td></tr>"
-            '<tr><td rowspan="2">1M INPUT TOKENS<br>(CACHE MISS)</td>'
-            "<td>OFF-PEAK</td><td>$0.22</td><td>$0.66</td><td>$0.22</td></tr>"
-            "<tr><td>PEAK</td><td>$0.44</td><td>$1.32</td><td>$0.44</td></tr>"
+            '<table><tr><td colspan="3">MODEL</td>'
+            "<td>deepseek-flash (1)</td><td>deepseek-v4-pro</td></tr>"
+            '<tr><td rowspan="6">PRICING (2)</td>'
+            '<td rowspan="2">1M INPUT TOKENS (CACHE HIT)</td>'
+            "<td>OFF-PEAK</td><td>$0.003</td><td>$0.022</td></tr>"
+            "<tr><td>PEAK</td><td>$0.006</td><td>$0.044</td></tr>"
+            '<tr><td rowspan="2">1M INPUT TOKENS (CACHE MISS)</td>'
+            "<td>OFF-PEAK</td><td>$0.15</td><td>$0.66</td></tr>"
+            "<tr><td>PEAK</td><td>$0.3</td><td>$1.32</td></tr>"
             '<tr><td rowspan="2">1M OUTPUT TOKENS</td>'
-            "<td>OFF-PEAK</td><td>$0.66</td><td>$1.98</td><td>$0.66</td></tr>"
-            "<tr><td>PEAK</td><td>$1.32</td><td>$3.96</td><td>$1.32</td></tr></table>Concurrency 10"
+            "<td>OFF-PEAK</td><td>$0.6</td><td>$1.98</td></tr>"
+            "<tr><td>PEAK</td><td>$1.2</td><td>$3.96</td></tr></table>Concurrency 10"
         )
         ds = fp.parse_deepseek(deepseek_html)
 
@@ -386,11 +685,27 @@ def main() -> int:
            and any(isinstance(h, fp._SafeRedirectHandler) for h in _opener.handlers),
            f"mro={[c.__name__ for c in fp._SafeRedirectHandler.__mro__[:3]]}")
 
-        ok("UC-13 deepseek 表格解析（PEAK 口径）",
-           "deepseek-v4-flash" in ds
-           and abs(ds["deepseek-v4-flash"]["input_cost_per_token"] - 4.4e-7) < 1e-12
-           and abs(ds["deepseek-v4-flash"]["output_cost_per_token"] - 1.32e-6) < 1e-12,
-           f"flash={ds.get('deepseek-v4-flash')}")
+        # 期望值 = 冻结副本页面的**产品价格**（USD/1M → USD/token，round 10）：
+        # 0.3/1e6=3e-7、1.2/1e6=1.2e-6、0.006/1e6=6e-9、0.15/1e6=1.5e-7、0.6/1e6=6e-7。
+        # 这些字面量是**防"改副本不改解析器"**的锚点：换了列序/列数这里立刻红。
+        dsfl = ds.get("deepseek-flash", {})
+        ok("UC-13 deepseek 表格解析（2 模型 / 12 金额，模型数动态读出）",
+           sorted(ds) == ["deepseek-flash", "deepseek-v4-pro"],
+           f"models={sorted(ds)}")
+        ok("UC-13 PEAK 列（cache-miss input=3e-7、output=1.2e-6、cache-hit=6e-9）",
+           abs(dsfl.get("input_cost_per_token", 0) - 3e-7) < 1e-12
+           and abs(dsfl.get("output_cost_per_token", 0) - 1.2e-6) < 1e-12
+           and abs(dsfl.get("cache_read_input_token_cost", 0) - 6e-9) < 1e-12,
+           f"flash={dsfl}")
+        ok("UC-13 OFF-PEAK 列（off=peak/2）",
+           abs(dsfl["_tiers"]["off_peak"]["input_cost_per_token"] - 1.5e-7) < 1e-12
+           and abs(dsfl["_tiers"]["off_peak"]["output_cost_per_token"] - 6e-7) < 1e-12,
+           f"off={dsfl.get('_tiers', {}).get('off_peak')}")
+        dspeak = dsfl.get("_tiers", {}).get("peak", {})
+        ok("UC-13 同页同时抓出两档（旧实现只留 peak 三项，档位靠人手补）",
+           dspeak.get("input_cost_per_token") == dsfl.get("input_cost_per_token")
+           and sorted(dsfl.get("_tiers", {})) == ["off_peak", "peak"],
+           f"tiers={sorted(dsfl.get('_tiers', {}))}")
         orjson = '{"data":[{"id":"openai/gpt-4o-mini","pricing":{"prompt":"1.5e-7","completion":"6e-7"}}]}'
         orr = fp.parse_openrouter(orjson)
         ok("UC-13 openrouter JSON 解析",
@@ -408,13 +723,50 @@ def main() -> int:
            f"dsc={dsc}")
         merged = fp.merge(
             {"auto": {"a": {"input_cost_per_token": 1e-6}}, "manual": {"m": None}, "meta": {"fx_usd_cny": 7.2}},
-            {"deepseek": {"models": {"deepseek-v4-flash": ds["deepseek-v4-flash"]}}},
+            {"deepseek": {"models": {"deepseek-flash": ds["deepseek-flash"]}}},
         )
         ok("UC-13 merge 保留 auto/manual/meta 且新增 scraped",
            merged["auto"]["a"]["input_cost_per_token"] == 1e-6 and "m" in merged["manual"]
            and merged["meta"]["fx_usd_cny"] == 7.2
-           and "deepseek-v4-flash" in merged["scraped"]["deepseek"]["models"],
+           and "deepseek-flash" in merged["scraped"]["deepseek"]["models"],
            "merge 结构")
+        # 解析器不产出的元数据键必须**并回**（否则抓一次就抹掉选档依据 `_peak_windows`）
+        old_prov = {"models": {"old": {"input_cost_per_token": 1e-9}},
+                    "_peak_windows": [{"days": ["Mon"]}],
+                    "_flat_key_policy": "keep me"}
+        kept = fp.merge({"scraped": {"deepseek": old_prov}},
+                        {"deepseek": {"models": {"n": {}}}})
+        kept_ds = kept["scraped"]["deepseek"]
+        ok("UC-13 merge 并回解析器不产出的元数据（`_peak_windows` 不会被抓取抹掉）",
+           kept_ds.get("_peak_windows") == old_prov["_peak_windows"]
+           and kept_ds.get("_flat_key_policy") == "keep me"
+           and "n" in kept_ds["models"],
+           f"keys={sorted(kept_ds)}")
+
+        # UC-13b（**台账 E9 的入场券**）：冻结副本的**形状契约**——它产出的形状必须与
+        # 仓库真实价表一致，否则"改了真表而冻结副本没改"就是全绿而口径已分叉。
+        prices_path = ROOT / "agents" / "runtime" / "prices.json"
+        real = json.loads(prices_path.read_text(encoding="utf-8"))
+        real_deepseek = (real.get("scraped") or {}).get("deepseek") or {}
+        real_ds = real_deepseek.get("models") or {}
+        if not real_ds:
+            raise AssertionError("判据未被触发：真实价表缺 scraped.deepseek.models")
+        ok("E9 冻结副本形状 == 真实价表形状（模型名/模型数/档位键逐项）",
+           price_shape_problems(ds, real_ds) == [],
+           f"副本={sorted(ds)} 真实={sorted(real_ds)}")
+        win_ok = bool(real_deepseek.get("_peak_windows")
+                      and real_deepseek.get("_tier_timezone"))
+        ok("E9 真实价表的两档窗口元数据在（选档代码的真源）", win_ok,
+           "scraped.deepseek._peak_windows / _tier_timezone")
+        # 反向对照：**前置条件必须真的发生**——先把"真表形状"打散成旧表形状，
+        # 证明契约确实会 FAIL 并点名（不是只会说 PASS）。判不出差异 ⇒ 本条不作数。
+        drifted = {k: v for k, v in real_ds.items() if k != "deepseek-v4-pro"}
+        drifted["deepseek-flash"] = {k: v for k, v in real_ds["deepseek-flash"].items()
+                                     if k != "_tiers"}
+        hit = price_shape_problems(ds, drifted)
+        ok("E9 反向对照：真表被改成旧形状（少一个模型 + 掉档位键）⇒ 契约 FAIL 并点名",
+           hit and "模型集不同" in hit[0] and any("_tiers" in p for p in hit),
+           f"problems={hit}")
         # 优先级：manual 非 null 覆盖 scraped；
         # manual null → scraped 兜底（进程内重载 module 以改
         # AGENT_OPS_DIR）
@@ -434,6 +786,256 @@ def main() -> int:
         ok("UC-13 manual null → scraped 兜底",
            ao2._prices_for("m") is not None and ao2._prices_for("m")["input_cost_per_token"] == 1e-9,
            "scraped fallback")
+
+        # UC-20（TG-20 行 16）：**按 run 自身时间戳选档**（spec §3）。三条反证 +
+        # 一条"真入口"（真实账本行），每条都**先断言前置条件确实发生**（机制案例 26）。
+        # 夹具价表：四键价 + 两档（off = peak/2）。期望值全部由它推出，不手抄。
+        pk = {"input_cost_per_token": 2.5e-7, "output_cost_per_token": 1e-6,
+              "cache_read_input_token_cost": 5e-9,
+              "cache_creation_input_token_cost": 2.5e-7}
+        off = {"input_cost_per_token": 1.25e-7, "output_cost_per_token": 5e-7,
+               "cache_read_input_token_cost": 2.5e-9,
+               "cache_creation_input_token_cost": 1.25e-7}
+        weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+        tier_prices = {
+            "meta": {"fx_usd_cny": 7.2},
+            "scraped": {"deepseek": {
+                "_tier_scheme": "two_tier",
+                "_tier_timezone": "Asia/Shanghai",
+                "_peak_windows": [
+                    {"days": weekdays, "start": "09:00", "end": "12:00"},
+                    {"days": weekdays, "start": "14:00", "end": "18:00"},
+                ],
+                "models": {"deepseek-v4-flash": {
+                    "max_input_tokens": 128000, **pk,
+                    "_tiers": {"peak": pk, "off_peak": off},
+                }},
+            }},
+        }
+        tier_root = tmp / "tier"
+        (tier_root / "runtime").mkdir(parents=True, exist_ok=True)
+        tier_prices_path = tier_root / "runtime" / "prices.json"
+        tier_prices_path.write_text(json.dumps(tier_prices, ensure_ascii=False),
+                                    encoding="utf-8")
+        tier_env = {**base_env, "AGENT_OPS_DIR": str(tier_root)}
+        os.environ["AGENT_OPS_DIR"] = str(tier_root)
+
+        spec_ao_tier_mod = importlib.util.spec_from_file_location("agent_ops3", CLI)
+        ao_tier_mod = importlib.util.module_from_spec(spec_ao_tier_mod)
+        assert spec_ao_tier_mod.loader is not None
+        spec_ao_tier_mod.loader.exec_module(ao_tier_mod)
+        tier = ao_tier_mod.peak_windows_from_prices(tier_prices, "deepseek-v4-flash")
+        ok("UC-20 前置①：选档窗口元数据来自**该模型所属 provider**（不是写死）",
+           tier is not None and tier[1] == "Asia/Shanghai" and len(tier[0]) == 2,
+           f"windows={tier}")
+
+        # 反证①：**空闲时段**的 run ⇒ 必须按 off_peak 计价，且前置条件（时间戳确实落在
+        # 窗口外）先被断言——落在窗口内的话这条不作数。
+        off_row = {"model": "deepseek-v4-flash", "usage": {"input_tokens": 1000},
+                   "started_at": ISO_OFF_PEAK, "ended_at": ISO_OFF_END}
+        off_at = ao_tier_mod._parse_ts(ISO_OFF_PEAK)
+        assert off_at is not None
+        off_cst = off_at.astimezone(_SH).strftime("%a %H:%M")
+        ok("UC-20 反证①前置：该 run 的时间戳**确实落在空闲窗口内**",
+           ao_tier_mod.is_peak_at(off_at, tier[0], tier[1]) is False
+           and ao_tier_mod.peak_frac_for(off_row, tier[0], tier[1]) == 0.0,
+           f"{ISO_OFF_PEAK[11:16]}Z → UTC+8 {off_cst} 非高峰")
+        off_cost = ao_tier_mod._estimate_cost(off_row)
+        ok("UC-20 反证①：空闲时段 run 按 off_peak 计价（1e3 × 1.25e-7 × 7.2 = 9e-4）",
+           off_cost.get("tier") == "off_peak" and abs(off_cost["total"] - 9e-4) < 1e-12,
+           f"tier={off_cost.get('tier')} total={off_cost['total']}"
+           f"（高峰价会是 {2 * off_cost['total']}）")
+
+        # 反证②：**时间戳缺失** ⇒ 按高峰计 + `tier_assumed`（不得静默挑便宜的档）
+        no_ts = ao_tier_mod._estimate_cost({"model": "deepseek-v4-flash",
+                                    "usage": {"input_tokens": 1000},
+                                    "started_at": None, "ended_at": None})
+        ok("UC-20 反证②：时间戳缺失 ⇒ peak 计价 1.8e-3 **且** 带 tier_assumed",
+           no_ts.get("tier") == "peak" and no_ts.get("tier_assumed") is True
+           and abs(no_ts["total"] - 1.8e-3) < 1e-12,
+           f"tier={no_ts.get('tier')} assumed={no_ts.get('tier_assumed')}"
+           f" total={no_ts['total']}")
+        ok("UC-20 反证②前置：缺时间戳时**不会**被算成空闲（若被算成空闲则本条不作数）",
+           no_ts["total"] == 2 * off_cost["total"] and no_ts.get("peak_frac") is None,
+           f"peak={no_ts['total']} off={off_cost['total']}")
+
+        # 反证③：跨档 run（周一 11:00→13:00 CST）= 高峰 1h + 空闲 1h ⇒ §3.3 时间加权
+        span = {"model": "deepseek-v4-flash", "usage": {"input_tokens": 1000},
+                "started_at": ISO_SPAN_START, "ended_at": ISO_SPAN_END}
+        ok("UC-20 反证③前置：该 run **确实跨越**档位边界（peak_frac=0.5，不是 0 或 1）",
+           ao_tier_mod.peak_frac_for(span, tier[0], tier[1]) == 0.5,
+           f"peak_frac={ao_tier_mod.peak_frac_for(span, tier[0], tier[1])}")
+        span_cost = ao_tier_mod._estimate_cost(span)
+        ok("UC-20 反证③：跨档按时间加权（0.5×1.8e-3 + 0.5×9e-4 = 1.35e-3，§3.3 一致）",
+           span_cost.get("tier") == "mixed" and span_cost.get("peak_frac") == 0.5
+           and abs(span_cost["total"] - 1.35e-3) < 1e-12,
+           f"tier={span_cost.get('tier')} frac={span_cost.get('peak_frac')}"
+           f" total={span_cost['total']}")
+
+        # 真入口：**真实账本行**（含其真实历史时间戳，逐字取自 registry.json）
+        # 走同一条 `_estimate_cost`——这条就是"夜间不再按高峰计费"的机器判据
+        # （同一行、同一 usage，旧代码按扁平高峰键 = 2 倍）。
+        # CLI 侧的可见性另在交付回执里用真 run 演示。
+        # C5（2026-09-25）：真账本被 `.gitignore` 忽略 ⇒ 全新 clone 必然没有它。
+        # 旧实现直接 `read_text` ⇒ **崩在断言之前**，offline 套件在 CI 恒红
+        # （实测 CI run 36420448108 第 7 步 `SUITE FAILED (1/26)`）。
+        # 现按 `verify_ledger_measurement.py` / `verify_close_readiness.py`
+        # 的同一口径：**缺账本 → 显式 SKIP（上屏、不计入断言计数、
+        # 判决行可见）**；**存在但坏 → 照旧 fail-closed**（见 `read_real_ledger`）。
+        real_reg = read_real_ledger(real_ledger_path())
+        if real_reg is None:
+            skip_ledger_absent("UC-20 真入口（真实账本行按 off_peak 计价）")
+        else:
+            ref_rows = [x for x in real_reg.get("runs", [])
+                        if x.get("model") and x.get("started_at")
+                        and x.get("ended_at") and x.get("usage")]
+            win = (tier[0], tier[1])
+
+            def frac_of(row: dict) -> float | None:
+                """该 run 的高峰时间占比（None = 端点缺失/退化）。"""
+                return ao_tier_mod.peak_frac_for(row, win[0], win[1])
+
+            ref = next((x for x in ref_rows if frac_of(x) == 0.0), None)
+            if ref is None:
+                raise AssertionError(
+                    "判据未被触发：真实账本缺'时间戳落在空闲窗口'的 run"
+                    f"（可判定 {len(ref_rows)} 条）⇒ 真入口判据不作数")
+            gold = ao_tier_mod._estimate_cost(ref)
+            # 高峰口径 = 旧行为（扁平键镜像高峰）：同一价表算出**对照量**，不手抄数字
+            peak_cost = ao_tier_mod._estimate_cost(
+                {**ref, "started_at": ISO_PEAK, "ended_at": ISO_PEAK_END})
+            ok("UC-20 真入口前置：该真实 run 的时间戳**确实落在空闲窗口内**",
+               ao_tier_mod.peak_frac_for(ref, tier[0], tier[1]) == 0.0,
+               f"{ref['run_id']} started_at={ref['started_at']}")
+            peak_total = peak_cost["total"]
+            ok("UC-20 真入口：真实账本行按 off_peak 计价"
+               "（对照：同一行按高峰口径是 2 倍）",
+               gold.get("tier") == "off_peak"
+               and abs(gold["total"] * 2 - peak_total) < 1e-12,
+               f"{ref['run_id']} off={gold['total']} peak={peak_total} "
+               f"usage={ref.get('usage')}")
+            del ref, peak_cost, peak_total, ref_rows, real_reg
+
+        # E9 的**主判据**（红字 A）：派生**不得丢档**——白名单若不同步，`prices-derive`
+        # 一跑档位就没了，而"我这次写对了"不是判据。反向对照：把注册表摘掉（= 白名单不
+        # 同步的等价物）后同一断言必须 FAIL——先证明它咬得住，再说它绿。
+        tpath = tmp / "tier" / "runtime" / "prices.json"
+        r = run(["prices-derive", "--apply"], tier_env, check=True)
+        after = json.loads(tpath.read_text(encoding="utf-8"))
+        prov = (after.get("scraped") or {}).get("deepseek") or {}
+        prov_keys = ("_tier_scheme", "_tier_timezone", "_peak_windows")
+        model_keys = ("_tiers",)
+        models_of = (prov.get("models") or {})
+        flash_tiers = (models_of.get("deepseek-v4-flash") or {}).get("_tiers") or {}
+        flash_keys = sorted((models_of.get("deepseek-v4-flash") or {}))
+        ok("E9 派生后档位仍在（provider 元数据 + 模型 `_tiers` 一个不少）",
+           all(k in prov for k in prov_keys)
+           and all(k in flash_keys for k in model_keys),
+           f"派生后 provider keys={sorted(prov)} model keys={flash_keys}")
+        ok("E9 派生后模型档位未被重建抹掉（`_tiers.off_peak` 逐键相等）",
+           (models_of.get("deepseek-v4-flash") or {}).get("_tiers") ==
+           tier_prices["scraped"]["deepseek"]["models"]["deepseek-v4-flash"]["_tiers"],
+           f"off_peak={flash_tiers.get('off_peak')}")
+        ok("E9 派生后选档仍可用（`peak_windows_from_prices` 读得到窗口）",
+           ao_tier_mod.peak_windows_from_prices(after, "deepseek-v4-flash") is not None,
+           f"keys={sorted(prov)}")
+        # 反向对照前置：真造出"白名单不同步"的实现（临时副本，**不动仓库文件**）。
+        # 摘掉 `_tiers, _tier_scheme` 这一行 ⇒ 等价于"多档落地时没同步白名单"。
+        # 判据的**作用域**要写准：它管 `auto` 段的重建。`scraped` 段是整段带过的，
+        # 故先证明"档位一旦落到 `auto` 就被白名单决定生死"，再证明"白名单摘掉即丢档"。
+        clone = tmp / "clone"
+        (clone / "scripts").mkdir(parents=True, exist_ok=True)
+        src_txt = CLI.read_text(encoding="utf-8")
+        # 用正则匹配（不写死缩进/折行）：重排白名单时这条反向对照必须**还能造出前置**，
+        # 否则它会以"判据未被触发"红掉——那正是本仓"夹具随被测代码漂移"的形态。
+        pat = re.compile(r'^[ \t]*"cache_creation_input_token_cost",'
+                         r' "_tiers", "_tier_scheme"\)[ \t]*$', re.M)
+        hits = pat.findall(src_txt)
+        if len(hits) != 1:
+            raise AssertionError(f"判据未被触发：白名单声明行命中 {len(hits)} 次")
+        clone_cli = clone / "scripts" / "agent-ops.py"
+        clone_cli.write_text(pat.sub(")", src_txt), encoding="utf-8")
+
+        def derive_with(cli_path: Path) -> subprocess.CompletedProcess:
+            """跑一次 `prices-derive`（副本 REPO_ROOT 在 %TEMP% ⇒ 显式 PYTHONPATH）。
+
+            `--apply` 是必须的（本批起默认 dry-run）：E9 判的是"派生**后**档位仍在"，
+            而派生本身要写盘 ⇒ 这一条是**写盘档**的判据。
+            """
+            env = {**tier_env, "PYTHONPATH": str(ROOT)}
+            return subprocess.run([sys.executable, str(cli_path), "prices-derive",
+                                   "--apply"],
+                                  capture_output=True, text=True, encoding="utf-8",
+                                  errors="replace", env=env)
+
+        # `auto` 段是**从 litellm 表重建**的，故用 litellm 里确有的模型（`gpt-4o-mini`）
+        # 承载档位：在它的 `auto` 条目上挂一份 `_tiers`，再看派生后它还在不在。
+        # 这正是红字 A 说的形态——"把 deepseek 价移到 auto 段即丢档"。
+        src_flash = tier_prices["scraped"]["deepseek"]["models"]["deepseek-v4-flash"]
+        seed_entry = {k: v for k, v in src_flash.items() if k != "max_input_tokens"}
+        tier_seed = dict(seed_entry["_tiers"])
+        seeded = json.loads(tpath.read_text(encoding="utf-8"))
+        seeded["auto"] = {**seeded.get("auto", {}),
+                          "gpt-4o-mini": {**seed_entry, "_tiers": tier_seed}}
+        tpath.write_text(json.dumps(seeded, ensure_ascii=False), encoding="utf-8")
+        auto_now = lambda: (json.loads(tpath.read_text(encoding="utf-8")).get("auto")  # noqa: E731
+                            or {}).get("gpt-4o-mini") or {}
+        r_bad = derive_with(clone_cli)
+        bad_auto = auto_now()
+        bad_out = (r_bad.stdout + r_bad.stderr).strip()[-80:]
+        ok("E9 反向对照：白名单不同步 ⇒ `auto` 段的档位**真被丢弃**（前置条件发生）",
+           r_bad.returncode == 0 and bad_auto.get("input_cost_per_token") is not None
+           and "_tiers" not in bad_auto,
+           f"rc={r_bad.returncode} auto 键={sorted(bad_auto)} out={bad_out}")
+        tpath.write_text(json.dumps(seeded, ensure_ascii=False), encoding="utf-8")
+        r_good = derive_with(CLI)
+        good_auto = auto_now()
+        # 白名单的**作用域**（实测）：它决定 `auto` 段**有哪些键**，值取自 litellm 表。
+        # litellm 表没有 `_tiers` ⇒ 这里只能是 `None`（键被保住、值取不到）。
+        # ⇒ 红字 A 的修法只能作用在 `scraped` 段；`auto` 段承载档位需另供真源。
+        ok("E9 对照：同步白名单 ⇒ `auto` 段**保留 `_tiers` 键**（值取自 litellm）",
+           r_good.returncode == 0 and "_tiers" in good_auto
+           and good_auto["_tiers"] is None,
+           f"rc={r_good.returncode} auto keys={sorted(good_auto)}")
+
+        run(["prices-derive", "--apply"], tier_env, check=True)  # 恢复夹具（不留半态给后续用例）
+
+        # 行 32（复核 `run-…-104` minor 7）：`--apply` 档必须把判据**编码成退出码**。
+        # 装置：**真子进程**跑真 `main()`（真 `judge_scrape`、真写盘路径），唯一被替换的是
+        # **网络边界** `_fetch`（外部服务 ⇒ 用"空页"当夹具）；`AGENT_OPS_DIR` 隔离到
+        # `%TEMP%` ⇒ 仓库真价表 `agents/runtime/prices.json` **不被碰**。
+        # 修前形态：同一装置 rc=0（`strict` 只绑 `args.check`）⇒ 价表静默停在旧截面。
+        probe32_dir = tmp / "row32-agents"
+        probe32_dir.mkdir(parents=True, exist_ok=True)
+        sw32 = _POLICY.offline_switch
+        driver32 = (
+            "import importlib.util, sys\n"
+            "spec = importlib.util.spec_from_file_location('fp_probe', sys.argv[1])\n"
+            "m = importlib.util.module_from_spec(spec)\n"
+            "spec.loader.exec_module(m)\n"
+            "m._fetch = lambda url, timeout=30: ''\n"   # 空页 ⇒ 三个来源各解析出 0 个模型
+            "sys.argv = ['fetch-prices.py', '--apply']\n"
+            "print('PROBE_RC=%d' % m.main())\n")
+        r32 = subprocess.run(
+            [sys.executable, "-c", driver32, str(ROOT / "scripts" / "fetch-prices.py")],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+            env={**base_env, "AGENT_OPS_DIR": str(probe32_dir),
+                 str(sw32["env_var"]): str(sw32["env_false_values"][0])})
+        out32 = r32.stdout + r32.stderr
+        rc32 = [ln for ln in out32.splitlines() if ln.startswith("PROBE_RC=")]
+        ok("行 32 真入口：`--apply` + 三来源全抓空 ⇒ rc=1 并点名 FAIL"
+           "（修前同一装置 rc=0：判据在写盘档无声）",
+           rc32 == ["PROBE_RC=1"] and "FAIL: --apply 档" in out32,
+           f"{rc32} out={out32.strip().splitlines()[-1][:80]}")
+        ok("行 32 反向对照：写盘路径**不变**（fail-safe——价表照旧落盘、成功来源为空、"
+           "真价表不被碰）",
+           (probe32_dir / "runtime" / "prices.json").exists()
+           and "scraped providers: []" in out32,
+           f"隔离价表={(probe32_dir / 'runtime' / 'prices.json').exists()}")
+        ok("行 32 纯函数：两个档共用同一判据（`args_strict_fail(True, […])` ⇒ True；"
+           "`strict=False` ⇒ False）",
+           fp.args_strict_fail(True, ["deepseek"])
+           and not fp.args_strict_fail(False, ["deepseek"]))
 
         # UC-14（TG-11，Sprint-17）：评审类 run 的 scope 来源闸门（fail-closed，
         # 机器可验）
@@ -663,7 +1265,10 @@ def main() -> int:
             report = tmp / f"uc18-{tag}.report.md"
             report.write_bytes("".join(f"| 行 {i} | {tag} 报告正文 |{eol}" for i in range(120))
                                .encode("utf-8"))
-            run(["finish", rid, "--status", "succeeded", "--result-file", str(report)],
+            # R-001 夹具⑦（非测量）：断的是归档**按字节**复制（LF/CRLF 不被改写）；
+            # 本 run 的 register/update/finish 同秒 ⇒ 时长不是被测对象。
+            run(["finish", rid, "--status", "succeeded", "--result-file", str(report),
+                 *DEGEN_FIXTURE_ARGS],
                 base_env, check=True)
             dest = tmp / "runs" / rid / "impact-assessment.report.md"
             src_bytes, dst_bytes = report.read_bytes(), dest.read_bytes()
@@ -691,15 +1296,12 @@ def main() -> int:
         # 在 CI 恒红（实测 run #207 第 7 步：`SUITE FAILED (1/24): verify_agentops.py`）
         # 。
         # 现按 `verify_ledger_measurement.py` / `verify_close_readiness.py` 的同一口径：
-        # **缺账本 → 显式 SKIP（理由上屏，且不打印 PASS——"跳过"不得冒充"通过"）**；
-        # **存在但坏 → 照旧 fail-closed**（下面读文件/解析失败会真抛）。
-        real_registry = ROOT / "agents" / "runtime" / "registry.json"
-        if not real_registry.is_file():
-            print(f"SKIP[ledger-absent] M-g 账本 run_id ↔ agents/runs/* 目录名一致性："
-                  f"{real_registry} 不存在（fresh clone；registry.json 被 .gitignore 忽略）"
-                  f"→ 该判据只在本机/有账本的环境执行。**本行不是 PASS**。")
+        # **缺账本 → 显式 SKIP（上屏、不计入断言计数、判决行可见）**；
+        # **存在但坏 → 照旧 fail-closed**（读文件/解析失败会真抛）。
+        real_ledger = read_real_ledger(real_ledger_path())
+        if real_ledger is None:
+            skip_ledger_absent("M-g 账本 run_id ↔ agents/runs/* 目录名一致性")
         else:
-            real_ledger = json.loads(real_registry.read_text(encoding="utf-8"))
             ledger_ids = {str(r.get("run_id") or "") for r in real_ledger.get("runs", [])}
             exc_file = ROOT / "agents" / "policy" / "run-dir-exceptions.json"
             exc = json.loads(exc_file.read_text(encoding="utf-8")) if exc_file.is_file() else {}
@@ -919,8 +1521,10 @@ def main() -> int:
             base_env, check=True)
         run(["update", "run-uc20-produced", "--status", "running"], base_env, check=True
             )
+        # R-001 夹具⑧（非测量）：UC-20 三条 run 断的是 window/produced_only 判据翻转，
+        # 三条都是 register→update→finish 同秒收尾 ⇒ 时长不是被测对象。
         run(["finish", "run-uc20-produced", "--status", "succeeded",
-             "--covers-through", head_full20], base_env, check=True)
+             "--covers-through", head_full20, *DEGEN_FIXTURE_ARGS], base_env, check=True)
 
         def _row20(rid: str = "run-uc20-produced") -> dict:
             data = json.loads(registry.read_text(encoding="utf-8"))
@@ -976,7 +1580,7 @@ def main() -> int:
         run(["update", "run-uc20-nonreview", "--status", "running"], base_env, check=
             True)
         run(["finish", "run-uc20-nonreview", "--status", "succeeded",
-             "--covers-through", head_full20], base_env, check=True)
+             "--covers-through", head_full20, *DEGEN_FIXTURE_ARGS], base_env, check=True)
         r = run(["mark-produced", "run-uc20-nonreview", "--reason", reason20],
                 base_env, raw=True)
         ok("UC-20 反向对照：非评审类 role → 拒绝（语义是「评审 role 但不做内容评审」）",
@@ -992,7 +1596,7 @@ def main() -> int:
         run(["update", "run-uc20-nonempty", "--status", "running"], base_env, check=True
             )
         run(["finish", "run-uc20-nonempty", "--status", "succeeded",
-             "--covers-through", head_full20], base_env, check=True)
+             "--covers-through", head_full20, *DEGEN_FIXTURE_ARGS], base_env, check=True)
         r = run(["mark-produced", "run-uc20-nonempty", "--reason", reason20],
                 base_env, raw=True)
         ok("UC-20 反向对照：窗口**非空**的 run → 拒绝（标注与账本事实矛盾）",
@@ -1022,6 +1626,1012 @@ def main() -> int:
            f"rc={r.returncode} marks={len(row20b.get('produced_only_marks') or [])} "
            f"problems={_empty_window_problems(row20b)[:1]}")
 
+        # UC-22（TG-19 M-A 收尾）：Sprint 身份的**显式登记 + 受控回填**。
+        # 判定域按 `sprint` 字段派生 ⇒ 身份写错会让该 run 静默掉进**别的** Sprint 的域；
+        # 而"新函数插在装饰器与它的函数之间"会让 `@_with_registry_lock` 挂错对象
+        # （2026-09-25 实测：`register` 因此**丢掉账本锁**、`_norm_sprint` 反而拿到锁并
+        # 在 `cmd_set_sprint` 内自锁超时）⇒ 本 UC 同时断言"写命令仍在锁内"。
+        run(["register", "--role", "impact-assessment", "--task", "uc22-sprint-id",
+             "--spec", "impact-assessment@1.4.4", "--run-id", "run-uc22-sprint",
+             "--sprint", "Sprint-18"], base_env, check=True)
+
+        def _row22(rid: str = "run-uc22-sprint") -> dict:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+            return next(x for x in data["runs"] if x["run_id"] == rid)
+
+        ok("UC-22 register --sprint 归一化：'Sprint-18' → '18'（与闸门同口径：纯编号）",
+           _row22().get("sprint") == "18", f"sprint={_row22().get('sprint')!r}")
+        r = run(["register", "--role", "impact-assessment", "--task", "bad",
+                 "--spec", "impact-assessment@1.4.4", "--run-id", "run-uc22-bad",
+                 "--sprint", "abc"], base_env, raw=True)
+        present = {x["run_id"] for x in json.loads(registry.read_text(encoding="utf-8"))["runs"]}
+        ok("UC-22 反向对照：非法身份（abc）→ 拒绝且不留半条 run（fail-closed）",
+           r.returncode != 0 and "SPRINT-ID-ERROR" in (r.stdout + r.stderr)
+           and "run-uc22-bad" not in present, f"rc={r.returncode}")
+        r = run(["set-sprint", "run-uc22-sprint", "--sprint", "19",
+                 "--reason", "UC-22：判定域派生所需的身份回填（受控、带理由）"],
+                base_env, raw=True)
+        marks = _row22().get("sprint_backfills") or []
+        ok("UC-22 set-sprint 回填成功 + 四件套留痕（field/from/to/reason/by）",
+           r.returncode == 0 and _row22().get("sprint") == "19" and len(marks) == 1
+           and {"field", "from", "to", "reason", "by"} <= set(marks[-1]),
+           f"rc={r.returncode} sprint={_row22().get('sprint')!r} marks={len(marks)}")
+        r = run(["set-sprint", "run-uc22-sprint", "--sprint", "Sprint-19",
+                 "--reason", "UC-22：同值必须无操作（不得追加假留痕）"],
+                base_env, raw=True)
+        ok("UC-22 幂等/防假痕：同值 = 无操作（报『无变化』且留痕条数不变）",
+           r.returncode == 0 and "无变化" in r.stdout
+           and len(_row22().get("sprint_backfills") or []) == 1,
+           f"rc={r.returncode} marks={len(_row22().get('sprint_backfills') or [])}")
+        r = run(["set-sprint", "run-uc22-sprint", "--sprint", "20",
+                 "--reason", "short"], base_env, raw=True)
+        ok("UC-22 反向对照：过短 --reason → 拒绝（回填必须带可核理由）",
+           r.returncode != 0, f"rc={r.returncode}")
+        probe = subprocess.run(
+            [sys.executable, "-c",
+             "import importlib.util;spec=importlib.util.spec_from_file_location("
+             "'a','scripts/agent-ops.py');m=importlib.util.module_from_spec(spec);"
+             "spec.loader.exec_module(m);"
+             "print(','.join(n for n in ('cmd_register','cmd_set_sprint','cmd_update',"
+             "'cmd_finish','cmd_set_scope','cmd_set_anchor','cmd_round',"
+             "'cmd_set_result_files','cmd_interrupt') "
+             "if not hasattr(getattr(m,n),'__wrapped__')))"],
+            cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8")
+        ok("UC-22 锁覆盖：写命令必须仍在 `@_with_registry_lock` 内（装饰器不得被挤开）",
+           probe.stdout.strip() == "",
+           f"未加锁={probe.stdout.strip()!r} rc={probe.returncode}")
+
+        # ---- 台账 E1 / 行 7：写入侧真入口对一致性向量的结论 ------------------
+        # 向量表在 spec（与读取侧同一张表）。本块把每个输入喂给**真 CLI**
+        # （`set-sprint`），断言"接受/拒绝 + 落库值"逐条与规范期望一致。
+        # 为什么必须在这里：判定域由读取侧按同一口径派生，写入侧若与它分叉，
+        # 就是台账 E1 反证列的形态（写进去的读不出来）——闸门侧自比查不出这一条。
+        # 分支感知（复核 `run-…-105` critical 2）：spec 在 windows-only 子树 ⇒
+        # main 上**显式 SKIP 并上屏**，不得 `FileNotFoundError`（那会把分支差异
+        # 冒充成代码缺陷、让 CI 恒红）。spec 在位时照旧真判（下面的断言一条不少）。
+        e1_absent = False
+        try:
+            vector = _spec_vector("### 4.1 表 A")
+        except SpecAbsentOnBranch:
+            vector = []
+            e1_absent = True
+            skip_spec_absent("E1 一致性向量（写入侧真入口 set-sprint 逐条比对）")
+        reason_e1 = "E1 向量：真 CLI 接受后落库值必须逐字节等于规范期望值"
+        run(["register", "--role", "impact-assessment", "--task", "e1-sprint-vector",
+             "--spec", "impact-assessment@1.4.4", "--run-id", "run-e1-vector"],
+            base_env, check=True)
+
+        def _sprint_of() -> object:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+            row = next(x for x in data["runs"] if x["run_id"] == "run-e1-vector")
+            return row.get("sprint")
+
+        # 变量名必须**全文件唯一**：`verify_artifact_paths.py` 的写盘目标分解器
+        # 按**名字**收集 `Assign`（不分作用域），同名多处赋值会分解失败 ⇒
+        # 该文件"动态目标"计数 +1（本块曾用 `bad`，与 UC-1 的 `bad` 撞名而踩中）。
+        sprint_bad: list[str] = []
+        accepts = rejects = 0
+        sprint_before: object = _sprint_of()
+        for rid, raw, want in vector:
+            # 拒绝分支的不变式是"**落库值不被改动**"——不是"落库值为空"：
+            # 前一条合法向量可能已经写过值，拿 `is None` 判会把正常拒绝误报成改动。
+            r = run(["set-sprint", "run-e1-vector", "--sprint", str(raw),
+                     "--reason", f"E1 一致性向量 {rid}：真入口结论比对"],
+                    base_env, raw=True)
+            blob = r.stdout + r.stderr
+            got = _sprint_of()
+            if want is None:
+                rejects += 1
+                if r.returncode == 0 or "SPRINT-ID-ERROR" not in blob:
+                    sprint_bad.append(f"{rid}: 期望拒绝，rc={r.returncode}")
+                elif got != sprint_before:
+                    sprint_bad.append(f"{rid}: 拒绝却改动了落库值"
+                                      f" {sprint_before!r} -> {got!r}")
+            else:
+                accepts += 1
+                if r.returncode != 0:
+                    sprint_bad.append(f"{rid}: 期望接受，rc={r.returncode} "
+                                      f"{blob.strip()[:40]}")
+                elif got != want:
+                    sprint_bad.append(f"{rid}: 落库 {got!r} != 期望 {want!r}")
+            sprint_before = got
+        if not e1_absent:
+            ok(reason_e1, not sprint_bad,
+               f"{len(vector)} 行 bad={sprint_bad[:2] or '[]'}")
+            # 前置条件：两个分支都**真的**被走到（造不出反例就是判据没被触发）。
+            ok("E1 向量：接受与拒绝两个分支都真被走到（否则本次结论不作数）",
+               accepts > 0 and rejects > 0, f"接受 {accepts} 例 / 拒绝 {rejects} 例")
+
+        # UC-23（P1 独立复核整改）：`result_files` 的**受控回填**。
+        # 病根（2026-09-25 实测事故）：`finish --result-file` 是收尾**当时**唯一写入口，
+        # 而 `verify_ledger_measurement.py` 对**终态评审类 run** 严格判
+        # `[missing_result_files_review]`；漏带 `--result-file` 之后 `finish`
+        # 拒绝二次收尾
+        # （`succeeded -> succeeded` 非法流转——这条 fail-closed 是对的）
+        # ⇒ 该问题**不可修**
+        # = 永久红。复核 run-083 正是这样（结论在报告里、账本里却没有产物）。
+        run(["register", "--role", "code-review", "--task", "uc23-result-files",
+             "--spec", "code-review@1.0.0", "--run-id", "run-uc23-review"],
+            base_env, check=True)
+        run(["update", "run-uc23-review", "--status", "running"],
+            base_env, check=True)
+        # R-001 夹具⑨（非测量）：断的是"漏带 --result-file 的终态评审 run 可受控回填"，
+        # 本 run 的 register/update/finish 同秒 ⇒ 时长不是被测对象。
+        run(["finish", "run-uc23-review", "--status", "succeeded",
+             "--output-chars", "1200", *DEGEN_FIXTURE_ARGS],
+            base_env, check=True)
+
+        def _row23() -> dict:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+            return next(x for x in data["runs"] if x["run_id"] == "run-uc23-review")
+
+        rep23 = tmp / "runs" / "run-uc23-review" / "code-review.report.md"
+        rep23.parent.mkdir(parents=True, exist_ok=True)
+        rep23.write_text("# UC-23 复核报告\n\n- **major** 示例\n", encoding="utf-8")
+        rel23 = "runs/run-uc23-review/code-review.report.md"
+        ok("UC-23 前置：复现病根——漏带 --result-file 的终态评审 run"
+           "（result_files 为空）",
+           _row23().get("result_files") == [] and (tmp / rel23).is_file(),
+           f"result_files={_row23().get('result_files')!r}")
+        r = run(["set-result-files", "run-uc23-review", "--file", rel23,
+                 "--reason", "UC-23：复核产物漏归档——按 agents 根相对路径补登（可核）"],
+                base_env, raw=True)
+        marks23 = _row23().get("result_files_backfills") or []
+        ok("UC-23 受控回填成功 + 六件套留痕（at/field/from/to/reason/by）",
+           r.returncode == 0 and _row23().get("result_files") == [rel23]
+           and len(marks23) == 1
+           and {"at", "field", "from", "to", "reason", "by"} <= set(marks23[-1])
+           and marks23[-1].get("from") == [] and marks23[-1].get("to") == [rel23],
+           f"rc={r.returncode} marks={len(marks23)}")
+        r = run(["set-result-files", "run-uc23-review", "--file", rel23,
+                 "--reason", "UC-23：同值必须无操作（不得追加假留痕）"],
+                base_env, raw=True)
+        ok("UC-23 幂等/防假痕：同值 = 无操作（报『无变化』且留痕条数不变）",
+           r.returncode == 0 and "无变化" in (r.stdout + r.stderr)
+           and len(_row23().get("result_files_backfills") or []) == 1,
+           f"rc={r.returncode} "
+           f"marks={len(_row23().get('result_files_backfills') or [])}")
+        r = run(["set-result-files", "run-uc23-review",
+                 "--file", "runs/run-uc23-review/does-not-exist.md",
+                 "--reason", "UC-23 反向对照：不存在的产物必须被拒"
+                             "（账本不得指向空气）"],
+                base_env, raw=True)
+        ok("UC-23 反向对照：产物不存在 → 拒绝且**不改库**（路径必须可核，fail-closed）",
+           r.returncode != 0 and "RESULT-FILE-ERROR" in (r.stdout + r.stderr)
+           and _row23().get("result_files") == [rel23],
+           f"rc={r.returncode} out={(r.stdout + r.stderr).strip()[:60]}")
+        r = run(["set-result-files", "run-uc23-review", "--file", rel23,
+                 "--reason", "short"], base_env, raw=True)
+        ok("UC-23 反向对照：过短 --reason → 拒绝（回填必须带可核理由）",
+           r.returncode != 0, f"rc={r.returncode}")
+        r = run(["set-result-files", "run-uc23-review",
+                 "--file", "verify/verify_agentops.py",
+                 "--reason", "UC-23 反向对照：只认 agents 根口径，仓库根路径不得混入"],
+                base_env, raw=True)
+        ok("UC-23 反向对照：仓库根相对路径 → 拒绝（**同一个字段不得有两种读法**）",
+           r.returncode != 0 and "RESULT-FILE-ERROR" in (r.stdout + r.stderr),
+           f"rc={r.returncode}")
+
+        # UC-24（R-001 / G3）：`finish` 写入口 **fail-closed**——退化时间戳不得写成终态。
+        # 病根：`register` 漏 `--start` ⇒ `update`(running) 与 `finish` 落在**同一秒**
+        # ⇒ `zero_duration`，"未测得"被写成"零耗时"。三条都**真跑 CLI 子进程**：
+        #   ① 不带 `--allow-degenerate` ⇒ 拒（文案含 FINISH-ERROR）且**账本未动**；
+        #   ② 带 flag + ≥10 字符理由 ⇒ 允许（账本按 declared/null 记，不冒充测量值）；
+        #   ③ 带 flag + <10 字符理由 ⇒ **仍拒**（逃生口必须具名）。
+        # 夹具确定性：`_now()` 秒级截断，"同秒"不是必然事件（实测 update+finish
+        # 约 0.11+0.15 s ⇒ 12 次里命中 10 次）。故先 `_uc24_align()` 等"秒刚翻"，
+        # 未命中就换新 run 重测（有界 3 轮）——重试只补偿"没造出退化态"，
+        # **不放宽判据**：命中后仍逐条断言 rc / 文案 / 账本行。
+        def _uc24_row(rid: str) -> dict:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+            return next(x for x in data["runs"] if x["run_id"] == rid)
+
+        def _uc24_align() -> None:
+            """等到"秒刚翻"再开跑（把 update+finish 压进同一自然秒的窗口最大化）。"""
+            import time as _t
+            while _t.time() % 1 > 0.03:
+                _t.sleep(0.004)
+
+        def _uc24_attempt(rid: str,
+                          extra: list[str],
+                          probe=None) -> tuple[subprocess.CompletedProcess, dict]:
+            """造一条"同秒收尾"的 run：`register` → `update` → `finish`。
+
+            `register` **不带** `--start`，由 `update` 记起点——这正是 CLI 的正常流程
+            （R-001 已更正"update 应拒绝空 started_at"那条错处方），
+            所以本夹具复现的是**真实**病根，不是人为注入的时间戳。
+            `probe` 在 `finish` **之前**调用（行 17 用来取"拒前"目录清单）。
+            """
+            run(["register", "--role", "impact-assessment", "--task", "uc24-degenerate",
+                 "--spec", "impact-assessment@1.4.4",
+                 "--run-id", rid], base_env, check=True)
+            _uc24_align()
+            run(["update", rid, "--status", "running"], base_env, check=True)
+            if probe is not None:
+                probe(rid)
+            proc = run(["finish", rid, "--status", "succeeded", "--output-chars", "10",
+                        *extra], base_env, raw=True)
+            return proc, _uc24_row(rid)
+
+        def _uc24_loop(prefix: str, extra: list[str], want: str,
+                       probe=None) -> tuple[subprocess.CompletedProcess, dict]:
+            """有界重试到"这一轮真的落在退化态"；`want` = `reject` / `allow`。"""
+            last = (None, {})
+            for i in (1, 2, 3):
+                proc, row = _uc24_attempt(f"{prefix}-{i}", extra, probe)
+                last = (proc, row)
+                hit = (proc.returncode != 0 if want == "reject"
+                       else proc.returncode == 0 and bool(row.get("measurement_flags")))
+                if hit:
+                    return proc, row
+                print(f"INFO[UC-24] {prefix}-{i} 跨秒未命中退化"
+                      f"（rc={proc.returncode} flags={row.get('measurement_flags')}）"
+                      "→ 换新 run 重测（判据不放宽）")
+            return last
+
+        proc24, row24 = _uc24_loop("run-uc24-nofg", [], "reject")
+        out24 = proc24.stdout + proc24.stderr
+        ok("UC-24 反向对照①：退化收尾**不带** flag → 拒绝（非零退出 + FINISH-ERROR）",
+           proc24.returncode != 0 and "FINISH-ERROR" in out24
+           and "zero_duration" in out24,
+           f"rc={proc24.returncode} out={out24.strip()[:64]}")
+        ok("UC-24 反向对照①：文案给出**两条**修法（受控回填 / 具名记账）",
+           "set-started-at" in out24 and "--allow-degenerate" in out24
+           and "--degenerate-reason" in out24,
+           f"尾部={out24.strip()[-56:]}")
+        ok("UC-24 反向对照①：拒绝 = **账本未动**（该 run 仍 running、无 ended_at）",
+           row24.get("status") == "running" and not row24.get("ended_at"),
+           f"status={row24.get('status')!r} ended_at={row24.get('ended_at')!r}")
+        reason24 = "probe: 同秒收尾，非真实测量（R-001）"
+        proc24b, row24b = _uc24_loop("run-uc24-allow",
+                                     ["--allow-degenerate",
+                                      "--degenerate-reason", reason24], "allow")
+        ok("UC-24 正向对照②：flag + ≥10 字符理由 → 写库成功，且该行确为退化态",
+           proc24b.returncode == 0 and row24b.get("status") == "succeeded"
+           and row24b.get("measurement_flags") == ["zero_duration"],
+           f"rc={proc24b.returncode} flags={row24b.get('measurement_flags')}")
+        ok("UC-24 正向对照②：放行 ≠ 冒充测量（`declared` + `dur_minutes=None`）",
+           row24b.get("measurement_source") == "declared"
+           and row24b.get("dur_minutes") is None,
+           f"src={row24b.get('measurement_source')} dur={row24b.get('dur_minutes')}")
+        ok("UC-24 正向对照②：具名理由在 stdout 可见"
+           "（行 18 起**同时**落账本，上屏仍保留）",
+           reason24 in (proc24b.stdout + proc24b.stderr),
+           f"out={(proc24b.stdout + proc24b.stderr).strip()[-56:]}")
+        # 行 18（2026-09-27 改）：理由**同时落账本**——此前只上屏，事后读账本只有
+        # `declared`+退化标记+null，"为什么不可测"查不到（唯一的解释留在终端输出里）。
+        ok("UC-24 正向对照②（行 18）：具名理由**落账本**"
+           " `degenerate_reason`（逐字等于所传理由）",
+           row24b.get("degenerate_reason") == reason24,
+           f"degenerate_reason={row24b.get('degenerate_reason')!r}")
+        # 口径配对：`degenerate_reason` ↔ `measurement_flags` 必须**逐行配对**
+        # （两份事实来自同一次写入；「有标记无理由」正是行 18 的缺口形态）。
+        # 前置：整本夹具账本里确实存在带退化标记的行（否则本条不作数）。
+        data24 = json.loads(registry.read_text(encoding="utf-8"))
+        paired24 = [(x.get("run_id"), bool(x.get("measurement_flags")),
+                     bool(str(x.get("degenerate_reason") or "").strip()))
+                    for x in data24["runs"]]
+        unpaired24 = [p for p in paired24 if p[1] != p[2]]
+        ok("UC-24（行 18）：夹具账本里 `degenerate_reason`"
+           " ↔ `measurement_flags` 逐行配对"
+           "（前置：确有带退化标记的行；无「有标记无理由」，也无「无标记却有理由」）",
+           not unpaired24 and any(p[1] for p in paired24),
+           f"不配对={unpaired24[:3]} 带标记行数={sum(1 for p in paired24 if p[1])}")
+
+        # 行 17（2026-09-27 改）：守卫拒绝路径**不得留孤儿产物**。
+        # 旧序是"先按字节复制 `--result-file`、后守卫"
+        # ⇒ 被拒后 `runs/<id>/` 多一份产物、
+        # 而账本行仍是 `running`（两边互相矛盾）。反证 = **拒前/拒后目录清单逐项相等**。
+        def _uc24_listing(rid: str) -> list[str]:
+            d = tmp / "runs" / rid
+            if not d.is_dir():
+                return []
+            return sorted(str(p.relative_to(d)) for p in d.rglob("*"))
+
+        report24 = tmp / "uc24-rejected.report.md"
+        report24.write_bytes("| 列 | 值 |\n| a | b |\n".encode("utf-8"))
+        seen24: dict[str, list[str]] = {}
+        proc24d, row24d = _uc24_loop(
+            "run-uc24-orphan", ["--result-file", str(report24)], "reject",
+            probe=lambda rid: seen24.__setitem__(rid, _uc24_listing(rid)))
+        rid24d = str(row24d.get("run_id") or "")
+        out24d = proc24d.stdout + proc24d.stderr
+        ok("UC-24 反向对照④（行 17）前置：该轮**确实是守卫拒绝**"
+           "（FINISH-ERROR + zero_duration）",
+           proc24d.returncode != 0 and "FINISH-ERROR" in out24d
+           and "zero_duration" in out24d,
+           f"rc={proc24d.returncode} out={out24d.strip()[:56]}")
+        ok("UC-24 反向对照④（行 17）：被拒后 `runs/<id>/` **不得新增产物**"
+           "（拒前清单 == 拒后清单 == 空；账本行仍是 running）",
+           seen24.get(rid24d) == [] and _uc24_listing(rid24d) == []
+           and row24d.get("status") == "running",
+           f"runs/{rid24d}/ 拒前={seen24.get(rid24d)} 拒后={_uc24_listing(rid24d)}"
+           f" status={row24d.get('status')!r}")
+        proc24c, row24c = _uc24_loop("run-uc24-short",
+                                     ["--allow-degenerate",
+                                      "--degenerate-reason", "太短"], "reject")
+        out24c = proc24c.stdout + proc24c.stderr
+        ok("UC-24 反向对照③：flag + 理由 <10 字符 → **仍拒**（FINISH-ERROR）",
+           proc24c.returncode != 0 and "FINISH-ERROR" in out24c
+           and "10" in out24c,
+           f"rc={proc24c.returncode} out={out24c.strip()[:64]}")
+        ok("UC-24 反向对照③：仍拒 = 账本未动（该 run 仍 running）",
+           row24c.get("status") == "running" and not row24c.get("ended_at"),
+           f"status={row24c.get('status')!r} ended_at={row24c.get('ended_at')!r}")
+
+        # UC-25（复盘行 19）：**受控撤回**——误登记 run 的唯一合法删除路径。
+        # 病根：账本原先只能加不能减（手改被 UC-7 的完整性校验拒；`set-started-at` 回填
+        # 时间戳 = 伪造测量值，父代理已否决）
+        # ⇒ 误登记永久污染判定域（实例：探针 `097`~`099`）。
+        # 判据四条，缺一条就不是受控撤回：理由 ≥10 字符 / 留痕 / 只认显式点名的单条 id /
+        # `--evidence` 必须存在；产物移入隔离区（删行不销毁现场）。
+        rid25 = "run-uc25-misregistered"
+
+        def _uc25_files(d: Path) -> list[str]:
+            if not d.is_dir():
+                return []
+            return sorted(str(p.relative_to(d)) for p in d.rglob("*"))
+
+        def _uc25_row(rid: str) -> dict | None:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+            return next((x for x in data["runs"] if x["run_id"] == rid), None)
+
+        def _uc25_retr() -> list[dict]:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+            return data.get("retractions") or []
+
+        run(["register", "--role", "impact-assessment", "--task", "uc25-misregistered",
+             "--spec", "impact-assessment@1.4.4", "--run-id", rid25],
+            base_env, check=True)
+        run(["update", rid25, "--status", "running"], base_env, check=True)
+        rep25 = tmp / "uc25.report.md"
+        rep25.write_bytes("| 探针产物 | 内容 |\n| 097 | 误登记样本 |\n".encode("utf-8"))
+        run(["finish", rid25, "--status", "succeeded", "--output-chars", "10",
+             "--result-file", str(rep25), *DEGEN_FIXTURE_ARGS], base_env, check=True)
+        dir25 = tmp / "runs" / rid25
+        ok("UC-25 前置：该 run 已登记为终态、产物已落 `runs/<id>/`"
+           "（撤回的判据必须真的被触发，否则不作数）",
+           dir25.is_dir() and bool(_uc25_files(dir25)),
+           f"runs/{rid25}/={_uc25_files(dir25)}")
+
+        reason25 = "探针误写入生产账本（UC-25 夹具）：正确形态是隔离账本"
+        for tag, argv25, want in (
+            ("通配/批量 id", ["run-uc25-*", "--reason", reason25,
+                              "--evidence", str(rep25)], "RETRACT-ERROR"),
+            ("过短理由", [rid25, "--reason", "太短", "--evidence", str(rep25)],
+             "RETRACT-ERROR"),
+            ("证据路径不存在", [rid25, "--reason", reason25,
+                                "--evidence", str(tmp / "no-such-evidence.md")],
+             "RETRACT-ERROR"),
+            ("账本里不存在的 run", ["run-uc25-not-registered", "--reason", reason25,
+                                    "--evidence", str(rep25)], "不存在"),
+        ):
+            r = run(["retract", *argv25], base_env, raw=True)
+            blob25 = r.stdout + r.stderr
+            ok(f"UC-25 反向对照：{tag} → 拒绝且**账本未动 / 产物未动**",
+               r.returncode != 0 and want in blob25
+               and _uc25_row(rid25) is not None and _uc25_retr() == []
+               and dir25.is_dir(),
+               f"rc={r.returncode} out={blob25.strip()[:56]}")
+
+        r = run(["retract", rid25, "--reason", reason25,
+                 "--evidence", str(rep25)], base_env, raw=True)
+        ok("UC-25 正向：理由齐全 + 证据存在 + 显式点名 → 撤回成功（rc=0）",
+           r.returncode == 0,
+           f"rc={r.returncode} out={(r.stdout + r.stderr).strip()[:56]}")
+        ok("UC-25 正向：账本行已删、**留痕**在 `retractions[]`"
+           "（run_id/reason/evidence/at/by/"
+           "status_at_retraction/quarantine 七字段齐）",
+           _uc25_row(rid25) is None and len(_uc25_retr()) == 1
+           and not [k for k, v in _uc25_retr()[0].items()
+                    if not str(v or "").strip()]
+           and set(_uc25_retr()[0]) >= {"at", "by", "run_id", "reason", "evidence",
+                                        "status_at_retraction", "quarantine"}
+           and _uc25_retr()[0]["reason"] == reason25
+           and _uc25_retr()[0]["evidence"] == str(rep25),
+           f"retractions={_uc25_retr()}")
+        q25 = tmp / str(_uc25_retr()[0].get("quarantine") or "")
+        moved25 = q25 / "impact-assessment.report.md"
+        same_bytes25 = moved25.is_file() and moved25.read_bytes() == rep25.read_bytes()
+        ok("UC-25 正向：产物**移入隔离区**"
+           "（`runs/<id>/` 不再有它，隔离区拿到逐字节相同的报告）",
+           not dir25.exists() and q25.is_dir() and same_bytes25,
+           f"quarantine={q25} 报告字节一致={same_bytes25}")
+        r = run(["retract", rid25, "--reason", reason25, "--evidence", str(rep25)],
+                base_env, raw=True)
+        ok("UC-25 反向对照：同一 run 再撤回一次 → 拒绝（不重复留痕、不做假痕）",
+           r.returncode != 0 and "已撤回" in (r.stdout + r.stderr)
+           and len(_uc25_retr()) == 1,
+           f"rc={r.returncode} retractions={len(_uc25_retr())}")
+
+        # 引用链保护：被其余 run 的 `scope_source` 引用的 run 不得撤回
+        # （删了它，引用者的 C2 判据会指向不存在的对象 = 把误登记换成真缺陷）。
+        run(["register", "--role", "impact-assessment", "--task", "uc25-cited",
+             "--spec", "impact-assessment@1.4.4", "--run-id", "run-uc25-cited"],
+            base_env, check=True)
+        run(["update", "run-uc25-cited", "--status", "running"], base_env, check=True)
+        run(["finish", "run-uc25-cited", "--status", "succeeded",
+             "--output-chars", "10",
+             *DEGEN_FIXTURE_ARGS], base_env, check=True)
+        run(["register", "--role", "code-review", "--task", "uc25-citer",
+             "--spec", "code-review@1.0.0", "--run-id", "run-uc25-citer",
+             "--scope-source", "impact-assessment:run-uc25-cited"],
+            base_env, check=True)
+        ok("UC-25 前置：账本里确有 run 的 scope_source 引用了待撤回者",
+           "impact-assessment:run-uc25-cited"
+           in json.dumps(_uc25_row("run-uc25-citer") or {}, ensure_ascii=False),
+           f"citer={_uc25_row('run-uc25-citer')}")
+        r = run(["retract", "run-uc25-cited", "--reason", reason25,
+                 "--evidence", str(rep25)],
+                base_env, raw=True)
+        ok("UC-25 反向对照：被 `scope_source` 引用的 run → 拒绝撤回"
+           "（引用链不得被撤回打断）",
+           r.returncode != 0 and "引用" in (r.stdout + r.stderr)
+           and _uc25_row("run-uc25-cited") is not None,
+           f"rc={r.returncode} out={(r.stdout + r.stderr).strip()[:56]}")
+
+        # ---- UC-27（2026-10-03 用户裁定「成本基线倾向 A」）：超预算 ⇒ 阻断派单
+        # ---------------------------------------------------------------
+        # 判据本体 = `scripts/agent-ops.py::_dispatch_gate`：
+        # **当日派单数（账本读数） >= 预算 ⇒ `register` 拒绝启动**；
+        # 预算与逃生门下限**现读** `<账本根>/spend-budget.json`（代码里不写死）。
+        # 为什么这里必须**真驱动 CLI**：这条闸门的全部意义就是"真的会停下来"——
+        # 只断言"某函数返回了什么"证明不了 `register` 会被拦；BR-1 卡记的
+        # "三项全 OVER 而没有任何东西因此停下"正是"有表无闸"的形态。
+        # 夹具自带**账本根 + 预算文件**（预算与账本同源，见 `_spend_budget_path`）
+        # ⇒ 同一个账本状态下改预算文件即改判定，闸门两个方向都能真跑出来。
+        uc27 = tmp / "uc27"
+        uc27.mkdir()
+        uc27_budget = uc27 / "spend-budget.json"
+
+        def _uc27_payload(cap: object, floor: object = 10,
+                          max_escapes: object = 1,
+                          patterns: object = None,
+                          kinds: object = None,
+                          legacy: object = None) -> str:
+            """受控预算文件的**内容**（落点由调用方的字面量路径决定）。
+
+            为什么不让本函数自己写盘：写盘目标必须是**静态可判定的落点**
+            （`verify/verify_artifact_paths.py` 的动态目标棘轮在本文件上**零余量**：
+            上限 5 = 现状 5）。把 `root` 当参数写盘会立刻顶破上限——本批实测踩到过。
+
+            2026-10-03 追加裁定后逃生门是**四把锁**（可核引用／同日次数上限／
+            具名例外类别／理由下限），故夹具默认把四把都写全；`None` 表示
+            "用默认形态"，显式传值用于反向对照（缺锁 ⇒ fail-closed）。
+            `legacy`＝逐行点名的旧规则豁免表（默认空表：夹具里不该出现豁免，
+            否则"同日第二笔仍被拒"那条对照会被它悄悄放行）。
+            """
+            return json.dumps(
+                {"budget": {"dispatched_sessions_per_day": cap},
+                 "over_budget_escape": {
+                     "reason_min_chars": floor,
+                     "max_escapes_per_day": max_escapes,
+                     "max_escapes_counts_from": UC27_COUNTS_FROM,
+                     "max_escapes_legacy_rows": ([] if legacy is None
+                                                 else legacy),
+                     "citation_patterns": (UC27_PATTERNS if patterns is None
+                                           else patterns),
+                     "named_exception_kinds": (UC27_KINDS if kinds is None
+                                               else kinds)}},
+                ensure_ascii=False)
+
+        def _uc27_day() -> str:
+            """夹具自己算的 UTC+8 今天（**不导入被测实现**的 `_local_date()`）。"""
+            return (datetime.now(timezone.utc)
+                    + timedelta(hours=8)).strftime("%Y-%m-%d")
+
+        def _uc27_rows(root: Path) -> list[dict]:
+            led = root / "runtime" / "registry.json"
+            if not led.is_file():
+                return []
+            return json.loads(led.read_text(encoding="utf-8"))["runs"]
+
+        def _uc27_reading(root: Path) -> int:
+            """**独立**复算当日读数（不导入被测实现，两侧各自解析同一账本）。
+
+            与闸门同口径的**并集**：`run_id` 的 `run-<日期>-` 段 ∪ `started_at`
+            折算 UTC+8。判据必须独立实现——导入被测实现再比就成恒真式了。
+            """
+            day = _uc27_day()
+            n = 0
+            for row in _uc27_rows(root):
+                hit = str(row.get("run_id") or "").startswith(f"run-{day}-")
+                raw = str(row.get("started_at") or "")
+                if raw:
+                    try:
+                        ts = datetime.fromisoformat(raw).astimezone(timezone.utc)
+                    except ValueError:
+                        ts = None
+                    if ts is not None and (ts + timedelta(hours=8)
+                                           ).strftime("%Y-%m-%d") == day:
+                        hit = True
+                n += 1 if hit else 0
+            return n
+
+        def _uc27_reg(root: Path, rid: str, role: str = "implementation",
+                      extra: list[str] | None = None):
+            spec = f"{role}@1.0.0"
+            argv = ["register", "--role", role, "--task", "uc27 budget fixture",
+                    "--spec", spec, "--run-id", rid, *(extra or [])]
+            return run(argv, {**base_env, "AGENT_OPS_DIR": str(root)}, raw=True)
+
+        uc27_budget.write_text(_uc27_payload(2), encoding="utf-8")
+        # 种子①：**带日期 id**（= 今日，UTC+8）、**不给 `--start`**
+        # ⇒ 它只能被 `run_id` 日期段计入（started_at 为空）。
+        r = _uc27_reg(uc27, f"run-{_uc27_day()}-uc27-dated")
+        ok("UC-27 正方向①：空账本当日第一笔**照常放行**"
+           "（不得被『无历史/空账本』卡住；读数 0 < 预算 2）",
+           r.returncode == 0 and "0/2" in r.stdout and "放行" in r.stdout,
+           f"rc={r.returncode} out={r.stdout.strip()[:64]}")
+        ok("UC-27 信号①：**只有带日期的 run_id、没有 started_at** 的 run 也被计入"
+           "（漏了这条 ⇒ 用带日期的 id 就能刷单）",
+           len(_uc27_rows(uc27)) == 1
+           and not _uc27_rows(uc27)[0].get("started_at")
+           and "1/2" in _uc27_reg(uc27, "run-uc27-start-signal",
+                                  extra=["--start"]).stdout)
+        # 种子②：**无日期 id**、给 `--start` ⇒ 由 started_at 计入。至此读数 = 2。
+        ok("UC-27 信号②：**无日期 id + `--start`** 的 run 也计入（两个信号取并集）",
+           _uc27_reading(uc27) == 2 and len(_uc27_rows(uc27)) == 2,
+           f"独立复算读数={_uc27_reading(uc27)} 账本 {len(_uc27_rows(uc27))} 条")
+        _bytes27 = (uc27 / "runtime" / "registry.json").read_bytes()
+        r = _uc27_reg(uc27, "run-uc27-blocked-1")
+        out27 = (r.stdout + r.stderr)
+        ok("UC-27 ②超预算：读数 2 >= 预算 2 ⇒ `register` **拒绝启动**（rc≠0）",
+           r.returncode != 0 and "BUDGET-REFUSED" in out27 and "拒绝启动" in out27,
+           f"rc={r.returncode} out={out27.strip().splitlines()[0][:64]}")
+        ok("UC-27 ②点名：拒绝文案必须点出**读数／预算／逃生门用法**"
+           "（只报『超预算』＝用户不知道该改什么）",
+           "读数 2" in out27 and "预算：2" in out27 and "--over-budget" in out27
+           and "≥10 字" in out27,
+           f"读数={'读数 2' in out27} 预算={'预算：2' in out27} "
+           f"逃生门={'--over-budget' in out27}")
+        ok("UC-27 ②如实标注金额轴：拒绝文案里写明 **CNY/日 轴不阻断**及原因"
+           "（度量仪作用域缺陷 ⇒ 拿它当依据＝用错数停工作）",
+           "不阻断" in out27 and "作用域" in out27 and "A-COST" in out27,
+           "金额轴缺陷已标注" if "不阻断" in out27 else out27[:60])
+        ok("UC-27 ②拒绝＝**不半写**：账本字节逐字节未动、行数不变",
+           (uc27 / "runtime" / "registry.json").read_bytes() == _bytes27
+           and len(_uc27_rows(uc27)) == 2,
+           f"行数={len(_uc27_rows(uc27))}")
+        # ④ 同一判据对**别的 role** 一样生效（不许只在某一 role 上接线）
+        r_impl = _uc27_reg(uc27, "run-uc27-blocked-2")
+        r_rev = _uc27_reg(uc27, "run-uc27-blocked-3", role="doc-audit", extra=[
+            "--scope-source", "self-chosen",
+            "--deviation", "UC-27 预算夹具：合成评审 run，无真实评审范围"])
+        ok("UC-27 ④同一判据对**别的 role** 一样生效"
+           "（implementation 与评审类 doc-audit 都被拦，不是某一角色的专属接线）",
+           r_impl.returncode != 0 and r_rev.returncode != 0
+           and "BUDGET-REFUSED" in (r_impl.stdout + r_impl.stderr)
+           and "BUDGET-REFUSED" in (r_rev.stdout + r_rev.stderr),
+           f"impl rc={r_impl.returncode} doc-audit rc={r_rev.returncode}")
+        r = _uc27_reg(uc27, "run-uc27-escape",
+                      extra=["--over-budget", UC27_ESCAPE_QUOTE])
+        esc27 = next((x for x in _uc27_rows(uc27)
+                      if x["run_id"] == "run-uc27-escape"), None)
+        ok("UC-27 ③逃生门：引用用户原话 ＋ 具名『收口』类别 ⇒ **放行**（rc=0）"
+           "且上屏点名走了逃生门（含同日第几次）",
+           r.returncode == 0 and "逃生门放行" in r.stdout
+           and "第 1/1 次" in r.stdout,
+           f"rc={r.returncode} out={r.stdout.strip()[:64]}")
+        ok("UC-27 ③留痕（现读账本）：理由**原话**落 `budget_override_reason`"
+           "（不是只上屏——先例＝`finish --allow-degenerate` 的 `degenerate_reason`）",
+           esc27 is not None
+           and esc27.get("budget_override_reason") == UC27_ESCAPE_QUOTE,
+           f"budget_override_reason={esc27 and esc27.get('budget_override_reason')!r}")
+        ok("UC-27 ③留痕（现读账本）：`budget_override` 记下**被豁免掉的读数**"
+           "（轴／读数 2／预算 2／UTC+8 日／登记时刻），事后可核",
+           bool(esc27) and esc27.get("budget_override", {}).get("axis")
+           == "dispatched_sessions_per_day"
+           and esc27["budget_override"].get("reading") == 2
+           and esc27["budget_override"].get("budget") == 2
+           and esc27["budget_override"].get("day") == _uc27_day()
+           and bool(str(esc27["budget_override"].get("at") or "").strip()),
+           f"budget_override={esc27 and esc27.get('budget_override')}")
+        # ⑬ 同日第二次逃生门 ⇒ 拒绝并**点名已用次数与用掉它的 run_id**
+        _rows27 = len(_uc27_rows(uc27))
+        r = _uc27_reg(uc27, "run-uc27-escape-2",
+                      extra=["--over-budget", UC27_ESCAPE_ENTRY])
+        ok("UC-27 ⑬同日第二次逃生门 ⇒ **拒绝**且点名『已用 1 次／上限 1』"
+           "（上限来自数据文件，不是代码常量）",
+           r.returncode != 0 and "同日逃生门次数已达上限" in r.stderr
+           and "已用 1 次" in r.stderr and "上限 1" in r.stderr,
+           f"rc={r.returncode} err={r.stderr.strip()[:64]}")
+        ok("UC-27 ⑬点名『被谁用掉』：必须给出用掉额度的 run_id（只报次数读不到现场）",
+           "run-uc27-escape" in r.stderr and len(_uc27_rows(uc27)) == _rows27,
+           f"rows={len(_uc27_rows(uc27))}（应仍为 {_rows27}，拒绝不半写）")
+        # ⑭ 理由过短 ⇒ 拒绝。**必须另起夹具**：本夹具的逃生门额度已被 ③ 用掉，
+        # 若沿用 uc27，这条会被"次数上限"先拦下 ⇒ 断言与它自述的判据不是同一件事
+        # （反向对照最容易退化成恒真式的地方）。新夹具把上限放到 2。
+        uc27e = tmp / "uc27e"
+        uc27e.mkdir()
+        uc27e_budget = uc27e / "spend-budget.json"
+        uc27e_budget.write_text(_uc27_payload(1, max_escapes=2), encoding="utf-8")
+        _uc27_reg(uc27e, f"run-{_uc27_day()}-uc27e-seed")
+        _rows27e = len(_uc27_rows(uc27e))
+        r = _uc27_reg(uc27e, "run-uc27-short", extra=["--over-budget", "太短了"])
+        ok("UC-27 ⑭反向对照：逃生门理由**过短** ⇒ 拒绝且**不留痕**"
+           "（说不出为什么就不许放行；与次数上限**分开**跑）",
+           r.returncode != 0 and "BUDGET-ERROR" in r.stderr
+           and "≥10" in r.stderr and len(_uc27_rows(uc27e)) == _rows27e,
+           f"rc={r.returncode} err={r.stderr.strip()[:56]}")
+        # ⑦ 未超预算却传逃生门 ⇒ 拒绝（否则"随手带上逃生门"就能把闸门架空）
+        uc27b = tmp / "uc27b"
+        uc27b.mkdir()
+        uc27b_budget = uc27b / "spend-budget.json"
+        uc27b_budget.write_text(_uc27_payload(5), encoding="utf-8")
+        r = _uc27_reg(uc27b, "run-uc27-fake-escape",
+                      extra=["--over-budget", "未超预算也想放行看看会怎样"])
+        ok("UC-27 ⑦反向对照：**未超预算**却传 `--over-budget` ⇒ 拒绝"
+           "（放行一条不存在的超预算是**假留痕**，比无留痕更坏）",
+           r.returncode != 0 and "不是超预算" in r.stderr
+           and _uc27_rows(uc27b) == [],
+           f"rc={r.returncode} err={r.stderr.strip()[:56]}")
+        # ⑧ 盲区如实记：id 无日期段 **且** 无 started_at 的 run 不计入（已知盲区）
+        _uc27_reg(uc27b, "run-uc27-blind")           # 无日期 id、无 --start
+        r = _uc27_reg(uc27b, "run-uc27-after-blind", extra=["--start"])
+        ok("UC-27 ⑧已知盲区如实上屏：**id 无日期段且无 `started_at`** 的 run 不计入"
+           "（读数仍是 0/5，而账本已有 2 条）——盲区登记在卡上，不假装覆盖",
+           "0/5" in r.stdout and len(_uc27_rows(uc27b)) == 2,
+           f"out={r.stdout.strip()[:48]} 账本={len(_uc27_rows(uc27b))} 条")
+        # ⑨ 预算值**真来自数据**：同一个账本、同一个读数，只改预算文件即改判定
+        r_before = _uc27_reg(uc27, "run-uc27-data-driven-1")
+        uc27_budget.write_text(_uc27_payload(4), encoding="utf-8")
+        r_up = _uc27_reg(uc27, "run-uc27-data-driven-1")
+        uc27_budget.write_text(_uc27_payload(2), encoding="utf-8")
+        r_down = _uc27_reg(uc27, "run-uc27-data-driven-2")
+        ok("UC-27 ⑨反向对照（真驱动）：只改数据文件里的预算（2→4）⇒ 同一状态由"
+           "『拒绝』变『放行』，改回 2 ⇒ 又拒绝（预算不是代码常量）",
+           r_before.returncode != 0 and r_up.returncode == 0
+           and r_down.returncode != 0,
+           f"2⇒{r_before.returncode} 4⇒{r_up.returncode} 2⇒{r_down.returncode}")
+        # ⑩ 未配置预算 ⇒ 判据**未执行**（不算通过），但不阻断隔离账本
+        uc27c = tmp / "uc27c"
+        uc27c.mkdir()
+        r = _uc27_reg(uc27c, "run-uc27-nobudget")
+        ok("UC-27 ⑩未配置预算：**未执行**档上屏点名『不是通过』且不阻断登记"
+           "（口径同 spend-report --check 的 SKIP；不得冒充 PASS）",
+           r.returncode == 0 and "未执行" in r.stdout and "不是通过" in r.stdout
+           and len(_uc27_rows(uc27c)) == 1,
+           f"rc={r.returncode} out={r.stdout.strip()[:48]}")
+        # ⑪ 配置坏了必须响亮地坏：预算键缺失／布尔／负数 ⇒ fail-closed，不静默放行
+        # 三个夹具根**逐个字面写名**（循环变量当落点会变成"动态写盘目标"，
+        # 而本文件的该棘轮零余量——见 `_uc27_payload` 的说明）。
+        b27a = tmp / "uc27bad-a"
+        b27b = tmp / "uc27bad-b"
+        b27c = tmp / "uc27bad-c"
+        b27a.mkdir()
+        b27b.mkdir()
+        b27c.mkdir()
+        (b27a / "spend-budget.json").write_text(
+            json.dumps({"budget": {}}, ensure_ascii=False), encoding="utf-8")
+        (b27b / "spend-budget.json").write_text(json.dumps(
+            {"budget": {"dispatched_sessions_per_day": True}},
+            ensure_ascii=False), encoding="utf-8")
+        (b27c / "spend-budget.json").write_text(json.dumps(
+            {"budget": {"dispatched_sessions_per_day": -1}},
+            ensure_ascii=False), encoding="utf-8")
+        bad27: dict[str, int] = {}
+        for label, root in (("缺失", b27a), ("布尔 true", b27b), ("负数", b27c)):
+            rr = _uc27_reg(root, "run-uc27-badcap")
+            bad27[label] = (rr.returncode
+                            if rr.returncode != 0 and "BUDGET-ERROR" in rr.stderr
+                            else 0)
+        ok("UC-27 ⑪fail-closed：预算键**缺失／布尔／负数** ⇒ 一律拒绝登记"
+           "（配置坏了不得静默把闸门关掉）",
+           all(v != 0 for v in bad27.values()) and len(bad27) == 3,
+           f"rc={bad27}")
+        # ⑫ 真预算文件的契约（防"删掉键即静音"）：真仓文件必须真带这两把锁
+        real_budget = json.loads(
+            (ROOT / "agents" / "spend-budget.json").read_text(encoding="utf-8"))
+        cap_real = (real_budget.get("budget") or {}).get("dispatched_sessions_per_day")
+        esc_real = real_budget.get("over_budget_escape") or {}
+        floor_real = esc_real.get("reason_min_chars")
+        ok("UC-27 ⑫真仓契约：`agents/spend-budget.json` 带 `budget."
+           "dispatched_sessions_per_day`（≥0 整数）与 `over_budget_escape."
+           "reason_min_chars`（正整数）——删/改坏任一键，闸门或逃生门即失效",
+           isinstance(cap_real, int) and not isinstance(cap_real, bool)
+           and cap_real >= 0
+           and isinstance(floor_real, int) and not isinstance(floor_real, bool)
+           and floor_real >= 1,
+           f"cap={cap_real!r} reason_min_chars={floor_real!r}（**只核类型，不核取值**："
+           f"预算值属用户政策，改它不该让本判据变红）")
+
+        # ⑮⑯⑰⑱ 2026-10-03 追加裁定「超过时也要有兜底策略」：逃生门**四把锁**。
+        # 四个夹具根**逐个字面写名**（同 ⑪ 的理由：动态落点会顶破本文件的棘轮上限）。
+        g27 = tmp / "uc27g"
+        h27 = tmp / "uc27h"
+        i27 = tmp / "uc27i"
+        j27 = tmp / "uc27j"
+        g27.mkdir()
+        h27.mkdir()
+        i27.mkdir()
+        j27.mkdir()
+        # ⑮ 自述理由（无任何可核引用）⇒ 拒绝 —— 父代理点名的洞就是这一条
+        (g27 / "spend-budget.json").write_text(_uc27_payload(1), encoding="utf-8")
+        _uc27_reg(g27, f"run-{_uc27_day()}-uc27g-seed")
+        r = _uc27_reg(g27, "run-uc27-selfreport",
+                      extra=["--over-budget", UC27_SELFREPORT])
+        ok("UC-27 ⑮**自述理由不算数**（追加裁定的核心）：理由超下限、"
+           "但无可核引用 ⇒ **拒绝**且点名要引用什么（用户裁定才绑得住执行方）",
+           r.returncode != 0 and "必须含可核引用" in r.stderr
+           and "D-251003-01" in r.stderr and "原话" in r.stderr,
+           f"rc={r.returncode} err={r.stderr.strip()[:64]}")
+        # ⑯ 引用形态②：登记条目号（`D-\\d{6}-\\d{2}`）独立成词 ⇒ 放行
+        (h27 / "spend-budget.json").write_text(_uc27_payload(1), encoding="utf-8")
+        _uc27_reg(h27, f"run-{_uc27_day()}-uc27h-seed")
+        r = _uc27_reg(h27, "run-uc27-entry",
+                      extra=["--over-budget", UC27_ESCAPE_ENTRY])
+        _esc27h = next((x for x in _uc27_rows(h27)
+                        if x["run_id"] == "run-uc27-entry"), None)
+        ok("UC-27 ⑯引用形态②『决策登记条目号』⇒ **放行**且逐字落账本"
+           "（两条形态任一命中即可，这是其中一条）",
+           r.returncode == 0 and "逃生门放行" in r.stdout and _esc27h is not None
+           and _esc27h.get("budget_override_reason") == UC27_ESCAPE_ENTRY,
+           f"rc={r.returncode} out={r.stdout.strip()[:56]}")
+        # ⑰ 引用形态的**边界**：命中必须独立成词。实测坑：不加 lookaround 时
+        # `D-251002-01 之外` 这种"更长 id 的前缀"也会被当命中 ⇒ 前缀可冒充条目号。
+        (i27 / "spend-budget.json").write_text(_uc27_payload(1), encoding="utf-8")
+        _uc27_reg(i27, f"run-{_uc27_day()}-uc27i-seed")
+        r = _uc27_reg(i27, "run-uc27-prefix",
+                      extra=["--over-budget", "D-251002-01之外的理由，本笔为安全类"])
+        ok("UC-27 ⑰引用**边界**：条目号后面紧跟字符（`D-251002-01之外`）**不得**"
+           "冒充条目号 ⇒ 拒绝（不加 lookaround 时它会命中，等于引用形态形同虚设）",
+           r.returncode != 0 and "必须含可核引用" in r.stderr,
+           f"rc={r.returncode} err={r.stderr.strip()[:56]}")
+        # ⑱ 具名例外类别：恰好一类才放行；0 类 ⇒ 拒绝
+        (j27 / "spend-budget.json").write_text(_uc27_payload(1), encoding="utf-8")
+        _uc27_reg(j27, f"run-{_uc27_day()}-uc27j-seed")
+        r_no = _uc27_reg(j27, "run-uc27-nokind",
+                         extra=["--over-budget",
+                                "用户原话“覆盖锚点必须显式设端点”"])
+        ok("UC-27 ⑱具名例外类别：有可核引用但**不属任何具名类别** ⇒ 拒绝"
+           "（两类之外不许借道——否则逃生门就是任意放行的后门）",
+           r_no.returncode != 0 and "恰好落一类具名例外" in r_no.stderr,
+           f"rc={r_no.returncode} err={r_no.stderr.strip()[:56]}")
+        r_ok = _uc27_reg(j27, "run-uc27-kind-entry",
+                         extra=["--over-budget", UC27_ESCAPE_ENTRY])
+        ok("UC-27 ⑱同一账本、同一读数：落进具名类别『安全』的那一笔 ⇒ 放行"
+           "（不是把正方向一起拒掉——判据只拦『不具名』）",
+           r_ok.returncode == 0 and "『安全』" in r_ok.stdout,
+           f"rc={r_ok.returncode} out={r_ok.stdout.strip()[:56]}")
+        # ⑲ 拒绝也要留痕：被拒的派单进运行态队列（一行一条、字段齐全、逐条可查）
+        _ref_file = g27 / "runtime" / "dispatch-refusals.jsonl"
+        _ref_rows = ([json.loads(x) for x in
+                      _ref_file.read_text(encoding="utf-8").splitlines() if x.strip()]
+                     if _ref_file.is_file() else [])
+        ok("UC-27 ⑲拒绝也要留下：被拒派单**追加进运行态队列**"
+           "（`dispatch-refusals.jsonl`，次日额度恢复后可查、不丢待办）",
+           len(_ref_rows) == 1
+           and _ref_rows[0].get("run_id") == "run-uc27-selfreport",
+           f"行数={len(_ref_rows)}")
+        _need27 = {"at", "day", "axis", "reading", "budget", "run_id", "reason"}
+        ok("UC-27 ⑲留痕字段完整：时点／axis／读数／预算／被拒 run_id／理由"
+           "（缺字段就没法在次日还原『当时为什么被拦』）",
+           bool(_ref_rows) and _need27 <= set(_ref_rows[0])
+           and _ref_rows[0]["axis"] == "dispatched_sessions_per_day"
+           and _ref_rows[0]["reading"] == "1/1"
+           and _ref_rows[0]["budget"] == 1
+           and _ref_rows[0]["day"] == _uc27_day()
+           and bool(str(_ref_rows[0]["reason"]).strip()),
+           f"字段={sorted(_ref_rows[0]) if _ref_rows else []}")
+        # ⑳ 兜底阶梯第 1、2 级（不派单／合并拆分）**必须出现在拒绝上屏里**：
+        # 读到拒绝的人要先试它们，再考虑逃生门。
+        ok("UC-27 ⑳兜底建议上屏：拒绝文案含『不派单』与『合并/拆分目标』两级"
+           "（这两级不需要代码支持，但必须先被读到）",
+           "不派单" in r_no.stderr and "合并/拆分目标" in r_no.stderr,
+           f"err={r_no.stderr.strip()[:48]}")
+        # ㉑ 分档依据＝账本根**身份**（是不是本仓 `agents/`），不是"环境变量在不在"。
+        # 为什么必须钉住这条：第一版按 env 判定，实测有洞——env 为空串/全空白时
+        # `Path("")` 会解析成**当前目录**，"设了个空的重定向"被当成真仓档。
+        # 这里用**纯探针**（子进程打印判定结果，不跑 register、不写任何文件）把
+        # 两个方向都钉住：真仓 ⇒ False（→ 缺文件即拒绝），别的根 ⇒ True（→ 未执行）。
+        _opspath = tmp / "uc27ops"
+        _opspath.mkdir()
+        _probe_src = ("import sys\n"
+                      "sys.path.insert(0, r'" + str(ROOT) + "')\n"
+                      "import importlib.util as u\n"
+                      "s = u.spec_from_file_location('opsp', r'" + str(CLI) + "')\n"
+                      "m = u.module_from_spec(s)\n"
+                      "s.loader.exec_module(m)\n"
+                      "print('REDIRECTED=' + str(m._redirected_ledger()))\n")
+        _probe_py = _opspath / "probe.py"
+        _probe_py.write_text(_probe_src, encoding="utf-8")
+        _probe_env = {k: v for k, v in base_env.items() if k != "AGENT_OPS_DIR"}
+        _probe_env["PYTHONUTF8"] = "1"
+        _real_probe = subprocess.run(
+            [sys.executable, str(_probe_py)], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", env=_probe_env, cwd=str(ROOT))
+        _redir_probe = subprocess.run(
+            [sys.executable, str(_probe_py)], capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
+            env={**_probe_env, "AGENT_OPS_DIR": str(_opspath)}, cwd=str(ROOT))
+        ok("UC-27 ㉑分档判据＝**账本根身份**：本仓 `agents/` ⇒ 真仓档（缺预算即拒绝）",
+           "REDIRECTED=False" in _real_probe.stdout,
+           f"out={_real_probe.stdout.strip()[:40]}"
+           f" err={_real_probe.stderr.strip()[:40]}")
+        ok("UC-27 ㉑分档判据：别的根 ⇒ 重定向档（缺预算判未执行，不误伤探针）",
+           "REDIRECTED=True" in _redir_probe.stdout,
+           f"out={_redir_probe.stdout.strip()[:40]}")
+        real27 = tmp / "uc27real"
+        (real27 / "agents" / "runtime").mkdir(parents=True)
+        ok("UC-27 ㉑前置：该档确实**没有**预算文件（否则测的是另一条分支）",
+           not (real27 / "agents" / "spend-budget.json").is_file())
+        r_redir_real = _uc27_reg(real27 / "agents", "run-uc27-redirect-again")
+        ok("UC-27 ㉑重定向档（账本根≠本仓 agents/）缺预算 ⇒ 判**未执行**且放行",
+           r_redir_real.returncode == 0 and "未执行" in r_redir_real.stdout
+           and "不是通过" in r_redir_real.stdout,
+           f"rc={r_redir_real.returncode} out={r_redir_real.stdout.strip()[:48]}")
+        _sentinel = real27 / "agents" / "spend-budget.json"
+        _sentinel.write_text("{}", encoding="utf-8")
+        r_bad = _uc27_reg(real27 / "agents", "run-uc27-real-empty-budget")
+        ok("UC-27 ㉑同一根、只把预算文件放回去（内容为 `{}`）⇒ **立刻改判**："
+           "缺 `budget` 键即 fail-closed 拒绝登记（证明上一条的放行是『文件缺失』"
+           "这一档，不是这条判据整体失效）",
+           r_bad.returncode != 0 and "BUDGET-ERROR" in r_bad.stderr,
+           f"rc={r_bad.returncode} err={r_bad.stderr.strip()[:56]}")
+        # ㉒ `AGENT_OPS_DIR` 重定向档缺预算 ⇒ **未执行**（不算通过）但仍放行：
+        # 夹具与 `%TEMP%` 探针没有预算文件，阻断它们＝把探针全卡死。
+        k27 = tmp / "uc27k"
+        k27.mkdir()
+        r_redir = _uc27_reg(k27, "run-uc27-redirect-nobudget")
+        ok("UC-27 ㉒重定向档（`AGENT_OPS_DIR`）缺预算 ⇒ 上屏点名"
+           "『未执行——不是通过』且**不阻断**（否则 verify 夹具全卡死）",
+           r_redir.returncode == 0 and "未执行" in r_redir.stdout
+           and "不是通过" in r_redir.stdout,
+           f"rc={r_redir.returncode} out={r_redir.stdout.strip()[:48]}")
+        ok("UC-27 ㉒重定向档**不写拒绝队列**（未执行≠拒绝；把两者混在一起"
+           "会让真待办里混进探针噪音）",
+           not (k27 / "runtime" / "dispatch-refusals.jsonl").is_file())
+        # ㉓ 四把锁**缺任一** ⇒ fail-closed（防"删掉一个键就把逃生门改回自述即放行"）
+        l27 = tmp / "uc27l"
+        l27.mkdir()
+        (l27 / "spend-budget.json").write_text(
+            _uc27_payload(1, patterns=[]), encoding="utf-8")
+        r_lock = _uc27_reg(l27, "run-uc27-nolock")
+        ok("UC-27 ㉓逃生门锁缺一（citation_patterns 空）⇒ **拒绝登记**"
+           "（缺锁＝逃生门退回『自述理由即放行』⇒ fail-closed）",
+           r_lock.returncode != 0 and "citation_patterns" in r_lock.stderr,
+           f"rc={r_lock.returncode} err={r_lock.stderr.strip()[:56]}")
+        # ㉓b 生效日**真会改判定**（不是只写了一格没人读）：把生效日推到**明天**
+        # ⇒ 今天那一笔逃生门不再计入额度 ⇒ 同一天的第二笔反而放行。这条对照的
+        # 意义正是把"放水阀"的形态**演出来**：谁把生效日往前推，判据就松成这样，
+        # 所以 ㉕ 才必须把它钉成"不晚于今天"。
+        m27 = tmp / "uc27m"
+        m27.mkdir()
+        _tomorrow = (datetime.now(timezone.utc) + timedelta(hours=8)
+                     + timedelta(days=1)).strftime("%Y-%m-%d")
+        (m27 / "spend-budget.json").write_text(
+            _uc27_payload(1).replace(UC27_COUNTS_FROM, _tomorrow),
+            encoding="utf-8")
+        _uc27_reg(m27, f"run-{_uc27_day()}-uc27m-seed")
+        _m_ok = _uc27_reg(m27, "run-uc27-m1", extra=["--over-budget",
+                                                    UC27_ESCAPE_QUOTE])
+        _m_again = _uc27_reg(m27, "run-uc27-m2", extra=["--over-budget",
+                                                       UC27_ESCAPE_ENTRY])
+        ok("UC-27 ㉓b生效日真会改判定：推到明天 ⇒ 今天的两笔逃生门都放行"
+           "（＝上限形同虚设）。这正是为什么 ㉕ 要求生效日**不晚于今天**",
+           _m_ok.returncode == 0 and _m_again.returncode == 0,
+           f"第一笔 rc={_m_ok.returncode} 第二笔 rc={_m_again.returncode}"
+           f"（正常档第二笔应为 1）")
+        # ㉓c 旧规则行豁免是**逐行点名**：把"已用过额度的那一行"写进豁免表 ⇒
+        # 新的一笔放行（这正是真仓那一行要的效果）；写一个**不存在的 run_id**
+        # ⇒ 不产生任何豁免（否则豁免表就成了"随便写点什么都能开局"的开关）。
+        n27 = tmp / "uc27n"
+        o27 = tmp / "uc27o"
+        n27.mkdir()
+        o27.mkdir()
+        (n27 / "spend-budget.json").write_text(
+            _uc27_payload(1, legacy=["run-uc27n-used"]), encoding="utf-8")
+        _uc27_reg(n27, f"run-{_uc27_day()}-uc27n-seed")
+        _n_used = _uc27_reg(n27, "run-uc27n-used",
+                            extra=["--over-budget", UC27_ESCAPE_QUOTE])
+        _n_next = _uc27_reg(n27, "run-uc27n-next",
+                            extra=["--over-budget", UC27_ESCAPE_ENTRY])
+        ok("UC-27 ㉓c旧规则行**逐行点名**豁免：被点名的 `run-uc27n-used` 不占额度"
+           "⇒ 其后新的一笔放行（豁免面钉在具体 run_id，不是整段窗口）",
+           _n_used.returncode == 0 and _n_next.returncode == 0,
+           f"被点名那笔 rc={_n_used.returncode} 新的一笔 rc={_n_next.returncode}")
+        ok("UC-27 ㉓c反向：表里写一个**不存在的 run_id** ⇒ 不产生任何豁免"
+           "（下一笔仍占额度、再一笔被拒）——豁免表不是随心开关",
+           _uc27_reg(n27, "run-uc27n-third",
+                     extra=["--over-budget", UC27_ESCAPE_QUOTE]
+                     ).returncode != 0)
+        (o27 / "spend-budget.json").write_text(
+            _uc27_payload(1, legacy=["run-does-not-exist"]), encoding="utf-8")
+        _uc27_reg(o27, f"run-{_uc27_day()}-uc27o-seed")
+        _o1 = _uc27_reg(o27, "run-uc27o-1", extra=["--over-budget",
+                                                  UC27_ESCAPE_QUOTE])
+        _o2 = _uc27_reg(o27, "run-uc27o-2", extra=["--over-budget",
+                                                   UC27_ESCAPE_ENTRY])
+        ok("UC-27 ㉓c对照②：豁免表里只有**不存在的 run_id** 时，额度照旧只给一笔"
+           "（第一笔放行、第二笔被拒——豁免没有把上限整个关掉）",
+           _o1.returncode == 0 and _o2.returncode != 0,
+           f"第一笔 rc={_o1.returncode} 第二笔 rc={_o2.returncode}")
+        # ㉔ 真仓契约（追加裁定的四把锁）：只核**键与类型**，不核取值
+        _pats_real = esc_real.get("citation_patterns")
+        _kinds_real = esc_real.get("named_exception_kinds")
+        _max_real = esc_real.get("max_escapes_per_day")
+        _from_real = str(esc_real.get("max_escapes_counts_from") or "")
+        _kinds_txt = str(sorted(_kinds_real) if isinstance(_kinds_real, dict)
+                         else _kinds_real)
+        ok("UC-27 ㉔真仓契约：追加裁定后 `over_budget_escape` 必须**四把锁齐全**"
+           "（理由下限／同日次数上限／可核引用正则／具名例外类别表）——缺任一键，"
+           "逃生门即退回『自述即放行』而本判据必须变红",
+           isinstance(_max_real, int) and not isinstance(_max_real, bool)
+           and _max_real >= 1
+           and isinstance(_pats_real, list) and bool(_pats_real)
+           and all(isinstance(p, str) and p.strip() for p in _pats_real)
+           and isinstance(_kinds_real, dict) and bool(_kinds_real),
+           f"max_escapes_per_day={_max_real!r} patterns={_pats_real!r} "
+           f"kinds={_kinds_txt}"
+           f"（**只核类型与存在性，不核取值**：次数上限属用户/父代理政策）")
+        # ㉕ 上限的**生效日**：必须是合法日期、且**不晚于今天**。为什么钉这条：
+        # 生效日＝"从哪天起开始计数"，把它推到未来＝今天的行全不计入＝上限形同
+        # 虚设（**放水阀**）。本批立这格是因为上限当天才立、而账本里已有旧规则下
+        # 登记的逃生门行（见预算文件该键的 note）——那一格是**迁移用途**，不是
+        # 可以随手往前推的开关。
+        _from_ok = bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", _from_real))
+        ok("UC-27 ㉕次数上限的生效日：合法 `YYYY-MM-DD` 且**不晚于今天**"
+           "（推到未来＝今天不计入＝上限形同虚设；往前推只会更严）",
+           _from_ok and _from_real <= _uc27_day(),
+           f"max_escapes_counts_from={_from_real!r} 今天={_uc27_day()}")
+        # ㉖ 真仓那张"旧规则行"豁免表：必须**只含**上一批那一行，且那一行确实是
+        # 当日带 `budget_override` 的账本行。为什么钉这么死：这一格是"规则诞生
+        # 之前的历史不追溯"的**唯一**出口，一旦它可以随手指向任何 run_id，
+        # 同日上限就等于没有（下次谁都能把今天用掉的那笔写进去）。
+        _legacy_real = esc_real.get("max_escapes_legacy_rows")
+        ok("UC-27 ㉖旧规则行豁免表**只许点名一条**（真仓现值：上一批那笔）"
+           "——多写一条它就不再是『不追溯历史』而是『取消上限』",
+           isinstance(_legacy_real, list) and len(_legacy_real) == 1
+           and all(isinstance(x, str) and x.strip() for x in _legacy_real),
+           f"max_escapes_legacy_rows={_legacy_real!r}")
+        _led_real = read_real_ledger(real_ledger_path())
+        if _led_real is None:
+            skip_ledger_absent("UC-27 ㉖旧规则行豁免表的逐行取证")
+        else:
+            def _uc27_legacy_ok(rows: list[dict], today: str) -> bool:
+                """豁免行须恰一条、带 budget_override、day 合法且不晚于今天。
+
+                为什么不要求"等于今天"：那条历史行生于规则诞生当日，按
+                "等于今天"判会在次日**永红**（实测 2026-10-25 仍然红）。
+                """
+                if len(rows) != 1:
+                    return False
+                day = (rows[0].get("budget_override") or {}).get("day")
+                if not isinstance(day, str):
+                    return False
+                try:
+                    datetime.strptime(day, "%Y-%m-%d")
+                except ValueError:
+                    return False
+                return day <= today
+
+            _exempt_rows = [r for r in _led_real["runs"]
+                            if r.get("run_id") in set(_legacy_real or [])]
+            _today8 = _uc27_day()
+            _ex_day = ((_exempt_rows[0].get("budget_override") or {}).get("day")
+                       if _exempt_rows else None)
+            ok("UC-27 ㉖被点名那一行**确实存在**且带 `budget_override`，"
+               "其 day 合法且**不晚于今天**（不要求恰为今天）",
+               _uc27_legacy_ok(_exempt_rows, _today8),
+               f"命中行={[r.get('run_id') for r in _exempt_rows]} day={_ex_day}")
+            _fake = {"run_id": "run-fake", "budget_override": {"day": _today8}}
+            _tmr = (datetime.strptime(_today8, "%Y-%m-%d")
+                    + timedelta(days=1)).strftime("%Y-%m-%d")
+            _bad = [
+                {**_fake, "budget_override": {"day": _tmr}},
+                {**_fake, "budget_override": {"day": "not-a-date"}},
+                {**_fake, "budget_override": None},
+                {**_fake, "budget_override": {"day": 20261025}},
+            ]
+            ok("UC-27 ㉖反向对照：明天／非法串／缺 day／非字符串／缺行／多行"
+               " ⇒ 同一谓词必须判 False（真行必须判 True）",
+               all(not _uc27_legacy_ok([r], _today8) for r in _bad)
+               and not _uc27_legacy_ok([], _today8)
+               and not _uc27_legacy_ok([_fake, _fake], _today8)
+               and _uc27_legacy_ok([_fake], _today8),
+               f"today={_today8} tomorrow={_tmr}")
+
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))
         data["runs"][0]["output_chars"] = 999999  # 手改
@@ -1042,8 +2652,54 @@ def main() -> int:
            == {p.name: p.read_bytes() for p in FUNCTIONS.glob("*.md")},
            f"{len(list(FUNCTIONS.glob('*.md')))} 份逐字节一致")
 
-        print(f"\nALL PASS ({PASSED} assertions)")
-        return 0
+        # M-B（`TG-19` 反空转不变式）：判决行**单一真源**，SKIP 不得冒充通过。
+        # 反向对照：直接驱动 `verdict_line` 的三种形态，否则下次改文案又会
+        # 悄悄改回"SKIP 之后照样 `ALL PASS`"。
+        _sk = ["UC-20 真入口（ledger=absent (SKIP)）"]
+        ok("M-B 判决行：SKIP 档**不含** PASS 字样、且点名 `ledger=absent (SKIP)`",
+           "PASS" not in verdict_line(7, _sk)
+           and "ledger=absent (SKIP)" in verdict_line(7, _sk)
+           and verdict_line(7, _sk).startswith("AGENTOPS SKIP[ledger-absent]"))
+        ok("M-B 判决行：无 SKIP 时才是 `ALL PASS` 横幅（二者互斥）",
+           verdict_line(7, []) == "ALL PASS (7 assertions)")
+        # 退出码与判决行**同口径**：SKIP 档退 0 会让只看 rc 的消费方（CI／shell／
+        # 套件的"非零退出"判据）把它读成成功——两个通道互相矛盾就是缺陷本身。
+        ok("M-B 退出码：SKIP 档**不得**退 0（判决行与退出码必须同口径）",
+           verdict_exit(_sk) == SKIP_EXIT and verdict_exit(_sk) != 0,
+           f"verdict_exit={verdict_exit(_sk)}")
+        ok("M-B 退出码：**无** SKIP 时退 0（防假红：真判据全跑过必须成功）",
+           verdict_exit([]) == 0, f"verdict_exit={verdict_exit([])}")
+        ok("M-B 退出码：两种 SKIP 原因（spec 缺席／账本缺席）同判非 0"
+           "（不得只给其中一种加码）",
+           verdict_exit(["E1 一致性向量（spec=absent-on-branch (SKIP)）"]) == SKIP_EXIT
+           and verdict_exit(["M-g 真入口（ledger=absent (SKIP)）"]) == SKIP_EXIT)
+        # 窄化反向对照（夹具落在 %TEMP%，本脚本不往仓库写文件）：
+        # SKIP **只**认"文件不存在"；账本存在但坏/结构非法必须 fail-closed。
+        probe_dir = tmp / "ledger-probe"
+        probe_dir.mkdir()
+        ok("M-B 窄化：路径不存在 ⇒ None（这是**唯一**的 SKIP 触发条件）",
+           read_real_ledger(probe_dir / "nope.json") is None)
+        bad_json = probe_dir / "bad-json.json"
+        bad_json.write_text("{not json", encoding="utf-8")
+        bad_shape = probe_dir / "bad-shape.json"
+        bad_shape.write_text('{"runs": {}}', encoding="utf-8")
+        good = probe_dir / "ok.json"
+        good.write_text('{"runs": []}', encoding="utf-8")
+        caught: list[str] = []
+        for bad_case in (bad_json, bad_shape):
+            try:
+                read_real_ledger(bad_case)
+            except (AssertionError, ValueError):
+                caught.append(bad_case.name)
+        ok("M-B 窄化：账本存在但 JSON 非法 / 顶层缺 runs ⇒ **抛**（不得 SKIP）",
+           len(caught) == 2, f"抛出={caught}")
+        ok("M-B 窄化：账本存在且合法 ⇒ 真读（不误判为缺失）",
+           read_real_ledger(good) == {"runs": []})
+
+        print(f"\n{verdict_line(PASSED, SKIPPED)}")
+        # 判决行与退出码**同一个真源**（`verdict_exit`）：SKIP 档不得退 0，
+        # 否则只读 rc 的消费方（CI／shell／套件的"非零退出"判据）仍读成成功。
+        return verdict_exit(SKIPPED)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

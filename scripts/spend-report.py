@@ -1,0 +1,290 @@
+"""成本度量仪：把 DSH 会话日志里的逐次模型调用折成钱，按天／按会话汇总。
+
+为什么需要它：`agents/runtime/registry.json` 里 99 条 run 只有 8 条带 `usage`
+⇒ 成本**无法按 run 归属**；真实花费只在会话日志的逐次调用记录里（`data.usage`）。
+本脚本是"压成本"策略的**唯一验证仪器**：改了做法之后，读数要能下降。
+
+用法：
+    python scripts/spend-report.py                 # 今天（与昨天）
+    python scripts/spend-report.py --days 3        # 最近 3 天
+    python scripts/spend-report.py --sessions      # 附当日按会话明细
+    python scripts/spend-report.py --json          # 机读输出（供闸门/记账）
+
+口径（全部可复算）：
+  * 单价取 `agents/runtime/prices.json`（不写死）；档位按**事件自身时间戳**判
+    （北京时间周一至五 09:00-12:00、14:00-18:00 为高峰，其余空闲）。
+  * 模型名**不在事件里** ⇒ 按 `--model`（缺省 `deepseek-flash`，与本会话配置一致）计价；
+    若实际计费模型不同，读数按倍率缩放 —— 这是本仪器的**已知假设**，不是测量。
+  * 汇率取价表 `meta.fx_usd_cny`；来源 `~/.dsh/sessions`（父子会话各自一目录）。
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import pathlib
+import sys
+
+try:
+    import zstandard as zstd
+except ImportError:  # pragma: no cover
+    # 行 41 修复：旧文案写"仓库 .venv 已装"——那是**本机现状**，不是清单事实：
+    # 修复前 `requirements.txt` 与 `requirements-windows.txt` **都没有** `zstandard`，
+    # 于是换机器/新克隆时它可能压根没装，而文案却让人以为已装（误导）。
+    # 现在两份清单各自带 `zstandard`（版本与本仓 `.venv` 实装对齐，2026-09-29 核对 =
+    # 0.25.0）。
+    print("缺少运行依赖 zstandard（本脚本要解 DSH 会话日志 .jsonl.zstd）")
+    print("安装：.venv\\Scripts\\python.exe -m pip install "
+          "-r requirements-windows.txt（或 pip install zstandard）")
+    print("用法：.venv\\Scripts\\python.exe scripts\\spend-report.py")
+    sys.exit(2)
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+SESS = pathlib.Path.home() / ".dsh" / "sessions"
+CST = dt.timezone(dt.timedelta(hours=8))
+# 「判据未执行」的专属退出码（`TG-19` M-B 口径：SKIP 与 PASS 互斥）——
+# 与"超预算(1)"和"用法错误(2)"都不同：调用方不得把 SKIP 当成 OK。
+SKIP_EXIT = 3
+
+
+def load_prices() -> tuple[dict, float]:
+    """读价表：返回 (provider.models, fx_usd_cny)。单价不写死在脚本里。"""
+    p = ROOT / "agents" / "runtime" / "prices.json"
+    doc = json.loads(p.read_text(encoding="utf-8"))
+    models = doc.get("scraped", {}).get("deepseek", {}).get("models", {})
+    return models, float(doc.get("meta", {}).get("fx_usd_cny") or 7.2)
+
+
+def is_peak(ms: int) -> bool:
+    """该毫秒时刻是否落在高峰窗口（北京时间周一至五 9-12、14-18）。"""
+    t = dt.datetime.fromtimestamp(ms / 1000, CST)
+    return t.weekday() < 5 and (9 <= t.hour < 12 or 14 <= t.hour < 18)
+
+
+def tier(models: dict, model: str, ms: int) -> dict:
+    """取该模型在该时刻适用的单价档（peak / off_peak）。"""
+    m = models.get(model) or {}
+    return (m.get("_tiers") or {}).get("peak" if is_peak(ms) else "off_peak") or {}
+
+
+def usage_of(obj: dict) -> dict | None:
+    """从一条日志记录里取出 usage 字典；取不到返回 None。"""
+    d = obj.get("data") if isinstance(obj.get("data"), dict) else obj
+    u = d.get("usage")
+    if isinstance(u, dict) and ("inputTokens" in u or "input_tokens" in u):
+        return u
+    dd = d.get("data")
+    if isinstance(dd, dict) and isinstance(dd.get("usage"), dict):
+        return dd["usage"]
+    return None
+
+
+def scan(days: int, model: str):
+    """扫近 N 天的会话日志，按天与会话汇总 token 与金额。"""
+    models, fx = load_prices()
+    cut = dt.datetime.now(CST) - dt.timedelta(days=days)
+    per_day: dict[str, list] = {}
+    per_sess: dict[str, list] = {}
+    files = 0
+    for path in SESS.rglob("*.jsonl.zstd"):
+        if dt.datetime.fromtimestamp(path.stat().st_mtime, CST) < cut:
+            continue
+        files += 1
+        try:
+            with open(path, "rb") as fh:
+                dec = zstd.ZstdDecompressor().stream_reader(fh).read()
+                raw = dec.decode("utf-8", "replace")
+        except Exception:  # noqa: BLE001
+            continue
+        for line in raw.splitlines():
+            if "usage" not in line:
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:  # noqa: BLE001
+                continue
+            u = usage_of(obj)
+            if not u:
+                continue
+            ms = obj.get("time") or 0
+            if not ms:
+                continue
+            t = dt.datetime.fromtimestamp(ms / 1000, CST)
+            if t < cut:
+                continue
+            tr = tier(models, model, ms)
+            i = u.get("inputTokens") or u.get("input_tokens") or 0
+            o = u.get("outputTokens") or u.get("output_tokens") or 0
+            c = u.get("cacheReadTokens") or u.get("cache_read_input_tokens") or 0
+            w = u.get("cacheWriteTokens") or u.get("cache_creation_input_tokens") or 0
+            usd = (i * (tr.get("input_cost_per_token") or 0)
+                   + o * (tr.get("output_cost_per_token") or 0)
+                   + c * (tr.get("cache_read_input_token_cost") or 0)
+                   + w * (tr.get("cache_creation_input_token_cost") or 0))
+            day = t.strftime("%Y-%m-%d")
+            name = path.parent.name
+            items = ((per_day, day), (per_sess, day + "|" + name))
+            for bucket, key in items:
+                a = bucket.setdefault(key, [0, 0, 0, 0, 0.0, 0])
+                a[0] += i
+                a[1] += o
+                a[2] += c
+                a[3] += w
+                a[4] += usd
+                a[5] += 1
+    return per_day, per_sess, fx, files
+
+
+def baseline_note(got: float, base: float) -> str:
+    """当日读数与 `baseline` 的**对照文本**（超基线/低于基线都要看得见）。
+
+    G2 复盘行 40 修复：`agents/spend-budget.json::targets.verified_by` 声称
+    "次日读数与 baseline 对比"，而旧实现只打印 `基线 <值>`、**从不比对**
+    （声明了机制而机制不存在）⇒ 这里把比对真做出来。
+    **口径**：`baseline` 自述"用于对照，不作为判据"⇒ 本函数只产出上屏文本，
+    **不参与退出码**（退出码仍由预算上限决定）；"缺 baseline 字段 ⇒ SKIP"那条
+    由调用方判（判据没被执行就不算通过，口径同 `TG-19` M-B）。
+    """
+    if base == 0:
+        # 基线为 0 时**不能算倍率**（除零）——如实说"基线为 0"，不编一个无穷大出来
+        return ("等于基线（基线 = 0，无倍率）" if got == 0
+                else f"高于基线（基线 = 0，实测 {got}，无倍率）")
+    if got > base:
+        return f"高于基线 {abs(got / base - 1) * 100:.1f}%（{got / base:.2f}×）"
+    if got < base:
+        return f"低于基线 {(1 - got / base) * 100:.1f}%（{got / base:.2f}×）"
+    return "等于基线（1.00×）"
+
+
+def check(per_day: dict, per_sess: dict, fx: float, model: str) -> int:
+    """按 agents/spend-budget.json 自检当日预算。
+
+    rc：`0` = 全部判据**真的执行过**且在预算内；`1` = 有项超预算；
+    `3` = 有判据**没被执行**（① 配置的主线会话 id 在本机一条都没匹配到；
+    ② `baseline` 缺该指标字段 ⇒ 无对照对象 ⇒ 行 40 要求的"与 baseline 对比"
+    这一半没执行。两条都**不得当 OK**）；`0`＋`SKIP:` 行 = 预算未配置／今日无用量
+    （既有口径，非"检查过"）。
+
+    每行输出三件事实：预算判据（`OK`/`OVER`/`SKIP`）、`实测`/`预算`、以及与
+    `baseline` 的**对照**（高于/低于/等于，带倍率）——对照只上屏，不参与判据。
+    """
+    path = ROOT / "agents" / "spend-budget.json"
+    if not path.exists():
+        print(f"SKIP: 找不到 {path}（预算未配置，不判）")
+        return 0
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    budget = doc.get("budget") or {}
+    base = doc.get("baseline") or {}
+    targets = doc.get("targets") or {}
+    today = max(per_day) if per_day else None
+    if not today:
+        print("SKIP: 今日无用量记录")
+        return 0
+    day = per_day[today]
+    rows = [(k.split("|", 1)[1], v) for k, v in per_sess.items()
+            if k.startswith(today + "|")]
+    dispatched = len([1 for name, _ in rows
+                      if not name.startswith("session-")])
+    mine = doc.get("main_sessions") or []
+    # 配置的主线会话 id 是**机器相关**的（`~/.dsh/sessions/session-<uuid>/` 由本机会话
+    # 生成）⇒ 换机后一个都匹配不上时 `main_out` 恒 0，而旧实现照判 `OK` ＝**假绿**
+    # （复核 `run-…-105` major 7）。口径：**判据没被触发就不算通过**——
+    # 一个都没匹配到 ⇒ 该条 SKIP（上屏点名），且退出码非 0（SKIP 不得被调用方当 OK）。
+    matched = {name for name, _a in rows if name in mine}
+    main_ok = bool(matched) or not mine
+    main_out = sum(a[1] for name, a in rows if name in mine)
+    cny = day[4] * fx
+    no_main = "配置的主线会话 id 在本机一条都没匹配到（换机器请改 `main_sessions`）"
+    checks = [
+        {"label": "派单会话数/日", "base_key": "dispatched_sessions_per_day",
+         "got": dispatched, "cap": budget.get("dispatched_sessions_per_day"),
+         "measurable": True, "why": ""},
+        {"label": "主代理 output token/日", "base_key": "main_output_tokens_per_day",
+         "got": main_out, "cap": budget.get("main_output_tokens_per_day"),
+         "measurable": main_ok, "why": no_main},
+        {"label": "当日合计 CNY", "base_key": "all_sessions_cny_per_day",
+         "got": round(cny, 2), "cap": budget.get("all_sessions_cny_per_day"),
+         "measurable": True, "why": ""},
+    ]
+    over: list[str] = []
+    skipped: list[str] = []
+    print(f"预算自检 {today}（模型 {model}）｜基线 {base.get('measured_at')}"
+          f"｜靶 相对基线 {targets.get('cut_ratio_vs_baseline')}×"
+          f"（`targets.cut_ratio_vs_baseline`；对照只上屏，不作为判据）")
+    for row in checks:
+        label, got, cap = row["label"], row["got"], row["cap"]
+        b = base.get(row["base_key"])
+        if not isinstance(b, (int, float)):
+            b = None
+        if not row["measurable"]:
+            # **未执行优先于超预算**：这一格显示的 `OK` 是没有测量对象的 OK，
+            # 若把它和别的超预算并列，真正的病（这条判据在换机后形同不存在）
+            # 会被"另一项超预算"盖住 —— 那正是假绿换了个外衣（复核 major 7）。
+            flag, note = "SKIP", f"未执行（{row['why']}）"
+            skipped.append(f"{label}：{row['why']}")
+        elif b is None:
+            # 行 40：原文声称"与 baseline 对比"⇒ 没有基线字段时这一半**没被执行**，
+            # 故是 SKIP（不是 OK，也不是 OVER）——判据没被触发就不算通过。
+            why = f"`baseline.{row['base_key']}` 缺失 ⇒ 无对照对象"
+            flag, note = "SKIP", f"未执行（{why}）"
+            skipped.append(f"{label}：{why}")
+        else:
+            flag = "OK " if (cap is None or got <= cap) else "OVER"
+            if flag == "OVER":
+                over.append(label)
+            note = baseline_note(float(got), float(b))
+        print(f"  [{flag}] {label:<22} 实测 {str(got):<10} 预算 {cap} "
+              f"基线 {'（缺）' if b is None else b}｜对照 {note}")
+    if skipped:
+        print(f"SPEND-BUDGET SKIP（{len(skipped)} 项判据**未执行**）"
+              f"——**不是通过**：判据没有测量对象／没有对照对象，逐项原因见上"
+              f"｜同时超预算的项：{over or '（无）'}")
+        return SKIP_EXIT
+    if over:
+        print(f"SPEND-BUDGET FAIL（{len(over)} 项超预算）：{over}")
+        return 1
+    print("SPEND-BUDGET PASS（全部在预算内；每项基线对照见上）")
+    return 0
+
+
+def main() -> int:
+    """命令行入口：--days/--model/--sessions/--json/--check。"""
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--days", type=int, default=2)
+    ap.add_argument("--model", default="deepseek-flash")
+    ap.add_argument("--sessions", action="store_true")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--check", action="store_true")
+    ns = ap.parse_args()
+
+    per_day, per_sess, fx, files = scan(ns.days, ns.model)
+    if ns.json:
+        payload = {"fx": fx, "days": dict(sorted(per_day.items())),
+                   "sessions": per_sess}
+        print(json.dumps(payload, ensure_ascii=False))
+        return 0
+    if ns.check:
+        return check(per_day, per_sess, fx, ns.model)
+
+    print(f"日志文件 {files} 个（近 {ns.days} 天有写入）｜模型假设 {ns.model}｜fx {fx}")
+    print(f"{'day(CST)':<12}{'calls':>7}{'in':>11}{'out':>10}{'cache_rd':>13}{'CNY':>9}")
+    tot = [0, 0, 0, 0, 0.0, 0]
+    for day, a in sorted(per_day.items()):
+        print(f"{day:<12}{a[5]:>7}{a[0]:>11}{a[1]:>10}{a[2]:>13}{a[4] * fx:>9.2f}")
+        for k in range(6):
+            tot[k] += a[k]
+    print("-" * 62)
+    print(f"{'TOTAL':<12}{tot[5]:>7}{tot[0]:>11}{tot[1]:>10}{tot[2]:>13}"
+          f"{tot[4] * fx:>9.2f}")
+    if ns.sessions and per_day:
+        day = max(per_day)
+        print(f"\n{day} 按会话（前 12，按金额降序）")
+        rows = [(k.split("|", 1)[1], v) for k, v in per_sess.items()
+                if k.startswith(day + "|")]
+        for name, a in sorted(rows, key=lambda kv: -kv[1][4])[:12]:
+            print(f"  {name[:46]:<48}{a[5]:>6}{a[1]:>10}out{a[4] * fx:>8.2f} CNY")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

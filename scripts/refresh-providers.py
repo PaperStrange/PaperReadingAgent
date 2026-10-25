@@ -5,7 +5,7 @@
   2. 产出 **M16 归档**（`agents/runs/<run_id>/`：tech-research.report.md + context.md + evidence/ + reasoning.md），
      每条 evidence 含 URL / 层级 / 抓取时间 / **逐字原文摘录**（抓取失败也记录 reason，绝不静默丢弃）；
   3. 抽取候选模型名（text-embedding-v?、qwen*、deepseek-*、gpt-* 等）与现值对比，写 **proposal**（默认不自动改配置）；
-  4. `--apply` 只刷新 `meta.fetched_at/last_refresh_status/last_evidence_run`；**模型名变更需显式 `--accept-candidates`**
+  4. `--apply` 只刷新 `meta.fetched_at/last_refresh_status/last_evidence_run`；**模型名变更需显式 `--accept <provider>:<field>=<value>`**（旧开关 `--accept-candidates` **已弃用：传入即被忽略**并打印 WARN）
      （半自动：抓原文 + 人工确认，见预研笔记 2026-09-07 目标 2/3 与调研 run-047 的翻案条件）；
   5. 抓取失败：**不动 provider 文件**，状态写 `agents/runtime/provider_refresh_status.json`（fail-closed，无坏文件落盘）。
 
@@ -195,7 +195,7 @@ def write_archive(run_id: str, depth: str, entries: list[dict], question: str, c
             for row in _verdict_rows(entries)
         ) + "\n\n"
         "## 5. 结论与建议\n"
-        "- 默认**不自动改模型名**：proposal 记录候选与判定，交人工确认（`--accept-candidates` 才写入）。\n"
+        "- 默认**不自动改模型名**：proposal 记录候选与判定，交人工确认（`--accept <provider>:<field>=<value>` 才写入）。\n"
         "- 改判条件：官方文档结构变化导致抽取为空 → 转为纯人工核对；连续两轮无变化 → 可放宽为季度刷新。\n\n"
         "## 6. 开放问题\n"
         "- 403/302 站点（如 platform.openai.com）无法自动抓取 → 需人工或改用官方 API 列表端点。\n\n"
