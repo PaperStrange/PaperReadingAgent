@@ -47,19 +47,7 @@ from verify.agent_policy import (  # noqa: E402
     deduction_for,
     load_policy,
 )
-
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
-PASSED = 0
-
-
-def ok(name: str, cond: bool, detail: str = "") -> None:
-    """断言 + 计数（与本仓其它闸门同形：`ALL PASS (N assertions)` 的 N 由它累加）。"""
-    global PASSED
-    assert cond, f"{name} FAIL: {detail}"
-    PASSED += 1
-    print(f"PASS: {name} {detail}")
+from verify.harness import finish, ok  # noqa: E402
 
 
 def _with_policy(base: Policy, mutate) -> Policy:
@@ -276,12 +264,12 @@ def selfcheck() -> int:
         else:
             os.environ[ENV_POLICY] = saved
 
-    print(f"\nALL PASS ({PASSED} assertions)")
-    print(f"EVIDENCE: verify_deduction_rates.py assertions={PASSED} rc=0 "
-          f"ratios={json.dumps(ratios, ensure_ascii=False)} "
-          f"merge={rates['merge_same_root_cause']} cap={rates['cap_at_card_points']} "
-          f"step={rates['rounding_step']} criteria={[c['id'] for c in criteria]}")
-    return 0
+    return finish("verify_deduction_rates.py",
+                   f" ratios={json.dumps(ratios, ensure_ascii=False)}"
+                   f" merge={rates['merge_same_root_cause']}"
+                   f" cap={rates['cap_at_card_points']}"
+                   f" step={rates['rounding_step']}"
+                   f" criteria={[c['id'] for c in criteria]}")
 
 
 def show() -> int:

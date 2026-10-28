@@ -63,9 +63,7 @@ sys.path.insert(0, str(ROOT))
 
 from verify.verify_md_tables import split_row  # noqa: E402  （同一套未转义管道切分口径）
 from verify.agent_policy import load_policy  # noqa: E402
-
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+from verify.harness import all_pass, evidence, ok  # noqa: E402
 
 PHASES = ROOT / "docs" / "iteration" / "phases"
 SPRINT_DIR = ROOT / "docs" / "iteration" / "sprint"
@@ -101,7 +99,6 @@ NEGATION_CHARS: frozenset[str] = frozenset(p[:1] for p in NEGATION_PREFIXES if p
 BASELINE_REL: str = str(_CARD_INDEX["baseline_file"])
 BASELINE_CMD: str = str(_CARD_INDEX["baseline_command"])
 BASELINE_SUMMARY_RE: str = str(_CARD_INDEX["baseline_summary_regex"])
-PASSED = 0
 # M-B（TG-19 反空转不变式）：真数据判据"没执行"的具名原因。
 # 空列表 = 判据真的跑过；非空 = 本环境不适用（例：`main` 分支没有 `docs/iteration/**`）。
 # **它决定最终判决行的措辞**：有 SKIP 时不得打印 PASS 横幅，也不得打印机读 EVIDENCE 行
@@ -121,13 +118,6 @@ def verdict_line(problems: list[str], skipped: list[str]) -> str:
         return (f"CARD-INDEX SKIP（{'；'.join(skipped)}）"
                 f"——真数据判据未执行，只有 fixture 反向对照跑了（**不是通过**）")
     return "CARD-INDEX PASS：索引↔卡文件一一对应（含必备节 / 正文分离 / 状态三处一致 / 卡库存基线一致）"
-
-
-def ok(name: str, cond: bool, detail: str = "") -> None:
-    global PASSED
-    assert cond, f"{name} FAIL: {detail}"
-    PASSED += 1
-    print(f"PASS: {name} {detail}")
 
 
 def warn(name: str, detail: str = "") -> None:
@@ -709,7 +699,7 @@ def selfcheck(check_real: bool = True) -> int:
        verdict_line(["boom"], ["x"]).startswith("CARD-INDEX FAIL"))
     if not check_real:
         ok("真数据判据由 main() 以默认档执行", True, "（本函数只跑 fixture 自检）")
-        print(f"\nALL PASS ({PASSED} assertions)")
+        all_pass()
         return 0
     real = run(True)
     if real:
@@ -722,7 +712,7 @@ def selfcheck(check_real: bool = True) -> int:
         return 1
     ok("真数据（默认档 = strict）通过", True, "索引↔卡文件一一对应 / 必备节 / 正文分离")
     shutil.rmtree(FIXTURE_DIR, ignore_errors=True)   # 行 8：显式回收 run 级夹具目录
-    print(f"\nALL PASS ({PASSED} assertions)")
+    all_pass()
     return 0
 
 
@@ -742,7 +732,7 @@ def main() -> int:
         # 显式调试档：**只跑 fixture**（真数据判据由默认档/--check 负责，不重复判两处）
         rc = selfcheck(check_real=False)
         if rc == 0:
-            print(f"EVIDENCE: verify_card_index.py assertions={PASSED} rc=0 selftest=fixture-only")
+            evidence("verify_card_index.py", " selftest=fixture-only")
         return rc
     problems = run(strict="--strict" in sys.argv or "--check" not in sys.argv)
     print(verdict_line(problems, SKIPPED))
@@ -756,8 +746,8 @@ def main() -> int:
     rc = selfcheck(check_real=False)
     if rc == 0 and not SKIPPED:
         # TG-6：机读证据行**只在成功路径**打印——SKIP 不是成功（`TG-19` M-B）
-        print(f"EVIDENCE: verify_card_index.py assertions={PASSED} rc=0 "
-              f"criteria=1..7 ratchet_baseline={BASELINE_REL}")
+        evidence("verify_card_index.py",
+                 f" criteria=1..7 ratchet_baseline={BASELINE_REL}")
     return rc
 
 
