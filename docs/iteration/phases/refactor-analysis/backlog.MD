@@ -31,9 +31,9 @@
 | F-AC10 | F2 验收⑧：**文献级 embedding checkpoint**——每篇完成即落盘，失败续跑未完成文献；持续迭代主 | ✅ 完成（Sprint-16：逐篇原子落盘 + 零成本复用 + 四重边界，22 断言 PASS） | Sprint-16 | [cards/F-AC10.md](cards/F-AC10.md) |
 | F-AC11 | 走查 N1（2026-09-10）：卡片 output 字段**完整查看**（展开/一键复制全文），answer 节点* | ✅ 完成（Sprint-15 收尾批，四轮定稿；tooltip 按用户要求移除） | Sprint-15 | [cards/F-AC11.md](cards/F-AC11.md) |
 | F-AC12 | 走查 N2（2026-09-10）：fn 卡**论文截图清晰度**提升（runtime_trace 0.45 缩放 →  | ✅ 完成（Sprint-15 收尾批，预览 1.0 缩放 + 1.2MB 护栏，612×792 实证） | Sprint-15 | [cards/F-AC12.md](cards/F-AC12.md) |
-| F-AC13 | 节点运行按钮**点击 1~2 次无响应**（第 3 次才生效）——**根因已定位（2026-09-20 全量按钮审计）* | **计划中（Sprint-17 插队卡，用户 2026-09-21 拍板）** | Sprint-17（治理批 G1 搭车） | [cards/F-AC13.md](cards/F-AC13.md) |
-| F-AC14 | **复制按钮状态串台**：点"复制答案"后"复制 output"/"复制报错"同时显示"已复制 ✓"——根因：`Flow | **计划中（Sprint-17 插队卡，用户 2026-09-21 拍板）** | Sprint-17（治理批 G1 搭车） | [cards/F-AC14.md](cards/F-AC14.md) |
-| F-AC15 | **运行参数显式配置面**：把目前只存在于 CLI/env/spec 的参数在**前端显式可见/可配置**。**现状清单 | **计划中（Sprint-17，用户 2026-09-21 拍板）** | Sprint-17 | [cards/F-AC15.md](cards/F-AC15.md) |
+| F-AC13 | 节点运行按钮**点击 1~2 次无响应**（第 3 次才生效）——**根因已定位（2026-09-20 全量按钮审计）* | **已实现（待走查）**（2026-10-28 修根因：两处 `.node-actions` 加 `nodrag nopan`；真实鼠标检查修前 3 FAIL/修后 6 PASS；卡文件状态词未同步仍「计划中」） | Sprint-17（治理批 G1 搭车） | [cards/F-AC13.md](cards/F-AC13.md) |
+| F-AC14 | **复制按钮状态串台**：点"复制答案"后"复制 output"/"复制报错"同时显示"已复制 ✓"——根因：`Flow | **已实现（待走查）**（2026-10-28 修根因：三复制按钮独立 state/timer；检查修前 2 FAIL/修后 11 PASS；卡文件状态词未同步仍「计划中」） | Sprint-17（治理批 G1 搭车） | [cards/F-AC14.md](cards/F-AC14.md) |
+| F-AC15 | **运行参数显式配置面**：把目前只存在于 CLI/env/spec 的参数在**前端显式可见/可配置**。**现状清单 | **v1 已实现（待走查）**（2026-10-28 只读面：`/api/config_schema.runtime` + 前端面板；检查 13 PASS；可编辑留待 v2；卡文件状态词未同步仍「计划中」） | Sprint-17 | [cards/F-AC15.md](cards/F-AC15.md) |
 | F-AC16 | **checkpoint 可见性与可复现**：前端展示命中的 checkpoint 明细（`checkpoint_key | **v1 ✅ 完成（2026-09-21）**；剩余增量待排期 | Sprint-16（走查追问 v1） | [cards/F-AC16.md](cards/F-AC16.md) |
 
 ## 2. 维护卡
