@@ -24,21 +24,14 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "paper-qa-script"))
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 import provider_config as pc  # noqa: E402
-
-PASSED = 0
-
-
-def ok(name: str, cond: bool, detail: str = "") -> None:
-    global PASSED
-    assert cond, f"{name} FAIL: {detail}"
-    PASSED += 1
-    print(f"PASS: {name} {detail}")
+from verify.harness import all_pass, ok  # noqa: E402
 
 
 def main() -> int:
@@ -190,7 +183,7 @@ def main() -> int:
         ok("⑪ 间隔改为 0 天即全判到期（退出 1，间隔可配置）", due_zero.returncode == 1,
            (due_zero.stdout or "").strip()[-140:])
 
-    print(f"\nALL PASS ({PASSED} assertions)")
+    all_pass()
     return 0
 
 

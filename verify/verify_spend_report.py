@@ -57,6 +57,7 @@ except ImportError:  # pragma: no cover —— 依赖缺失要响亮地坏，不
     raise SystemExit(2)
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 SPEND = ROOT / "scripts" / "spend-report.py"
 AGENT_OPS = ROOT / "scripts" / "agent-ops.py"
 CST = dt.timezone(dt.timedelta(hours=8))
@@ -93,29 +94,25 @@ DUP_V4 = DUP_SESS / "session.v4.jsonl.zstd"
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-_N = 0
-_FAILS: list[str] = []
-_SKIPPED: list[str] = []
-SKIP_EXIT = 3
-SKIP_NOT_PASS_MARK = "本档不是通过"
-
-
-def skip(name: str, why: str) -> None:
-    """记一条具名 SKIP：判据未执行，既不计 PASS 也不计 FAIL。"""
-    _SKIPPED.append(name)
-    print(f"SPEND SKIP[ledger-absent] {name}：{why}")
+from verify.harness import finish, ok as harness_ok, skip as harness_skip  # noqa: E402
 
 
 def ok(name: str, cond: bool, detail: str = "") -> None:
-    """记一条断言（**只增不减**：条数有没有掉由 run_suite 的下限表盯）。"""
-    global _N
-    _N += 1
-    tail = f"｜{detail}" if detail else ""
-    if cond:
-        print(f"PASS: {name}{tail}")
-        return
-    _FAILS.append(name)
-    print(f"FAIL: {name}{tail}")
+    """记一条断言（**只增不减**：条数有没有掉由 run_suite 的下限表盯）。
+
+    `soft=True` 是累积式断言：失败只记账、继续跑（收尾由 `finish` 汇总
+    `FAILURES`）；`sep="｜"` 保留本闸门既有的分隔符。
+    """
+    harness_ok(name, cond, detail, soft=True, sep="｜")
+
+
+def skip(name: str, why: str) -> None:
+    """记一条具名 SKIP：判据未执行，既不计 PASS 也不计 FAIL。
+
+    上屏行逐字保留；末行横幅由 `harness.finish` 按其统一形态打印。
+    """
+    print(f"SPEND SKIP[ledger-absent] {name}：{why}")
+    harness_skip("ledger-absent", name, "本仓无账本 ⇒ 真仓同源判据未执行")
 
 
 def blob(sid: str, parent: str | None, tokens: int = 1000) -> bytes:
@@ -379,19 +376,7 @@ def main() -> int:
        "夹具才能用受控预算真驱动闸门",
        "_spend_budget_path" in src)
 
-    if _FAILS:
-        print(f"FAILURES ({len(_FAILS)}/{_N})：{_FAILS}")
-        print(f"EVIDENCE: verify_spend_report.py assertions={_N} rc=1")
-        return 1
-    if _SKIPPED:
-        print(f"ALL PASS ({_N} assertions)（另有 {len(_SKIPPED)} 条判据未执行）")
-        print(f"EVIDENCE: verify_spend_report.py assertions={_N} rc={SKIP_EXIT}")
-        print(f"SPEND SKIP[ledger-absent] {','.join(_SKIPPED)} —— 本仓无账本 ⇒ "
-              f"真仓同源判据未执行 ⇒ {SKIP_NOT_PASS_MARK}（rc={SKIP_EXIT}）")
-        return SKIP_EXIT
-    print(f"ALL PASS ({_N} assertions)")
-    print(f"EVIDENCE: verify_spend_report.py assertions={_N} rc=0")
-    return 0
+    return finish("verify_spend_report.py", tag="SPEND", lead="")
 
 
 if __name__ == "__main__":

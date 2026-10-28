@@ -24,19 +24,15 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from verify.harness import all_pass, ok  # noqa: E402
+
 OPS = ROOT / "scripts" / "agent-ops.py"
 PY = sys.executable
-PASSED = 0
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
-
-
-def ok(name: str, cond: bool, detail: str = "") -> None:
-    global PASSED
-    assert cond, f"{name} FAIL: {detail}"
-    PASSED += 1
-    print(f"PASS: {name} {detail}")
 
 
 def run(args: list[str], env: dict) -> subprocess.CompletedProcess:
@@ -134,7 +130,7 @@ def main() -> int:
            after.get("rounds_count") == int(base_rounds) + 6,
            f"base={base_rounds} after={after.get('rounds_count')}")
 
-    print(f"\nALL PASS ({PASSED} assertions)")
+    all_pass()
     return 0
 
 

@@ -28,7 +28,16 @@
     .venv\\Scripts\\python.exe verify\\verify_deduction_rates.py --show    # 打印当前口径
 """
 from __future__ import annotations
-VERIFY_META = {'features': '§2.1.1 扣率数据闸门：deduction_rates 读取器 fail-closed（缺键/超界/负值/全0/步长非法/判据缺证据/无到期日约束/折算级别越界）+ 纯函数 deduction_for 正反例（合并开关与比例均来自数据、封顶优先于取整）', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 5, 'routes': [], 'requires': ['none']}
+VERIFY_META = {
+    'features': '§2.1.1 扣率数据闸门：deduction_rates 读取器 fail-closed'
+                '（缺键/超界/负值/全0/步长非法/判据缺证据/无到期日约束/'
+                '折算级别越界）'
+                '+ 纯函数 deduction_for 正反例（合并开关与比例均来自数据、'
+                '封顶优先于取整）；断言数 34 条，'
+                '条数见末行 `ALL PASS (N assertions)`',
+    'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 5,
+    'routes': [], 'requires': ['none'],
+}
 
 import copy
 import dataclasses

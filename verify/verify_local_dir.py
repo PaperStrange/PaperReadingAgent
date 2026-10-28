@@ -40,6 +40,7 @@ from verify.e2e_common import (  # noqa: E402
     stop_backend,
     wait_healthy,
 )
+from verify.harness import all_pass, ok  # noqa: E402
 
 # 占用进程**查不到**时 `port_owner` 返回文本的开头（`e2e_common.port_owner` 那处是唯一真源）：
 # 本脚本靠它判定"② 无属主占用"这一形态，并据此核错文案里的具名说明。
@@ -83,15 +84,6 @@ def reclaim_log_dir(attempts: int = 6) -> None:
 
 atexit.register(reclaim_log_dir)
 SRC_PDF = ROOT / "data" / "pdf" / "PaperQA2.pdf"
-
-PASSED = 0
-
-
-def ok(name: str, cond: bool, detail: str = "") -> None:
-    global PASSED
-    assert cond, f"{name} FAIL: {detail}"
-    PASSED += 1
-    print(f"PASS: {name} {detail}")
 
 
 # ---------------------------------------------------------------- TG-8① 端口自检断言
@@ -377,7 +369,7 @@ async def main() -> int:
                           f"（{type(exc).__name__}: {exc}）——残留会占用磁盘并干扰下一轮归因")
                 else:
                     time.sleep(0.2 * (attempt + 1))
-    print(f"\nALL PASS ({PASSED} assertions)")
+    all_pass()
     return 0
 
 

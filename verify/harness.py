@@ -46,14 +46,24 @@ SKIP_NOT_PASS_MARK = "本档不是通过"
 
 _N = 0                             # 已执行断言数（`ALL PASS (N assertions)` 的 N）
 _SKIPPED: list[list[str]] = []     # [类别, 判据名, 未执行原因]
+_FAILS: list[str] = []             # 累积式断言（`soft=True`）的失败名，由 finish 汇总
 
 
-def ok(name: str, cond: bool, detail: str = "") -> None:
-    """断言 ＋ 计数 ＋ 打印 `PASS: …`：形态与各闸门现状**逐字一致**。"""
+def ok(name: str, cond: bool, detail: str = "", *, soft: bool = False,
+       sep: str = " ") -> None:
+    """断言 ＋ 计数 ＋ 打印 `PASS: …`：形态与各闸门现状**逐字一致**。
+
+    `soft=True`：失败只记账、**不中断**（spend-report 这类"跑完再汇总"的
+    闸门）；`sep` 保留它既有的 `｜` 分隔符。默认档仍是"失败即抛"。
+    """
     global _N
-    assert cond, f"{name} FAIL: {detail}"
+    if not cond and not soft:
+        assert cond, f"{name} FAIL: {detail}"
     _N += 1
-    print(f"PASS: {name} {detail}")
+    tail = f"{sep}{detail}" if detail else ""
+    print(f"{'PASS' if cond else 'FAIL'}: {name}{tail}")
+    if not cond:
+        _FAILS.append(name)
 
 
 def skip(category: str, name: str, why: str = "") -> None:
@@ -61,9 +71,13 @@ def skip(category: str, name: str, why: str = "") -> None:
     _SKIPPED.append([category, name, why])
 
 
-def all_pass(note: str = "") -> None:
-    """打印通过横幅 `ALL PASS (N assertions)`（`note` 原样接在其后）。"""
-    print(f"\nALL PASS ({_N} assertions){note}")
+def all_pass(note: str = "", *, lead: str = "\n") -> None:
+    """打印通过横幅 `ALL PASS (N assertions)`（`note` 原样接在其后）。
+
+    `lead` 默认换行（既有脚本的横幅前都有一个空行）；spend-report 的横幅
+    历史上**没有**空行，故它传 `lead=""` 以保持输出逐字不变。
+    """
+    print(f"{lead}ALL PASS ({_N} assertions){note}")
 
 
 def evidence(script: str, extra: str = "", rc: int = 0) -> None:
@@ -71,8 +85,8 @@ def evidence(script: str, extra: str = "", rc: int = 0) -> None:
     print(f"EVIDENCE: {script} assertions={_N} rc={rc}{extra}")
 
 
-def finish(script: str, extra: str = "", *, tag: str = "") -> int:
-    """收尾判决（**唯一出口**）：通过 → 0；有具名 SKIP → 3 且末行是横幅。
+def finish(script: str, extra: str = "", *, tag: str = "", lead: str = "\n") -> int:
+    """收尾判决（**唯一出口**）：通过 → 0；有失败 → 1；有具名 SKIP → 3 且末行是横幅。
 
     SKIP 档三行次序与 `verify_spend_report.py` 逐字同形：
     `ALL PASS (N assertions)（另有 k 条判据未执行）` → `EVIDENCE: … rc=3` →
@@ -80,14 +94,18 @@ def finish(script: str, extra: str = "", *, tag: str = "") -> int:
     横幅必须是**末行**：`run_suite.py::skip_verdict` 只读输出末行（两通道判据），
     所以这条次序由本函数保证，不交给调用方按约定摆。
     """
+    if _FAILS:
+        print(f"FAILURES ({len(_FAILS)}/{_N})：{_FAILS}")
+        evidence(script, extra, rc=1)
+        return 1
     if not _SKIPPED:
-        all_pass()
+        all_pass(lead=lead)
         evidence(script, extra)
         return 0
     cats = "；".join(dict.fromkeys(item[0] for item in _SKIPPED))
     names = "，".join(item[1] for item in _SKIPPED)
     whys = "；".join(item[2] for item in _SKIPPED if item[2]) or "判据未执行"
-    all_pass(f"（另有 {len(_SKIPPED)} 条判据未执行）")
+    all_pass(f"（另有 {len(_SKIPPED)} 条判据未执行）", lead=lead)
     evidence(script, rc=SKIP_EXIT)
     print(f"{tag or script.removesuffix('.py')} SKIP[{cats}] {names}"
           f" —— {whys} ⇒ {SKIP_NOT_PASS_MARK}（rc={SKIP_EXIT}）")
