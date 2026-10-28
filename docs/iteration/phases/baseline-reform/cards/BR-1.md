@@ -359,3 +359,41 @@ registered run-try-entry (status=queued)
 - `verify/verify_close_readiness.py --sprint docs/iteration/sprint/2026-09-25-sprint-18.md` ⇒ 见本 run 报告末节（`set-anchor` 显式设端点后现跑）。
 
 **本批未做（如实记）**：未改 `caps`／`measured_value`／`measured_at`／`review_by`；未加 `# noqa`；未改 `report_only`；未碰 `verify/**`、`scripts/**`、`agents/policy.json`、`.github/**`、`docs/1-WORKFLOW.MD`、`docs/6-DECISIONS.md`、sprint 档；未 `git add/commit/push`。**未决**：`verify/**` 里剩余 23 条 D102 需另一次授权；A-EXCL 卡的 H2 行（`:53`）仍留着修前读数——授权只允许改「缺口②那行」，故未动。
+
+### 11. 重评基线记录（2026-10-28）
+
+> 本节**只追加**，上文（含 §9 的残余风险 R2、§10 的租金支付读数）一个字未删。**触发**：`agents/policy.json` 的 5 张棘轮表共用 `review_by=2026-10-31`，2026-11-01 起五个闸门的「到期即 FAIL」会同时转红，故在到期前做一次**重评基线**——**不放宽任何判据、不上调任何上限**。
+
+**口径（日期不取本机时钟）**：`python scripts/now-network.py` 现跑输出 `2026-10-28 22:28 UTC+8（来源 https://www.baidu.com/ 的 HTTP Date 头）`，rc=0。读数一律由**各闸门自己的命令现跑**，不手抄、不沿用旧读数；上限只许下调。
+
+**逐表：旧基线 → 当次读数 → 新基线 → 依据命令**
+
+| 棘轮表（政策指针） | 旧基线（2026-09-25） | 当次读数（2026-10-28 现跑） | 新基线（caps／measured_value） | 变更 | 依据命令 |
+|---|---|---|---|---|---|
+| `lint_readability_ratchet` | D101 12 ／ D102 46 ／ D103 205 ／ E501 2494；measured_total 2757 | D101 0 ／ D102 23 ／ D103 203 ／ E501 2493 | 0 ／ 23 ／ 203 ／ 2493；measured_total 2719 | 四类**全部下调到实测**（零余量） | `python verify/verify_lint.py`（EVIDENCE 行） |
+| `md_table_legacy_files` | 4 个基线文件上限全 0 | 4 个文件均「问题 0」 | 0 ／ 0 ／ 0 ／ 0（不变） | 已在最紧处，无下调空间 | `python verify/verify_md_tables.py` |
+| `ledger_measurement.legacy_ratchet` | 8 类上限：12 ／ 9 ／ 3 ／ 3 ／ 0 ／ 0 ／ 1 ／ 0 | 逐类**等于**上限（同上八值） | 不变 | 同上（已在实测处） | `python verify/verify_ledger_measurement.py` |
+| `derived_numbers.baseline` | 32 个历史文件 ／ 111 处 | 32 个历史文件 ／ 111 处，逐键相等 | 不变 | 同上 | `python verify/verify_derived_numbers.py --report` |
+| `artifact_paths.dynamic_ratchet` | 34 个文件 ／ 105 处；measured_total 105 | 34 个文件 ／ 105 处，逐键相等 | 不变 | 同上 | `python verify/verify_artifact_paths.py --report` |
+
+**日期推进（五表统一）**：`measured_at` 2026-09-25 → **2026-10-28**；`review_by` 2026-10-31 → **2026-11-27**（+30 天）。
+
+**为什么只有第一张表动数字（如实记）**：另外四张表的当次读数**与上限逐键相等**（已等于实测、零余量），按「cap 只许下调、不许上调」没有可下调的空间——再改小就低于实测，当场顶破 `计数 > cap`。故这四张只推进两个日期，并把 `_comment`／`_measured_how` 里写着旧读数的句子就地改成「以当次实测为准」＋本次读数（旧数字一律**带日期当沿革**，不再当现值）。第一张表相反：四类实测都比旧上限小（D101 12→0、D102 46→23、D103 205→203、E501 2494→2493），按「实测已低于 cap ⇒ 必须下调到实测」逐键收口，并补 `rebased_at`／`rebased_reason`／`rebased_from`（M-C 的具名重评）。
+
+**三条反向对照（真驱动；每条都现跑，仓内改动逐字节还原）**
+
+| # | 驱动 | 现跑读数 | 还原 |
+|---|---|---|---|
+| ① cap 上调 1 | `ledger_measurement.legacy_ratchet.caps.output_chars_zero` 12 → 13 | `GATE-INTEGRITY FAIL（2 项）`，rc=1：点名「上限 13 **高于**重评时的实测 12」＋「上限被**上调**：12 → 13」 | 备份逐字节还原，`git hash-object` 前后同为 `e77e14e6c31d6ddb3b42ba6f26e8d5907568e745`；复跑 rc=0 |
+| ② measured_value 人为调低（低于实测，差额为一） | `lint_readability_ratchet.measured_value.D102` 23 → 22 | 两个观测面。**(a) 值面（不需要日期）**：`GATE-INTEGRITY FAIL` 点名「上限 23 **高于**重评时的实测 22」＋「measured_total ≠ 实测快照之和」；同一时刻 `verify_lint.py` 仍 rc=0（未到期不判 ⇒ 它看不见）。**(b) 到期面**：`%TEMP%` 政策副本（`review_by` 设为当天，经 `PAPERQA_AGENT_POLICY` 重定向）⇒ `LINT FAIL`，rc=1：「[棘轮/D102] **到期未改善**：实测 23 ≥ 上一次 measured_value 22」 | 仓内文件只经历 (a)；改回后 hash 同上，rc=0 |
+| ③ review_by 改成昨天 | `lint_readability_ratchet.review_by` 2026-11-27 → 2026-10-27 | `verify_lint.py` rc=1，两项：「review_by=2026-10-27 已过期（今天 2026-10-28）」＋「measured_at 晚于 review_by ⇒ 基线自相矛盾」；`verify_gate_integrity.py` rc=1 并点名 `lint_readability_ratchet.caps` 的 review_by 已过期 | 同上，hash 前后一致；复跑两闸门 rc=0 |
+
+**五张表的「过期即红」逐张现跑**（`%TEMP%` 副本把五表 `review_by` 一律改 2026-10-27）：`verify_lint.py`／`verify_md_tables.py`／`verify_derived_numbers.py`／`verify_artifact_paths.py`／`verify_ledger_measurement.py` **rc 全为 1**，各自点名「已过期／已过」；只有 `verify_gate_integrity.py` 仍 rc=0——**如实记**：它读的是仓内 `agents/policy.json`（`main()` 里写死路径），不认 `PAPERQA_AGENT_POLICY`，故它的过期判据只能用**仓内文件**驱动（即上表 ③ 的读数，已 FAIL 并点名）。
+
+**零值面（本批最该被看见的一条：D101 归零，§9 的残余风险 R2 已成真）**：`measured_value` 按「= 当次实测」记 0（不得保留旧快照当现值），而到期判据是「实测 **<** measured_value」——0 已是地板，2026-11-27 起 `[棘轮/D101] 到期未改善：实测 0 ≥ 0` 必然成立。**这不是推测**：把 `%TEMP%` 副本的 `review_by` 设为当天现跑，`verify_lint.py` 报的 4 项里**第一项就是它**。**本批不自裁**：零值类改用何种促改善形态（闸门对 `measured_value==0` 的类跳过「严格小于」／该类改判「必须保持 0」／其它）属**用户裁决**；`verify/**` 不在本批授权写入集，判据一字未改，冲突同时记在政策 `lint_readability_ratchet._rebased_2026_10_28` 与本节。**收尾期间该冲突已按解法①修好（另一批，提交 `929159e`）**：`measured_value==0` 的类改判「**必须保持 0**」，并补反向对照 ⑬（零地板保持 → PASS）／⑭（零地板被破 → FAIL 点名），断言数 15→17；本批用同一 `%TEMP%` 副本复跑确认——到期口径下 **D101 不再红**，只有 D102／D103／E501 判「到期未改善」（即下一期须把这三类各真降至少 1，属设计要求的租金）。
+
+**门槛末行（本节时点读数，现值一律以各命令现跑为准）**：`verify_lint.py` rc=0（末行 `ALL PASS`；EVIDENCE 行 `c_ratchet=D101=0/0 D102=23/23 D103=203/203 E501=2493/2493`，2026-10-28 现跑）；`verify_gate_integrity.py --selftest` rc=0；`verify_md_tables.py` rc=0（`MD-TABLE PASS`，196 个文件解析通过）；`verify_derived_numbers.py` rc=0（末行 `ALL PASS`，EVIDENCE 行 review_by=2026-11-27，2026-10-28 现跑）；`verify_artifact_paths.py` rc=0（`动态目标 105 处（34 个文件全在棘轮表内且未超上限）`，2026-10-28 现跑）；`verify_ledger_measurement.py` rc=0（基线行「2026-10-28 实测，review_by 2026-11-27」）；`verify/run_suite.py --tier offline` 见本 run 报告末节。
+
+**本批没做（如实记）**：未改 `verify/**`／`scripts/**`／`paper-qa-script/**`／`.github/**`／`docs/1-WORKFLOW.MD`／`docs/6-DECISIONS.md`／`docs/iteration/sprint/**`／`cards/A-COST.md`／别的卡（含 `TG-18.md` 卡正文里那处旧日期：授权写入集只含 `backlog.MD` 的索引行，故卡正文保留旧值，已列未决）；未 `git add/commit/push`；未上调任何上限；未为变绿改判据。**本批实际写入三处**：`agents/policy.json`（五表基线）、本节（`BR-1.md` 只追加）、`docs/iteration/phases/testing-governance/backlog.MD`（仅 TG-18 索引行的 `review_by` 日期就地改，行数与列数不变）。
+
+**未决（需父代理或用户裁）**：① ~~**D101 零值面**~~ **已闭环**（另一批提交 `929159e` 按解法①改为「必须保持 0」，本批复跑确认不再红，见上）；② `TG-18.md` 卡正文仍写着 `review_by=2026-10-31`，与政策已不一致——需一次「只改一行」的授权；③ 并行批的未跟踪文件（前端改动与新建的 `verify/verify_spend_report.py`）触发 `artifact_paths.dynamic_ratchet` 的两条判据（「未列入上限表即 FAIL」与「未跟踪路径必须为空」）——正解是**那些文件自己**把落点改成可静态判定、并让它们不再未跟踪，本批**不登记配额、不代修**；④ 下一期（2026-11-27）到期时 D102／D103／E501 三类须**各真降至少 1**，否则「到期未改善」照旧红——这是本次重评留下的租金，不是事故。
