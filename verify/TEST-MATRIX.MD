@@ -13,6 +13,9 @@
 | `gui_check_dashboard_costs.mjs` | 看板成本/上下文页截图（CNY 合计/pending 标注） | gui | — | 30s | ¥0 | — | playwright, dashboard |
 | `gui_check_dashboard_fanout.mjs` | 看板 fan-out 配置页截图（两条流水线+JSON 编辑器） | gui | — | 30s | ¥0 | — | playwright, dashboard |
 | `gui_check_dashboard_report.mjs` | 看板报告浏览页截图（run 详情+报告全文） | gui | — | 30s | ¥0 | — | playwright, dashboard |
+| `gui_check_fac13_click.mjs` | F-AC13：节点运行按钮首次真实鼠标点击即生效（mousedown→mouseup 序列，非程序化 .click()）+ 两处 .node-actions 均带 nodrag nopan | gui | — | 40s | ¥0 | /api/run_step | playwright, servers |
+| `gui_check_fac14_copy_state.mjs` | F-AC14：三个复制按钮各自独立暂态（点『复制答案』只它变『已复制 ✓』，复制 output / 复制报错不串台；1.5s 后各自复位；跨节点互不影响） | gui | — | 45s | ¥0 | /api/run_step | playwright, servers |
+| `gui_check_fac15_runtime_config.mjs` | F-AC15 v1：运行参数只读面（/api/config_schema.runtime 形状 + 前端面板 env/spec/schedule 只读展示、面板内无可编辑控件、密钥/内部指标不外泄） | gui | — | 40s | ¥0 | /api/config_schema | playwright, servers |
 | `gui_check_fac16_checkpoint.mjs` | F-AC16 v1：Checkpoints 只读面板（开关/命名空间/逐篇载荷路径/复制按钮）+ /api/checkpoints 形状 | gui | — | 40s | ¥0 | /api/checkpoints | playwright, servers |
 | `gui_check_remote.mjs` | GUI 远程数据源：remote+arXiv → Run All → 截图 | gui | — | 180s | ¥0 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | playwright, servers, network |
 | `gui_check_s15_bidi_link.mjs` | Sprint-15 F-AC9：subcanvas 手动切换节点 → 主画布联动选中并定位对应节点 | gui | — | 40s | ¥0 | — | playwright, servers |
@@ -61,6 +64,7 @@
 | `verify_remote_e2e.py` | remote 数据源全链路（arXiv 下载+索引+6 步） | network | deepseek | 180s | ¥0.4 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
 | `verify_runner.py` | TG-5 分层 runner + 定时底座：offline/gui/network 分层 + fail-closed + 三态预算闸门 + 第三态 SKIP（⑮：具名 SKIP 归 skipped 档／假 SKIP 不归入／failed 优先，均真入口驱动）+ due 判定 + 成本回填 + 状态文件 fail-closed（TG-7） | offline | — | 60s | ¥0 | — |  |
 | `verify_smoke.py` | 冒烟 8 项：paperqa 导入/后端 12 路由加载/runtime_trace 目标/PDF 解析等（离线） | offline | — | 10s | ¥0 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session, /api/health, /api/providers, /api/config_schema, /api/config/validate, /api/translate_preview, /api/usage, /api/checkpoints | none |
+| `verify_spend_report.py` | A-COST 度量仪口径闸门：派单数只来自账本且调用 agent-ops 的 _dispatch_reading（与预算闸门同源）／会话日志只做费用与本会话只报读数／累积重放日志只计价一次／账本读不到 fail-closed(rc=3)／真仓双进程同源比对；反向对照条数见末行 `ALL PASS (N assertions)` | offline | — | 25s | ¥0 | — | none |
 | `verify_usage.py` | Retro③ 成本换算 ＋ TG-20 行 20 按调用时刻选档：真入口对照/跨档/缺失/退化/可审计/真派发，改前取自钉住 revision（离线，需 git） | offline | — | 12s | ¥0 | — | git |
 
-共 57 个脚本：offline 26 / network 10 / gui 21。
+共 61 个脚本：offline 27 / network 10 / gui 24。

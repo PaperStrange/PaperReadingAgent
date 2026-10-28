@@ -8,20 +8,35 @@
     python scripts/spend-report.py                 # 今天（与昨天）
     python scripts/spend-report.py --days 3        # 最近 3 天
     python scripts/spend-report.py --sessions      # 附当日按会话明细
-    python scripts/spend-report.py --json          # 机读输出（供闸门/记账）
+    python scripts/spend-report.py --check         # 预算自检（判决表＋口径对账）
+    python scripts/spend-report.py --check --json  # 同上，机读（夹具／闸门用）
 
 口径（全部可复算）：
+  * **派单数**＝`agents/runtime/registry.json` 里当日（UTC+8）已登记的 run 数，
+    直接调用 `scripts/agent-ops.py::_dispatch_reading`（同一函数、同一本账 ⇒ 与
+    `register` 的派单预算闸门**同一个数**；本文件不复制那套算法）。
+    会话日志**不用于计数**：旧实现按"目录名不以 `session-` 开头"数全机的会话
+    目录，把别的主线的子代理会话也算成"我的派单"（作用域缺陷，见 A-COST 卡）。
+  * **费用**只能从会话日志折算（账本 `usage` 缺口未修）。同一会话目录下并存的
+    `session.jsonl.zstd`／`session.v3…`／`session.v4…` 是**累积重放**（首批记录
+    逐字相同、末记录递增）⇒ 每目录只取**最新一份**，否则同一批调用会按文件数
+    重复计价。
+  * **本会话**＝父链可达 `agents/spend-budget.json::main_sessions` 的会话（头记录
+    的 `parentSession`；旧布局的物理嵌套也算），其余会话只进"全机"合计。
   * 单价取 `agents/runtime/prices.json`（不写死）；档位按**事件自身时间戳**判
     （北京时间周一至五 09:00-12:00、14:00-18:00 为高峰，其余空闲）。
-  * 模型名**不在事件里** ⇒ 按 `--model`（缺省 `deepseek-flash`，与本会话配置一致）计价；
+  * 模型名**不在事件里** ⇒ 按 `--model`（缺省 `deepseek-flash`）计价；
     若实际计费模型不同，读数按倍率缩放 —— 这是本仪器的**已知假设**，不是测量。
-  * 汇率取价表 `meta.fx_usd_cny`；来源 `~/.dsh/sessions`（父子会话各自一目录）。
+  * 汇率取价表 `meta.fx_usd_cny`；会话根取 `SPEND_SESSIONS_ROOT`（缺省
+    `~/.dsh/sessions`；verify 夹具用它指到 %TEMP% 合成树）。
 """
 from __future__ import annotations
 
 import argparse
 import datetime as dt
+import importlib.util
 import json
+import os
 import pathlib
 import sys
 
@@ -40,7 +55,11 @@ except ImportError:  # pragma: no cover
     sys.exit(2)
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SESS = pathlib.Path.home() / ".dsh" / "sessions"
+# 会话日志根：`SPEND_SESSIONS_ROOT` 可重定向（verify 夹具指到 %TEMP% 合成树）——
+# 手法与 `agent-ops.py::AGENT_OPS_DIR` 同一套：**同一份代码**跑真数据与夹具。
+SESS = pathlib.Path(os.environ.get("SPEND_SESSIONS_ROOT")
+                    or (pathlib.Path.home() / ".dsh" / "sessions"))
+AGENT_OPS = ROOT / "scripts" / "agent-ops.py"
 CST = dt.timezone(dt.timedelta(hours=8))
 # 「判据未执行」的专属退出码（`TG-19` M-B 口径：SKIP 与 PASS 互斥）——
 # 与"超预算(1)"和"用法错误(2)"都不同：调用方不得把 SKIP 当成 OK。
@@ -79,15 +98,147 @@ def usage_of(obj: dict) -> dict | None:
     return None
 
 
-def scan(days: int, model: str):
-    """扫近 N 天的会话日志，按天与会话汇总 token 与金额。"""
+_AO_CACHE: dict = {}
+
+
+def agent_ops():
+    """把 `scripts/agent-ops.py` 当模块加载——派单计数的**唯一真源**。
+
+    为什么是"加载别人的函数"而不是"照抄一遍算法"：账本读数必须与 `register` 的
+    派单预算闸门给出**同一个数**，两处各写一份算法迟早漂移，而漂移的表现就是
+    "同一天两个派单数"——那正是本卡要修的病。加载后连"同一本账"（`REGISTRY_PATH`
+    与 `AGENT_OPS_DIR` 重定向）、"同一份预算"（`_spend_budget_path`）和"同一个
+    今天"（`_local_date`）也一起同源（只加载一次，夹具里改 env 后再起进程才算）。
+    """
+    if not _AO_CACHE:
+        spec = importlib.util.spec_from_file_location("_agent_ops_for_spend", AGENT_OPS)
+        if spec is None or spec.loader is None:  # pragma: no cover —— 仓内文件
+            raise SystemExit(f"SPEND-ERROR: 加载不了 {AGENT_OPS}（派单计数无真源）")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = mod
+        spec.loader.exec_module(mod)
+        _AO_CACHE["ao"] = mod
+    return _AO_CACHE["ao"]
+
+
+def ledger_reading() -> dict:
+    """当日（UTC+8）**账本口径**派单数：闸门用的那个数，逐字取自同一个函数。
+
+    与闸门同源的三件事：① `_dispatch_reading`（同一函数）② `REGISTRY_PATH`
+    （同一本账，`AGENT_OPS_DIR` 重定向时一起搬）③ 同一个"今天"（`_local_date`）。
+    闸门的读法是**多信号取并集**（`run_id` 日期段 ∪ `started_at` 折算），本文件
+    照用而不是另选一种：选一种就等于造第二个数。已知盲区（闸门文案里也写着）：
+    既不带日期段、又漏 `--start` 的 run 归不出日期 ⇒ 不计入。
+    `total=None` = 账本读不到 ⇒ 判据**未执行**（不是"今天零派单"）。
+    """
+    ao = agent_ops()
+    day = ao._local_date()
+    out = {"day": day, "path": str(ao.REGISTRY_PATH), "total": None,
+           "by_id": 0, "by_start": 0, "why": ""}
+    if not ao.REGISTRY_PATH.is_file():
+        out["why"] = f"账本不存在（{ao.REGISTRY_PATH}）⇒ 判据未执行"
+        return out
+    try:
+        data = json.loads(ao.REGISTRY_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        out["why"] = f"账本读不出（{exc}）⇒ 判据未执行"
+        return out
+    total, by_id, by_start = ao._dispatch_reading(data, day)
+    out.update(total=total, by_id=by_id, by_start=by_start)
+    return out
+
+
+def session_header(path: pathlib.Path) -> dict:
+    """会话日志**首行**的头记录（`type=session`，带 `id`/`parentSession`）。
+
+    只解前 64 KiB：头记录是第一行，整份日志几十 MB 时全解纯属浪费。
+    读不出／不是头记录 ⇒ `{}`——调用方按"归属未知"处理，**不猜成"本会话"**。
+    """
+    try:
+        with open(path, "rb") as fh:
+            chunk = zstd.ZstdDecompressor().stream_reader(fh).read(65536)
+        obj = json.loads(chunk.split(b"\n", 1)[0].decode("utf-8", "replace"))
+    except Exception:  # noqa: BLE001
+        return {}
+    return obj if isinstance(obj, dict) and obj.get("id") else {}
+
+
+def session_files(root: pathlib.Path) -> dict:
+    """`{会话 id: (最新日志路径, 头记录)}`——**每个会话目录只取最新一份**。
+
+    同一目录下并存 `session.jsonl.zstd`／`session.v3.jsonl.zstd`／`session.v4…`
+    是**累积重放**（2026-10-28 现跑核对：三份的首记录逐字相同、末记录依次递增
+    到当下）⇒ 全读会把同一批调用按文件数重复计价。
+    """
+    newest: dict[pathlib.Path, pathlib.Path] = {}
+    for path in root.rglob("*.jsonl.zstd"):
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        held = newest.get(path.parent)
+        if held is None or mtime > held.stat().st_mtime:
+            newest[path.parent] = path
+    out: dict[str, tuple] = {}
+    for path in newest.values():
+        head = session_header(path)
+        out[str(head.get("id") or path.parent.name)] = (path, head)
+    return out
+
+
+def _cst_day(ms: object) -> str:
+    """毫秒时间戳 → UTC+8 日期串；缺失／非法 ⇒ 空串（不猜成今天）。"""
+    if not isinstance(ms, (int, float)) or ms <= 0:
+        return ""
+    return dt.datetime.fromtimestamp(ms / 1000, CST).strftime("%Y-%m-%d")
+
+
+def _nested(path: pathlib.Path, roots: list[str]) -> bool:
+    """日志是否物理嵌在主会话目录下（旧布局的子代理目录形态）。"""
+    return (path.parent.name in roots) or (path.parent.parent.name in roots)
+
+
+def own_line(sessions: dict, roots: list[str], day: str) -> dict:
+    """**本会话**名下的会话集合：父链可达 `main_sessions` 者。
+
+    归属维度＝头记录的 `parentSession`（**可从数据判定**，不是"目录名长什么样"）：
+    子代理会话逐级指回主线，主线的 id 由 `spend-budget.json::main_sessions` 给定
+    （属本机数据，换会话只改数据文件）。旧布局的物理嵌套（`<主线目录>/<子>/`）
+    也算——两种形态都能从磁盘看出来，所以都收。
+    `members` = 本会话名下全部会话；`today` = 其中**建立于当日**的（＝当日派单）。
+    """
+    parent_of = {sid: str((head or {}).get("parentSession") or "")
+                 for sid, (_p, head) in sessions.items()}
+    members: list[str] = []
+    for sid, (path, _head) in sessions.items():
+        if sid in roots or _nested(path, roots):
+            continue
+        hop, seen = sid, set()
+        while hop and hop not in seen:
+            seen.add(hop)
+            if hop in roots:
+                members.append(sid)
+                break
+            hop = parent_of.get(hop, "")
+    today = sorted(s for s in members
+                   if _cst_day(sessions[s][1].get("createdAt")) == day)
+    return {"roots": list(roots), "members": sorted(members), "today": today,
+            "dirs": sorted({sessions[s][0].parent.name for s in members}),
+            "today_dirs": sorted({sessions[s][0].parent.name for s in today})}
+
+
+def scan(days: int, model: str, sessions: dict):
+    """扫近 N 天的会话日志（每会话取最新一份），按天与会话汇总 token 与金额。"""
     models, fx = load_prices()
     cut = dt.datetime.now(CST) - dt.timedelta(days=days)
     per_day: dict[str, list] = {}
     per_sess: dict[str, list] = {}
     files = 0
-    for path in SESS.rglob("*.jsonl.zstd"):
-        if dt.datetime.fromtimestamp(path.stat().st_mtime, CST) < cut:
+    for path, _head in sessions.values():
+        try:
+            if dt.datetime.fromtimestamp(path.stat().st_mtime, CST) < cut:
+                continue
+        except OSError:
             continue
         files += 1
         try:
@@ -156,63 +307,107 @@ def baseline_note(got: float, base: float) -> str:
     return "等于基线（1.00×）"
 
 
-def check(per_day: dict, per_sess: dict, fx: float, model: str) -> int:
-    """按 agents/spend-budget.json 自检当日预算。
+def build_checks(per_day: dict, per_sess: dict, fx: float, model: str,
+                 sessions: dict, doc: dict) -> dict:
+    """当日判决表 ＋ 两口径对账（**只算不打印**：上屏与机读共用这一份）。"""
+    led = ledger_reading()
+    day = led["day"]
+    budget = doc.get("budget") or {}
+    base = doc.get("baseline") or {}
+    targets = doc.get("targets") or {}
+    mine = [str(x) for x in (doc.get("main_sessions") or [])]
+    own = own_line(sessions, mine, day)
+    rows = [(k.split("|", 1)[1], v) for k, v in per_sess.items()
+            if k.startswith(day + "|")]
+    d = per_day.get(day) or [0, 0, 0, 0, 0.0, 0]
+    matched = {name for name, _a in rows if name in mine}
+    main_out = sum(a[1] for name, a in rows if name in mine)
+    own_cny = sum(a[4] for name, a in rows if name in own["dirs"]) * fx
+    no_main = "配置的主线会话 id 在本机一条都没匹配到（换机器请改 `main_sessions`）"
+    no_root = "`main_sessions` 为空 ⇒ 本机没有『本会话』定义"
+    checks = [
+        {"label": "派单会话数/日（账本）", "got": led["total"],
+         "cap": budget.get("dispatched_sessions_per_day"),
+         "base_key": "dispatched_sessions_per_day", "judge": "block",
+         "measurable": led["total"] is not None, "why": led["why"],
+         "note": "与 register 闸门同一函数、同一本账"},
+        {"label": "派单会话数/日（日志·本会话）", "got": len(own["today"]),
+         "cap": None, "base_key": None, "judge": "report",
+         "measurable": bool(mine), "why": no_root,
+         "note": "父链可达主线者；与账本对账用"},
+        {"label": "主代理 output token/日", "got": main_out,
+         "cap": budget.get("main_output_tokens_per_day"),
+         "base_key": "main_output_tokens_per_day", "judge": "block",
+         "measurable": bool(matched) or not mine, "why": no_main,
+         "note": ""},
+        {"label": "当日合计 CNY（全机）", "got": round(d[4] * fx, 2),
+         "cap": budget.get("all_sessions_cny_per_day"),
+         "base_key": "all_sessions_cny_per_day", "judge": "block",
+         "measurable": True, "why": "",
+         "note": "上限/基线按全机口径立，作用域未改"},
+        {"label": "本会话合计 CNY", "got": round(own_cny, 2), "cap": None,
+         "base_key": None, "judge": "report", "measurable": bool(mine),
+         "why": no_root, "note": "作用域＝本会话"},
+    ]
+    gap = len(own["today"]) - (led["total"] or 0)
+    recon = {"day": day, "ledger": led["total"], "log": len(own["today"]),
+             "gap": gap, "unregistered": own["today"] if gap > 0 else [],
+             "extra_in_ledger": -gap if gap < 0 else 0}
+    return {"day": day, "model": model, "ledger": led,
+            "own": {"today": own["today"], "members": own["members"],
+                    "dirs": own["dirs"]},
+            "baseline": base, "targets": targets, "checks": checks,
+            "reconcile": recon}
 
-    rc：`0` = 全部判据**真的执行过**且在预算内；`1` = 有项超预算；
-    `3` = 有判据**没被执行**（① 配置的主线会话 id 在本机一条都没匹配到；
-    ② `baseline` 缺该指标字段 ⇒ 无对照对象 ⇒ 行 40 要求的"与 baseline 对比"
-    这一半没执行。两条都**不得当 OK**）；`0`＋`SKIP:` 行 = 预算未配置／今日无用量
-    （既有口径，非"检查过"）。
 
-    每行输出三件事实：预算判据（`OK`/`OVER`/`SKIP`）、`实测`/`预算`、以及与
-    `baseline` 的**对照**（高于/低于/等于，带倍率）——对照只上屏，不参与判据。
+def recon_line(recon: dict) -> str:
+    """两口径对账的上屏文本（**差在哪必须写出来**，不许静默取其一）。"""
+    led, log, gap = recon["ledger"], recon["log"], recon["gap"]
+    head = (f"  口径对账 {recon['day']}：账本 {led if led is not None else '未执行'}"
+            f" ｜ 日志·本会话 {log} ｜ 差 {gap:+d}")
+    if gap == 0:
+        return head + " ⇒ **两口径一致**（同一时点、同一 UTC+8 日）"
+    if gap > 0:
+        unreg = "、".join(recon["unregistered"])
+        return (head + f" ⇒ 日志多 {gap} 笔＝**账本未登记**的派单；候选会话"
+                f"（账本无 session_id，无法逐笔定位）：{unreg}")
+    return (head + f" ⇒ 账本多 {recon['extra_in_ledger']} 笔**并非本会话**的登记"
+            f"（同仓并行批／别的会话；账本行无 session_id，无法逐笔归属）")
+
+
+def check(per_day: dict, per_sess: dict, fx: float, model: str,
+          sessions: dict, want_json: bool = False) -> int:
+    """按 agents/spend-budget.json 自检当日预算，并给出两口径对账。
+
+    rc：`0` = 全部**判据**真的执行过且在预算内；`1` = 有判据项超预算；
+    `3` = 有判据**没被执行**（① 账本读不到／② 配置的主线会话 id 在本机一条都
+    没匹配到／③ `baseline` 缺该指标字段）——三条都**不得当 OK**；
+    `0`＋`SKIP:` 行 = 预算未配置／今日无用量（既有口径，非"检查过"）。
+
+    判决表分两类行：`block`（参与退出码）与 `report`（**只报**：无预算、无基线，
+    不参与退出码）。"日志·本会话"与"本会话合计 CNY"两行是 `report`——它们是
+    **读数**（作用域修正后才有的），判据仍是账本口径：两处用同一个数才叫同源。
     """
-    path = ROOT / "agents" / "spend-budget.json"
+    path = agent_ops()._spend_budget_path()
     if not path.exists():
         print(f"SKIP: 找不到 {path}（预算未配置，不判）")
         return 0
     doc = json.loads(path.read_text(encoding="utf-8"))
-    budget = doc.get("budget") or {}
-    base = doc.get("baseline") or {}
-    targets = doc.get("targets") or {}
-    today = max(per_day) if per_day else None
-    if not today:
-        print("SKIP: 今日无用量记录")
+    led = ledger_reading()
+    if led["day"] not in per_day:
+        print(f"SKIP: 今日（{led['day']}，UTC+8）无用量记录")
         return 0
-    day = per_day[today]
-    rows = [(k.split("|", 1)[1], v) for k, v in per_sess.items()
-            if k.startswith(today + "|")]
-    dispatched = len([1 for name, _ in rows
-                      if not name.startswith("session-")])
-    mine = doc.get("main_sessions") or []
-    # 配置的主线会话 id 是**机器相关**的（`~/.dsh/sessions/session-<uuid>/` 由本机会话
-    # 生成）⇒ 换机后一个都匹配不上时 `main_out` 恒 0，而旧实现照判 `OK` ＝**假绿**
-    # （复核 `run-…-105` major 7）。口径：**判据没被触发就不算通过**——
-    # 一个都没匹配到 ⇒ 该条 SKIP（上屏点名），且退出码非 0（SKIP 不得被调用方当 OK）。
-    matched = {name for name, _a in rows if name in mine}
-    main_ok = bool(matched) or not mine
-    main_out = sum(a[1] for name, a in rows if name in mine)
-    cny = day[4] * fx
-    no_main = "配置的主线会话 id 在本机一条都没匹配到（换机器请改 `main_sessions`）"
-    checks = [
-        {"label": "派单会话数/日", "base_key": "dispatched_sessions_per_day",
-         "got": dispatched, "cap": budget.get("dispatched_sessions_per_day"),
-         "measurable": True, "why": ""},
-        {"label": "主代理 output token/日", "base_key": "main_output_tokens_per_day",
-         "got": main_out, "cap": budget.get("main_output_tokens_per_day"),
-         "measurable": main_ok, "why": no_main},
-        {"label": "当日合计 CNY", "base_key": "all_sessions_cny_per_day",
-         "got": round(cny, 2), "cap": budget.get("all_sessions_cny_per_day"),
-         "measurable": True, "why": ""},
-    ]
+    payload = build_checks(per_day, per_sess, fx, model, sessions, doc)
+    base, targets = payload["baseline"], payload["targets"]
     over: list[str] = []
     skipped: list[str] = []
-    print(f"预算自检 {today}（模型 {model}）｜基线 {base.get('measured_at')}"
-          f"｜靶 相对基线 {targets.get('cut_ratio_vs_baseline')}×"
-          f"（`targets.cut_ratio_vs_baseline`；对照只上屏，不作为判据）")
-    for row in checks:
+    shown: list[tuple] = []
+    for row in payload["checks"]:
         label, got, cap = row["label"], row["got"], row["cap"]
+        if row["judge"] == "report":
+            why = row["why"] if not row["measurable"] else row["note"]
+            shown.append(("只报", label, got, cap, None, why))
+            continue
         b = base.get(row["base_key"])
         if not isinstance(b, (int, float)):
             b = None
@@ -233,18 +428,33 @@ def check(per_day: dict, per_sess: dict, fx: float, model: str) -> int:
             if flag == "OVER":
                 over.append(label)
             note = baseline_note(float(got), float(b))
-        print(f"  [{flag}] {label:<22} 实测 {str(got):<10} 预算 {cap} "
+        shown.append((flag, label, got, cap, b, note))
+    payload["rc"] = (SKIP_EXIT if skipped else (1 if over else 0))
+    payload["shown"] = [{"flag": f, "label": lb, "got": g, "cap": c,
+                         "baseline": bb, "note": nt} for f, lb, g, c, bb, nt in shown]
+    if want_json:
+        print(json.dumps(payload, ensure_ascii=False))
+        return payload["rc"]
+    print(f"预算自检 {payload['day']}（模型 {model}）｜基线 {base.get('measured_at')}"
+          f"｜靶 相对基线 {targets.get('cut_ratio_vs_baseline')}×"
+          f"（`targets.cut_ratio_vs_baseline`；对照只上屏，不作为判据）")
+    for flag, label, got, cap, b, note in shown:
+        if cap is None:
+            print(f"  [{flag}] {label:<24} 实测 {str(got):<10}（{note}）")
+            continue
+        print(f"  [{flag}] {label:<24} 实测 {str(got):<10} 预算 {cap} "
               f"基线 {'（缺）' if b is None else b}｜对照 {note}")
+    print(recon_line(payload["reconcile"]))
     if skipped:
         print(f"SPEND-BUDGET SKIP（{len(skipped)} 项判据**未执行**）"
               f"——**不是通过**：判据没有测量对象／没有对照对象，逐项原因见上"
               f"｜同时超预算的项：{over or '（无）'}")
-        return SKIP_EXIT
+        return payload["rc"]
     if over:
         print(f"SPEND-BUDGET FAIL（{len(over)} 项超预算）：{over}")
-        return 1
+        return payload["rc"]
     print("SPEND-BUDGET PASS（全部在预算内；每项基线对照见上）")
-    return 0
+    return payload["rc"]
 
 
 def main() -> int:
@@ -257,16 +467,18 @@ def main() -> int:
     ap.add_argument("--check", action="store_true")
     ns = ap.parse_args()
 
-    per_day, per_sess, fx, files = scan(ns.days, ns.model)
+    sessions = session_files(SESS)
+    per_day, per_sess, fx, files = scan(ns.days, ns.model, sessions)
+    if ns.check:
+        return check(per_day, per_sess, fx, ns.model, sessions, ns.json)
     if ns.json:
         payload = {"fx": fx, "days": dict(sorted(per_day.items())),
                    "sessions": per_sess}
         print(json.dumps(payload, ensure_ascii=False))
         return 0
-    if ns.check:
-        return check(per_day, per_sess, fx, ns.model)
 
-    print(f"日志文件 {files} 个（近 {ns.days} 天有写入）｜模型假设 {ns.model}｜fx {fx}")
+    print(f"会话日志 {files} 份（每会话取最新版本）｜近 {ns.days} 天有写入"
+          f"｜模型假设 {ns.model}｜fx {fx}")
     print(f"{'day(CST)':<12}{'calls':>7}{'in':>11}{'out':>10}{'cache_rd':>13}{'CNY':>9}")
     tot = [0, 0, 0, 0, 0.0, 0]
     for day, a in sorted(per_day.items()):
