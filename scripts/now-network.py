@@ -36,7 +36,8 @@ def fetch_server_time() -> tuple[dt.datetime, str]:
     last = ""
     for url in SOURCES:
         try:
-            req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": USER_AGENT})
+            req = urllib.request.Request(
+                url, method="HEAD", headers={"User-Agent": USER_AGENT})
             with urllib.request.urlopen(req, timeout=15) as resp:
                 raw = resp.headers.get("Date")
                 if not raw:
