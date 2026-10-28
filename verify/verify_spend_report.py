@@ -95,6 +95,15 @@ if hasattr(sys.stdout, "reconfigure"):
 
 _N = 0
 _FAILS: list[str] = []
+_SKIPPED: list[str] = []
+SKIP_EXIT = 3
+SKIP_NOT_PASS_MARK = "本档不是通过"
+
+
+def skip(name: str, why: str) -> None:
+    """记一条具名 SKIP：判据未执行，既不计 PASS 也不计 FAIL。"""
+    _SKIPPED.append(name)
+    print(f"SPEND SKIP[ledger-absent] {name}：{why}")
 
 
 def ok(name: str, cond: bool, detail: str = "") -> None:
@@ -357,18 +366,32 @@ def main() -> int:
                           capture_output=True, text=True, encoding="utf-8",
                           errors="replace", env=env_real)
     real_pay = payload_of(real)
-    ok("真仓同源：spend-report 的账本读数 == 另一进程现算 agent-ops 的"
-       "`_dispatch_reading`（两处各写一份算法就会在这里漂）",
-       gate_n.isdigit() and real_pay.get("ledger", {}).get("total") == int(gate_n),
-       f"agent-ops={gate_n}／spend-report={real_pay.get('ledger', {}).get('total')}")
+    if not gate_n.isdigit():
+        # 全新 checkout（CI/干净克隆）没有账本 ⇒ 该判据**无从执行**
+        skip("真仓同源", "本仓无账本 ⇒ 两口径无读数可比（不是通过）")
+    else:
+        ok("真仓同源：spend-report 的账本读数 == 另一进程现算 agent-ops 的"
+           "`_dispatch_reading`（两处各写一份算法就会在这里漂）",
+           real_pay.get("ledger", {}).get("total") == int(gate_n),
+           f"agent-ops={gate_n}／"
+           f"spend-report={real_pay.get('ledger', {}).get('total')}")
     ok("真仓预算与账本**同源**（`_spend_budget_path()`）：预算文件跟着账本根走，"
        "夹具才能用受控预算真驱动闸门",
        "_spend_budget_path" in src)
 
-    print(f"ALL PASS ({_N} assertions)" if not _FAILS
-          else f"FAILURES ({len(_FAILS)}/{_N})：{_FAILS}")
-    print(f"EVIDENCE: verify_spend_report.py assertions={_N} rc={1 if _FAILS else 0}")
-    return 1 if _FAILS else 0
+    if _FAILS:
+        print(f"FAILURES ({len(_FAILS)}/{_N})：{_FAILS}")
+        print(f"EVIDENCE: verify_spend_report.py assertions={_N} rc=1")
+        return 1
+    if _SKIPPED:
+        print(f"ALL PASS ({_N} assertions)（另有 {len(_SKIPPED)} 条判据未执行）")
+        print(f"EVIDENCE: verify_spend_report.py assertions={_N} rc={SKIP_EXIT}")
+        print(f"SPEND SKIP[ledger-absent] {','.join(_SKIPPED)} —— 本仓无账本 ⇒ "
+              f"真仓同源判据未执行 ⇒ {SKIP_NOT_PASS_MARK}（rc={SKIP_EXIT}）")
+        return SKIP_EXIT
+    print(f"ALL PASS ({_N} assertions)")
+    print(f"EVIDENCE: verify_spend_report.py assertions={_N} rc=0")
+    return 0
 
 
 if __name__ == "__main__":
