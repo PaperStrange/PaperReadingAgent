@@ -1,81 +1,133 @@
-# main 同步走查清单（2026-10-25）
+# main 同步走查清单（大白话版）
 
-> **用途**：用户对"windows → main 同步"的验收。
-> **对象**：`main` 上的 `cdec4d2`（第一次同步）＋ 第二次同步提交（本清单所在批，落地后见 PR）。
-> **性质**：**只读**走查。下列命令都不改仓库、不推送、不合并；任何一条给出"不符合预期"即**判不通过**并记档。
-> **原则**：本清单**只列能被现跑否证的项**；凡是"看起来应该没问题"的都不算通过。
-
----
-
-## §1 结构验收（同步形态是否正确）
-
-| # | 检查 | 命令 | 通过标准 |
-|---|---|---|---|
-| 1.1 | 同步提交是**单亲**（不是真 merge 混入 main 历史） | `git log <sync-sha> --format='%h %p' -1` | 恰好 **1 个父提交**，且父＝同步前的 `main` 顶端 |
-| 1.2 | 合并提交是**真 merge** | `git log origin/main -1 --format='%h %p'` | **2 个父** = `<旧 main>` ＋ `<sync-sha>` |
-| 1.3 | `docs/iteration/**` **不进 main** | `git ls-tree -r --name-only origin/main -- docs/iteration \| measure-object -line` | **0 行** |
-| 1.4 | `docs/6-DECISIONS.md` **在 main** | `git ls-tree origin/main -- docs/6-DECISIONS.md` | 有 1 行输出（blob 存在） |
-| 1.5 | 4 个 mac 启动脚本**未被删除** | `git ls-tree -r --name-only origin/main -- scripts/setup-env.sh scripts/start-backend.sh scripts/start-frontend.sh scripts/start-streamlit.sh` | **4 行** |
-| 1.6 | 树内容 = windows 树 − iteration（无第三处偏差） | `git diff --name-status <sync-sha> <windows-sha>` | 仅出现 `A docs/iteration/…`（186 条）与 `D scripts/*.sh`（4 条），**无其它行** |
+> 这份是给**人**看的。每一项都是"复制一行命令 → 看输出像不像我写的标准"。
+> 全部命令**只读**：不改文件、不推送、不合并。任何一条不对，就是**不通过**。
+> 命令在仓库根目录（`PaperReading-Windows`）执行；Windows PowerShell 或任意终端都行。
 
 ---
 
-## §2 判据验收（main 形态下这些门必须绿）
+## 先说结论：这次同步做了什么
 
-在**全新 clone 的主机**上执行（或用同步树），不要用 windows 工作树代替：
+把 `windows` 分支上验证过的代码**搬到了** `main`，但**没搬**两样东西：
 
-| # | 检查 | 命令 | 通过标准 |
-|---|---|---|---|
-| 2.1 | 离线套件走**第三态**而非失败 | `python verify/run_suite.py --tier offline` | 末行 `SUITE PASSED (N scripts, M skipped)`，**rc=3**，且 **0 个 FAILED** |
-| 2.2 | SKIP 是**具名**的、且不是冒充通过 | 同上 | 恰好 3 条：`verify_agentops.py[spec-absent-on-branch]`、`verify_close_readiness.py[spec-absent-on-branch]`、`verify_usage.py[rev-absent-on-branch]`；末行含 `SKIP≠PASS` |
-| 2.3 | CI 的套件门**明确说明放行理由** | 看 CI 日志 `Offline verify suite` 步 | 出现 `零失败 ＋ 有具名 SKIP ⇒ 本步放行（显式说明，非静默）` |
-| 2.4 | 登记册在 main 上**走真数据**（不是缺席档） | `python verify/verify_decision_register.py` | `DECISION-REGISTER PASS`，`pointers=1248`、`quotes_drift=0`，且**不出现** `rc=0 ＋ SKIP 横幅` |
-| 2.5 | 结构守卫在 PR 场景下**不误判** | 看 CI 日志 `structure-guard.py verify --from-git` | 基线为 **`base.sha`**（main 提交），结论 `STRUCTURE PASS`；**不得**出现 186 项"文件消失" |
-| 2.6 | 前端两次构建 | CI 日志 `Build reactflow frontend` / `Build agents-dashboard` | 两步都 **success** |
+1. **没搬 `docs/iteration/` 这个目录** —— 它是"开发过程记录"，只在 windows 上留；
+2. **没删** 4 个 mac 启动脚本 —— 那是 mac 分支要用的。
+
+搬的方式是"**先做一个单独的搬运提交，再合并**"（不是把 windows 的历史整个倒进 main），这样 main 的历史干净。
 
 ---
 
-## §3 交付内容验收（这次同步带上了什么）
+## 一共 8 项，逐项打勾
 
-| # | 检查 | 通过标准 |
-|---|---|---|
-| 3.1 | `docs/1-WORKFLOW.MD` 的**排除项③已翻转** | 文中写"`docs/6-DECISIONS.md` **纳入 main**（2026-10-03 用户批准）"，且**不再**写"不进 main" |
-| 3.2 | `baseline-reform` 阶段存在且已入 ROADMAP | `docs/iteration/phases/baseline-reform/` 四文件存在；`docs/iteration/ROADMAP.MD` 的 Next 表含该阶段（注：本目录在 windows 侧，main 不含 `docs/iteration/**` ⇒ 此项在 **windows 树**上查） |
-| 3.3 | C 级棘轮**到期收租**已生效 | `python verify/verify_lint.py` 末行含 `D101=0/12`、`D102=23/46`、`E501=2493/2494`；`review_by=2026-10-31` 到期时要求"严格小于"（见 `BR-1` §9/§10） |
-| 3.4 | sprint PNG 已入库（16 处图片链接不再断） | `git ls-files "docs/iteration/sprint/*.png"` ⇒ **11** 条 |
-| 3.5 | 忽略规则形状漏网已堵 | `git check-ignore --no-index -v -- ci_fail_log.txt` 与 `-- verify_checkpoint_run.log` ⇒ **rc=0**（修前 rc=1）；`git ls-files -z \| git check-ignore --no-index -z --stdin` ⇒ **零命中**（578 个已跟踪文件零误伤） |
+### ① main 上没有 `docs/iteration/`
 
----
+```powershell
+git ls-tree -r --name-only origin/main -- docs/iteration
+```
 
-## §4 我明确**没有**证明的（走查时不要当成通过）
-
-| # | 事实 | 后果 |
-|---|---|---|
-| 4.1 | `docs/6-DECISIONS.md` 里 **1106 处指向 `docs/iteration/**` 的指针**在 main 上**未做内容核对** | 它们被"行 39 棘轮上限 1106"钉住，只保证**不再增加**；**内容正确性未验** |
-| 4.2 | `CI-CLOSE-SKIP-GATE` 在 main 上**按设计跳过**（无 sprint docs） | 只证"不阻断"，**不证"关闭判定真跑过"** |
-| 4.3 | 结构守卫的 `--replay` 自检只证"守卫能拦"，不证"每个 PR 都跑" | 不可跳过层由 CI 命令位置机检（`A-M12①`）保证；本条仍是"半自动" |
-| 4.4 | `verify/**` 仍有 **23 条 D102**（缺方法 docstring） | 不影响 2026-10-31 义务（D102 现值 23 < 基线 46），但**不是零债务** |
-| 4.5 | 两次同步之间 main 的 `docs/iteration/**` 仍缺失，`verify_card_index.py` 等以 iteration 为条件根的判据在 main 上走条件根 | 这是**设计如此**（windows-only 子树），不是缺陷 |
+- ✅ **什么都不输出** = 对。
+- ❌ 出现任何文件名 = **不通过**（说明开发记录漏进 main 了）。
 
 ---
 
-## §5 红旗清单（出现任一即**判不通过**）
+### ② main 上有"决策登记册"
 
-1. `docs/iteration/**` 有任意 1 个文件进了 main。
-2. 4 个 mac `.sh` 少了任意 1 个。
-3. 同步提交有 **2 个父**（说明被做成了 merge，破坏历史形态）。
-4. `SUITE` 出现任何 **FAILED**（具名 SKIP 不算，但 rc=1 算）。
-5. SKIP 横幅**缺 `<NAME> ` 首 token**（例如只写 `SKIP[…]`）⇒ 会被套件当失败或当静默跳过。
-6. `verify_decision_register.py` 在 main 上输出了 `rc=0` 且**同时**打 SKIP 横幅（"自陈条数却跳过"）。
-7. 任一 CI 必需检查不是 success。
+```powershell
+git ls-tree origin/main -- docs/6-DECISIONS.md
+```
+
+- ✅ 输出**一行**（开头 `100644 blob ...`）= 对。这个文件是"你拍过的每个板的账本"。
+- ❌ 没有输出 = 不通过。
 
 ---
 
-## §6 签收
+### ③ 4 个 mac 启动脚本还在
 
-| 项 | 值 |
+```powershell
+git ls-tree -r --name-only origin/main -- scripts/setup-env.sh scripts/start-backend.sh scripts/start-frontend.sh scripts/start-streamlit.sh
+```
+
+- ✅ 输出**正好 4 行** = 对。
+- ❌ 少于 4 行 = 不通过（mac 用户会启动不了）。
+
+---
+
+### ④ 历史形状：搬运是"一个父"，合并是"两个父"
+
+```powershell
+git cat-file -p 259628f | Select-String "^parent "
+git cat-file -p origin/main | Select-String "^parent "
+```
+
+- ✅ 第一条 **1 行**（"搬运提交"只能有一个父），第二条 **2 行**（"合并提交"正常两个父）。
+- ❌ 搬运提交出现 2 行 = 不通过（历史形状坏了）。
+- 看不懂可跳过：只影响历史整洁度，不影响功能。
+
+---
+
+### ⑤ main 上跑测试：应该"没有失败、但有 3 个跳过"
+
+```powershell
+python verify/run_suite.py --tier offline
+```
+
+- ✅ 末行形如 `SUITE PASSED (23 scripts, 3 skipped)`，**没有 `FAILED`**。
+- ✅ 3 个跳过的名字里应含 `spec-absent`／`rev-absent` 一类字眼（意思是"main 上缺开发记录或历史版本，这几条判不了"）。
+- ❌ 出现 `SUITE FAILED` = **不通过**。
+- ❌ 写 `PASSED` 但**没有** `3 skipped` = 可疑（可能在假装通过）。
+
+---
+
+### ⑥ 决策登记册在 main 上能自检
+
+```powershell
+python verify/verify_decision_register.py
+```
+
+- ✅ 出 `DECISION-REGISTER PASS`，且**不**伴随 `SKIP` 字样。
+- ❌ 出 `SKIP` 或 `FAIL` = 不通过。
+
+---
+
+### ⑦ CI 是不是真的绿
+
+打开 <https://github.com/PaperStrange/PaperReadingAgent/actions>
+
+- ✅ 最新几条 **都 success**；PR #54 / #55 的检查项 `Offline suite + builds (Windows)` 是绿色。
+- ❌ 有任何红色 = 不通过。
+
+---
+
+### ⑧ 两个"已经修好"的小毛病
+
+```powershell
+git switch windows
+git ls-files "docs/iteration/sprint/*.png" | Measure-Object -Line
+git check-ignore --no-index -v -- ci_fail_log.txt
+git check-ignore --no-index -v -- verify_checkpoint_run.log
+```
+
+- ✅ 第二条输出 `Lines : 11`（sprint 文档里 11 张图已入库，图不再裂）。
+- ✅ 后两条**都有输出**（这两个杂散文件已被忽略，不会再误入库）。
+- ❌ 不是 11、或后两条没输出 = 复查并记一笔（不一定要命）。
+
+> 第 ⑧ 条要在 **windows** 分支看，因为 `docs/iteration/` 只在 windows 上。
+
+---
+
+## 我**没有**证明的事（重要，请知悉）
+
+1. **真实联网、GUI 点击**没在这次 CI 里跑（CI 只跑离线测试 ＋ 前端构建）。
+2. main 的决策登记册里有 **1106 处"某文件第 N 行"的引用**，那些文件在 main 上不存在 ⇒ **内容对不上是正常的**；我们只保证这些引用**数量不再增加**。
+3. `verify/` 目录里还有 **23 处函数缺注释**（不影响功能，但不算干净）。
+
+---
+
+## 签收
+
+| 项 | 填 |
 |---|---|
 | 走查日期 | |
-| 结论 | ☐ 通过　☐ 不通过（原因：） |
-| 未通过项编号 | |
-| 后续动作 | |
+| 结论 | ☐ 通过　☐ 不通过 |
+| 哪几项不过（写编号） | |
+| 想让我先修哪个 | |
