@@ -47,8 +47,8 @@ git ls-tree origin/main -- docs/6-DECISIONS.md
 git ls-tree -r --name-only origin/main -- scripts/setup-env.sh scripts/start-backend.sh scripts/start-frontend.sh scripts/start-streamlit.sh
 ```
 
-- ✅ 输出**正好 4 行** = 对。
-- ❌ 少于 4 行 = 不通过（mac 用户会启动不了）。
+- ✅ 输出行数**等于**命令里列的脚本数 = 对（**以命令输出为准**）。
+- ❌ 少于命令里列出的条数 = 不通过（mac 用户会启动不了）。
 
 ---
 
@@ -71,10 +71,10 @@ git cat-file -p origin/main | Select-String "^parent "
 python verify/run_suite.py --tier offline
 ```
 
-- ✅ 末行形如 `SUITE PASSED (23 scripts, 3 skipped)`，**没有 `FAILED`**。
-- ✅ 3 个跳过的名字里应含 `spec-absent`／`rev-absent` 一类字眼（意思是"main 上缺开发记录或历史版本，这几条判不了"）。
+- ✅ 末行以 `SUITE PASSED` 开头、**没有 `FAILED`**，且括号里带 `skipped`。**括号里的数字以你这次跑出来的为准**（不写死，避免抄旧读数）。
+- ✅ 被跳过的脚本名里应含 `spec-absent`／`rev-absent` 一类字眼（意思是"main 上缺开发记录或历史版本，这几条判不了"）。**具体几个也以输出为准。**
 - ❌ 出现 `SUITE FAILED` = **不通过**。
-- ❌ 写 `PASSED` 但**没有** `3 skipped` = 可疑（可能在假装通过）。
+- ❌ 写 `PASSED` 但括号里**没有** `skipped` = 可疑（可能在假装通过）。
 
 ---
 
@@ -107,9 +107,9 @@ git check-ignore --no-index -v -- ci_fail_log.txt
 git check-ignore --no-index -v -- verify_checkpoint_run.log
 ```
 
-- ✅ 第二条输出 `Lines : 11`（sprint 文档里 11 张图已入库，图不再裂）。
+- ✅ 第二条输出的 `Lines` 数**等于** `git ls-files "docs/iteration/sprint/*.png"` 的条数（图已入库，文档里的图不会再裂）。**以命令输出为准。**
 - ✅ 后两条**都有输出**（这两个杂散文件已被忽略，不会再误入库）。
-- ❌ 不是 11、或后两条没输出 = 复查并记一笔（不一定要命）。
+- ❌ 第二条没有输出、或后两条没输出 = 复查并记一笔（不一定要命）。
 
 > 第 ⑧ 条要在 **windows** 分支看，因为 `docs/iteration/` 只在 windows 上。
 

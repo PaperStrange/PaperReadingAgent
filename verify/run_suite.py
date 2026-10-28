@@ -161,7 +161,9 @@ BRANCH_ASSERTION_FLOORS: dict[tuple[str, bool], int] = {
     ("verify_decision_register.py", False): 32,
     ("verify_derived_numbers.py", True): 19, ("verify_derived_numbers.py", False): 19,
     ("verify_gate_integrity.py", True): 88, ("verify_gate_integrity.py", False): 88,
-    ("verify_lint.py", True): 15, ("verify_lint.py", False): 15,
+    ("verify_lint.py", True): 17, ("verify_lint.py", False): 17,
+    ("verify_spend_report.py", True): 19,
+    ("verify_spend_report.py", False): 19,
 }
 BRANCH_VERDICT_SCOPE_MIN: dict[bool, int] = {True: 6, False: 6}
 TAIL_KEEP = 60                  # 每个脚本留最后 60 行（判决句判据只读末尾数行）
