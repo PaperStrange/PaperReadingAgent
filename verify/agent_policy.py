@@ -159,6 +159,10 @@ class SpecRole:
 
     @property
     def undeclared_fields(self) -> list[str]:
+        """该 spec **没声明**的字段名（空列表 = 两个字段都已声明）。
+
+        闸门据此逐条点名缺口，而不是只报一句"声明不全"。
+        """
         missing = []
         if self.scope_required is None:
             missing.append("scope_required")
@@ -168,6 +172,7 @@ class SpecRole:
 
     @property
     def participates_in_coverage(self) -> bool:
+        """是否参与 C3 覆盖计算（只有声明 `coverage_window: self` 才算）。"""
         return self.coverage_window == "self"
 
 
@@ -184,6 +189,7 @@ class CloseStep:
 
     @property
     def label(self) -> str:
+        """该步在报告里的简称：role 名，有 targets 时追加 `[t1,t2]`。"""
         return f"{self.role}" + (f"[{','.join(self.targets)}]" if self.targets else "")
 
 
@@ -215,6 +221,7 @@ class Policy:
 
     @property
     def close_ledger_steps(self) -> tuple[CloseStep, ...]:
+        """关闭流水线里**产出账本 run** 的步骤（归属与覆盖计算只认这些步）。"""
         return tuple(s for s in self.steps if s.ledger)
 
     def role_targets(self) -> dict[str, list[str]]:
@@ -296,6 +303,7 @@ class Policy:
 
     @property
     def scope_min_deviation_chars(self) -> int:
+        """scope 自选或偏离理由的长度下限（空署名不许当免检开关）。"""
         val = self._data("scope_min_deviation_chars")
         if not isinstance(val, int) or val <= 0:
             raise PolicyError(f"scope_min_deviation_chars 必须是正整数，实际 {val!r}")
@@ -321,6 +329,7 @@ class Policy:
 
     @property
     def scope_ref_sources(self) -> tuple[str, ...]:
+        """`--scope-source` 允许的引用前缀集（须为非空列表，否则 fail-closed）。"""
         val = self._data("scope_ref_sources")
         if not isinstance(val, list) or not val:
             raise PolicyError(f"scope_ref_sources 必须是非空列表，实际 {val!r}")
@@ -328,6 +337,7 @@ class Policy:
 
     @property
     def lint_paths(self) -> tuple[str, ...]:
+        """lint 闸门要扫的路径清单（ruff 的扫描集，闸门不得另写一份）。"""
         val = self._data("lint_paths")
         if not isinstance(val, list) or not val:
             raise PolicyError(f"lint_paths 必须是非空列表，实际 {val!r}")
@@ -335,6 +345,7 @@ class Policy:
 
     @property
     def lint_rules(self) -> dict:
+        """ruff 规则分级 `{hard_a, hard_b, report_only}`（三个键都必须非空）。"""
         val = self._data("lint_rules")
         for key in ("hard_a", "hard_b", "report_only"):
             if not str(val.get(key) or "").strip():
@@ -389,6 +400,7 @@ class Policy:
 
     @property
     def archive_role_prefix(self) -> str:
+        """调研类 role 前缀：报告名以此开头即视为调研归档（供报告保鲜判定）。"""
         return str(self._data("archive_role_prefix"))
 
     @property
@@ -697,6 +709,7 @@ class Policy:
                                  "legacy_ratchet.review_by")
 
     def ledger_caps(self) -> dict[str, int]:
+        """`{检查项: 计数上限}`：账本棘轮的基线（只许下调，到期须严格小于）。"""
         return {str(k): int(v) for k, v in self.ledger_measurement["legacy_ratchet"]["caps"].items()}
 
     # ---- C2：指涉可核 ------------------------------------------------------------
@@ -1153,6 +1166,7 @@ class Attribution:
         return names
 
     def is_scope_run(self, role: str) -> bool:
+        """该 role 是否属**作用域类**（只界定变更集，不承担内容覆盖）。"""
         return role in self.scope_role_names()
 
     # -- 例外表校验（用户 P2 关切的"表过期"三件套之 (b)：sha 钉死，禁止通配） -------
@@ -1299,6 +1313,7 @@ class Attribution:
         return not self.shas
 
     def exception_problems(self) -> list[str]:
+        """C3-T 例外表的结构缺陷：sha 必须 40 位钉死、每条必须写 reason。"""
         problems: list[str] = []
         sha_re_len = 40
         for i, item in enumerate(self.exceptions):
@@ -1315,6 +1330,7 @@ class Attribution:
         return problems
 
     def exception_shas(self) -> dict[str, dict]:
+        """`{sha: 例外条目}` 索引，供归属判定按 sha 直接查。"""
         out: dict[str, dict] = {}
         for item in self.exceptions:
             if isinstance(item, dict) and item.get("sha"):
@@ -1323,17 +1339,20 @@ class Attribution:
 
     # -- 归属判定 ---------------------------------------------------------------
     def files_of(self, sha: str) -> list[str]:
+        """该提交改动的文件清单；按 sha 缓存，避免重复调 git。"""
         if sha not in self._files:
             self._files[sha] = commit_files(self.root, sha)
         return self._files[sha]
 
     def is_doc_only(self, sha: str, globs: tuple[str, ...]) -> bool:
+        """该提交是否**只**改了 doc-only glob 命中的文件（空 diff 不自动归类）。"""
         files = self.files_of(sha)
         if not files:
             return False  # 空 diff（合并/空提交）→ 不自动归类，交人判
         return all(any(fnmatch.fnmatch(f.replace("\\", "/"), g) for g in globs) for f in files)
 
     def owner(self, sha: str, doc_only_globs: tuple[str, ...]) -> str | None:
+        """判定提交归属：覆盖窗口 → 例外表 → doc-only，皆不中则返回 None。"""
         for w in self.windows:
             if self._covers(w, sha):
                 return f"run:{w.run_id}"
@@ -1344,9 +1363,11 @@ class Attribution:
         return None
 
     def unowned(self, doc_only_globs: tuple[str, ...]) -> list[str]:
+        """锚点→HEAD 之间**无人认领**的提交清单（C3 的 FAIL 依据）。"""
         return [sha for sha in self.shas if self.owner(sha, doc_only_globs) is None]
 
     def report_lines(self, doc_only_globs: tuple[str, ...], limit: int = 40) -> list[str]:
+        """逐提交一行的归属报告：sha / 归属 / subject / 前几个改动文件。"""
         lines: list[str] = []
         for sha in self.shas[:limit]:
             owner = self.owner(sha, doc_only_globs) or "**UNOWNED**"
