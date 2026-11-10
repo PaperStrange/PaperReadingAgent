@@ -1015,3 +1015,45 @@ body,
 }
 .ck-path-missing { color: #991b1b; }
 
+/* F-AC15 v1：运行参数只读面（复用 ck-panel 容器；这里只补表格/说明样式） */
+.rt-note {
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin: 4px 0 8px;
+  font-size: var(--fs-small);
+}
+.rt-section-title {
+  font-weight: 600;
+  color: #334155;
+  margin: 8px 0 4px;
+  font-size: var(--fs-small);
+}
+.rt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-small);
+}
+.rt-table th,
+.rt-table td {
+  border-bottom: 1px solid #e2e8f0;
+  padding: 3px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+.rt-table th { color: #475569; font-weight: 600; }
+.rt-table code { font-family: var(--font-mono); font-size: var(--fs-tiny); }
+.rt-default { color: #64748b; }
+.rt-read-point { color: #64748b; font-size: var(--fs-tiny); }
+.rt-kv {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: var(--fs-small);
+  margin: 2px 0;
+}
+.rt-kv > span { color: #475569; min-width: 92px; }
+.rt-kv code { font-family: var(--font-mono); font-size: var(--fs-tiny); word-break: break-all; }
+

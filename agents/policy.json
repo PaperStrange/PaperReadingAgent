@@ -43,14 +43,14 @@
       "terminal_writeback_grace_minutes": 120
     },
     "legacy_ratchet": {
-      "_comment": "棘轮基线：历史 run 允许存在的缺陷**计数上限**——实测值，2026-09-25（UTC+8）对全量 67 条账本行 + 69 个 agents/runs 目录一次测得。上限只许在重评基线时**下调**，不许为了变绿上调；闸门对超过上限的每一例逐条点名。**判定域**见 `domain`（2026-09-25 修：早于本次关闭窗口起点的存量计入上限，窗口内严格判定——旧口径『截止日 = 上限实测日 = 交付日』会把**当天新建**的 run 判成历史，拿当天更早实测的上限去量它 ⇒ 计数必然顶破上限，闸门在自己的交付日结构性红）。到期日 `review_by` 过后闸门直接 FAIL（没有到期日的豁免就是永久豁免）。**目录类历史债不走计数上限**，走 `agents/policy/run-dir-exceptions.json` 白名单（每条必须写 reason，且只减不增）。",
+      "_comment": "棘轮基线：历史 run 允许存在的缺陷**计数上限**——实测值，2026-09-25（UTC+8）首测；**2026-10-28 重评**（`verify/verify_ledger_measurement.py` 现跑：真实账本 133 条 / 目录 135 个）逐类读数**等于**上限（output_chars_zero 12 ／ missing_result_files_review 9 ／ zero_duration 3 ／ round_duration 3 ／ rounds_mismatch 1 ／ negative_duration・missing_timestamp・terminal_not_written_back 各 0）⇒ caps 与 measured_value 已在实测处、无下调空间（cap 只许在重评基线时**下调**），本次只推进 measured_at／review_by。上限只许在重评基线时**下调**，不许为了变绿上调；闸门对超过上限的每一例逐条点名。**判定域**见 `domain`（2026-09-25 修：早于本次关闭窗口起点的存量计入上限，窗口内严格判定——旧口径『截止日 = 上限实测日 = 交付日』会把**当天新建**的 run 判成历史，拿当天更早实测的上限去量它 ⇒ 计数必然顶破上限，闸门在自己的交付日结构性红）。到期日 `review_by` 过后闸门直接 FAIL（没有到期日的豁免就是永久豁免）。**目录类历史债不走计数上限**，走 `agents/policy/run-dir-exceptions.json` 白名单（每条必须写 reason，且只减不增）。",
       "domain": {
         "_comment": "棘轮判定域的**规则名**（实现只认这一个取值，改数据不改代码即 fail-closed）：`close_window_start_exclusive` = 早于本次关闭窗口起点（`started_at < 窗口起点`）的 run 计入计数上限；窗口起点由 `verify_close_readiness.ledger_close_window()` 从**账本侧**推导（= `close_gate.scope_ref_step` 作用域 run 的 `started_at`），本闸门**复用同一实现**、同一比较口径（`started_at >= 窗口起点` = 窗口内，与 C1/N6 逐字一致——一个窗口只能有一处推导）。窗口内（含起点那条作用域 run）的 run 一律**严格判定**：无上限、无豁免。窗口不可推导（作用域 run 缺席/无 started_at）→ 退回 `cutoff_local_date` 的日期域并**在输出里点名『回退域』**（回退是放宽方向，必须可见；不得静默把全量账本判红，也不得静默收窄）。",
         "window": "close_window_start_exclusive"
       },
       "cutoff_local_date": "2026-09-25",
-      "measured_at": "2026-09-25",
-      "review_by": "2026-10-31",
+      "measured_at": "2026-10-28",
+      "review_by": "2026-11-27",
       "caps": {
         "output_chars_zero": 12,
         "missing_result_files_review": 9,
@@ -104,12 +104,12 @@
       "literals": ["%TEMP%"]
     },
     "dynamic_ratchet":     {
-      "_comment": "**动态目标棘轮**：写盘目标由函数参数/argv/运行时决定、无法静态判定者按**文件**计数设上限（2026-09-25 实测值，只许下调）。**未列入上限表的文件出现动态目标 = FAIL**（新脚本必须让产物落点可静态判定：用模块级常量拼路径，别把落点交给参数/argv）。`> 上限` = FAIL；`< 上限` 只提示收紧（不惩罚把动态目标改少的重构）。到期未重评 → FAIL。",
+      "_comment": "**动态目标棘轮**：写盘目标由函数参数/argv/运行时决定、无法静态判定者按**文件**计数设上限（2026-09-25 首测值，只许下调；2026-10-28 重评现跑仍为 105 处 / 34 文件 ⇒ 上限与 measured_value 未变）。**未列入上限表的文件出现动态目标 = FAIL**（新脚本必须让产物落点可静态判定：用模块级常量拼路径，别把落点交给参数/argv）。`> 上限` = FAIL；`< 上限` 只提示收紧（不惩罚把动态目标改少的重构）。到期未重评 → FAIL。",
       "cutoff_local_date": "2026-09-25",
-      "review_by": "2026-10-31",
-      "measured_at": "2026-09-25",
+      "review_by": "2026-11-27",
+      "measured_at": "2026-10-28",
       "measured_total": 105,
-      "_measured_how": "verify/verify_artifact_paths.py --report（真实仓库扫描集 89 个脚本 / 290 个写盘目标；其余 56 已忽略 + 119 %TEMP% + 3 已入库数据 + 1 无默认落点 + 4 仓库外绝对路径。闸门**不自我豁免**，故含它自己的 2 处）",
+      "_measured_how": "verify/verify_artifact_paths.py --report（2026-10-28 现跑：真实仓库扫描集 99 个脚本 / 405 个写盘目标；其余 59 已忽略 + 233 %TEMP% + 3 已入库数据 + 1 无默认落点 + 4 仓库外绝对路径 ⇒ 动态目标 105 处 / 34 文件。闸门**不自我豁免**，故含它自己的 2 处）",
       "files": {
         "paper-qa-script/app/config_schema.py": 1,
         "paper-qa-script/app/embedding_recommender.py": 2,
@@ -218,24 +218,33 @@
     "report_only": "D101,D102,D103,E501"
   },
   "lint_readability_ratchet": {
-    "_comment": "TG-6：**可读性棘轮**——把 C 级（`lint_rules.report_only` = 缺 docstring / 行长）从『只报告』改成『咬得住的棘轮』：闸门判 `计数 > 上限 → FAIL` 并**逐条点名**（规则号 + 实测计数 + 上限 + 超出条数），`review_by` 过期同样 FAIL。为什么是棘轮而不是硬 0：这四类是**历史既存债**且与正常改动同步漂移——新增代码行数、函数、字符串都会改变计数，硬 0 等价于要求全仓重排（对比 A/B 级 2026-09-23 一次清零：那两类是语法/未定义名/未用导入，属真 bug 且修复零成本）。**cap 只许下调**（重评基线时按当次实测下调，不许为了变绿上调）；**caps 键集必须与 `lint_rules.report_only` 逐键相等**（少一条 = 该类无限放行；多一条 = 死数据/拼写漂移，闸门逐条点名）。上限来源＝**2026-09-25（UTC+8）实测全仓值**（`lint_paths` 四个路径共 2896 条：D101=12 / D102=46 / D103=207 / E501=2631；本卡落地前的同口径读数为 2910 = 12/46/210/2642）——此前卡里手抄的读数（11/42/191~192/1774~1804）**已经漂了**，故一律以当次实测为准，不得沿用旧读数。到期日 `review_by` 过后闸门 FAIL（没有到期日的豁免就是永久豁免）。守门闸门 = `verify/verify_lint.py`。",
-    "measured_at": "2026-09-25",
-    "review_by": "2026-10-31",
+    "_comment": "TG-6：**可读性棘轮**——把 C 级（`lint_rules.report_only` = 缺 docstring / 行长）从『只报告』改成『咬得住的棘轮』：闸门判 `计数 > 上限 → FAIL` 并**逐条点名**（规则号 + 实测计数 + 上限 + 超出条数），`review_by` 过期同样 FAIL。为什么是棘轮而不是硬 0：这四类是**历史既存债**且与正常改动同步漂移——新增代码行数、函数、字符串都会改变计数，硬 0 等价于要求全仓重排（对比 A/B 级 2026-09-23 一次清零：那两类是语法/未定义名/未用导入，属真 bug 且修复零成本）。**cap 只许下调**（重评基线时按当次实测下调，不许为了变绿上调）；**caps 键集必须与 `lint_rules.report_only` 逐键相等**（少一条 = 该类无限放行；多一条 = 死数据/拼写漂移，闸门逐条点名）。上限来源＝**2026-09-25（UTC+8）首测的全仓值**（沿革用：当时 D101=12 / D102=46 / D103=207 / E501=2631；卡里更早手抄的读数 11/42/191~192/1774~1804 **已经漂了**）。**现值一律以当次实测为准**：2026-10-28 重评基线时 `verify/verify_lint.py` 的 EVIDENCE 行现跑 D101=0 / D102=23 / D103=203 / E501=2493，caps 与 measured_value 遂逐键下调到该实测值（零余量），不得沿用任何旧读数当现值。到期日 `review_by` 过后闸门 FAIL（没有到期日的豁免就是永久豁免）。守门闸门 = `verify/verify_lint.py`。",
+    "measured_at": "2026-10-28",
+    "review_by": "2026-11-27",
     "caps": {
-      "D101": 12,
-      "D102": 46,
-      "D103": 205,
-      "E501": 2494
+      "D101": 0,
+      "D102": 23,
+      "D103": 203,
+      "E501": 2493
     },
     "measured_value": {
+      "D101": 0,
+      "D102": 23,
+      "D103": 203,
+      "E501": 2493
+    },
+    "rebased_at": "2026-10-28",
+    "rebased_reason": "BR-1 重评基线（2026-10-28，网络事件日期）：`verify/verify_lint.py` 现跑 EVIDENCE 行 c_ratchet=D101=0/12 D102=23/46 D103=203/205 E501=2493/2494 ⇒ 四类实测均低于上一版 measured_value（12/46/205/2494），按『cap 只许下调』把 caps 与 measured_value 逐键收到当次实测（零余量），并推进 measured_at／review_by。未放宽任何判据：判据文本、caps 键集、`计数 > cap` 逐字未动，只有数值下调。",
+    "rebased_from": {
       "D101": 12,
       "D102": 46,
       "D103": 205,
       "E501": 2494
     },
+    "_rebased_2026_10_28": "**D101 归零曾触到 §9 残余风险 R2 的零值面——收尾期间已修，记录保留**：D101 实测 0 ⇒ measured_value 记 0（不得保留旧快照当现值）⇒ 旧判据要求『实测 < 0』，该条会在 2026-11-27 结构性红。本批**不上调、不伪造读数、不改判据**，只如实上报；另一批同日以**解法①**在提交 `929159e` 修好：`verify_lint.py::ratchet_problems` 对 `measured_value==0` 的类改判『**必须保持 0**』，并补反向对照 ⑬（零地板保持 → PASS）／⑭（零地板被破 → FAIL 点名），断言数 15→17。本批复跑确认：到期口径下 D101 不再红，只有 D102／D103／E501 判『到期未改善』。",
     "_measured_value_why": "M-C（TG-19，2026-09-25 D3）：把**重评基线那一刻的实测值**钉进政策。判据（verify/verify_gate_integrity.py）：`cap ≤ measured_value` 逐键成立、`measured_value` 键集与 `caps` 逐键相等、`measured_total` 同时等于 Σcaps 与 Σmeasured_value；**改 caps 或 measured_value 必须带 `rebased_at` + `rebased_reason`**（提交态的放宽因此成为一次**具名事件**，不再是盲区）。**它不是活读数**：活读数由守门闸门（`verify_lint.py`）测并判 `实测 ≤ cap`；三者串起来即 `实测 ≤ cap ≤ 重评时实测`。",
     "_remeasure_2026_09_25_close": "关闭期**下调**（只减不增）：D103 207→205（补 10 处 public 函数 docstring）、E501 2631→2494（把本批新增/改写的长 CJK docstring 与注释行按**显示宽度**折行——ruff 的 E501 按显示宽度计、CJK 占 2 列；中间一度到 2552，最终值以 `verify_lint.py` 现跑为准）。上一版把 cap 记在实测之上（E501 2631 vs 冻结 HEAD 实测 2615）留下的**静默配额**已按 `docs/3-LEARNED.MD` 1.66 收掉：现在 **cap = 当次实测**（零余量）。**原『已知局限』（复核 finding iv：单调性只与 `git HEAD` 比较 ⇒ 提交态放宽是新基线）已于 2026-09-25 D3 由 `TG-19` M-C 收口**：棘轮必须带 `measured_value`/`measured_at`，提交态上调必须带 `rebased_at` + `rebased_reason` + `rebased_from`（署名绑定到它授权的那组数值）。**`measured_total` 必须同时等于四类 cap 之和与 `measured_value` 之和**（两者都由 `verify_gate_integrity.py` 机检）。",
-    "measured_total": 2757
+    "measured_total": 2719
   },
   "archive_role_prefix": "tech-research",
   "card_index": {
@@ -301,22 +310,23 @@
   ],
   "md_table_legacy_files": {
     "_comment": "棘轮（ratchet）基线：这些**历史 Sprint/验收文档**里的表格结构缺陷是既存的（2026-09-23 扩覆盖时首次被扫到，共 15 处：内容里的管道未转义 / 表头与数据行列数不符）。避免为了让闸门变绿而改写已关闭 Sprint 的历史记录（2026-09-23 实测过一次越界改写，已 revert）。A2 修法（finding M-a/N2/R3，2026-09-25）：**按文件设上限**——`files` 由路径列表改为 `{路径: 缺陷数上限}`，闸门对基线文件也判 `len(found) > cap → FAIL`（棘轮只许变紧：上限只减不增，且**不许用「修好一处、新增一处」把总量顶回上限**——上限值本身只能在重评基线时下调）。上限来源＝各文件实测缺陷数。**新文件/新改动一律判失败**；清这批历史债需另开卡逐处人工修（每处需人判：补表头列 / 转义内容管道 / 合并单元格）。**2026-09-25 D3 更新**：`TG-18` 已把这 15 处**逐处清零**（4 个文件现跑『问题 0』），本表四个上限相应置 **0**（+ `rebased_at`/`rebased_reason`）——现在的语义是『这四个文件不得再出现表格缺陷』，见 `_measured_value_why`。",
-    "review_by": "2026-10-31",
+    "review_by": "2026-11-27",
     "files": {
       "docs/iteration/sprint/2026-08-30-sprint-6.md": 0,
       "docs/iteration/sprint/2026-09-07-sprint-15.md": 0,
       "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD": 0,
       "docs/iteration/sprint/2026-09-12-sprint-16.md": 0
     },
-    "measured_at": "2026-09-25",
+    "measured_at": "2026-10-28",
     "measured_value": {
       "docs/iteration/sprint/2026-08-30-sprint-6.md": 0,
       "docs/iteration/sprint/2026-09-07-sprint-15.md": 0,
       "docs/iteration/sprint/2026-09-12-sprint-16-acceptance-guide.MD": 0,
       "docs/iteration/sprint/2026-09-12-sprint-16.md": 0
     },
-    "rebased_at": "2026-09-25",
-    "rebased_reason": "TG-18：15 处历史表格缺陷逐处清零后，把四个文件的上限由 1/12/1/1 置 0（等价于删表——任何**新增**缺陷即 FAIL，不留静默配额）；依据 verify_md_tables.py 现跑「4 个文件 / 问题 0」。保留本键而非删表：删键会一并丢掉它的 review_by 与 measured_value 判据（M-C 的快照/到期两条），效果反而更松。",
+    "rebased_at": "2026-10-28",
+    "rebased_reason": "BR-1 重评基线（2026-10-28）：`verify/verify_md_tables.py` 现跑 4 个基线文件均『问题 0』（MD-TABLE PASS，196 个文件解析通过）⇒ 上限与 measured_value 全部保持 0（已在最紧处，无下调空间），只推进 measured_at／review_by。上一版（2026-09-25，TG-18 清零）的 rebased_at/理由见 git HEAD 版政策。",
+    "_rebased_2026_09_25": "上一版理由（TG-18，2026-09-25，原文保留）：15 处历史表格缺陷逐处清零后，把四个文件的上限由 1/12/1/1 置 0（等价于删表——任何**新增**缺陷即 FAIL，不留静默配额）；依据 verify_md_tables.py 现跑「4 个文件 / 问题 0」。保留本键而非删表：删键会一并丢掉它的 review_by 与 measured_value 判据（M-C 的快照/到期两条），效果反而更松。",
     "_measured_value_why": "M-C：上限来源＝各文件实测缺陷数。**2026-09-25 之后本表全 0**（TG-18 清零），因此它现在的语义是『这四个文件不得再出现表格缺陷』，与 `artifact_paths.dynamic_ratchet` 的『上限 0 且确无目标』同构。"
   },
   "deduction_rates": {
@@ -386,7 +396,7 @@
     }
   },
   "derived_numbers": {
-    "_comment": "『派生数字不得手抄』（2026-09-25，Sprint-17 关闭期；根因＝一查 run-2026-09-25-doc-audit-070 finding 1/2）：文档里引用**派生数字**（断言数/卡数/文件数/脚本数/字节数/C 级条数/棘轮计数）只有两种合法形态——① **复现命令 + 以该命令输出为准**；② **标明时点的历史读数**（同行带日期或 sha）。写成『现测 <数字>』『实测 <数字>』这类**当期主张**即违规。闸门 = verify/verify_derived_numbers.py（offline）。`baseline` 按文件设违规处数上限：**只减不增**（与 git HEAD 版逐项比较，上调即 FAIL），`review_by` 到期即 FAIL；未列入 baseline 的文件上限 = `default_cap`（新文档一处都不许有）。规则条文 = docs/1-WORKFLOW.MD §6『派生数字不得手抄』。baseline 初值 = 2026-09-25 全仓实测（32 个历史文件 / 111 处，其余文档 0 处）。",
+    "_comment": "『派生数字不得手抄』（2026-09-25，Sprint-17 关闭期；根因＝一查 run-2026-09-25-doc-audit-070 finding 1/2）：文档里引用**派生数字**（断言数/卡数/文件数/脚本数/字节数/C 级条数/棘轮计数）只有两种合法形态——① **复现命令 + 以该命令输出为准**；② **标明时点的历史读数**（同行带日期或 sha）。写成『现测 <数字>』『实测 <数字>』这类**当期主张**即违规。闸门 = verify/verify_derived_numbers.py（offline）。`baseline` 按文件设违规处数上限：**只减不增**（与 git HEAD 版逐项比较，上调即 FAIL），`review_by` 到期即 FAIL；未列入 baseline 的文件上限 = `default_cap`（新文档一处都不许有）。规则条文 = docs/1-WORKFLOW.MD §6『派生数字不得手抄』。baseline 初值 = 2026-09-25 全仓首测（32 个历史文件 / 111 处，其余文档 0 处）。**2026-10-28 重评**：`verify/verify_derived_numbers.py` 现跑仍为 32 个历史文件 / 111 处、逐文件与 baseline 逐键相等 ⇒ 上限与 measured_value 未变（已等于实测，无下调空间），只推进 measured_at／review_by。",
     "scan_globs": ["docs/**/*.md", "docs/**/*.MD"],
     "generated_files": ["verify/TEST-MATRIX.MD"],
     "time_anchor_regex": "(?:20\\d\\d-\\d\\d-\\d\\d|`[0-9a-f]{7,40}(?:\\.\\.[0-9a-f]{7,40})?`|以现跑为准|以命令输出为准|现跑为准|现值以|以该命令输出为准)",
@@ -440,7 +450,7 @@
       "docs/iteration/sprint/2026-09-12-sprint-16.md": 6,
       "docs/iteration/sprint/2026-09-21-sprint-17.md": 1
     },
-    "measured_at": "2026-09-25",
+    "measured_at": "2026-10-28",
     "_measured_value_why": "M-C（TG-19，2026-09-25 D3）：重评基线那一刻的逐文件实测值快照；判据 = 每个 cap ≤ 对应 measured_value、键集逐键相等，改任一侧必须带 `rebased_at` + `rebased_reason`。",
     "measured_value":     {
       "docs/3-LEARNED.MD": 8,
@@ -476,7 +486,7 @@
       "docs/iteration/sprint/2026-09-12-sprint-16.md": 6,
       "docs/iteration/sprint/2026-09-21-sprint-17.md": 1
     },
-    "review_by": "2026-10-31"
+    "review_by": "2026-11-27"
   },
   "gate_integrity": {
     "_comment": "闸门可信度（2026-09-25，Sprint-17 关闭期；两条均已实测，见 docs/3-LEARNED.MD 1.65/1.66）：① 裸 `assert` 承担判定 ⇒ `python -O`/`PYTHONOPTIMIZE=1` 下判据被整体剥离却照常打印 `ALL PASS`（同一样本正常档 rc=1、-O 档 rc=0）；套件起子进程不构造 `env=` ⇒ 一个环境变量能让整套闸门变绿。② 棘轮上限是自声明数据，`cap` 记在实测之上 = 给新增违规发**静默配额**，且没有任何机制阻止『调高上限即变绿』。闸门 = verify/verify_gate_integrity.py（offline）：`guard_required` 里的每个闸门必须含 `guard_line`（-O 下 `__debug__` 为 False ⇒ 立即失败退出，不打印成功行）；`probe_gate` 只是**入口**：`-O` 探针实际逐个跑 `guard_required` 全部闸门，判据 = 每个都**非零退出且不打印 `ALL PASS`**（单跑一条等于自证——2026-09-25 修复验证复核 finding ii）；`ratchets` 列出的上限表与 git HEAD 版逐项比较，**任何上调即 FAIL**，且每张表必须带未过期的 `review_by`。存量闸门不回溯改造，未列入 `guard_required` 的逐条 WARN（缺口可见）。",

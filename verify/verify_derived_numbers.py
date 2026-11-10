@@ -60,12 +60,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from verify.agent_policy import load_policy, path_in_head  # noqa: E402
+from verify.harness import all_pass, evidence, ok  # noqa: E402
 
 if not __debug__:  # noqa: SIM108 —— -O/PYTHONOPTIMIZE 会剥离 assert；守卫必须是普通语句，不能是 assert
     raise SystemExit("本闸门不得在 -O/PYTHONOPTIMIZE 下运行（`__debug__` 为 False ⇒ 判据会被整体剥离）——见 3-LEARNED 1.65")
-
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 _CFG = load_policy()._data("derived_numbers")  # noqa: SLF001 —— 政策读取器同源
 SCAN_GLOBS: tuple[str, ...] = tuple(str(g) for g in _CFG["scan_globs"])
@@ -77,14 +75,6 @@ BASELINE: dict[str, int] = {str(k): int(v) for k, v in (_CFG["baseline"] or {}).
 DEFAULT_CAP: int = int(_CFG["default_cap"])
 REVIEW_BY: str = str(_CFG["review_by"])
 POLICY_REL = "agents/policy.json"
-PASSED = 0
-
-
-def ok(name: str, cond: bool, detail: str = "") -> None:
-    global PASSED
-    assert cond, f"{name} FAIL: {detail}"
-    PASSED += 1
-    print(f"PASS: {name} {detail}")
 
 
 def rel(path: Path) -> str:
@@ -367,7 +357,7 @@ def selftest() -> int:
        "⇒ FAIL 并点名文件:行与判据 id",
        any("docs/a.md" in p and "gate_required" in p for p in problems),
        f"problems={problems[:1]}")
-    print(f"\nALL PASS ({PASSED} assertions)")
+    all_pass()
     return 0
 
 
@@ -406,8 +396,7 @@ def main() -> int:
           f"（{len(BASELINE)} 个历史文件走棘轮上限、均在各自上限内；生成物 {len(GENERATED)} 个豁免）")
     rc = selftest()
     if rc == 0:
-        print(f"EVIDENCE: verify_derived_numbers.py assertions={PASSED} rc=0 "
-              f"review_by={REVIEW_BY}")
+        evidence("verify_derived_numbers.py", f" review_by={REVIEW_BY}")
     return rc
 
 

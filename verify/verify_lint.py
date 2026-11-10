@@ -35,7 +35,8 @@
   ⑨ 到期（今天 = `review_by`）且实测**等于** `measured_value` ⇒ FAIL 并点名
      「到期未改善」；⑩ 到期且实测**严格小于** ⇒ 放行（防假红）；
   ⑪ **未到期不判**（今天 < `review_by`，实测等于快照也放行）；
-  ⑫ **数据坏法 fail-closed**：缺 `measured_value`／日期不可解析 ⇒ FAIL。
+  ⑫ **数据坏法 fail-closed**：缺 `measured_value`／日期不可解析 ⇒ FAIL；
+⑬⑭ **零地板**：`measured_value == 0` 时判据是**保持 0**（不是'严格小于 0'）。
 
 **机读证据行（TG-6，2026-09-25 立规）**：成功路径打印一行可 grep 的证据——
 `EVIDENCE: verify_lint.py assertions=N rc=0 …`（失败/SKIP 不打印；见 §6）。
@@ -238,7 +239,16 @@ def ratchet_problems(counts: dict[str, int], caps: dict[str, int], review_by: st
     elif today_day and review_day and today_day >= review_day and snapshot:
         for code in sorted(expected & set(snapshot)):
             count, last = int(counts.get(code, 0)), snapshot[code]
-            if count >= last:
+            if last == 0:
+                # 零地板：0 是下限，"严格小于 0" 不可能成立 ⇒ 唯一自洽形式是**保持 0**
+                # （2026-10-28 裁定：D101 已降到 0 后，按"严格小于"会让该类在下一个
+                #  review_by 结构性必红；这是 0 地板的性质，不是放宽判据）
+                if count != 0:
+                    problems.append(
+                        f"[棘轮/{code}] **零地板被破**：上一次 measured_value=0，"
+                        f"实测 {count}（review_by={review_by}，今天 {today}）"
+                        f"—— 该类已清零，到期要求是**保持 0**（0 无法再变小）")
+            elif count >= last:
                 problems.append(
                     f"[棘轮/{code}] **到期未改善**：实测 {count} ≥ 上一次 "
                     f"measured_value {last}（review_by={review_by}，今天 {today}）"
@@ -369,6 +379,17 @@ def ratchet_selfcheck(binary: list[str], today: str) -> None:
                                measured_value=snapshot, measured_at="2026-09-25")
     ok("反向对照 ⑪ 未到期（今天 < review_by）→ 不判（等于快照也放行）",
        p_undue == [], f"problems={p_undue[:1]}")
+    floor_mv = {code: 0 for code in C_RULES}
+    zero_counts = {code: 0 for code in C_RULES}
+    p_floor_ok = ratchet_problems(zero_counts, snapshot, due, due,
+                                  measured_value=floor_mv, measured_at="2026-09-25")
+    p_floor_bad = ratchet_problems({**zero_counts, "D101": 1}, snapshot, due, due,
+                                   measured_value=floor_mv, measured_at="2026-09-25")
+    ok("反向对照 ⑬ 零地板（measured_value==0）到期且实测仍为 0 → PASS"
+       "（0 无法再严格变小，故判据是保持 0）",
+       p_floor_ok == [], f"problems={p_floor_ok[:1]}")
+    ok("反向对照 ⑭ 零地板被破（实测 1 > 0）→ FAIL 并点名『零地板』",
+       any("零地板" in p for p in p_floor_bad), f"problems={p_floor_bad[:1]}")
     p_missing = ratchet_problems(lower, snapshot, due, due,
                                  measured_value=None, measured_at="2026-09-25")
     p_bad_review = ratchet_problems(lower, snapshot, "2026-13-40", due,

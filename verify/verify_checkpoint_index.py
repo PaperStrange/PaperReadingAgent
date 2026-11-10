@@ -21,6 +21,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 if str(ROOT / "paper-qa-script") not in sys.path:
     sys.path.insert(0, str(ROOT / "paper-qa-script"))
 
@@ -28,20 +29,13 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 from app import checkpoint_index as CI  # noqa: E402
+from verify.harness import all_pass, ok  # noqa: E402
 
-PASSED = 0
 ALLOWED_KEYS = {
     "checkpoint_key", "manifest_path", "payload_dir", "status", "paper_dir", "index_name",
     "embedding_model", "chunk_chars", "chunk_overlap", "updated_at", "docs_total",
     "docs_by_status", "payload_bytes_total", "readable", "error", "docs", "key_warning",
 }
-
-
-def ok(name: str, cond: bool, detail: str = "") -> None:
-    global PASSED
-    assert cond, f"{name} FAIL: {detail}"
-    PASSED += 1
-    print(f"PASS: {name} {detail}")
 
 
 def build_fixture(root: Path) -> None:
@@ -207,7 +201,7 @@ def main() -> int:
            and CI.resolve_payload("aaa111", "../nope", root) is None,
            f"legit={legit}")
 
-    print(f"\nALL PASS ({PASSED} assertions)")
+    all_pass()
     return 0
 
 

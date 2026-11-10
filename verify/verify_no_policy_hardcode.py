@@ -72,23 +72,15 @@ SELF_NAME = "verify_no_policy_hardcode.py"
 sys.path.insert(0, str(ROOT))
 
 from verify.agent_policy import load_policy  # noqa: E402
+from verify.harness import all_pass, evidence, ok  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
-PASSED = 0
 
 # 说明（2026-09-23 doc-audit finding 1）：
 # 本脚本的断言语义数**不要抄进文档**——它会随新增判据变化
 # （9 → 21 → 23 → …）。文档一律写"以脚本输出的 ALL PASS (N assertions) 为准"，或在证据行里
 # 附**当时实测**的 N 与日期。手抄导致的漂移本轮已实测三次。
-
-
-def ok(name: str, cond: bool, detail: str = "") -> None:
-    global PASSED
-    assert cond, f"{name} FAIL: {detail}"
-    PASSED += 1
-    print(f"PASS: {name} {detail}")
 
 
 # 角色名形态：小写词 + 连字符分段（code-review /
@@ -770,9 +762,9 @@ def main() -> int:
         return 0
 
     selfcheck()
-    print(f"\nALL PASS ({PASSED} assertions)")
+    all_pass()
     # TG-6：**只在成功路径**打印机读证据行（失败/SKIP 不打印——"跳过"不得冒充"通过"）
-    print(f"EVIDENCE: verify_no_policy_hardcode.py assertions={PASSED} rc=0 scanned={len(actual)}")
+    evidence("verify_no_policy_hardcode.py", f" scanned={len(actual)}")
     return 0
 
 

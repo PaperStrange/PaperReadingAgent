@@ -40,6 +40,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from verify.harness import all_pass, ok  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -47,7 +50,6 @@ if hasattr(sys.stdout, "reconfigure"):
 PY = sys.executable
 RUN_SUITE = ROOT / "verify" / "run_suite.py"
 SCHED = ROOT / "scripts" / "scheduled-tasks.py"
-PASSED = 0
 # 第三态（⑮）的夹具横幅：形态**逐字对齐** `verify_agentops.py::verdict_line` 的 SKIP 档
 # （`<NAME> SKIP[<分类>]（…）——…**本档不是通过**`）。套件的具名 SKIP 判据认的就是
 # 这个形态（`run_suite.py::SKIP_BANNER_RE` ＋ `SKIP_NOT_PASS_MARK`），此处不另立一套。
@@ -63,13 +65,6 @@ def _has_marker(text: str, marker: str) -> bool:
     本地路径不含该子串故一直没暴露（上一次 CI 绿在 09-12，早于 TG-7 引入 ⑩a，该断言此前从未在 CI 跑过）。
     """
     return re.search(rf"(?m)^[ \t]*{re.escape(marker)}", text or "") is not None
-
-
-def ok(name: str, cond: bool, detail: str = "") -> None:
-    global PASSED
-    assert cond, f"{name} FAIL: {detail}"
-    PASSED += 1
-    print(f"PASS: {name} {detail}")
 
 
 def run(cmd: list[str], env_extra: dict | None = None) -> subprocess.CompletedProcess:
@@ -541,7 +536,7 @@ def main() -> int:
                       f"（{type(exc).__name__}: {exc}）——残留会占用磁盘")
             else:
                 time.sleep(0.2 * (_attempt + 1))
-    print(f"\nALL PASS ({PASSED} assertions)")
+    all_pass()
     return 0
 
 if __name__ == "__main__":

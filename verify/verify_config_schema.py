@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))  # `verify.harness` 的导入路径（与其它闸门同口径）
 PQA_SCRIPT = ROOT / "paper-qa-script"
 BACKEND = PQA_SCRIPT / "reactflow-paperqa-prototype" / "backend"
 APP_JSX = PQA_SCRIPT / "reactflow-paperqa-prototype" / "frontend" / "src" / "App.jsx"
@@ -35,15 +36,7 @@ for _p in (str(PQA_SCRIPT), str(BACKEND)):
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-PASSED = 0
-
-
-def ok(name: str, cond: bool, detail: str = "") -> None:
-    global PASSED
-    assert cond, f"{name} FAIL: {detail}"
-    PASSED += 1
-    print(f"PASS: {name} {detail}")
-
+from verify.harness import all_pass, ok  # noqa: E402
 
 # 前端零硬编码清单（Sprint-13 US-13.1；032 加固：守卫键集合从 schema 派生，与 GROUPS 单一真源，杜绝手维护清单盲区）
 CONFIG_KEYS = None  # 运行时由 get_config_schema() 派生（全部字段 key）
@@ -145,7 +138,7 @@ def main() -> int:
     ok("Settings 字段基线一致（升级护栏）", added == [] and removed == [],
        f"added={added[:10]} removed={removed[:10]}（paperqa 升级后请重新策展 GROUPS 并 --regen-baseline）")
 
-    print(f"\nALL PASS ({PASSED} assertions)")
+    all_pass()
     return 0
 
 
