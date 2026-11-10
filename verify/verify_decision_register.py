@@ -22,7 +22,9 @@
 必须在本文件里真的存在
    （指向"别的文档/卡"时按具名引用处理，不要求是同文件条目，但要写得出文档名）；
 5. **指针可核**：全文出现的 `path:line` 指针，路径必须存在、行号必须在文件行数内（`0 <
-line <= N`）；
+line <= N`）；**`path#<锚文本>` 形态（A-PTR 试点）同一判据**——锚点由
+   `scripts/anchor-resolve.py` **现解析**成行号再核（0 命中／多命中 ⇒ fail-closed
+   点名），判据强度与 `path:line` 一字不差，变的只是"行号从哪来"；
 6. **引文 ↔ 出处（§4.1 专项）**：逐字引文必须能在它标注的 `path:line`**该行或相邻 ±2
 行**里找到
    （规范化：去空白、去引号差异）——这是"引文可核"而不是"指针存在"；
@@ -63,7 +65,9 @@ from __future__ import annotations
 
 VERIFY_META = {
     'features': '决策登记册机检（TG-20 ③④⑤）：章节在位 / 条目 8 字段齐全 / '
-                '受控状态词 / 被取代指向存在的条目 / path:line 指针可核 / '
+                '受控状态词 / 被取代指向存在的条目 / '
+                '`path:line` 与 `path#<锚文本>` 指针可核（锚点经 '
+                'scripts/anchor-resolve.py 现解析，0 命中/多命中 fail-closed）/ '
                 '§4.1 引文↔出处逐条核对 / 待回填可见；'
                 '行 39 未核指针**条数**棘轮（分支感知：windows 0／main 1106）；'
                 '反向对照条数见末行 `ALL PASS (N assertions)`',
@@ -78,6 +82,7 @@ VERIFY_META = {
 }
 
 import atexit
+import importlib.util
 import re
 import shutil
 import sys
@@ -166,6 +171,12 @@ FIELD_RE = re.compile(r"^[-*]\s*(?P<name>[^:：]+?)\s*[:：]\s*(?P<value>.*)$")
 POINTER_RE = re.compile(
     r"`?((?:docs|agents|scripts|verify|src|paper-qa-script|\.github)/[^\s`：:，,）)]+?)"
     r":(\d+)(?:-\d+)?`?")
+# `path#<锚文本>` 指针（A-PTR 试点，2026-11-10）：`<>` 是定界符 ⇒ 路径段不得含
+# `#`/`<>`，锚文本不得含 `<>`；行号**不**写死，由 `scripts/anchor-resolve.py` 现解析。
+# 前言里的 `path:line` 指针**照旧全部有效**（共存期，不迁移、不收紧）。
+ANCHOR_RE = re.compile(
+    r"`?(?P<path>(?:docs|agents|scripts|verify|src|paper-qa-script|\.github)/"
+    r"[^#\s`<>：:，,）)]+?)#<(?P<anchor>[^<>`\n]+)>(?P<offset>[+-]\d+)?`?")
 QUOTED_RE = re.compile(r"[「『\"“](?P<body>[^」』\"”]{2,})[」』\"”]")
 SUPERSEDE_RE = re.compile(r"\[已被\s*(?P<who>[^\]\s]+)\s*取代")
 # 围栏定界（``` / ~~~，最多 3 空格缩进）：围栏内是**示例区**，不是判据域
@@ -197,6 +208,46 @@ def _canon_field(name: str) -> str:
 def _lines_of(path: Path) -> list[str]:
     """读文件的行列表（UTF-8、容错解码；比对用，失败即空表由调用方处理）。"""
     return path.read_text(encoding="utf-8", errors="replace").splitlines()
+
+
+_RESOLVER: object = 0              # 0=未加载／None=加载失败／否则=已加载模块
+
+
+def _resolver():
+    """按路径加载锚点解析器（`scripts/anchor-resolve.py` 文件名带连字符）。
+
+    **单一实现**：锚点语法与匹配规则只写在那个脚本里，本闸门只调用它——把
+    "同一套匹配规则抄两份"正是本仓反复抓到的缺陷形态（改一处、另一处静默
+    半旧）。加载失败返回 `None`，由 `resolve_anchor()` 转成 **fail-closed**。
+    """
+    global _RESOLVER
+    if _RESOLVER != 0:
+        return _RESOLVER
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "anchor_resolve", ROOT / "scripts" / "anchor-resolve.py")
+        if spec is None or spec.loader is None:
+            raise ImportError("spec/loader 为空")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    except (ImportError, OSError, AttributeError):
+        mod = None
+    _RESOLVER = mod
+    return mod
+
+
+def resolve_anchor(root: Path, raw: str) -> dict:
+    """解析一条 `path#<锚文本>[+N]` → 解析器结果 dict（status/line/detail）。
+
+    解析器不在/加载失败 ⇒ `resolver-missing`：**锚点存在却解析不了等于判据
+    失效**，必须 fail-closed，不得静默跳过（判据 5 的同一口径）。
+    """
+    mod = _resolver()
+    if mod is None:
+        return {"status": "resolver-missing", "line": None,
+                "detail": "`scripts/anchor-resolve.py` 不可加载 ⇒ 锚点无法解析"}
+    return mod.resolve(root, raw.strip("`"))
+
 
 
 def _strip_fences(lines: list[str]) -> tuple[list[str], set[int]]:
@@ -247,13 +298,32 @@ def _in_spans(line: int, spans: list[tuple[int, int]]) -> bool:
     return any(start <= line <= end for start, end in spans)
 
 
-def _pointers(src: str) -> list[tuple[str, int]]:
-    """`出处` 里可能有**多个**指针（`；` 分隔）⇒ 全部取出来逐个试。"""
+def _pointers(src: str, root: Path) -> list[tuple[str, int]]:
+    """`出处` 里可能有**多个**指针（`；` 分隔）⇒ 全部取出来逐个试。
+
+    `path:line` 与 `path#<锚文本>` **同等对待**：锚点先解析成**当前**行号再
+    返回，`±2` 窗口、漂移判据、`in_repo` 分流因此对两种形态完全同一条代码路
+    径（判据强度不变）。解析失败的锚点不进列表——由指针判据点名（那里能给出
+    0 命中/多命中的候选行号，信息比这里全）。
+    """
     out: list[tuple[str, int]] = []
+    refs: list[tuple[int, str, int | None, str]] = []
     for m in re.finditer(
             r"((?:docs|agents|scripts|verify|src|paper-qa-script|\.github)/[^\s:；;，,）)]+)"
                          r":(\d+)", src):
-        item = (m.group(1), int(m.group(2)))
+        refs.append((m.start(), m.group(1), int(m.group(2)), ""))
+    for m in ANCHOR_RE.finditer(src):
+        refs.append((m.start(), m.group("path"), None, m.group(0)))
+    # 按**原文位置**排序：两种形态混写时，先取到哪个仍取决于作者写的顺序——
+    # 而不是"先所有行号、再所有锚点"（后者会让锚点形态悄悄改变判据的试错次序）。
+    refs.sort(key=lambda item: item[0])
+    for _pos, relp, line, raw in refs:
+        if line is None:
+            result = resolve_anchor(root, raw)
+            if result["status"] != "ok":
+                continue             # 解析失败由指针判据点名，不在这里重复计
+            line = result["line"]
+        item = (relp, line)
         if item not in out:
             out.append(item)
     return out
@@ -375,7 +445,7 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
         src = e["fields"].get("出处", "")
         # ③(iv)：出处必须是**可定位的指针**，或显式的"会话"形态（§1 只认这两种）
         # 判据 11：形态 = **以 `会话` 开头**（"这不在会话里"这类子串不算显式形态）
-        if (src and not _pointers(src) and not SESSION_RE.match(src)
+        if (src and not _pointers(src, root) and not SESSION_RE.match(src)
                 and "待回填" not in src):
             problems.append(f"[出处] {e['id']} 的出处既不是 `path:line` "
                             f"指针、也不是显式的『会话』形态（须以 `会话` 开头）："
@@ -418,11 +488,19 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
     #   * 该路径**父目录**在 `HEAD` 树里存在 ⇒ 同级目录里没有这个名字 =
     #     **打错/改名/漂移** ⇒ FAIL；
     #   * 父目录也不在树里（如 `docs/iteration/**` 在 main）⇒ 真·分支差异 ⇒ 记未核。
-    pointers: list[tuple[str, int, str]] = []
+    # 每项 = `(路径, 行号或 None, 原文, 锚点规格或 None)`：**行号 None** ⇒ 锚点形态，
+    # 进循环后再现解析（这样"文件在不在/被删还是分支差异"的三分法对两种形态
+    # **跑同一条代码**，锚点不另开一套分支差异口径）。
+    pointers: list[tuple[str, int | None, str, tuple[str, int] | None]] = []
     # 判据 8：指针域 = **围栏外**的全文（表格行**在内**，见判据 12 的定档）；
     # 围栏里的 `path:line` 是示例，不计入计数、不参与引文分流。
     for m in POINTER_RE.finditer(body_text):
-        pointers.append((m.group(1), int(m.group(2)), m.group(0)))
+        pointers.append((m.group(1), int(m.group(2)), m.group(0), None))
+    # A-PTR 试点：`path#<锚文本>` 与 `path:line` **同域同计**（`pointers` 计数不因
+    # 形态改变而变），逐条解析失败即 FAIL 并点名（0 命中/多命中的候选一并给出）。
+    for m in ANCHOR_RE.finditer(body_text):
+        spec = (m.group("anchor"), int(m.group("offset") or 0))
+        pointers.append((m.group("path"), None, m.group(0), spec))
     bad_ptr = 0
     absent_ptr = 0
     # 分支差异的**短路缓存**（复核 `run-…-105` critical 1）：登记册 1248 个指针里
@@ -434,7 +512,7 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
     # 故同一前缀只算一次。**真值方向不缓存**——存在 ⇒ 落到下面的逐指针检查，
     # 判据强度一字未改（"被删 / 打错改名 / 分支差异"三分法保持原样）。
     absent_dirs: set[str] = set()
-    for relp, line, raw in pointers:
+    for relp, line, raw, spec in pointers:
         parent = str(Path(relp).parent).replace("\\", "/")
         if parent != "." and parent in absent_dirs:
             absent_ptr += 1            # 整个前缀都不在本分支 ⇒ 免查（同上：未核可见）
@@ -459,6 +537,18 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
                     absent_dirs.add(parent)
             continue
         total = len(target.read_text(encoding="utf-8", errors="replace").splitlines())
+        if spec is not None:
+            # 锚点形态：**现解析**成当前行号（作者不写行号 ⇒ 插入不漂）。解析失败
+            # 一律 FAIL 并点名——"解析不出来就跳过"会让锚点退化成装饰。
+            result = resolve_anchor(root, raw)
+            if result["status"] != "ok":
+                problems.append(f"[指针·锚点] {raw} 无法解析"
+                                f"（{result['status']}）：{result['detail']}")
+                bad_ptr += 1
+                continue
+            line = result["line"]
+        if line is None:                # 只有"锚点 + 解析失败已 continue"会到这里
+            continue
         if line < 1 or line > total:
             problems.append(f"[指针] {raw} 的行号越界（该文件只有 {total} 行）")
             bad_ptr += 1
@@ -475,7 +565,7 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
         quote = e["fields"].get("原文", "")
         src = e["fields"].get("出处", "")
         m_q = QUOTED_RE.search(quote)
-        ptrs = _pointers(src)
+        ptrs = _pointers(src, root)
         if not m_q or not ptrs:
             continue                     # 非仓内出处（会话/待回填）不在此判据内
         # **本分支没有的路径**（如 main 上的 `docs/iteration/**`）⇒
@@ -544,7 +634,7 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
     # ⇒ FAIL。
     in_repo = [e for e in v_entries
                if any((root / p).is_file()
-                      for p, _ln in _pointers(e["fields"].get("出处", "")))]
+                      for p, _ln in _pointers(e["fields"].get("出处", ""), root))]
     if in_repo and checked == 0:
         problems.append(f"[引文↔出处] {len(in_repo)} 条 §4.1 "
         f"条目带**本分支可核**的出处、"
@@ -581,6 +671,9 @@ def check_register(root: Path, rel: str = REGISTER_REL, *,
              "quotes_checked": checked, "quotes_unverifiable": unverifiable,
              "quotes_mismatch": len(mismatch), "pending": len(pending),
              "quotes_drift": len(drift),
+             # 漂移**逐条**可见（WARN 行只上屏前 5 条）：裁决/复核要按条点名，
+             # 只给个数等于把"哪几条漂了"重新变成人肉搜索。
+             "quotes_drift_entries": list(drift),
              "dup_noncontract": sum(1 for e in entries
                                     for d in e["dups"] if d[0] not in FIELDS),
              "fenced_lines": len(_fenced)}
@@ -733,6 +826,24 @@ def selftest() -> int:
     ok("反向对照 d §4.1 引文与出处行不符 ⇒ FAIL（引文可核 ≠ 指针存在）",
        any("引文↔出处" in p for p in wrong_quote["problems"]),
        f"problems={wrong_quote['problems'][:1]}")
+    # ---- A-PTR 试点（2026-11-10）：`path#<锚文本>` 进**同一条**指针判据 ----------
+    anchor_src = "docs/6-DECISIONS.md#<6. 决策登记册>"
+    anchor_ok = run(build({"出处": anchor_src, "证据": anchor_src}))
+    ok("反向对照 a1 锚点形态 `path#<锚文本>` 作 出处 ⇒ 解析成**当前**行号并真的"
+       "被引文核对（quotes_checked ≥ 1：它是指针，不是装饰）",
+       anchor_ok["problems"] == []
+       and anchor_ok["stats"].get("quotes_checked", 0) >= 1,
+       f"problems={anchor_ok['problems'][:1]}")
+    miss = run(build({"出处": "docs/6-DECISIONS.md#<这条锚文本不存在XYZ>"}))
+    ok("反向对照 a2 锚点 0 命中 ⇒ FAIL 且点名（解析不出来就放过会让锚点退化成"
+       "装饰）",
+       any("0 命中" in p and "不存在XYZ" in p for p in miss["problems"]),
+       f"problems={miss['problems'][:1]}")
+    amb = run(build({"出处": "docs/6-DECISIONS.md#<原文>"}))
+    ok("反向对照 a3 锚点多命中 ⇒ FAIL 且点名『处命中』与候选行号"
+       "（多义必须 fail-closed，不得猜第一个）",
+       any("多义" in p and "处命中" in p for p in amb["problems"]),
+       f"problems={amb['problems'][:1]}")
     superseded = run(build({"生效状态": "已被取代 [已被 D-250925-99 "
     "取代（2026-01-01）]"}))
     ok("反向对照 f 『已被取代』指向不存在的条目 ⇒ FAIL（悬空取代）",

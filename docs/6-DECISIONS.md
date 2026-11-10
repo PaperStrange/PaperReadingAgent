@@ -1009,7 +1009,7 @@
 ### V-064 TG-12 N7 一卡一文档原话
 - 原文（逐字）: "`phases` 下的所有文件夹，单个卡片应该对应且唯一对应一个独立文档。现在卡片内容全都记录在 backlog 中，有的卡片内容散落在 sprint 文档中到处都是。一旦卡片内容更新了其他几处万一有的地方漏了就直接造成文档内容漂移｜｜单个卡片应该对应且唯一对应一个独立文档｜｜`phases` 下的所有文件夹，**单个卡片应该对应且唯一对应一个独立文档**。现在卡片内容全都记录在 backlog 中，有的卡片内容散落在 sprint 文档中到处都是。一旦卡片内容更新了其他几处万一有的地方漏了就直接造成文档内容漂移"（`｜｜` 为分段符）
 - 原文缺失（二手转述）: "**✅ 用户 2026-09-21 决定：N7 归入本卡（TG-12）正式执行时一并做**（不在 Sprint-17 之前单独立项）；**术语约定已即时生效**——`台账` 仅指独立文件、单元格内清单一律称"卡内实例清单"，并连同引用纪律写入 `1-WORKFLOW.MD` §3（2026-09-21）。｜｜**⤴ 2026-09-21 用户决定：机制候选 `N7`（一卡一文档 + backlog 瘦索引 + 索引 lint）已提升为独立卡 `TG-14`**——本卡机制清单收窄为 **N1~N6**（派生事实/漂移闸门/生成式状态报告/doc-audit 增补/写作规范/TG-11 合流），N7 的 4 类证据与迁移方案随卡移交 `TG-14`，避免两卡重复拥有同一机制。"
-- 出处: docs/iteration/phases/testing-governance/cards/TG-12.md:22；docs/iteration/phases/testing-governance/cards/TG-14.md:21；docs/iteration/phases/testing-governance/cards/TG-14.md:8；docs/1-WORKFLOW.MD:407；docs/1-WORKFLOW.MD:405
+- 出处: docs/iteration/phases/testing-governance/cards/TG-12.md:22；docs/iteration/phases/testing-governance/cards/TG-14.md:21；docs/iteration/phases/testing-governance/cards/TG-14.md:8；docs/1-WORKFLOW.MD#<用户原话："phases 下的所有文件夹>；docs/1-WORKFLOW.MD#<卡片与文档的对应关系·术语与引用纪律>
 - 时点: 2026-09-21
 - 主代理归纳: 本条把"卡片 ↔ 文档"的拓扑定死：`phases` 下每张卡对应且唯一对应一个独立文档，卡片正文独立成文、`backlog.MD` 退化为瘦索引、Sprint 文档只按卡号引用，并要求该拓扑有可执行 lint 兜住；执行结果 = `TG-12` 的机制候选 N7 提升为独立卡 `TG-14` 并完成迁移与索引化。
 - 生效状态: 生效（已交付）
@@ -1386,7 +1386,7 @@
 
 ### V-095 窄范围复核判断依据质疑
 - 原文（逐字）: "窄范围复核的判断依据是啥"
-- 出处: docs/1-WORKFLOW.MD:109
+- 出处: docs/1-WORKFLOW.MD#<修复验证复核（fix-verification review）>+2
 - 时点: 2026-09-21
 - 主代理归纳: 本条要求"修复验证复核"的 scope 必须有可执行来源：必须来自〇查 impact-assessment（`never a self-chosen narrow scope`），自选 scope 须显式声明来源与偏离理由，并与"关闭三查"分节定义。
 - 生效状态: 生效（该质疑促成的补定义已落在 `docs/1-WORKFLOW.MD` §4.2）
@@ -1398,7 +1398,7 @@
 
 ### V-096 交互类检查反向对照（倒过来试试）
 - 原文（逐字）: "倒过来试试"
-- 出处: docs/1-WORKFLOW.MD:474
+- 出处: docs/1-WORKFLOW.MD#<交互类检查的反向对照规则>
 - 时点: 2026-09-21
 - 主代理归纳: 本条拍板交互/GUI 类检查的反向对照规则：新增（或改动）的交互类检查必须先在未修复、或旧实现的代码上跑出 FAIL，证明它能触发目标失效模式，再在修复后转 PASS，并把该反例写进检查脚本注释与验收指南。
 - 生效状态: 生效
@@ -1411,7 +1411,7 @@
 
 ### V-097 子代理中断/接管必须留痕
 - 原文（逐字）: "运行时间变短/中途被停"
-- 出处: docs/1-WORKFLOW.MD:476
+- 出处: docs/1-WORKFLOW.MD#<子代理中断/接管必须留痕>
 - 时点: 2026-09-21
 - 主代理归纳: 本条立规：主代理中断（`interrupt_agent`）、杀掉子代理派生的进程、或按 §4.2 接管时，必须记三件事——何时、为什么、影响范围（哪一轮评审或验证因此缺失、后来如何补做），写入 Sprint 文档 §5/§9；机检执行点 = `scripts/agent-ops.py interrupt` 强制 `--reason` 与 `--impact`，`verify/verify_agentops.py` 的 UC-21 核查项要求账本 `interruptions[]` 的 `reason`/`impact` 均非空、`interruptions_count` 与数组长度一致。
 - 生效状态: 生效（机检部分已落；"影响范围是否如实"为 prose-only、无机检——引用时须知边界）
