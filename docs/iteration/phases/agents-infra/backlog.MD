@@ -19,7 +19,7 @@
 | A-DASH | 本地看板应用（Next.js 16 + **antd 6.6.2** + better-sqlite3/FTS5 + c | ✅ 完成 | Sprint-9（2026-08-30 关闭；PR #31 合并 cbf93ea） | [cards/A-DASH.md](cards/A-DASH.md) |
 | A-PTR | 规范文档指针锚点：path:line 改为稳定锚点（标题／符号） | 候选 | — | [cards/A-PTR.md](cards/A-PTR.md) |
 | A-REG | 派单登记可验证性：规则 14 现为荣誉制（账本分不清谁按的键） | 候选 | — | [cards/A-REG.md](cards/A-REG.md) |
-| A-COST | 成本归属：finish --usage-* 未用 ⇒ 损失只能从会话日志反推 | 候选 | — | [cards/A-COST.md](cards/A-COST.md) |
+| A-COST | 成本归属：finish --usage-* 未用 ⇒ 损失只能从会话日志反推（2026-10-28 已修：派单数改账本同源，见 `cards/A-COST.md`） | 已修 | — | [cards/A-COST.md](cards/A-COST.md) |
 | A-CASE | 反例档语料维护：只增不减、无合并／去重／检索 | 候选 | — | [cards/A-CASE.md](cards/A-CASE.md) |
 | A-DECL | 规则可机检性：规则可以是无实现的声明 | 候选 | — | [cards/A-DECL.md](cards/A-DECL.md) |
 | A-EXCL | 排除清单复审：被排除项反复被拉回、排除时不查消费者、清单无周期复审 | 候选 | — | [cards/A-EXCL.md](cards/A-EXCL.md) |
