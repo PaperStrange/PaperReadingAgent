@@ -13,18 +13,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "paper-qa-script"))
 
 from runtime_trace import _render_pdf_page_preview  # noqa: E402
-
-PASSED = 0
-
-
-def ok(name: str, cond: bool, detail: str = "") -> None:
-    global PASSED
-    assert cond, f"{name} FAIL: {detail}"
-    PASSED += 1
-    print(f"PASS: {name} {detail}")
+from verify.harness import all_pass, ok  # noqa: E402
 
 
 def png_size(data_url: str) -> tuple[int, int]:
@@ -42,7 +35,7 @@ def main() -> int:
     assert url is not None
     w, h = png_size(url)
     ok("F-AC12 分辨率提升（宽 ≥ 500px）", w >= 500, f"png={w}x{h}")
-    print(f"\nALL PASS ({PASSED} assertions)")
+    all_pass()
     return 0
 
 

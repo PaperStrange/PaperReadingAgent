@@ -12,6 +12,7 @@ import "reactflow/dist/style.css";
 import FlowNode from "./FlowNode";
 import FunctionTraceNode from "./FunctionTraceNode";
 import CheckpointPanel from "./CheckpointPanel";
+import RuntimeParamsPanel from "./RuntimeParamsPanel";
 import { newSession, resetSession, runStep } from "./api";
 
 const nodeTypes = { stepNode: FlowNode, functionNode: FunctionTraceNode };
@@ -292,6 +293,7 @@ export default function App() {
   const [splitPct, setSplitPct] = useState(55); // 主画布宽度占比（%）
   const [fnFullscreen, setFnFullscreen] = useState(false);
   const [ckPanelOpen, setCkPanelOpen] = useState(false);  // F-AC16 v1：本地 checkpoint 只读面板
+  const [rtPanelOpen, setRtPanelOpen] = useState(false);  // F-AC15 v1：运行参数只读面
 
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
@@ -1260,9 +1262,19 @@ export default function App() {
           >
             {ckPanelOpen ? "Hide Checkpoints" : "Checkpoints（本地复用/载荷路径）"}
           </button>
+          <button
+            className="ck-toggle-btn"
+            data-testid="runtime-config-toggle"
+            onClick={() => setRtPanelOpen((v) => !v)}
+          >
+            {rtPanelOpen ? "隐藏运行参数" : "运行参数（只读）"}
+          </button>
         </div>
         {ckPanelOpen ? (
           <CheckpointPanel apiBase={apiBase} onClose={() => setCkPanelOpen(false)} />
+        ) : null}
+        {rtPanelOpen ? (
+          <RuntimeParamsPanel apiBase={apiBase} onClose={() => setRtPanelOpen(false)} />
         ) : null}
       </div>
 

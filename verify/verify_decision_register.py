@@ -88,6 +88,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from verify.agent_policy import path_in_head  # noqa: E402
+from verify.harness import all_pass, evidence, ok  # noqa: E402
 
 if not __debug__:  # noqa: SIM108 —— -O/PYTHONOPTIMIZE 会剥离 assert；守卫必须是普通语句，不能是 assert
     raise SystemExit("本闸门不得在 -O/PYTHONOPTIMIZE 下运行（`__debug__` 为 False ⇒ "
@@ -171,19 +172,6 @@ SUPERSEDE_RE = re.compile(r"\[已被\s*(?P<who>[^\]\s]+)\s*取代")
 FENCE_RE = re.compile(r"^\s{0,3}(?P<mark>`{3,}|~{3,})")
 # 显式"会话"形态（判据 11）：**必须以 `会话` 开头**，不是"出现过这两个字"
 SESSION_RE = re.compile(r"^\**\s*会话")
-PASSED = 0
-
-
-def ok(name: str, cond: bool, detail: str = "") -> None:
-    """自检断言：通过则计数并打印，失败则抛错
-    （**不用裸 `assert`**——`-O` 会把它整体剥离）。"""
-    global PASSED
-    if cond:
-        PASSED += 1
-        print(f"PASS: {name} {detail}")
-        return
-    print(f"FAIL: {name} {detail}")
-    raise AssertionError(f"{name} FAIL: {detail}")
 
 
 def _norm(text: str) -> str:
@@ -864,7 +852,7 @@ def selftest() -> int:
     ok("反向对照 z 行 39 棘轮：上限表缺该分支 ⇒ fail-closed（缺项不得读成『无上限』）",
        bool(absent_ratchet_problems(3, True, caps={False: 1106})), "caps 缺 True")
     _reclaim()   # 行 8：显式回收 run 级夹具目录（异常路径由 `atexit` 兜底）
-    print(f"\nALL PASS ({PASSED} assertions)")
+    all_pass()
     return 0
 
 
@@ -901,10 +889,11 @@ def main() -> int:
           f"待回填 {s.get('pending')} 条（见 WARN）")
     rc = selftest()
     if rc == 0:
-        print(f"EVIDENCE: verify_decision_register.py assertions={PASSED} rc=0 "
-              f"entries={s.get('entries')} quotes_checked={s.get('quotes_checked')} "
-              f"quotes_drift={s.get('quotes_drift')} "
-              f"pointers={s.get('pointers')}")
+        evidence("verify_decision_register.py",
+                 f" entries={s.get('entries')}"
+                 f" quotes_checked={s.get('quotes_checked')}"
+                 f" quotes_drift={s.get('quotes_drift')}"
+                 f" pointers={s.get('pointers')}")
     return rc
 
 

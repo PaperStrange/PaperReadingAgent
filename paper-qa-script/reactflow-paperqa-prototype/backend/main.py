@@ -145,10 +145,125 @@ async def providers() -> dict[str, Any]:
     return {"providers": list_providers_safe()}
 
 
+# F-AC15 v1（只读）：把只存在于 CLI/env/spec 的运行参数暴露成只读面，挂在
+# `/api/config_schema.runtime` 下（**不新增路由**：verify_smoke.py 对 /api 路由集合
+# 做逐项相等断言）。只展示、不写回；可编辑面留待后续。密钥类
+# `PAPERQA_PROVIDERS_JSON` 与内部指标文件 `PAPERQA_SUITE_METRICS` 不入面。
+_RUNTIME_ENV: tuple[tuple[str, str, str, str], ...] = (
+    ("PAPERQA_PROVIDER", "deepseek", "默认服务商", "provider_config.py:68"),
+    ("PAPERQA_PROVIDER_INTERVAL_DAYS", "14", "provider 刷新周期（天）",
+     "scripts/refresh-providers.py"),
+    ("PAPERQA_NIGHTLY_BUDGET_CNY", "10", "夜间套件预算上限（CNY）",
+     "verify/run_suite.py"),
+    ("PAPERQA_SCHEDULE_PRICES_DAYS", "7", "prices 任务间隔（天）",
+     "scripts/scheduled-tasks.py"),
+    ("PAPERQA_SCHEDULE_NIGHTLY_SUITE_DAYS", "7", "nightly-suite 间隔（天）",
+     "scripts/scheduled-tasks.py"),
+    ("PAPERQA_SCHEDULE_PROVIDERS_DAYS", "14", "providers 间隔（天）",
+     "scripts/scheduled-tasks.py"),
+    ("PAPERQA_SCHEDULE_STATE", "agents/runtime/schedule.json",
+     "调度状态文件路径", "scripts/scheduled-tasks.py"),
+    ("PAPERQA_LITELLM_CALLBACK_LIMIT", "20", "litellm 回调保留数（≤30）",
+     "app/engine.py"),
+    ("PAPERQA_EMBED_RECOMMEND_LIVE", "1", "embedding 联网实测开关（0=关）",
+     "app/embedding_recommender.py"),
+)
+
+
+def _runtime_env_rows() -> list[dict[str, Any]]:
+    """环境变量的生效值/默认值/读取点（只读；不返回密钥类变量）。"""
+    rows: list[dict[str, Any]] = []
+    for name, default, label, read_point in _RUNTIME_ENV:
+        raw = os.environ.get(name, "")
+        is_set = bool(raw.strip())
+        rows.append({
+            "name": name,
+            "value": raw if is_set else default,
+            "default": default,
+            "is_set": is_set,
+            "label": label,
+            "read_point": read_point,
+        })
+    return rows
+
+
+def _runtime_schedule() -> dict[str, Any]:
+    """调度状态文件（`PAPERQA_SCHEDULE_STATE` → schedule.json）的只读视图。"""
+    rel = os.environ.get("PAPERQA_SCHEDULE_STATE", "").strip()
+    path = Path(rel or "agents/runtime/schedule.json")
+    if not path.is_absolute():
+        path = _ROOT_SCRIPT_DIR.parent / path
+    row: dict[str, Any] = {
+        "path": str(path),
+        "exists": path.is_file(),
+        "budget_cny": None,
+        "interval_days": {},
+    }
+    if not row["exists"]:
+        return row
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        row["error"] = str(exc)
+        return row
+    cfg = data.get("config") or {}
+    row["budget_cny"] = cfg.get("budget_cny")
+    row["interval_days"] = cfg.get("interval_days") or {}
+    return row
+
+
+def _runtime_spec_rows() -> list[dict[str, Any]]:
+    """`agents/functions/tech-research.md` 的 Configurable Parameters 表（只读）。"""
+    path = _ROOT_SCRIPT_DIR.parent / "agents" / "functions" / "tech-research.md"
+    rows: list[dict[str, Any]] = []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return rows
+    in_section = False
+    for line in lines:
+        text = line.strip()
+        if text.startswith("# Configurable Parameters"):
+            in_section = True
+            continue
+        if not in_section:
+            continue
+        if text.startswith("#"):
+            break
+        if not text.startswith("|"):
+            continue
+        cells = [c.strip() for c in text.strip("|").split("|")]
+        if len(cells) < 3 or cells[0] in ("Parameter", ""):
+            continue
+        if set(cells[0]) <= set("-: "):
+            continue
+        rows.append({
+            "parameter": cells[0].strip("`"),
+            "value": cells[1],
+            "meaning": cells[2],
+        })
+    return rows
+
+
+def _runtime_surface() -> dict[str, Any]:
+    """F-AC15 v1：只读运行参数面（env / schedule state / spec 阈值）。"""
+    return {
+        "v": 1,
+        "editable": False,
+        "note": "v1 只读；可编辑面留待后续",
+        "env": _runtime_env_rows(),
+        "schedule": _runtime_schedule(),
+        "spec": _runtime_spec_rows(),
+    }
+
+
 @app.get("/api/config_schema")
 async def config_schema() -> dict[str, Any]:
     # Sprint-11 US-11.1（F2 阶段 A）：配置唯一真源（app.config_schema）的对外形态——前端由它驱动表单
-    return get_config_schema()
+    # F-AC15 v1：额外挂只读 `runtime` 面（不改 groups/version，SchemaForm 不受影响）
+    schema = get_config_schema()
+    schema["runtime"] = _runtime_surface()
+    return schema
 
 
 class ConfigValidateRequest(BaseModel):
