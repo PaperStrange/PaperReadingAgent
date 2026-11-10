@@ -1,0 +1,541 @@
+{
+  "name": "mental-model",
+  "schema_version": "0.1.0",
+  "description": "思维模型库（library/）的机读 schema。字段清单、取值域与校验规则只在本文件维护：校验器 scripts/mental-model-check.py 与生成器（MM-2）都读它，代码里不写死字段名。",
+  "model_file": {
+    "library_dir": "docs/iteration/phases/mental-models/library",
+    "filename": "<id>.<version>.json",
+    "encoding": "utf-8",
+    "eol": "lf",
+    "strict_json": true,
+    "_comment": "文件名严格等于 <id>.<version>.json；库内一个 id 只保留一个在库版本，版本升级 = 改名（旧版本留在 git 历史，便于追溯）。"
+  },
+  "fields": {
+    "schema_version": {
+      "kind": "meta",
+      "label": "schema 版本",
+      "type": "string",
+      "required": true,
+      "pattern": "^0\\.\\d+$",
+      "maps_to": "—",
+      "domain": "该模型文件遵循的 schema 版本；主版本必须与 schema.json 的 0 一致",
+      "example": "0.1"
+    },
+    "id": {
+      "kind": "meta",
+      "label": "机器标识",
+      "type": "string",
+      "required": true,
+      "pattern": "^[a-z][a-z0-9-]{1,38}$",
+      "maps_to": "spec 文件名",
+      "domain": "小写连字符 slug；决定文件名与生成物路径",
+      "example": "thought-experiment"
+    },
+    "name": {
+      "kind": "semantic",
+      "label": "名称",
+      "type": "string",
+      "required": true,
+      "min_chars": 2,
+      "max_chars": 40,
+      "maps_to": "spec 标题",
+      "domain": "人读唯一标识；库内不得重名",
+      "example": "思维实验"
+    },
+    "version": {
+      "kind": "semantic",
+      "label": "版本",
+      "type": "string",
+      "required": true,
+      "pattern": "^v\\d+\\.\\d+(\\.\\d+)?$",
+      "maps_to": "溯源头",
+      "domain": "语义化版本；允许 vMAJOR.MINOR 两段（预研 §2.4 草案口径），推荐三段",
+      "example": "v0.1"
+    },
+    "description": {
+      "kind": "semantic",
+      "label": "描述",
+      "type": "string",
+      "required": true,
+      "min_chars": 8,
+      "max_chars": 200,
+      "maps_to": "Role",
+      "domain": "一句话：模型做什么（预研 §2.1）",
+      "example": "对一个问题生成不少于三种解决方案，模拟每个方案的解决过程并输出比对文档"
+    },
+    "when_to_use": {
+      "kind": "semantic",
+      "label": "使用时机",
+      "type": "object",
+      "required": true,
+      "maps_to": "Trigger",
+      "domain": "触发规则：初始边界 + 自适应扩展条件（预研 §2.1）",
+      "properties": {
+        "initial_trigger": {
+          "label": "初始触发",
+          "type": "string",
+          "required": true,
+          "min_chars": 4,
+          "max_chars": 120,
+          "domain": "什么信号出现时启用本模型"
+        },
+        "expansion_conditions": {
+          "label": "扩展条件",
+          "type": "array",
+          "required": true,
+          "min_items": 1,
+          "max_items": 6,
+          "items": {
+            "type": "string",
+            "min_chars": 4,
+            "max_chars": 200
+          },
+          "domain": "从初始边界扩到其他场景的条件；每次扩展须记录并交用户确认（MM-5）"
+        }
+      },
+      "example": {
+        "initial_trigger": "检测到用户输入讨论时启用",
+        "expansion_conditions": [
+          "用户给予认可情绪反馈后，尝试覆盖到其他决策场景（每次扩展须记录并交用户确认）"
+        ]
+      }
+    },
+    "boundary": {
+      "kind": "semantic",
+      "label": "边界",
+      "type": "array",
+      "required": true,
+      "min_items": 1,
+      "max_items": 9,
+      "items": {
+        "type": "string",
+        "min_chars": 4,
+        "max_chars": 200
+      },
+      "maps_to": "Forbidden",
+      "domain": "负向定义：不适用场景，防止滥用（预研 §2.1）",
+      "example": [
+        "不适用于纯事实查证（走 M16 调研分级机制）",
+        "模拟必须遵循客观规律事实，不得编造未经证实的作用机制"
+      ]
+    },
+    "input": {
+      "kind": "semantic",
+      "label": "输入",
+      "type": "object",
+      "required": true,
+      "maps_to": "Task Input",
+      "domain": "契约：输入材料（预研 §2.1）",
+      "properties": {
+        "materials": {
+          "label": "输入材料",
+          "type": "array",
+          "required": true,
+          "min_items": 1,
+          "max_items": 9,
+          "items": {
+            "type": "string",
+            "min_chars": 2,
+            "max_chars": 200
+          },
+          "domain": "逐项列出模型需要的材料"
+        },
+        "format": {
+          "label": "输入格式",
+          "type": "string",
+          "required": false,
+          "max_chars": 120,
+          "domain": "可选：材料的载体/格式约定"
+        }
+      },
+      "example": {
+        "materials": [
+          "一个问题/决策主题",
+          "上下文：预研笔记、约束条件、既定决策基线"
+        ],
+        "format": "自然语言描述 + 可引用的既有文档路径"
+      }
+    },
+    "output": {
+      "kind": "semantic",
+      "label": "输出",
+      "type": "object",
+      "required": true,
+      "maps_to": "Output Template",
+      "domain": "契约：输出产物（预研 §2.1）",
+      "properties": {
+        "artifacts": {
+          "label": "输出产物",
+          "type": "array",
+          "required": true,
+          "min_items": 1,
+          "max_items": 9,
+          "items": {
+            "type": "string",
+            "min_chars": 4,
+            "max_chars": 240
+          },
+          "domain": "逐项列出产物结构（生成器据此渲染 Output Template）"
+        },
+        "format": {
+          "label": "输出格式",
+          "type": "string",
+          "required": false,
+          "max_chars": 120,
+          "domain": "可选：产物的载体/格式约定"
+        }
+      },
+      "example": {
+        "artifacts": [
+          "比对文档：不少于 3 个方案 ×（模拟推演、预期效果、风险与适用条件）",
+          "供用户裁决的建议排序"
+        ],
+        "format": "Markdown 比对文档"
+      }
+    },
+    "founder": {
+      "kind": "semantic",
+      "label": "创始人",
+      "type": "string",
+      "required": true,
+      "min_chars": 2,
+      "max_chars": 120,
+      "maps_to": "溯源头",
+      "domain": "思想溯源：人物/学派/来源（预研 §2.1）",
+      "example": "爱因斯坦（思想实验方法论的代表性实践者）"
+    },
+    "source": {
+      "kind": "semantic",
+      "label": "来源",
+      "type": "object",
+      "required": true,
+      "maps_to": "溯源头",
+      "domain": "模型从哪来：用户输入 / 探讨交流 / 经验文档提取（预研 §2.1）",
+      "properties": {
+        "type": {
+          "label": "来源类型",
+          "type": "enum",
+          "values": [
+            "用户输入",
+            "探讨交流",
+            "经验文档提取"
+          ],
+          "required": true,
+          "domain": "三选一（预研 §2.1 的来源分类）"
+        },
+        "detail": {
+          "label": "来源说明",
+          "type": "string",
+          "required": true,
+          "min_chars": 4,
+          "max_chars": 300,
+          "domain": "谁在何时、以什么方式给出/提炼"
+        },
+        "ref": {
+          "label": "来源引用",
+          "type": "string",
+          "required": false,
+          "max_chars": 120,
+          "domain": "可选：可核引用（如 3-LEARNED 条目号、预研小节）"
+        },
+        "date": {
+          "label": "来源日期",
+          "type": "string",
+          "required": true,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "format": "date",
+          "domain": "来源发生的日期（网络时间 UTC+8，YYYY-MM-DD）"
+        }
+      },
+      "example": {
+        "type": "用户输入",
+        "detail": "用户 2026-09-07 给出种子模型，边界/输入/输出补全草案经用户确认",
+        "ref": "docs/iteration/pre-research/tech/2026-09-07-mental-models.MD §2.4",
+        "date": "2026-09-07"
+      }
+    },
+    "success_criteria": {
+      "kind": "semantic",
+      "label": "成功判据",
+      "type": "array",
+      "required": true,
+      "min_items": 1,
+      "max_items": 6,
+      "items": {
+        "type": "string",
+        "min_chars": 4,
+        "max_chars": 200
+      },
+      "maps_to": "验收",
+      "domain": "可实例化为可执行 agent workflow（validate-spec + 首跑演示，预研 §2.1）",
+      "example": [
+        "实例化为 agent spec（如 agents/functions/thought-experiment.md）",
+        "通过 validate-spec",
+        "首跑演示产出三方案比对文档"
+      ]
+    },
+    "status": {
+      "kind": "semantic",
+      "label": "状态",
+      "type": "enum",
+      "values": [
+        "草案",
+        "验证中",
+        "已固化"
+      ],
+      "required": true,
+      "maps_to": "—",
+      "domain": "生命周期：草案 → 验证中 → 已固化（预研 §2.1）",
+      "example": "草案"
+    },
+    "simulation_steps": {
+      "kind": "extension",
+      "label": "模拟推演步骤",
+      "type": "array",
+      "required": false,
+      "min_items": 1,
+      "max_items": 9,
+      "items": {
+        "type": "string",
+        "min_chars": 4,
+        "max_chars": 200
+      },
+      "maps_to": "Steps",
+      "domain": "可选：五段式 Steps 的显式来源（预研 §2.2 的『模拟推演过程』）。缺省时生成器按 robust 规则降级推导并打 DEGRADED 行",
+      "example": [
+        "定题与上下文收集：确认决策主题、约束条件与既定基线",
+        "生成不少于 3 个候选方案，逐方案写清核心假设"
+      ]
+    },
+    "thresholds": {
+      "kind": "extension",
+      "label": "可调阈值",
+      "type": "array",
+      "required": false,
+      "min_items": 1,
+      "max_items": 9,
+      "items": {
+        "type": "string",
+        "min_chars": 4,
+        "max_chars": 200
+      },
+      "maps_to": "Configurable Parameters",
+      "domain": "可选：五段式 Configurable Parameters 的显式来源（预研 §2.2 的『阈值』）。缺省时生成器省略该节并打 DEGRADED 行",
+      "example": [
+        "候选方案数下限 = 3（草案原文『不少于三种』）"
+      ]
+    },
+    "tags": {
+      "kind": "extension",
+      "label": "标签",
+      "type": "array",
+      "required": false,
+      "min_items": 1,
+      "max_items": 8,
+      "items": {
+        "type": "string",
+        "min_chars": 1,
+        "max_chars": 20
+      },
+      "maps_to": "—",
+      "domain": "可选：检索用标签；不渲染进 spec",
+      "example": [
+        "决策",
+        "方案比较"
+      ]
+    },
+    "examples": {
+      "kind": "extension",
+      "label": "实例",
+      "type": "array",
+      "required": false,
+      "min_items": 1,
+      "max_items": 5,
+      "items": {
+        "type": "string",
+        "min_chars": 4,
+        "max_chars": 400
+      },
+      "maps_to": "—",
+      "domain": "可选：真实首跑/应用实例的引用（不编造未发生的实例）",
+      "example": [
+        "（可选）一次首跑产出的比对文档路径"
+      ]
+    },
+    "related_models": {
+      "kind": "extension",
+      "label": "相关模型",
+      "type": "array",
+      "required": false,
+      "min_items": 1,
+      "max_items": 8,
+      "items": {
+        "type": "string",
+        "min_chars": 1,
+        "max_chars": 40
+      },
+      "maps_to": "—",
+      "domain": "可选：本库内相关模型的 id（可指向尚未入库的候选）",
+      "example": [
+        "scope-enumeration"
+      ]
+    }
+  },
+  "cross_file_rules": [
+    {
+      "id": "X1",
+      "rule": "文件名等于 <id>.<version>.json（如 thought-experiment.v0.1.json）"
+    },
+    {
+      "id": "X2",
+      "rule": "id 在 library/ 内唯一（一个模型同时只保留一个在库版本；升级 = 改名，旧版本留在 git 历史）"
+    },
+    {
+      "id": "X3",
+      "rule": "name 在 library/ 内唯一"
+    },
+    {
+      "id": "X4",
+      "rule": "schema_version 主版本必须等于本 schema 的主版本（0）；主版本不同 → 拒载"
+    }
+  ],
+  "robust": {
+    "version": "0.1",
+    "applies_to": "校验器（已实现）与生成器（MM-2 待实现）",
+    "missing_required": {
+      "action": "refuse",
+      "partial_render": false,
+      "report": "all",
+      "_comment": "缺字段不许半渲染：任一 required 缺失/为空 ⇒ 生成器不得产出 spec（连骨架都不写）；校验器 rc=1 并一次列出全部缺失项。"
+    },
+    "blank_value": {
+      "action": "refuse",
+      "treat_as_missing": true,
+      "_comment": "必填字符串去空白后为空 = 缺失；不允许用空格/换行占位。"
+    },
+    "optional_missing": {
+      "action": "degrade",
+      "derived_when_possible": true,
+      "emit_marker": "DEGRADED:<field>:<derived|omitted>",
+      "blocks_generation": false,
+      "silent_omission": false,
+      "_comment": "可选字段缺失时可推导的推导（如 simulation_steps 从 output 推导）、不可推导的省略；两种都必须打 DEGRADED 行，不得静默省略。"
+    },
+    "invalid_value": {
+      "action": "refuse",
+      "error_must_include": [
+        "file",
+        "field_path",
+        "expected",
+        "actual"
+      ]
+    },
+    "generator_precheck": {
+      "run": "scripts/mental-model-check.py",
+      "required_exit_code": 0,
+      "warn_counts_as_pass": false
+    },
+    "atomic_publish": {
+      "temp_then_rename": true,
+      "overwrite_existing_default": false
+    },
+    "rules": [
+      {
+        "id": "R1",
+        "name": "缺字段不许半渲染",
+        "statement": "任一必填字段缺失/为空/类型不符 ⇒ 拒绝生成，仓库里不得出现半成品 spec；校验器先给出 rc=1。"
+      },
+      {
+        "id": "R2",
+        "name": "一次报全",
+        "statement": "校验与生成前置检查都不得 fail-fast：一次列出全部问题，每条含文件 + 字段路径 + 期望 + 实际。"
+      },
+      {
+        "id": "R3",
+        "name": "降级留痕",
+        "statement": "可选字段缺失只允许两种处置——按规则推导、或省略对应小节；两种都要打 DEGRADED 行，禁止静默省略。"
+      },
+      {
+        "id": "R4",
+        "name": "校验前置",
+        "statement": "生成器先跑校验器且必须 rc=0 才渲染；warning/SKIP 不得当 pass。"
+      },
+      {
+        "id": "R5",
+        "name": "失败可解释且原子",
+        "statement": "失败消息必须可直接定位（文件/字段/期望/实际）；生成物先写临时文件、成功后改名，失败不留半成品。"
+      }
+    ]
+  },
+  "flexible": {
+    "version": "0.1",
+    "extension_prefix": "x_",
+    "unknown_key": {
+      "action": "refuse",
+      "_comment": "拼错字段名（descripton 之类）必须 FAIL；靠忽略未知键换兼容会让 schema 失效。"
+    },
+    "prefixed_key": {
+      "action": "accept",
+      "render": false,
+      "preserve": true,
+      "_comment": "x_ 开头的顶层键是显式扩展（实验字段/组织私有字段）：校验放行，但不渲染进 spec；生产字段成熟后走 schema 小版本升级转正。"
+    },
+    "schema_version_compat": {
+      "supported_major": 0,
+      "minor_additive": "accept",
+      "unknown_major": "refuse",
+      "_comment": "同一主版本内新增可选字段属兼容演进；主版本变化 = 破坏性变更，旧模型拒载而不是猜。"
+    },
+    "human_edit": {
+      "library_files_editable": true,
+      "generated_spec_is_draft": true,
+      "generator_overwrite_default": false,
+      "force_flag": "--force",
+      "provenance_header": "<!-- generated-from: <id>@<version> schema=<schema_version>；本文件是草稿，人工可改 -->",
+      "_comment": "库文件是源、只许人改；生成物是草稿、允许人工改；重跑生成器默认不覆盖已有产物，须 --force 并保留 provenance 头。"
+    },
+    "evolution": {
+      "add_optional_field": "minor",
+      "rename_or_remove_field": "major",
+      "alias_grace_minors": 1,
+      "_comment": "改名/删除字段 = 主版本升级，并保留 1 个小版本的旧名别名窗口（给存量模型迁移时间）。"
+    },
+    "rules": [
+      {
+        "id": "F1",
+        "name": "字段可扩展",
+        "statement": "显式扩展键用 x_ 前缀，校验放行、不渲染；非前缀未知键一律 FAIL（防拼错）。"
+      },
+      {
+        "id": "F2",
+        "name": "schema 可演进",
+        "statement": "同主版本内只做加法（新增可选字段）；改名/删除走主版本，旧名保留 1 个小版本别名。"
+      },
+      {
+        "id": "F3",
+        "name": "人工可改",
+        "statement": "生成物是带 provenance 头的草稿；重跑默认不覆盖，--force 才覆盖。库文件只读。"
+      },
+      {
+        "id": "F4",
+        "name": "不猜意图",
+        "statement": "取值域之外的值不做模糊匹配/自动纠正（如 status 拼错不猜），一律拒绝并点名。"
+      },
+      {
+        "id": "F5",
+        "name": "向后兼容",
+        "statement": "新模型只填必填 + 需要的可选字段即可入库；schema 新增可选字段不得让旧模型失效。"
+      }
+    ]
+  },
+  "validator": {
+    "script": "scripts/mental-model-check.py",
+    "invocation": "python scripts/mental-model-check.py",
+    "success_last_line": "OK",
+    "success_exit_code": 0,
+    "failure_exit_code": 1,
+    "read_only": true,
+    "wired_into_verify": false,
+    "_comment": "校验器只读、零依赖；本批不接入 verify/ 门禁体系（接入是后续卡的决定）。"
+  }
+}
