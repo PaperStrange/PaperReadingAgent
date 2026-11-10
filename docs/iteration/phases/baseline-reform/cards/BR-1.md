@@ -397,3 +397,201 @@ registered run-try-entry (status=queued)
 **本批没做（如实记）**：未改 `verify/**`／`scripts/**`／`paper-qa-script/**`／`.github/**`／`docs/1-WORKFLOW.MD`／`docs/6-DECISIONS.md`／`docs/iteration/sprint/**`／`cards/A-COST.md`／别的卡（含 `TG-18.md` 卡正文里那处旧日期：授权写入集只含 `backlog.MD` 的索引行，故卡正文保留旧值，已列未决）；未 `git add/commit/push`；未上调任何上限；未为变绿改判据。**本批实际写入三处**：`agents/policy.json`（五表基线）、本节（`BR-1.md` 只追加）、`docs/iteration/phases/testing-governance/backlog.MD`（仅 TG-18 索引行的 `review_by` 日期就地改，行数与列数不变）。
 
 **未决（需父代理或用户裁）**：① ~~**D101 零值面**~~ **已闭环**（另一批提交 `929159e` 按解法①改为「必须保持 0」，本批复跑确认不再红，见上）；② `TG-18.md` 卡正文仍写着 `review_by=2026-10-31`，与政策已不一致——需一次「只改一行」的授权；③ 并行批的未跟踪文件（前端改动与新建的 `verify/verify_spend_report.py`）触发 `artifact_paths.dynamic_ratchet` 的两条判据（「未列入上限表即 FAIL」与「未跟踪路径必须为空」）——正解是**那些文件自己**把落点改成可静态判定、并让它们不再未跟踪，本批**不登记配额、不代修**；④ 下一期（2026-11-27）到期时 D102／D103／E501 三类须**各真降至少 1**，否则「到期未改善」照旧红——这是本次重评留下的租金，不是事故。
+
+### 12. 其余九条基线的处置（2026-11-10）
+
+> 本节**只追加**；上文（含 §2 的分类表、§9–§11 的落地与重评记录）**一个字未删**。
+> 上文 §2 把 ⑨ 归「锁住债务」、§9 又把 ⑨ 称作「`close_tax` 的 9 例 WARN」——本节按派单清单逐条裁，
+> 并在 **12.0 范围对照**里把"哪条对应 §1 的哪个编号"写清楚，免得两处命名继续各说各话。
+
+**日期与口径**：`python scripts/now-network.py` 现跑 `2026-11-10 22:19 UTC+8（来源 https://www.baidu.com/ 的 HTTP Date 头）`，rc=0（**不取本机时钟**）。
+存量读数一律由各闸门自己的命令现跑（时点锚 = 2026-11-10），**不手抄、不沿用旧读数**；本批**未上调任何上限／预算、未放宽任何判据**。
+
+#### 12.0 范围对照（如实记：派单清单与 §1 的 ①–⑩ 不是一一对应）
+
+| 派单条目 | 对应 §1 编号 | 本批是否裁 | 说明 |
+|---|---|---|---|
+| `md_table_legacy_files` | ⑥ | 是 | 4 个历史文件的表格缺陷上限 |
+| `derived_numbers.baseline` | ⑤ | 是 | 32 个历史文件 ／ 111 处 |
+| `ledger_measurement.legacy_ratchet` | ⑨ | 是 | 8 类历史债计数上限（含 §9 说的那 9 例 WARN） |
+| `artifact_paths.dynamic_ratchet` | ⑩ | 是 | 34 个文件 ／ 105 处动态写盘目标 |
+| `run_suite.BRANCH_ASSERTION_FLOORS` | ② | 是 | 断言**条数下限** |
+| `verify_gate_integrity.ratchets` | **未单列** | 是 | §1 只把它当作"完整性再校验"提及，未当基线盘；本批按基线裁 |
+| `spend-budget` | ⑦ | 是 | 成本预算 ＋ 成本基线读数 |
+| `decision_register` 漂移计数 | ⑧ | 是 | `quotes_drift` |
+| `close_tax` 计数 | **未单列** | 是 | §1 未列；§9 用「close_tax」指过 ⑨，两处命名不同（见 12.2⑨） |
+| — | ③ `BRANCH_VERDICT_SCOPE_MIN` | **否** | 无 `measured_value`／`review_by` 三联，挂不上"到期须降"形态；它的消费者与 12.2⑤ 同一条（`run_suite.py`），本批未改 |
+| — | ④ `tg14-baseline.json` | **否** | 它自称"当前真值快照"且**每批必刷**，本质是同步义务不是棘轮；§5 第 3 条已记"必然而非可选" |
+
+#### 12.1 汇总（九条一行一条；判据形态与为何不是别的类见 12.2）
+
+| 基线 | 分类 | 处置 | 机检落点（本批后） |
+|---|---|---|---|
+| `md_table_legacy_files`（4 文件上限 0） | 承重 | 保留（零地板＝"必须保持 0"） | `verify/verify_md_tables.py`（既有，未改） |
+| `derived_numbers.baseline`（32 文件／111 处） | 承重 | 保留（拒绝以"改写历史"付租金） | `verify/verify_derived_numbers.py`（既有，未改） |
+| `ledger_measurement.legacy_ratchet`（8 类） | 锁住债务 | **改造**：到期时总数须严格小于快照 | `verify/verify_ledger_measurement.py::rent_problems` |
+| `artifact_paths.dynamic_ratchet`（34 文件／105 处） | 承重 | 保留 | `verify/verify_artifact_paths.py`（既有，未改） |
+| `run_suite.BRANCH_ASSERTION_FLOORS`（8 键） | 锁住债务 | **改造**：下限必须等于实测（判据⑤） | `verify/run_suite.py::verdict_problems`＋`verify_runner.py` ⑯ |
+| `verify_gate_integrity.ratchets`（5 张表） | 承重 | 保留 | `verify/verify_gate_integrity.py`（既有，未改） |
+| `spend-budget`（预算＋基线） | 自律性 | 维持**降级**：基线只上屏、不判 FAIL | `scripts/spend-report.py --check`（既有，未改） |
+| `decision_register` 漂移计数（10） | 自律性 | 维持**降级**：只 WARN、不判 FAIL | `verify/verify_decision_register.py`（既有，未改） |
+| `close_tax` 计数（5／3／12） | 承重 | 保留（测量闸门，不是上限表） | `verify/verify_close_tax_reading.py`（既有，未改） |
+
+#### 12.2 逐条：现状读数 → 分类 → 处置 → 证据命令 → 残余风险
+
+**① `md_table_legacy_files`（4 个历史文件，缺陷上限全 0）**
+
+- **现状读数**（`python verify/verify_md_tables.py`，2026-11-10 现跑）：`MD-TABLE PASS`，全仓解析通过；棘轮基线内 4 个文件**逐文件问题 0**，上限 0 × 4（`files` 与 `measured_value` 逐键相等，`review_by=2026-11-27`）。
+- **分类：承重**。消费者在场（`verify_md_tables.py`）；最近一次挡住的真实缺陷具名 = `TG-18` 在 2026-09-25 逐处清零的那 15 处（未转义管道／表头与数据行列数不符）；放过的后果是**表格被解析成错列 = 内容不可核**，不是"不好看"。
+- **处置：保留**。该表已在**零地板**：4 个上限全 0，等价于"这 4 个文件不得再出现表格缺陷"，任何新增缺陷当场 `计数 > cap` 判红。
+- **为何不是锁住债务**：债务已清零（实测 0 ＝ 上限 0），"严格小于 0"**无解**——给它挂 §9 那种租金判据会在到期日**结构性必红**（同 D101 零值面，`lint_readability_ratchet::_rebased_2026_10_28` 逐字记过这段）。零地板的正确到期形态是**保持 0**，而 cap=0 已经就是它。
+- **为何不是自律性**：有留痕（15 处）。
+- **为何不是可弃**：删表反而**更松**——它会一并丢掉 `review_by`／`measured_value` 两条判据（§11 与政策 `_rebased_2026_09_25` 逐字写过同一结论），且 `verify_gate_integrity.ratchets[1]` 会失去指针。
+- **证据命令**：`python verify/verify_md_tables.py`；`python verify/verify_gate_integrity.py --selftest`。
+- **残余风险**：这 4 个文件是**历史档**，任何"为了让闸门变绿"的改写都已在本仓被 revert 过一次（政策 `_comment` 逐字）⇒ 它们真出缺陷时的正解是**逐处真修**，不是放宽。
+
+**② `derived_numbers.baseline`（32 个历史文件 ／ 111 处，`default_cap=0`）**
+
+- **现状读数**（`python verify/verify_derived_numbers.py --report`，2026-11-10 现跑）：合计 32 个文件有命中、111 处，**逐文件与 `baseline` 逐键相等**（零余量）；未列入 `baseline` 的文档上限 = 0。
+- **分类：承重**。挡住过的真实缺陷具名 = §1⑤ 记的那处"C 级条数"当期主张（原文读数不复制、复现命令见 §1⑤；本仓 `--selftest` 的反向对照 H 至今用它当样本）；放过 ⇒ 手抄读数腐烂 = **不可核**。
+- **处置：保留**（`baseline`／`default_cap`／`review_by` 逐字节未动）。
+- **为何不是锁住债务**：它的租金形态只能是"到期时 32 文件总额严格下降"，而**唯一付费路径是改写已关闭 Sprint 的历史读数**——正是本仓 2026-09-23 实测并 revert 过的做法（政策 `md_table_legacy_files._comment` 逐字）。我不把"改写历史"写成本条改善判据；既有"实测 < 上限 ⇒ 提示收紧"的方向（`evaluate` 的 `warnings` 分支）继续在推改善。
+- **为何不是自律性**：有留痕（A-EXCL 一处当场命中）。
+- **为何不是可弃**：消费者 `verify_derived_numbers.py`，且 `verify_gate_integrity.ratchets[3]` 指向它；删表等于新文档也不设上限（`default_cap=0` 仍在，但历史文件的账就没人记了）。
+- **证据命令**：`python verify/verify_derived_numbers.py --report`。
+- **残余风险**：111 处永久豁免**没有到期义务**（§11 的重评只是把日期推进）。真收口的正解是"逐文件把上限降到实测"，属文档清理批，不在本批。
+
+**③ `ledger_measurement.legacy_ratchet`（8 类历史债计数上限）**
+
+- **现状读数**（`python verify/verify_ledger_measurement.py`，2026-11-10 现跑）：逐类 `实测/上限` = `output_chars_zero 12/12`、`missing_result_files_review 9/9`、`zero_duration 3/3`、`round_duration 3/3`、`rounds_mismatch 1/1`、其余 3 类 `0/0`，**总数 28 ＝ 上限总数**（零余量）；窗口内 run 零违规。
+- **分类：锁住债务**。有真实缺陷记录（9 例评审类 run 已终态却无产物，逐条 WARN 点名「评审结论不可回溯」）；存在理由是"历史既存债 → 用上限换时间"，而上限**只许下调** ⇒ 28 例贴在上限上原地不动。
+- **处置：改造为促改善（已落机检）**：`review_by` 到期时，**实测总数必须严格小于 `measured_value` 总数**，否则 FAIL 并点名逐类读数。落点 = `verify/verify_ledger_measurement.py::rent_problems`（新纯函数），`evaluate()` 每次运行都会调用它 ⇒ **不是注释、不是一次性检查**。零值面按 lint 的同一解法处理：快照总数为 0 时改判"必须保持 0"。
+- **为何不是承重**：承重三问的第 3 问不成立——它挡住的只是"别再多"，而 28 例存量本身没有任何"必须减少"的要求；每修一例要重评一次基线、每跑要刷 28 条 WARN，**返工代价已超过它挡住的缺陷代价**（§2 的可判定口径第 3 问）。
+- **为何不是自律性**：有留痕（上述 9 例）。
+- **为何不是可弃**：消费者 `verify_ledger_measurement.py`，删表 = 历史债无限放行。
+- **证据命令**：`python verify/verify_ledger_measurement.py`（末行判决句与 `改善判据（BR-1 §12…）` 行）；反向对照见 12.3 第 1 组。
+- **残余风险**：① **口径是"总数"而非"逐类"**（如实记代价）：8 类里 3 类天然为 0、无下降空间，余下 5 类的存量是已发生的历史事实，逐类各降 1 会要求 5 笔修复、其中 3 笔只能靠**伪造时间戳**来"修"——那比不改善更坏；总数口径的代价是"一类涨、另一类降"仍可过关。② 租金只能用 `set-output-chars` 受控回填支付；若回填拿不出可复算口径，该笔仍**不可付**，届时的正解是重评时下调该类上限，不是造假。
+
+**④ `artifact_paths.dynamic_ratchet`（34 个文件 ／ 105 处动态写盘目标）**
+
+- **现状读数**（`python verify/verify_artifact_paths.py --report`，2026-11-10 现跑）：扫描集 106 个脚本 ／ 439 个写盘目标，其中已忽略 65 ／ `%TEMP%` 261 ／ 已入库数据 3 ／ 无默认落点 1 ／ 仓库外绝对路径 4 ⇒ 动态目标 105 处 ／ 34 个文件，**与上限逐键相等**。
+- **分类：承重**。挡住过的真实缺陷具名 = §1⑩ 的反向对照②（注入"写到仓库根"的脚本 ⇒ 判红并点名未被 `.gitignore` 忽略）；放过 ⇒ 产物写进仓库根 = 脏树／丢证据。
+- **处置：保留**。判据"未列入上限表的文件出现动态目标即 FAIL"保持原样（这正是新脚本必须让落点可静态判定的强制力）。
+- **为何不是锁住债务**：改造成"到期须降"会逼人把 34 个文件里的落点从函数参数改成模块级常量——**改动面 34 个文件，收益只是少几个动态目标**，且没有一处"为了变绿而改实现"是正当理由；返工代价明显超过收益（§2 第 3 问）。
+- **为何不是自律性**：有留痕（上述注入对照）。
+- **为何不是可弃**：消费者 `verify_artifact_paths.py`＋`gate_integrity` 的 `ratchets[4]`。
+- **证据命令**：`python verify/verify_artifact_paths.py --report`。
+- **残余风险**：零余量 —— 扫描集从 2026-10-28 的规模长到现在（106 个脚本）而动态目标仍是 105，说明新增脚本都让落点可静态判定了；但**任何**新脚本一旦出现一处动态目标就当场红，这是设计而非事故。
+
+**⑤ `run_suite.BRANCH_ASSERTION_FLOORS`（断言条数下限，8 个键）**
+
+- **现状读数**（`python verify/run_suite.py --tier offline`，2026-11-10 现跑）：8 个自陈"条数见末行"的脚本逐行打印 `｜本分支下限 N`，**每个 N 都等于该脚本当次实测条数**（零余量）；另有 14 个脚本打印判决句但**未登记下限**（套件上屏 WARN 逐个点名）。
+- **分类：锁住债务**。有真实缺陷记录：§1② 记的 `verify_gate_integrity.py` 下限 68 而实测 75（删 7 条仍判绿）与 `verify_agentops.py` 177→180 —— 那是"下限落在实测之下"的**静默配额**，修法是抬到实测，而"抬不抬"原先只靠人守。
+- **处置：改造为促改善（已落机检）**：新增**判据⑤** `N > floor ⇒ FAIL`（点名"差值 k 条是静默配额"），与原判据③ `N < floor ⇒ FAIL` 合成"**下限必须等于实测**"。仓规"同批抬高"由此从人的纪律变成机检：加断言的同批不改下限就红。**覆盖边界如实标注**：只对**工作树分支**判等；absent 分支（`main` 镜像）的逐脚本实测值本机无从取得，那里仍只判③，并在判决区上屏『判据⑤未执行·本行不是通过等值判据』——**不静默**。
+- **为何不是承重**：承重三问第 3 问不成立——它的返工代价是"加断言时顺手改一个整数"，极便宜；而它守的不是外部缺陷，是**配额**本身。
+- **为何不是自律性**：有留痕（68/75、177/180 两处具名）。
+- **为何不是可弃**：消费者是套件自己；删表 = 断言数无下限，删一批自检仍判绿。
+- **证据命令**：`python verify/run_suite.py --tier offline`（判决区的 `｜本分支下限 N` 行）；反向对照见 12.3 第 2 组。
+- **残余风险**：① absent 分支不判等（覆盖边界，已上屏）；② 14 个"打判决句但无下限"的脚本仍未纳入（WARN 可见）——给它们登记下限要先在 absent 镜像上逐个实测，本批**不做**（把"登记"做成拍脑袋的两侧数字比不登记更坏）。
+
+**⑥ `verify_gate_integrity.ratchets`（5 张棘轮表的完整性校验）**
+
+- **现状读数**（`python verify/verify_gate_integrity.py --selftest`，2026-11-10 现跑）：`ratchets=5`，逐张指针覆盖 `lint_readability_ratchet`／`md_table_legacy_files`／`ledger_measurement.legacy_ratchet`／`derived_numbers`／`artifact_paths.dynamic_ratchet`；五张表的 `review_by` 均为 `2026-11-27`（未过期）；判决句 `ALL PASS`（2026-11-10 时点读数，条数以现跑末行为准）。
+- **分类：承重**。它是"**上限不得上调**"的唯一机检：`cap ≤ measured_value`、与 `git HEAD` 逐项比较、`review_by` 过期即红。放过 ⇒ 静默配额（§11 反向对照①：`caps` 12→13 当场 FAIL 并点名"高于重评时的实测"）。
+- **处置：保留**（本批未改这个闸门；它的 5 张指针与判据一字未动）。
+- **为何不是锁住债务**：它**不是基线**，没有"实测值"可要求下降——它是校验基线的尺子。给它挂租金是范畴错误。
+- **为何不是自律性**：有留痕（§11 三条反向对照，全部现跑）。
+- **为何不是可弃**：5 张表全部靠它守"不许上调"；删它等于把 5 张表的放宽变成无人可见的事件。
+- **证据命令**：`python verify/verify_gate_integrity.py --selftest`；`python verify/verify_gate_integrity.py`。
+- **残余风险（未决）**：`agents/spend-budget.json::budget` 三值**不在** `ratchets` 里 ⇒ "不许上调预算"目前**只靠人守**（§7／§8 的自述"预算段逐字未动"没有机检背书）。正解是给 `ratchets` 加"外部文件指针"能力，属 `A-COST` 卡的设计面，本批**不抢先实现**。
+
+**⑦ `spend-budget`（成本预算 ＋ 成本基线读数）**
+
+- **现状读数**（`.venv\Scripts\python.exe scripts/spend-report.py --check`，2026-11-10 现跑）：派单会话数 1／预算 6／基线 20（OK）；主代理 output 55723／预算 50000／基线 99533（**OVER**）；当日合计 4.51／预算 12.0／基线 19.67（OK）；命令 rc=1（output 轴超预算）。`baseline` 段自述"对照只上屏，不作为判据"。
+- **分类：自律性**（只就 `baseline` 段而言）。§1⑦ 逐字："三项全 OVER 而没有任何东西因此停下——**这是个发现，不是缺口**"；该段自己写明"不作为判据"。**无留痕案例**。
+- **处置：维持降级**（现状已如此：`--check` 的对照列逐字印"对照只上屏，不作为判据"，且超基线不改变 rc）。**不新增判据**——把成本轴升级为判据要用户裁（§4 方向 B），且金额／输出轴的作用域缺陷归 `A-COST`（§7 第 2 条逐字）。
+- **为何不是承重**：承重三问第 2 问不成立——"多花钱"不造成**不可核／不可复现**；真正的阻断已由 §7 的**派单数轴**承担（那一条才是承重件，且它已在 `register` 里 fail-closed）。
+- **为何不是锁住债务**：它没有 `measured_value`／`review_by` 三联，挂不上"到期须降"；而且成本读数随任务量合法波动，强行要求"逐期下降"等于要求少干活。
+- **为何不是可弃**：删掉 baseline 段会连"对照刻度"一起丢掉，`--check` 就只剩"超预算"一个二元信号。
+- **证据命令**：`.venv\Scripts\python.exe scripts/spend-report.py --check`。
+- **残余风险**：本处置**只针对 baseline 轴**——同一条命令里 `budget` 轴仍是判据（今日 output 轴 OVER ⇒ rc=1），不得把"降级"读成"整条成本闸门不算数"。另见 12.6 第 2 条（预算值上调无人机检）。
+
+**⑧ `verify_decision_register` 的 `quotes_drift`（漂移计数 10）**
+
+- **现状读数**（`python verify/verify_decision_register.py`，2026-11-10 现跑）：`entries=124 quotes_checked=97 quotes_drift=10 pointers=1248`；漂移**只进 WARN**（WARN 行逐字"漂移可见、不判 FAIL"），判决句 `ALL PASS`（2026-11-10 时点读数，条数以现跑末行为准）。
+- **分类：自律性**。§1⑧ 逐字"无留痕案例（它按设计不判 FAIL）"。
+- **处置：维持降级**（"不得再以 FAIL 收费"已经成立），并**明确拒绝**把它变回"不得增长"的基线。理由有具名代价：§1⑧ 记的 `sprint-18:393` —— 在 `:234` 插一行会让其后整体下移、两条逐字引文落出 ±2 窗口 ⇒ 漂移 10→12，为把净新增压回 0 只能把登记表放到文件末尾，代价是 run 行分处两段。
+- **为何不是锁住债务**：没有 `measured_value`／`review_by`；它的"债"是**指针已漂**这个信号，不是可清零的缺陷集合。
+- **为何不是承重**：承重三问第 1 问无留痕（它从不判 FAIL，从没"挡住"过任何东西）。
+- **为何不是可弃**：它是决策登记册唯一的结构闸门（字段／状态词／指针／引文↔出处／悬空取代），漂移只是它的一条 WARN。
+- **证据命令**：`python verify/verify_decision_register.py`。
+- **残余风险**：WARN 行**截断**（只列 5 条，其余折成"另 N 条未列出"的计数）⇒ 一半漂移不可逐条处置，与 §4 方向 C 的"逐条点名"只做到一半。本批不改（改它要动 `verify/**` 的 WARN 构造，收益仅"多看见 5 条"），列 12.6 未决。
+
+**⑨ `close_tax` 读数（关闭税计数 5／3／12 ＋ §5 状态计数）**
+
+- **现状读数**（`.venv\Scripts\python.exe verify/verify_close_tax_reading.py --sprint docs/iteration/sprint/2026-09-25-sprint-18.md`，2026-11-10 现跑）：`CLOSE-TAX PASS`（声明与报告派生逐字一致：`code_major=5 code_critical=3 doc_items=12`，来源 3 个 run）；状态计数档 `CLOSE-TAX PASS`（已修=46 未修=0 部分=0 只报=0 用户豁免=5 合计=51）。
+- **分类：承重**。它挡住的是"关闭税读数手抄"——读数是关闭判定的入口，抄错 ⇒ **关闭判定不可核**。反向对照具名：A（`code_major` 改 1 ⇒ FAIL 并点名差值）、A3（两行读数 ⇒ 命中两行，不当"只认第一行"放行）、状态计数反证 ①–⑦。
+- **处置：保留**（不改；`RETRO_REL` 与 `--sprint` 两档都保持原样）。
+- **为何不是锁住债务**：它是**测量闸门**（派生值 vs 声明值），不是上限表 —— 给它挂"到期须降"是范畴错误：关闭税读数随该 Sprint 的实际缺陷数波动，涨了可能只是这一轮活多。
+- **为何不是自律性**：它真判 FAIL（两档都有反证），有留痕。
+- **为何不是可弃**：消费者在 CI 的 `--sprint` 档与套件的自检档各一档（§6.0 已标注这处覆盖边界）。
+- **证据命令**：`.venv\Scripts\python.exe verify/verify_close_tax_reading.py --sprint docs/iteration/sprint/2026-09-25-sprint-18.md`。
+- **命名说明（如实记）**：§9 曾用「`close_tax` 的 9 例 WARN」指 ⑨（账本棘轮里的 `missing_result_files_review=9`），本节 ⑨ 指的是**关闭税读数闸门**；两处不是同一条基线，别互相当成对方的证据。
+- **残余风险**：`§5` 状态计数里"未修=0"是**零开放项**，但闸门只判**自洽**、不判"开放项必须为 0" ⇒ 将来往 §5 表加一条 `未修` 行、只要计数自洽仍能过。本批不改（那张表是 2026-09-26 的冻结复盘档，给它加新义务等于对历史档追溯立法），列 12.6 未决。
+
+#### 12.3 两组真驱动反向对照（修前红 ／ 修后绿（或不判） ／ 还原后红）
+
+**第 1 组：③ 账本棘轮的到期租金（`%TEMP%` 政策副本 ＋ `PAPERQA_AGENT_POLICY` 重定向，仓内政策零改动）**
+
+驱动法：把 `agents/policy.json` 复制到 `%TEMP%`，只改 `ledger_measurement.legacy_ratchet.review_by` = `2026-11-10`（＝今天，到期）与 `measured_value.output_chars_zero`（13 表示"上次重评读到 13、现在 12"＝已降 1）。
+
+| 状态 | 驱动 | 2026-11-10 现跑读数 |
+|---|---|---|
+| 修前（到期且零改善） | 副本 A：`review_by=2026-11-10`，快照逐类＝现值（总数 28） | **rc=1**，`LEDGER-MEASUREMENT FAIL（1 项）`：`[棘轮改善] **到期未改善**：实测总数 28 ≥ 上一次 measured_value 总数 28（review_by=2026-11-10，今天 2026-11-10；逐类 实测/快照：output_chars_zero=12/12 round_duration=3/3 rounds_mismatch=1/1 …）` |
+| 修后（到期且已改善） | 副本 B：同 A，但快照 `output_chars_zero=13`（总数 29）⇒ 现值 28 严格小 | **rc=0**，`LEDGER-MEASUREMENT PASS`，上屏 `改善判据 … 未到期或已改善，本次不判（实测总数 28／上次快照 29）` |
+| 还原（改回零改善） | 换回副本 A | **rc=1**，同一条 FAIL 再次出现 |
+
+**修前的"红"是真红，不是新判据自说自话**：`git show HEAD:verify/verify_ledger_measurement.py` 里只有 `if named and cap is not None and len(named) > int(cap)`（`<= 上限` 一条判据），**没有**任何到期改善判据 ⇒ 同一份"到期且零改善"数据在 HEAD 版是**绿**的。四道纯函数反控已同时钉进自检 ⑬a–⑬d（到期零改善／到期已改善／未到期／数据坏法），每次跑闸门都重跑。
+
+**第 2 组：⑤ 断言下限的"下限＝实测"（仓内临时改一个整数，逐字节还原）**
+
+驱动法：把 `verify/run_suite.py::BRANCH_ASSERTION_FLOORS` 的 `("verify_lint.py", True)` 由 17 改成 15（＝人为制造 2 条静默配额），跑 `--scripts` 子集（6 个自陈脚本，满足"自陈脚本数下限 6"），再改回。
+
+| 状态 | 驱动 | 2026-11-10 现跑读数 |
+|---|---|---|
+| 修前（下限低于实测） | 下限 15、实测 17 | **rc=1**，`SUITE FAILED (1/6): verify_lint.py（行34）` ＋ `VERDICT-FAIL: [行34 棘轮] verify_lint.py 断言数 17 > 本分支下限 15（present=True）——下限必须**等于**实测：差值 2 条是**静默配额**…⇒ 同批把下限抬到 17` |
+| 修后（下限＝实测） | 下限 17、实测 17 | **rc=0**，末行 `SUITE PASSED`（2026-11-10 现跑，脚本数以现跑为准），判决行 `verify_lint.py：EVIDENCE … assertions=17 …｜本分支下限 17` |
+| 还原（改回 15） | 再改回 15 | **rc=1**，同一条 `VERDICT-FAIL` 再次出现；改回后 `git hash-object` 与备份**逐字节一致**（sha256 `D83C3737…`） |
+
+**修前同状态是绿的**：`git show HEAD:verify/run_suite.py` 的 `verdict_problems` 里只有 `if n_found < floor:`（判据③），**没有** `n_found > floor` 分支 ⇒ "下限 15 / 实测 17"在 HEAD 版是**静默放行**。判据⑤的四个方向（等值绿／高于红／低于红／absent 不判等）已由 `verify/verify_runner.py` 的 ⑯a–⑯e 钉住，**真 CLI 子进程**每跑套件都重跑。
+
+#### 12.4 同批改动面（逐文件）
+
+| 文件 | 改动 | 是否新增 FAIL 面 | 当前真实仓库读数 |
+|---|---|---|---|
+| `verify/verify_ledger_measurement.py` | 新增 `rent_problems()`（纯函数）＋ `evaluate()` 内接线 ＋ 报告行 ＋ 自检 ⑬a–⑬d（断言 41→45） | 是（**只在 `review_by` 到期时**） | 未到期 ⇒ **不判**；上屏"实测总数 28／上次快照 28" |
+| `verify/run_suite.py` | `verdict_problems` 增判据⑤（`N > floor` ⇒ FAIL，仅工作树分支）＋ absent 边界上屏 ＋ 注释块补判据⑤ | 是（仅当有人把下限停在实测之下） | 8 个自陈脚本**全部等值** ⇒ **零红** |
+| `verify/verify_runner.py` | 新增 ⑯a–⑯e（断言 54→59），直接驱动 `run_suite` 的两个纯函数 | 否（只驱动纯函数） | 全 PASS |
+| `docs/iteration/phases/baseline-reform/cards/BR-1.md` | 只追加本节 | 否 | `verify_md_tables.py` 通过 |
+
+**没有改的**：`agents/policy.json` **一个字节未动**（五张表的 caps／measured_value／measured_at／review_by 逐字保留）、`agents/spend-budget.json` 未动、`paper-qa-script/**` 未动、`docs/6-DECISIONS.md` 未动、`docs/1-WORKFLOW.MD` 未动（含 §6.0 索引行——本批的机制改动已由既有 M3 行覆盖，无需新增行）、别的阶段的卡未动、`verify/verify_*.py` 的其余文件未动、`.github/**` 未动。
+
+#### 12.5 门槛末行（每行都是 2026-11-10 时点读数，**不得当作现值**；现值一律由各命令现跑产生）
+
+- `py_compile verify/verify_ledger_measurement.py verify/run_suite.py verify/verify_runner.py` ⇒ rc=0（2026-11-10）。
+- `verify/verify_lint.py` ⇒ 通过档判决句（2026-11-10 现跑：条数 17，EVIDENCE 行 `E501=2490/2493`；本批改动行按显示宽度 ≤88，**未新增超宽行**、未加 `# noqa`、未改 `report_only`）。
+- `verify/verify_gate_integrity.py --selftest` ⇒ 通过档判决句（2026-11-10 现跑：条数 88，`ratchets=5`；本批未改该闸门）。
+- `verify/run_suite.py --tier offline` ⇒ rc=0，末行 `SUITE PASSED`（2026-11-10 收尾现跑；脚本数以现跑末行为准；判决区 8 行 `｜本分支下限 N` 与实测等值）。
+- `verify/verify_md_tables.py` ⇒ `MD-TABLE PASS`（2026-11-10；本节表格列数一致、单元格内无裸管道）。
+- `verify/verify_derived_numbers.py` ⇒ 通过档（2026-11-10；本节所有读数**同行带时点锚**，未新增"当期主张"）。
+- `verify/verify_card_index.py` ⇒ 通过档（2026-11-10；卡数与阶段数未变）。
+- `verify/verify_matrix.py check` ⇒ 派生与入库一致（2026-11-10；**本批未改任何 `VERIFY_META`**，故未 derive）。
+- `verify/verify_close_readiness.py --sprint docs/iteration/sprint/2026-09-25-sprint-18.md` ⇒ `CLOSE-READINESS PASS`、rc=0（2026-11-10 收尾后现跑：run 表 29 行、锚点 `9f8d690f`、覆盖提交 87、产出型标注 2；`set-anchor` 显式设端点，窗口右端 `f763f82b0642…` **非空**）。
+- `scripts/spend-report.py --check`（venv）⇒ **rc=1**（2026-11-10 现跑：主代理 output 55723／50000 超预算；派单 1／6、当日合计 4.51／12.0 均 OK）——**本批前就是红的**，与本批无关，如实记。
+
+#### 12.6 本批没做／未决（如实记）
+
+- **没做**：§1③ 与 §1④ 未裁（见 12.0）；absent 分支的逐脚本实测（无法在本机取得 `main` 镜像）；14 个"打判决句但无下限"的脚本未登记下限；`quotes_drift` WARN 的截断未修；§5 状态计数的"开放项必须为 0"未加判据。
+- **未决①**：`spend-budget.json::budget` 的"不许上调"仍无**机检**（见 12.2 ⑥ 残余）；要不要给 `gate_integrity.ratchets` 加外部文件指针，需与 `A-COST` 卡对齐。
+- **未决②**：③ 的租金口径是"总数净减 1"。若父代理认为"逐类各降 1"才够，则需先裁"3 笔只能靠造假时间戳的类怎么办"——本批按"总数"实现，理由写在 `rent_problems` 的 docstring 里。
+- **未决③**：`②` 的 `derived_numbers.baseline` 若要收口，正解是"逐文件把上限降到实测"（文档清理批），**不是**"给历史读数补日期锚"——后者仍需改写已关闭 Sprint 的正文。

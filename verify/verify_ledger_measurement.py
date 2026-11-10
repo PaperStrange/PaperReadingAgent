@@ -451,6 +451,79 @@ def check_caps_shape(caps: dict, review_by: str, cutoff: str, today: str,
     return problems
 
 
+def rent_problems(counts: dict, measured_value: object, review_by: str,
+                  measured_at: str, today: str) -> list[str]:
+    """BR-1 §12『到期必须改善』：到期日历史债**总数**须严格小于上次重评读数。
+
+    为什么需要它（BR-1 §2『锁住债务』）：`caps` 只判 `实测 ≤ 上限`，于是每类都可以
+    **贴着上限原地踏步**——上限只防恶化、对改善零要求。本条把「到期日」变成一次
+    **必付的租金**：总债务必须净减（≥1），单靠挪 `review_by` 或上调 `measured_value`
+    变绿不算改善。
+
+    形态口径（**总数而非逐类**，如实记代价）：8 类里有 3 类（negative_duration /
+    missing_timestamp / terminal_not_written_back）天然为 0、无下降空间；余下 5 类的
+    存量是**已发生的历史事实**，逐类各降 1 会要求 5 笔修复、其中 3 笔（未测量的
+    output_chars、零时长时间戳）只能靠**伪造时间戳**来"修"——那比不改善更坏。
+    故取「总额净减 1」：付费路径明确且**有留痕**（`set-output-chars` 的受控回填，
+    带理由与可复算口径）。逐类判会红在"付不起"上，总数判只红在"不动"上。
+
+    fail-closed：`measured_value` 缺/非 dict/键集与 caps 不等/值非整数、日期不可解析、
+    `measured_at` 晚于 `review_by` ⇒ FAIL（判不了就判红，不静默放行）。
+    未到期 ⇒ 返回空清单（调用方上屏『未到期，本次不判』）。
+    """
+    problems: list[str] = []
+    if not isinstance(measured_value, dict):
+        return [f"[棘轮改善] 缺 measured_value（{measured_value!r}）"
+                f"—— 促改善判据无从执行 ⇒ FAIL"
+                f"（fail-closed：数据坏了要响亮地坏，不得静默放行）"]
+    expected = set(RATCHET_KINDS)
+    actual = set(measured_value)
+    if expected - actual:
+        problems.append(f"[棘轮改善] measured_value 缺类 {sorted(expected - actual)}"
+                        f" —— 少一类就等于该类**永不要求改善**")
+    if actual - expected:
+        problems.append(f"[棘轮改善] measured_value 多出 {sorted(actual - expected)}"
+                        f" —— 快照与 caps 键集不等（死数据/拼写漂移）")
+    if problems:
+        return problems
+    bad = {k: v for k, v in measured_value.items()
+           if isinstance(v, bool) or not isinstance(v, int) or v < 0}
+    if bad:
+        problems.append(f"[棘轮改善] measured_value 有非法值 {bad}"
+                        f" —— 必须是 ≥0 的整数，否则『严格小于』无从判")
+    try:
+        due = str(review_by)
+        if due > today:              # 未到期：**不判**（与 lint 的到期口径同严）
+            return problems
+    except TypeError:
+        problems.append(f"[棘轮改善] review_by={review_by!r} 不可比较"
+                        f" ⇒ 到期判据不可信（fail-closed）")
+        return problems
+    if problems:
+        return problems
+    if str(measured_at) > due:
+        problems.append(f"[棘轮改善] measured_at={measured_at} 晚于 review_by={due}"
+                        f" —— 基线自相矛盾（快照不可能晚于它的到期日）")
+        return problems
+    snap_total = sum(int(v) for v in measured_value.values())
+    live_total = sum(int(v) for k, v in counts.items() if k in expected)
+    if snap_total == 0:
+        if live_total != 0:
+            problems.append(f"[棘轮改善] 零地板被破：上次 measured_value 总数=0，"
+                            f"实测 {live_total}（review_by={due}，今天 {today}）"
+                            f" —— 该类已清零，到期要求是**保持 0**（0 无法再变小）")
+        return problems
+    if live_total >= snap_total:
+        detail = " ".join(f"{k}={counts.get(k, 0)}/{measured_value[k]}"
+                          for k in sorted(expected) if measured_value[k])
+        problems.append(f"[棘轮改善] **到期未改善**：实测总数 {live_total} ≥ 上一次"
+                        f" measured_value 总数 {snap_total}（review_by={due}，"
+                        f"今天 {today}；逐类 实测/快照：{detail}）"
+                        f" —— 到期时历史债必须**净减至少 1**；把 review_by 往后挪或"
+                        f"上调 measured_value 变绿不算改善")
+    return problems
+
+
 def evaluate(policy, runs: list[dict], runs_dir: Path,
              dir_exceptions: list[dict], record_exceptions: list[dict], *,
              today: str,
@@ -720,6 +793,8 @@ def evaluate(policy, runs: list[dict], runs_dir: Path,
                             f" —— 上限只许在重评基线时下调（不许为变绿上调）")
         for item in [f for f in findings if f["kind"] == kind]:
             warnings.append(f"{kind} {item['run_id']}：{item['detail']}")
+    problems += rent_problems(counts, ratchet.get("measured_value"), review_by,
+                              ratchet.get("measured_at"), today)
     for item in strict:
         problems.append(f"[{item['kind']}] {item['run_id']}：{item['detail']}")
     return problems, warnings, counts
@@ -1081,6 +1156,18 @@ def report(policy, runs: list[dict], runs_dir: Path, problems: list[str], warnin
     print(f"   棘轮基线（{policy.ledger_measurement['legacy_ratchet'].get('measured_at')} 实测，"
           f"review_by {policy.ledger_review_by()}）："
           + " ".join(f"{k}={counts.get(k, 0)}/{caps.get(k)}" for k in sorted(caps)))
+    _ratchet = policy.ledger_measurement["legacy_ratchet"]
+    _mv = _ratchet.get("measured_value")
+    _rent = rent_problems(counts, _mv, policy.ledger_review_by(),
+                          _ratchet.get("measured_at"),
+                          datetime.now(PROJECT_TZ).strftime("%Y-%m-%d"))
+    if _rent:
+        print(f"   改善判据（BR-1 §12『到期必须改善』）：{len(_rent)} 项不成立"
+              f" ⇒ FAIL（明细见下）")
+    else:
+        _sum = sum(int(v) for v in _mv.values()) if isinstance(_mv, dict) else "-"
+        print(f"   改善判据（BR-1 §12『到期必须改善』）：未到期或已改善，本次不判"
+              f"（实测总数 {sum(counts.values())}／上次快照 {_sum}）")
     for line in warnings:
         warn("棘轮放行（历史债，到期须重评）", line)
     if problems:
@@ -1249,6 +1336,40 @@ def selfcheck(policy) -> None:
                                                tmp / "cap-overflow", today=today)
         ok("反向对照 ⑬ 历史缺陷**超上限**（4 > 3）→ FAIL 且点名条数与上限",
            any("4 例 > 上限 3" in p for p in problems), f"problems={problems[:1]}")
+
+        # ⑬a-⑬d BR-1 §12『到期必须改善』（纯函数驱动：不依赖真实账本的读数）
+        _snap = {"output_chars_zero": 13, "missing_result_files_review": 9,
+                 "zero_duration": 3, "round_duration": 3, "negative_duration": 0,
+                 "missing_timestamp": 0, "rounds_mismatch": 1,
+                 "terminal_not_written_back": 0}
+        _live = {"output_chars_zero": 13, "missing_result_files_review": 9,
+                 "zero_duration": 3, "round_duration": 3, "negative_duration": 0,
+                 "missing_timestamp": 0, "rounds_mismatch": 1,
+                 "terminal_not_written_back": 0}
+        _p = rent_problems(_live, _snap, "2026-11-27", "2026-10-28", "2026-11-27")
+        ok("反向对照 ⑬a **到期且零改善**（today == review_by，总数 29 == 快照 29）"
+           "→ FAIL 并点名『到期未改善』",
+           any("到期未改善" in p and "29" in p for p in _p), f"problems={_p[:1]}")
+        _p = rent_problems({**_live, "output_chars_zero": 12}, _snap,
+                           "2026-11-27", "2026-10-28", "2026-11-27")
+        ok("反向对照 ⑬b **到期且已改善**（总数 28 < 快照 29）→ 不判"
+           "（促改善判据不误伤真降）",
+           _p == [], f"problems={_p[:1]}")
+        _p = rent_problems(_live, _snap, "2026-11-27", "2026-10-28", "2026-11-20")
+        ok("反向对照 ⑬c **未到期**（today < review_by，读数停在快照上）→ 本次不判"
+           "（到期日才是收费点，与 lint 同口径）",
+           _p == [], f"problems={_p[:1]}")
+        _bad = [rent_problems(_live, None, "2026-11-27", "2026-10-28", "2026-11-27"),
+                rent_problems(_live, {k: v for k, v in _snap.items()
+                                      if k != "zero_duration"},
+                              "2026-11-27", "2026-10-28", "2026-11-27"),
+                rent_problems(_live, _snap, "2026-11-27", "2026-12-01", "2026-11-27"),
+                rent_problems(_live, {**_snap, "zreo_duration": 1},
+                              "2026-11-27", "2026-10-28", "2026-11-27")]
+        ok("反向对照 ⑬d **数据坏法**（缺 measured_value／缺类／快照晚于到期日／"
+           "多出拼错的键）→ 一律 FAIL 并点名 fail-closed",
+           all(len(b) >= 1 for b in _bad),
+           f"problems={[b[:1] for b in _bad]}")
 
         # ⑬' 窗口不可推导 → **回退域**（日期域）且输出点名（回退是放宽方向，必须可见）
         fb_rows, _ = fixture("fallback-domain")
