@@ -23,5 +23,5 @@
 
 ## 2. 启动条件
 
-- 排期意向：refactor-analysis 的 Sprint-15/16 之后启动本阶段（独立 sprint 序列，不与 refactor-analysis 并行——保持 Now 档单 active 阶段约定）。
+- **并行启动（用户 2026-11-10 裁定，覆盖本段原有的「单 active 阶段」约定）**：本阶段可与主线**并行推进**；抽象设计类任务交由 `codex`／`claude-code` 子代理执行（本会话已具备该执行能力）。首批并行卡＝`MM-1`（schema＋库＋种子模型）与 `MM-6`（工作方式设计），写作用域互不重叠；`backlog.MD` 与跨卡一致性由主代理统一维护。
 - 启动时按 §4.4 判定 + planning_pipeline 注入预研笔记（既定决策：Q1 独立阶段 / Q2 种子补全 / Q3 半自动+robust+flexible 为基线）。
