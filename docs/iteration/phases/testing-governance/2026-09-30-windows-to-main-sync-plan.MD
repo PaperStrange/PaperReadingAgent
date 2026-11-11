@@ -490,7 +490,7 @@ python verify/run_suite.py --tier offline
 > `1-WORKFLOW.MD:52` 的"走查通过前不得创建 PR"（2026-09-12）**已满足**。
 
 - **形态**：同步提交 **`f23f0f9`**，父 = `0255413`（1 个父）；合并提交 **`c49ade4`**（2 个父：`0255413` ＋ `f23f0f9`）⇒ 复刻单亲同步先例。
-- **同步面**：**11 文件，+961/−61**；`docs/iteration/**` 树内 **0 行**；4 个 mac 启动脚本保留；`docs/6-DECISIONS.md` 在树。
+- **同步面**：同步面行数以 `git diff --shortstat 0255413 f23f0f9` 现跑为准（此处不手抄）；`docs/iteration/**` 树内 **0 行**；4 个 mac 启动脚本保留；`docs/6-DECISIONS.md` 在树。
 - **带上 main 的内容**：`BR-1` 其余九条基线的分类与处置（`ledger_measurement` 到期收租、`run_suite` 判据⑤"自陈条数高于下限即 FAIL"）；`A-PTR` 落地（`path#<锚文本>` ＋ `scripts/anchor-resolve.py` ＋ 登记册闸门双形态 ＋ 53 处迁移）；`D102` **23→0**；走查签收与 A-PTR 状态收口。
-- **验证**：合并前 main 侧 CI **success**（必需检查 `Offline suite + builds (Windows)`）；合并后 main 侧 CI **success**；本地（`.venv`）`SUITE PASSED (27 scripts)`。
+- **验证**：合并前 main 侧 CI **success**（必需检查 `Offline suite + builds (Windows)`）；合并后 main 侧 CI **success**；本地（`.venv`）离线套件全绿（**脚本数以你现跑 `run_suite.py --tier offline` 的末行为准**，此处不手抄）。
 - **main 树复核**：`docs/iteration` 0 条；`docs/6-DECISIONS.md` 在；mac 4/4；`scripts/anchor-resolve.py`、`verify/harness.py` 均在 main。
