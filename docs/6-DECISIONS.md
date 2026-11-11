@@ -380,7 +380,7 @@
 - 时点: 2026-09-12
 - 主代理归纳: 本条禁止在用户走查验收通过之前创建任何 PR（含以"提前验证 CI"为由）；CI 校验改走 windows 分支 push 触发，或经用户同意后再建 PR。注：本规则仓内自认无机器闸门，现有执行点仅为 §3.4 规范条文，属"仅文字、无可执行执行点"。
 - 生效状态: 生效
-- 证据: docs/1-WORKFLOW.MD:52
+- 证据: docs/1-WORKFLOW.MD#<PR main：Sprint 关闭（三查通过）后统一批量提交>
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 有——2026-09-12 主代理以"提前验证 CI"为由创建 PR #50（仓内记为"违反'验收前不提 PR'"的越界先例），处理 = PR 关闭、远端/本地 sync/sprint-16 删除、规则事后加固入 §3.4：docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD:67；docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD:25
 - 备注: 仓内自认该规则"同样没有执行点"（docs/iteration/sprint/2026-09-12-sprint-16-status-report.MD:67，属 TG-11 复盘输入）：现有执行点仅为 §3.4 规范条文，另有 sprint-16 关闭记录的逐字（docs/iteration/sprint/2026-09-12-sprint-16.md:279），无机器闸门。
@@ -455,7 +455,7 @@
 - 时点: 2026-09-21
 - 主代理归纳: 本条要求"修复验证复核"的 scope 必须有可执行来源：必须来自〇查 impact-assessment（`never a self-chosen narrow scope`），自选 scope 须显式声明来源与偏离理由，且与关闭三查分节记录。
 - 生效状态: 生效
-- 证据: docs/1-WORKFLOW.MD:109；docs/1-WORKFLOW.MD:121
+- 证据: docs/1-WORKFLOW.MD#<由来：主代理在 Sprint 中途修完一个 finding>；docs/1-WORKFLOW.MD#<TG-11 补注（2026-09-23，复盘定稿）>
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）——本条生效后未发现新的违背；
 - 备注: 促成本条裁决的既成事实（5 轮"修复验证复核"scope 全为自选、无来源声明，且三查跑过后另有 26 个提交落地致覆盖实质失效）见 docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD:24；docs/iteration/sprint/2026-09-12-sprint-16.md:212。
@@ -627,7 +627,7 @@
 - 时点: 2026-09-25
 - 主代理归纳: 本条禁止在任何 prompt 或命令里手抄 sha：sha 一律由执行者 `git rev-parse` 或 API 取得并落文件，工具侧必须解析、规范化、失败即 fail-closed；用某个标识符去查结论时，须显式传入或连同来源（仓库、分支、事件）一起打印供逐字比对。
 - 生效状态: 生效
-- 证据: scripts/agent-ops.py:167；docs/1-WORKFLOW.MD:425；docs/iteration/sprint/2026-09-21-sprint-17.md:296
+- 证据: scripts/agent-ops.py:167；docs/1-WORKFLOW.MD#<不手抄标识符：prompt 与命令里禁止手抄 sha>；docs/iteration/sprint/2026-09-21-sprint-17.md:296
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
 - 备注: 促成本条裁决的既成事实（派单 prompt 里手抄 8 位短 sha 致 3 个 run 的覆盖窗口静默作废；主代理两次给 CI 查询脚本传短 sha）见 docs/iteration/phases/agents-infra/2026-09-25-subagent-dispatch-failure-modes-case.MD:13；docs/iteration/phases/agents-infra/2026-09-25-subagent-dispatch-failure-modes-case.MD:18。
@@ -639,7 +639,7 @@
 - 时点: 2026-09-23
 - 主代理归纳: 本条要求文档日期一律取当次网络时间核验值（UTC+8），不得沿用会话起始日期；可核判据为文档内日期与该文件最近一次提交的 committer 日期相差超过 1 天即记 R2 告警并当日更正，更正方式为加注记、不重命名文件。
 - 生效状态: 生效
-- 证据: docs/1-WORKFLOW.MD:403；docs/iteration/sprint/2026-09-21-sprint-17.md:372；docs/iteration/phases/testing-governance/2026-09-23-tg11-retro.MD:24
+- 证据: docs/1-WORKFLOW.MD#<日期必须每轮核验（2026-09-23 事故后补规，用户当场指出）>；docs/iteration/sprint/2026-09-21-sprint-17.md:372；docs/iteration/phases/testing-governance/2026-09-23-tg11-retro.MD:24
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 有——裁决生效后，关闭〇查的启动时刻把账本里的 UTC 值与 UTC+8 写成同一个数（记 `2026-09-25 16:51`，按 UTC+8 应为 `2026-09-26 00:51`），2026-09-26 由一查 must-fix 指出后就地更正为 UTC+8 值（docs/iteration/sprint/2026-09-25-sprint-18.md:230）。
 - 备注: 出处所列 docs/iteration/sprint/2026-09-21-sprint-17.md:150（§8.1 的 R2 读数行）与 :365（§10 的过程事故行）均不含逐字串，逐字在同文件 :372；docs/iteration/phases/testing-governance/2026-09-23-tg11-retro.MD:24 命中。
@@ -848,11 +848,11 @@
 - 时点: 2026-09-21
 - 主代理归纳: 本条把过程事故与「内容丢失、误删」防线并入 `A-M11` 的卡内待产出并要求防患于未然，覆盖「以为提交了其实没有」、强切分支静默丢弃、编辑锚点行被吞、分支操作致目录消失、远端丢件等已发生形态。
 - 生效状态: 生效
-- 证据: docs/iteration/phases/agents-infra/cards/A-M11.md:133；docs/1-WORKFLOW.MD:415；scripts/structure-guard.py:899
+- 证据: docs/iteration/phases/agents-infra/cards/A-M11.md:133；docs/1-WORKFLOW.MD#<Markdown 结构编辑的前后守卫（A-M12>；scripts/structure-guard.py:899
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
 - 备注: 交付现状：该条仍在 `A-M11` 的「卡内待产出」内、卡状态为进行中（docs/iteration/phases/agents-infra/cards/A-M11.md:7；docs/iteration/phases/agents-infra/cards/A-M11.md:133）。
-- 备注: 已落地的执行面是结构守卫的 git 基线档与提交层、CI 层接线，其边界（钩子属便利层、不可跳过层只由 CI 成立）见 docs/iteration/phases/agents-infra/cards/A-M12.md:137；条文见 docs/1-WORKFLOW.MD:417。
+- 备注: 已落地的执行面是结构守卫的 git 基线档与提交层、CI 层接线，其边界（钩子属便利层、不可跳过层只由 CI 成立）见 docs/iteration/phases/agents-infra/cards/A-M12.md:137；条文见 docs/1-WORKFLOW.MD#<git 基线档（不需要任何本地快照）>。
 
 ### V-051 A-M11 追加：LEARNED…
 - 原文（逐字）: "等当前任务完全结束后，把 LEARNED 文档内容完整过一遍，分门别类地补充下目标，除了我说的目标外肯定还有别的。其他文档内容也可以自主阅读查找类似事件的记录，比如 report agent runtime 下的文档什么的。"
@@ -872,7 +872,7 @@
 - 时点: 2026-09-25
 - 主代理归纳: 本条定规：与子代理派单相关的一切漏洞、问题、事故今后一律作为 `agents-infra` 的反例留档，一案一节且六要素齐备（现象、证据、根因、机制、反向对照、复用面），并同步把派生规则写进 `1-WORKFLOW.MD` §6。
 - 生效状态: 生效
-- 证据: docs/1-WORKFLOW.MD:424；docs/iteration/phases/agents-infra/2026-09-25-subagent-dispatch-failure-modes-case.MD:3；docs/iteration/phases/agents-infra/2026-09-25-subagent-dispatch-failure-modes-case.MD:89
+- 证据: docs/1-WORKFLOW.MD#<子代理派单纪律（用户 2026-09-25 定规>；docs/iteration/phases/agents-infra/2026-09-25-subagent-dispatch-failure-modes-case.MD:3；docs/iteration/phases/agents-infra/2026-09-25-subagent-dispatch-failure-modes-case.MD:89
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
 - 备注: 出处所列 docs/iteration/phases/agents-infra/cards/A-M11.md:23 与 :26 不含逐字串（分别为盘点口径行与可核性说明行），规则表述在同文件 :117；逐字命中处为反例档 :3 与 :1。
@@ -884,7 +884,7 @@
 - 时点: 2026-09-25
 - 主代理归纳: 本条把留档义务从派单类扩展到闸门与机制类缺陷（自指断言、空转与没查也说查过了、静默放宽、判定域错、读数手抄、上限自证等），落点单列一份反例档，同样一案一节且六要素齐备，并在 §6 登记规则。
 - 生效状态: 生效
-- 证据: docs/1-WORKFLOW.MD:432；docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:3；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:20
+- 证据: docs/1-WORKFLOW.MD#<机制缺口同样留档（用户 2026-09-25 追加定规）>；docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:3；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:20
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
 - 备注: 该档建立时为 10 例，中途独立复核及其后续修复后继续追加，现例数以该文件的小节数为准，末例见 docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:227。
@@ -908,7 +908,7 @@
 - 时点: 2026-09-20（UTC+8）
 - 主代理归纳: 本条要求先把该诉求做成 backlog 卡记录（开卡并进索引）再谈实现，卡内须落用户走查来源、来源类型前缀与网络时间口径。
 - 生效状态: 生效
-- 证据: docs/iteration/phases/testing-governance/cards/TG-6.md:13；docs/iteration/phases/testing-governance/backlog.MD:20；docs/1-WORKFLOW.MD:387
+- 证据: docs/iteration/phases/testing-governance/cards/TG-6.md:13；docs/iteration/phases/testing-governance/backlog.MD:20；docs/1-WORKFLOW.MD#<验收 case 与"证据形态"四件套（TG-6，2026-09-25 交付）>
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
 - 备注: 出处所列 docs/iteration/phases/testing-governance/cards/TG-6.md:19 为卡正文行（反向对照规则所在段），不含逐字串「做个 backlog 卡记录先」，逐字只在同文件 :13。
@@ -919,11 +919,11 @@
 - 时点: 2026-09-21
 - 主代理归纳: 本条拍板交互与 GUI 类检查的反向对照规则（用户称倒过来试试）：新增检查必须先在未修复或旧实现上跑出 FAIL、证明它能触发目标失效模式，再在修复后转 PASS，并把该反例写进脚本注释与验收指南。
 - 生效状态: 生效
-- 证据: docs/1-WORKFLOW.MD:442；docs/iteration/phases/testing-governance/cards/TG-6.md:19；docs/iteration/phases/refactor-analysis/cards/F-AC13.md:13
+- 证据: docs/1-WORKFLOW.MD#<不得用将来时冒充进度；派单台账四态（2026-09-26 立规；派单反例档案例 9）>+1；docs/iteration/phases/testing-governance/cards/TG-6.md:19；docs/iteration/phases/refactor-analysis/cards/F-AC13.md:13
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
 - 备注: 出处所列 docs/iteration/phases/testing-governance/cards/TG-6.md:13 不含逐字串（该行只写「追加反向对照规则」），逐字在同文件 :19 与 docs/iteration/phases/refactor-analysis/cards/F-AC13.md:13。
-- 备注: 促成本条裁决的既成事实（`gui_check_s5/s7` 用程序化点击结构上无法触发 F-AC13，该缺陷存活 4 个 sprint）见 docs/1-WORKFLOW.MD:442；docs/iteration/phases/refactor-analysis/cards/F-AC13.md:21。
+- 备注: 促成本条裁决的既成事实（`gui_check_s5/s7` 用程序化点击结构上无法触发 F-AC13，该缺陷存活 4 个 sprint）见 docs/1-WORKFLOW.MD#<不得用将来时冒充进度；派单台账四态（2026-09-26 立规；派单反例档案例 9）>+1；docs/iteration/phases/refactor-analysis/cards/F-AC13.md:21。
 
 ### V-057 TG-10 账本记录失真立案原话
 - 原文（逐字）: "每个 agent 运行时间相比之前怎么短了很多？而且有的是直接中途被停掉了，这些信息让我不太安心"
@@ -1009,15 +1009,15 @@
 ### V-064 TG-12 N7 一卡一文档原话
 - 原文（逐字）: "`phases` 下的所有文件夹，单个卡片应该对应且唯一对应一个独立文档。现在卡片内容全都记录在 backlog 中，有的卡片内容散落在 sprint 文档中到处都是。一旦卡片内容更新了其他几处万一有的地方漏了就直接造成文档内容漂移｜｜单个卡片应该对应且唯一对应一个独立文档｜｜`phases` 下的所有文件夹，**单个卡片应该对应且唯一对应一个独立文档**。现在卡片内容全都记录在 backlog 中，有的卡片内容散落在 sprint 文档中到处都是。一旦卡片内容更新了其他几处万一有的地方漏了就直接造成文档内容漂移"（`｜｜` 为分段符）
 - 原文缺失（二手转述）: "**✅ 用户 2026-09-21 决定：N7 归入本卡（TG-12）正式执行时一并做**（不在 Sprint-17 之前单独立项）；**术语约定已即时生效**——`台账` 仅指独立文件、单元格内清单一律称"卡内实例清单"，并连同引用纪律写入 `1-WORKFLOW.MD` §3（2026-09-21）。｜｜**⤴ 2026-09-21 用户决定：机制候选 `N7`（一卡一文档 + backlog 瘦索引 + 索引 lint）已提升为独立卡 `TG-14`**——本卡机制清单收窄为 **N1~N6**（派生事实/漂移闸门/生成式状态报告/doc-audit 增补/写作规范/TG-11 合流），N7 的 4 类证据与迁移方案随卡移交 `TG-14`，避免两卡重复拥有同一机制。"
-- 出处: docs/iteration/phases/testing-governance/cards/TG-12.md:22；docs/iteration/phases/testing-governance/cards/TG-14.md:21；docs/iteration/phases/testing-governance/cards/TG-14.md:8；docs/1-WORKFLOW.MD:407；docs/1-WORKFLOW.MD:405
+- 出处: docs/iteration/phases/testing-governance/cards/TG-12.md:22；docs/iteration/phases/testing-governance/cards/TG-14.md:21；docs/iteration/phases/testing-governance/cards/TG-14.md:8；docs/1-WORKFLOW.MD#<用户原话："phases 下的所有文件夹>；docs/1-WORKFLOW.MD#<卡片与文档的对应关系·术语与引用纪律>
 - 时点: 2026-09-21
 - 主代理归纳: 本条把"卡片 ↔ 文档"的拓扑定死：`phases` 下每张卡对应且唯一对应一个独立文档，卡片正文独立成文、`backlog.MD` 退化为瘦索引、Sprint 文档只按卡号引用，并要求该拓扑有可执行 lint 兜住；执行结果 = `TG-12` 的机制候选 N7 提升为独立卡 `TG-14` 并完成迁移与索引化。
 - 生效状态: 生效（已交付）
-- 证据: docs/iteration/phases/testing-governance/cards/TG-14.md:7（✅ 完成（2026-09-23，D3）…verify_card_index.py 默认档 PASS）；docs/1-WORKFLOW.MD:407（用户原话条文）；docs/iteration/phases/testing-governance/backlog.MD:11（本表仅作瘦索引，判据 verify/verify_card_index.py）；verify/verify_card_index.py:11（判据①一一对应：索引行 ↔ cards/<卡号>.md 双向一致）
+- 证据: docs/iteration/phases/testing-governance/cards/TG-14.md:7（✅ 完成（2026-09-23，D3）…verify_card_index.py 默认档 PASS）；docs/1-WORKFLOW.MD#<用户原话："phases 下的所有文件夹>（用户原话条文）；docs/iteration/phases/testing-governance/backlog.MD:11（本表仅作瘦索引，判据 verify/verify_card_index.py）；verify/verify_card_index.py:11（判据①一一对应：索引行 ↔ cards/<卡号>.md 双向一致）
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
-- 备注: 出处所列 docs/iteration/phases/testing-governance/cards/TG-14.md:8 只有同义转述（"（原状态：**候选**——用户 2026-09-21 拍板"提升为独立卡"。**状态由本文件承载，瘦索引行同步**。）"），不含逐字；逐字在 docs/iteration/phases/testing-governance/cards/TG-12.md:22、docs/iteration/phases/testing-governance/cards/TG-14.md:21 与 docs/1-WORKFLOW.MD:407（后者落在出处 :405 的 ±2 行内）。
-- 备注: 同批立规的术语面（`台账` 只指独立文件）见 docs/1-WORKFLOW.MD:409。
+- 备注: 出处所列 docs/iteration/phases/testing-governance/cards/TG-14.md:8 只有同义转述（"（原状态：**候选**——用户 2026-09-21 拍板"提升为独立卡"。**状态由本文件承载，瘦索引行同步**。）"），不含逐字；逐字在 docs/iteration/phases/testing-governance/cards/TG-12.md:22、docs/iteration/phases/testing-governance/cards/TG-14.md:21 与 docs/1-WORKFLOW.MD#<用户原话："phases 下的所有文件夹>（后者落在出处 :405 的 ±2 行内）。
+- 备注: 同批立规的术语面（`台账` 只指独立文件）见 docs/1-WORKFLOW.MD#<术语（强制）：台账只指独立文件>。
 - 异文（待核）: 见上方 `原文（逐字）` 的另一段（同一征集稿单元格内的第二种写法，已逐字保留，未另立条目）
 
 ### V-065 用户追问实例台账是啥文档
@@ -1026,10 +1026,10 @@
 - 时点: 2026-09-21
 - 主代理归纳: 本条是一次术语澄清追问：用户问"实例台账"到底指哪份文档；答复把术语定死为 `台账` 只指独立文件、写在卡片单元格里的清单一律叫"卡内实例清单"，并写明 `TG-12` 没有独立台账文件。
 - 生效状态: 生效（术语口径已落条文）
-- 证据: docs/1-WORKFLOW.MD:409（术语（强制）：`台账` 只指独立文件…2026-09-21 用户指出）；docs/iteration/phases/testing-governance/cards/TG-12.md:22（"术语见 `1-WORKFLOW.MD` §6 文档规范：`台账` 仅指独立文件；**本卡无独立台账文件**"）；docs/iteration/phases/testing-governance/cards/TG-14.md:21（"另追问"你经常说实例台账我咋没找到是啥文档""）
+- 证据: docs/1-WORKFLOW.MD#<术语（强制）：台账只指独立文件>（术语（强制）：`台账` 只指独立文件…2026-09-21 用户指出）；docs/iteration/phases/testing-governance/cards/TG-12.md:22（"术语见 `1-WORKFLOW.MD` §6 文档规范：`台账` 仅指独立文件；**本卡无独立台账文件**"）；docs/iteration/phases/testing-governance/cards/TG-14.md:21（"另追问"你经常说实例台账我咋没找到是啥文档""）
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
-- 备注: 本条属提问类条目（用户只追问文档归属、未下达新裁决）：其效力内容是"答复必须落成可核的术语条文"，现由 docs/1-WORKFLOW.MD:409 承载；§4.3 另有同题索引 A-213。
+- 备注: 本条属提问类条目（用户只追问文档归属、未下达新裁决）：其效力内容是"答复必须落成可核的术语条文"，现由 docs/1-WORKFLOW.MD#<术语（强制）：台账只指独立文件> 承载；§4.3 另有同题索引 A-213。
 - 备注: 出处两指针行内均含逐字（docs/iteration/phases/testing-governance/cards/TG-12.md:22；docs/iteration/phases/testing-governance/cards/TG-14.md:21）。
 
 ### V-066 TG-13 账本测量化做成新卡
@@ -1130,7 +1130,7 @@
 - 时点: 2026-09-25（UTC+8）
 - 主代理归纳: 本条是登记册与提问纪律的立卡裁决：把主代理与用户之间的全部 clarification questions 逐字收进 `docs/6-DECISIONS.md` 并逐条标生效状态、证据、验证时间戳；原文区只放逐字引用、归纳另立一行；据此派生提问纪律（提问前先查登记册，提问自带已裁决项、未被覆盖的原因、证据）。
 - 生效状态: 生效（机制已交付；§4.1 逐条回填仍在进行）
-- 证据: verify/verify_decision_register.py:2（决策登记册机检（TG-20 ③④⑤，2026-09-25 D6））；docs/1-WORKFLOW.MD:433（§6 第 9 条 提问纪律：提问前必须先查登记册、必须自带三件事）；docs/iteration/phases/testing-governance/cards/TG-20.md:33（③ 机检判据：新闸门 verify/verify_decision_register.py 已进 gate_integrity.guard_required 与 CI）；docs/6-DECISIONS.md:5（原文与归纳的分离规则）
+- 证据: verify/verify_decision_register.py:2（决策登记册机检（TG-20 ③④⑤，2026-09-25 D6））；docs/1-WORKFLOW.MD#<提问纪律（用户 2026-09-25 要求；登记册 = docs/6-DECISIONS.md，卡 = TG-20）>（§6 第 9 条 提问纪律：提问前必须先查登记册、必须自带三件事）；docs/iteration/phases/testing-governance/cards/TG-20.md:33（③ 机检判据：新闸门 verify/verify_decision_register.py 已进 gate_integrity.guard_required 与 CI）；docs/6-DECISIONS.md:5（原文与归纳的分离规则）
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
 - 备注: 出处所列 docs/iteration/phases/testing-governance/cards/TG-20.md:1（标题行）、:7（卡状态行，只写剩余项是 §4.1 的条目回填）与 :20（问题描述行）都只含节引或同义转述；逐字三段全部落在同卡 :13 一行内。
@@ -1192,11 +1192,11 @@
 - 时点: 2026-09-25
 - 主代理归纳: 本条是用户对第四类问题的判定：把不可核的"态度敷衍"操作化为可核的产出缺项——缺证据、缺反例、缺选项、缺取舍、缺失败判据，并要求每份治理提案自证能拦住原事故，不满足即退回重做。
 - 生效状态: 生效
-- 证据: docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:18（U4 行=用户原话）；docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:76（U4 态度敷衍…操作化为**产出缺项**…⑥ 每份治理提案**必须自证"能拦住原事故"**）；docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:86（5. **原始事故验证**：把本次事故的输入**原样喂给新机制**，必须被拦下）；docs/1-WORKFLOW.MD:440（读数必须有来源：手抄禁止，编造更禁止（2026-09-26 立规，我自己的事故））
+- 证据: docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:18（U4 行=用户原话）；docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:76（U4 态度敷衍…操作化为**产出缺项**…⑥ 每份治理提案**必须自证"能拦住原事故"**）；docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:86（5. **原始事故验证**：把本次事故的输入**原样喂给新机制**，必须被拦下）；docs/1-WORKFLOW.MD#<读数必须有来源：手抄禁止，编造更禁止>（读数必须有来源：手抄禁止，编造更禁止（2026-09-26 立规，我自己的事故））
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 有——裁决生效后产出缺项复发：2026-09-26 关闭期把仍在跑的复核 run 的分级结论先写成成品数字（"那组数字没有任何来源"），同型第二次被判"过度声称"，并直接导致用户对严重性判断失去信任（docs/iteration/sprint/2026-09-25-sprint-18.md:335；docs/iteration/archive/2026-09-26-g2-close-retro-archived-narrative.MD:381；docs/iteration/archive/2026-09-26-g2-close-retro-archived-narrative.MD:38；2026-10-03 收敛批重钉：旧指针 53／86 随 §5 叙述移入归档档，归档 381／38 行与 `git show 6663e68` 旧 53／86 行逐字相同）。
 - 备注: 促成本条判定的既成事实（裁决前）：产出中存在当天就存在的真缺陷被闸门放行、死旋钮、文档引用了不存在的政策键与不存在的自检开关（docs/iteration/phases/testing-governance/2026-09-25-d2d3-parallel-session-quality-analysis.MD:241）。
-- 备注: 本条判定的后续可核化落点："读数必须有来源"入 docs/1-WORKFLOW.MD:440；用户因本形态撤回自定"债"口径（docs/iteration/archive/2026-09-26-g2-close-retro-archived-narrative.MD:38；2026-10-03 收敛批重钉：旧指针 86 已变为机读状态计数行，该行随叙述移入归档档）。
+- 备注: 本条判定的后续可核化落点："读数必须有来源"入 docs/1-WORKFLOW.MD#<读数必须有来源：手抄禁止，编造更禁止>；用户因本形态撤回自定"债"口径（docs/iteration/archive/2026-09-26-g2-close-retro-archived-narrative.MD:38；2026-10-03 收敛批重钉：旧指针 86 已变为机读状态计数行，该行随叙述移入归档档）。
 
 ### V-080 用户分工决定：接手该对话下所有工作
 - 原文（逐字）: "全全由你接受这个对话下的所有工作，包括已完成结果、你自己的待办、待我确认的条例等等，**先做 D2、D3 的独立审核**，再和我一起规划下一步。"
@@ -1379,18 +1379,18 @@
 - 时点: 未标注
 - 主代理归纳: 本条记用户对运行时长变短的追问，效果是立案 `TG-10`（账本多轮次与时长记录失真）：要求账本反映真实时长与中断事件，看板上的汇总数字不得用于判断 agent 是否偷懒或卡住。
 - 生效状态: 生效
-- 证据: docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-runs.MD:373（用户已经因为"运行时间怎么短了很多"而立案 TG-10）；docs/iteration/phases/testing-governance/cards/TG-10.md:13（用户 2026-09-21（UTC+8）全串原话；同日批准"做掉"）；docs/1-WORKFLOW.MD:446（关联 `TG-10`：多轮次记录失真）
+- 证据: docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-runs.MD:373（用户已经因为"运行时间怎么短了很多"而立案 TG-10）；docs/iteration/phases/testing-governance/cards/TG-10.md:13（用户 2026-09-21（UTC+8）全串原话；同日批准"做掉"）；docs/1-WORKFLOW.MD#<2026-09-28 复核（把"发不出"钉成事实）>（关联 `TG-10`：多轮次记录失真）
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）——本条与 `V-057` 为同一声诉的重复登记，`V-057` 已判 `无（未发现）`，本条不另判。
 - 备注: 本条是同一句原话的截取复述：`V-057` 收录全串"每个 agent 运行时间相比之前怎么短了很多？而且有的是直接中途被停掉了，这些信息让我不太安心"（docs/iteration/phases/testing-governance/cards/TG-10.md:13）；两条互指、非冲突；本条只含时长半句，"中途被停"半句的规则落点在 `V-097`。
 
 ### V-095 窄范围复核判断依据质疑
 - 原文（逐字）: "窄范围复核的判断依据是啥"
-- 出处: docs/1-WORKFLOW.MD:109
+- 出处: docs/1-WORKFLOW.MD#<修复验证复核（fix-verification review）>+2
 - 时点: 2026-09-21
 - 主代理归纳: 本条要求"修复验证复核"的 scope 必须有可执行来源：必须来自〇查 impact-assessment（`never a self-chosen narrow scope`），自选 scope 须显式声明来源与偏离理由，并与"关闭三查"分节定义。
 - 生效状态: 生效（该质疑促成的补定义已落在 `docs/1-WORKFLOW.MD` §4.2）
-- 证据: docs/1-WORKFLOW.MD:109（2026-09-21 用户质疑"窄范围复核的判断依据是啥"即由此而来）；docs/1-WORKFLOW.MD:107（修复验证复核（fix-verification review）——与"关闭三查"是两件事（2026-09-21 补定义））；docs/iteration/phases/testing-governance/cards/TG-11.md:24（`agents/functions/code-review.md:26/:34` 明文 `scope` 必须来自〇查 impact-assessment）
+- 证据: docs/1-WORKFLOW.MD#<由来：主代理在 Sprint 中途修完一个 finding>（2026-09-21 用户质疑"窄范围复核的判断依据是啥"即由此而来）；docs/1-WORKFLOW.MD#<修复验证复核（fix-verification review）>（修复验证复核（fix-verification review）——与"关闭三查"是两件事（2026-09-21 补定义））；docs/iteration/phases/testing-governance/cards/TG-11.md:24（`agents/functions/code-review.md:26/:34` 明文 `scope` 必须来自〇查 impact-assessment）
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
 - 备注: 本条与 `V-015` 是同一提问的两处登记，措辞差一字（`V-015` 写作"窄范围定点复核的判断依据是啥"，出处为 docs/iteration/sprint/2026-09-12-sprint-16.md:200 与 docs/iteration/phases/testing-governance/2026-09-21-review-scope-incident-evidence.MD:24）；原文照录不改，两条互指、非冲突。
@@ -1398,29 +1398,29 @@
 
 ### V-096 交互类检查反向对照（倒过来试试）
 - 原文（逐字）: "倒过来试试"
-- 出处: docs/1-WORKFLOW.MD:474
+- 出处: docs/1-WORKFLOW.MD#<交互类检查的反向对照规则>
 - 时点: 2026-09-21
 - 主代理归纳: 本条拍板交互/GUI 类检查的反向对照规则：新增（或改动）的交互类检查必须先在未修复、或旧实现的代码上跑出 FAIL，证明它能触发目标失效模式，再在修复后转 PASS，并把该反例写进检查脚本注释与验收指南。
 - 生效状态: 生效
-- 证据: docs/1-WORKFLOW.MD:443（交互类检查的反向对照规则（2026-09-21 用户拍板，称"倒过来试试"）…必须先在"未修复（或旧实现）"的代码上跑出 FAIL）；docs/iteration/phases/testing-governance/cards/TG-6.md:19（⑤ 反向对照规则…反例：`gui_check_s5/s7` 用程序化 `.click()` 结构上无法触发 F-AC13）；docs/iteration/phases/refactor-analysis/cards/F-AC13.md:13
+- 证据: docs/1-WORKFLOW.MD#<派单必须由派单方登记 run；判定域不得只由被判定物派生>（交互类检查的反向对照规则（2026-09-21 用户拍板，称"倒过来试试"）…必须先在"未修复（或旧实现）"的代码上跑出 FAIL）；docs/iteration/phases/testing-governance/cards/TG-6.md:19（⑤ 反向对照规则…反例：`gui_check_s5/s7` 用程序化 `.click()` 结构上无法触发 F-AC13）；docs/iteration/phases/refactor-analysis/cards/F-AC13.md:13
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
-- 备注: 出处指针 docs/1-WORKFLOW.MD:442 现为空行，逐字落在紧邻的 :443（漂移一格，本次按 ±2 行命中；同句登记 `V-056` 的出处亦指向 :442）。
+- 备注: 出处指针 docs/1-WORKFLOW.MD#<不得用将来时冒充进度；派单台账四态（2026-09-26 立规；派单反例档案例 9）>+1 现为空行，逐字落在紧邻的 :443（漂移一格，本次按 ±2 行命中；同句登记 `V-056` 的出处亦指向 :442）。
 - 备注: 本条与 `V-056` 是同一句原话的重复登记（`V-056` 出处为 docs/iteration/phases/testing-governance/cards/TG-6.md:19 等），两条互指、非冲突；`V-084` 的备注亦指向本条。
 - 备注: 同族近例（非本格）：2026-09-25 复核的对照走假路径（注入中间变量绕过被判据驱动的真实入口）见 docs/iteration/phases/agents-infra/2026-09-25-subagent-dispatch-failure-modes-case.MD:32，其对象是 B5 对照而非交互/GUI 检查，本条不据此判 `有`。
 
 ### V-097 子代理中断/接管必须留痕
 - 原文（逐字）: "运行时间变短/中途被停"
-- 出处: docs/1-WORKFLOW.MD:476
+- 出处: docs/1-WORKFLOW.MD#<子代理中断/接管必须留痕>
 - 时点: 2026-09-21
 - 主代理归纳: 本条立规：主代理中断（`interrupt_agent`）、杀掉子代理派生的进程、或按 §4.2 接管时，必须记三件事——何时、为什么、影响范围（哪一轮评审或验证因此缺失、后来如何补做），写入 Sprint 文档 §5/§9；机检执行点 = `scripts/agent-ops.py interrupt` 强制 `--reason` 与 `--impact`，`verify/verify_agentops.py` 的 UC-21 核查项要求账本 `interruptions[]` 的 `reason`/`impact` 均非空、`interruptions_count` 与数组长度一致。
 - 生效状态: 生效（机检部分已落；"影响范围是否如实"为 prose-only、无机检——引用时须知边界）
-- 证据: docs/1-WORKFLOW.MD:445（规则全文与执行点声明：① 机检部分…② prose-only 部分…该条只做了一半机械化）；docs/1-WORKFLOW.MD:446（依据：2026-09-20 误杀复核子代理派生的套件进程树 3 次、主动 `interrupt` 1 次，若没留痕账本只会看到"首轮 53 秒 succeeded"）；scripts/agent-ops.py:1244（`cmd_interrupt` 实现入口）
+- 证据: docs/1-WORKFLOW.MD#<不可逆的证据前先做"廉价的确认">（规则全文与执行点声明：① 机检部分…② prose-only 部分…该条只做了一半机械化）；docs/1-WORKFLOW.MD#<2026-09-28 复核（把"发不出"钉成事实）>（依据：2026-09-20 误杀复核子代理派生的套件进程树 3 次、主动 `interrupt` 1 次，若没留痕账本只会看到"首轮 53 秒 succeeded"）；scripts/agent-ops.py:1244（`cmd_interrupt` 实现入口）
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 有——裁决生效后同族形态复发：2026-09-25 关闭期三个修复类子代理在同一分钟内因余额耗尽中途退出、均未回执，且修复类子代理当时未登记 run（无 run 目录、无状态文件）⇒ 仓库里看不出哪部分是半成品；反例档直接命名为"子代理**中断不留痕**"（docs/iteration/phases/agents-infra/2026-09-25-subagent-dispatch-failure-modes-case.MD:21；同文件 :23；同文件 :25）。
 - 备注: 本条判 `有` 的口径：事故的行为主体是子代理自身资源耗尽退出（非主代理发起的 `interrupt`），但形态与本条所治的"中途被停而账本与仓库看不出"同族，按父代理已定的"同族形态在生效后复发"先例判 `有`；该事故行此前未被任何条目引用，本条按一事一记在此认领。
-- 备注: 促成本条的既成事实（裁决前，按规则不计入本条违背）：2026-09-20 误杀复核子代理派生的套件进程树 3 次并主动 `interrupt` 它 1 次、其 round-3 因此顺延，见 docs/1-WORKFLOW.MD:446。
-- 备注: 出处指针 docs/1-WORKFLOW.MD:444 现为空行，逐字落在紧邻的 :445（漂移一格，本次按 ±2 行命中）。
+- 备注: 促成本条的既成事实（裁决前，按规则不计入本条违背）：2026-09-20 误杀复核子代理派生的套件进程树 3 次并主动 `interrupt` 它 1 次、其 round-3 因此顺延，见 docs/1-WORKFLOW.MD#<2026-09-28 复核（把"发不出"钉成事实）>。
+- 备注: 出处指针 docs/1-WORKFLOW.MD#<（编号空缺——本行不是规则，是占位与取证记录；2026-09-29 补记）> 现为空行，逐字落在紧邻的 :445（漂移一格，本次按 ±2 行命中）。
 
 ### V-098 检索质量先立评测基线
 - 原文（逐字）: "top5 与 query 无关"
@@ -1700,23 +1700,23 @@
 | A-200 | 用户决定 1.24 归 TG-12 执行 | docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-learned.MD:152 | 2026-09-21 |
 | A-201 | agents-infra 阶段 2 陈旧注记被指出 | docs/iteration/phases/agents-infra/backlog.MD:48 | 2026-09-21 |
 | A-202 | 子代理越界改写历史 Sprint 文档的处置 | docs/iteration/phases/agents-infra/2026-09-23-subagent-scope-breach-case.MD:3 | 未标注 |
-| A-203 | 同步节奏定稿（push/PR 两层） | docs/1-WORKFLOW.MD:48 | 2026-08-31 |
-| A-204 | 走查验收通过前不得建 PR | docs/1-WORKFLOW.MD:52 | 2026-09-12 |
-| A-205 | 调研前置：先跑深度调研 | docs/1-WORKFLOW.MD:63 | 2026-08-30 |
-| A-206 | 时间盒与过程监管制度化 | docs/1-WORKFLOW.MD:65 | 2026-08-30 |
-| A-207 | 自主开卡制 | docs/1-WORKFLOW.MD:68 | 2026-08-30 |
-| A-208 | Sprint 度量与规模约束四条 | docs/1-WORKFLOW.MD:73 | 2026-09-21 |
-| A-209 | 经验教训总结关闭前置 | docs/1-WORKFLOW.MD:83 | 2026-08-30 |
-| A-210 | fan-out 顺序与条件可调 | docs/1-WORKFLOW.MD:85 | 未标注 |
-| A-211 | 卡片来源类型前缀与时间口径 | docs/1-WORKFLOW.MD:391；docs/1-WORKFLOW.MD:401 | 2026-09-20 |
-| A-212 | 日期必须每轮核验 | docs/1-WORKFLOW.MD:403 | 2026-09-23 |
-| A-213 | 术语：台账只指独立文件 | docs/1-WORKFLOW.MD:409 | 2026-09-21 |
-| A-214 | 子代理派单纪律留档 | docs/1-WORKFLOW.MD:417 | 2026-09-25 |
-| A-215 | 机制缺口同样留档 | docs/1-WORKFLOW.MD:425 | 2026-09-25 |
-| A-216 | 执行点声明：中断留痕半机制化 | docs/1-WORKFLOW.MD:429 | 2026-09-25 |
-| A-217 | 执行点声明：structure-guard prose-only | docs/1-WORKFLOW.MD:415 | 2026-09-25 |
-| A-218 | 预研上下文传递制度化 | docs/1-WORKFLOW.MD:442；docs/1-WORKFLOW.MD:444 | 2026-08-31 |
-| A-219 | 调研分级 P1~P3 拍板 | docs/1-WORKFLOW.MD:442 | 2026-09-07 |
+| A-203 | 同步节奏定稿（push/PR 两层） | docs/1-WORKFLOW.MD#<同步节奏（2026-08-31 用户决策定稿，含 push 与 PR 两层）> | 2026-08-31 |
+| A-204 | 走查验收通过前不得建 PR | docs/1-WORKFLOW.MD#<PR main：Sprint 关闭（三查通过）后统一批量提交> | 2026-09-12 |
+| A-205 | 调研前置：先跑深度调研 | docs/1-WORKFLOW.MD#<调研前置（2026-08-30 用户要求）> | 2026-08-30 |
+| A-206 | 时间盒与过程监管制度化 | docs/1-WORKFLOW.MD#<时间盒与过程监管（2026-08-30 用户要求制度化；2026-08-30 补充自主开卡制）> | 2026-08-30 |
+| A-207 | 自主开卡制 | docs/1-WORKFLOW.MD#<自主开卡制（2026-08-30 用户确认）> | 2026-08-30 |
+| A-208 | Sprint 度量与规模约束四条 | docs/1-WORKFLOW.MD#<Sprint 度量与规模约束（2026-09-21 用户全数采纳，依据 Sprint-16 PM 复盘）> | 2026-09-21 |
+| A-209 | 经验教训总结关闭前置 | docs/1-WORKFLOW.MD#<经验教训总结（2026-08-30 用户要求固化，关闭前置必做）> | 2026-08-30 |
+| A-210 | fan-out 顺序与条件可调 | docs/1-WORKFLOW.MD#<fan-out 顺序与运行条件为可调配置> | 未标注 |
+| A-211 | 卡片来源类型前缀与时间口径 | docs/1-WORKFLOW.MD#<卡片来源与时间口径（2026-09-20 用户要求，全部 backlog 适用）>；docs/1-WORKFLOW.MD#<时间写法统一 YYYY-MM-DD（UTC+8）> | 2026-09-20 |
+| A-212 | 日期必须每轮核验 | docs/1-WORKFLOW.MD#<日期必须每轮核验（2026-09-23 事故后补规，用户当场指出）> | 2026-09-23 |
+| A-213 | 术语：台账只指独立文件 | docs/1-WORKFLOW.MD#<术语（强制）：台账只指独立文件> | 2026-09-21 |
+| A-214 | 子代理派单纪律留档 | docs/1-WORKFLOW.MD#<git 基线档（不需要任何本地快照）> | 2026-09-25 |
+| A-215 | 机制缺口同样留档 | docs/1-WORKFLOW.MD#<不手抄标识符：prompt 与命令里禁止手抄 sha> | 2026-09-25 |
+| A-216 | 执行点声明：中断留痕半机制化 | docs/1-WORKFLOW.MD#<环境等价要连"能力"一起复制> | 2026-09-25 |
+| A-217 | 执行点声明：structure-guard prose-only | docs/1-WORKFLOW.MD#<Markdown 结构编辑的前后守卫（A-M12> | 2026-09-25 |
+| A-218 | 预研上下文传递制度化 | docs/1-WORKFLOW.MD#<不得用将来时冒充进度；派单台账四态（2026-09-26 立规；派单反例档案例 9）>+1；docs/1-WORKFLOW.MD#<（编号空缺——本行不是规则，是占位与取证记录；2026-09-29 补记）> | 2026-08-31 |
+| A-219 | 调研分级 P1~P3 拍板 | docs/1-WORKFLOW.MD#<不得用将来时冒充进度；派单台账四态（2026-09-26 立规；派单反例档案例 9）>+1 | 2026-09-07 |
 | A-220 | 用户批准打包插队 Sprint-7 | docs/3-LEARNED.MD:145 | 未标注（标题含 Sprint-7） |
 | A-221 | 审查范围不得默认收窄 | docs/3-LEARNED.MD:157；docs/3-LEARNED.MD:158；docs/3-LEARNED.MD:160 | 未标注（标题含 Sprint-8 收尾） |
 | A-222 | 中间态文件不入库 | docs/3-LEARNED.MD:158；docs/3-LEARNED.MD:160 | 未标注（标题含 Sprint-8 收尾） |

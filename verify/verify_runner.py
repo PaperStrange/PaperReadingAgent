@@ -43,6 +43,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from verify.harness import all_pass, ok  # noqa: E402
+# ⑯（BR-1 §12）：行 34 的两个**纯函数**判据——直接驱动，不另造一套口径。
+from verify.run_suite import (  # noqa: E402
+    verdict_problems, verdict_scope_problems,
+)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -520,6 +524,34 @@ def main() -> int:
        and "skipped" not in last_out_line(res.stdout)
        and "WARN" in (res.stdout or ""),
        f"exit={res.returncode} 末行={last_out_line(res.stdout)}")
+
+    # ⑯（BR-1 §12，2026-11-10）行 34 判据⑤：**下限＝实测**（差值 > 0 = 静默配额）。
+    # 纯函数驱动（`verdict_problems` 收 `floors` 参数，故不必真去改一个脚本的断言数），
+    # 三个方向都要钉住：等于下限绿／高于下限红（判据⑤）／低于下限红（既有判据③）。
+    _vp = verdict_problems
+    _tail = ["...", "ALL PASS (7 assertions)"]
+    ok("⑯a 判据⑤正向：断言数**等于**下限 ⇒ 无问题（现值 8 个自陈脚本全部等值）",
+       _vp("verify_x.py", _tail, 0, True,
+           floors={("verify_x.py", True): 7}) == [],
+       "等值不该被罚")
+    _p = _vp("verify_x.py", _tail, 0, True,
+             floors={("verify_x.py", True): 5})
+    ok("⑯b 判据⑤反向：断言数 7 **高于**下限 5 ⇒ 红并点名『静默配额』"
+       "（这个差额里删断言仍判绿 = BR-1 §1② 的 68/75 缺陷）",
+       len(_p) == 1 and "静默配额" in _p[0] and "抬到 7" in _p[0], f"{_p}")
+    _p = _vp("verify_x.py", _tail, 0, True,
+             floors={("verify_x.py", True): 9})
+    ok("⑯c 判据③未被判据⑤顶掉：断言数 7 **低于**下限 9 仍按『只增不减』红",
+       len(_p) == 1 and "< 本分支下限" in _p[0], f"{_p}")
+    _p = _vp("verify_x.py", _tail, 0, False,
+             floors={("verify_x.py", False): 5})
+    ok("⑯d **覆盖边界**：absent 分支（main 镜像）实测值本机无从取得 ⇒ 只判③、"
+       "不判等（同一读数 7 > 5 不红）；**本行不是通过等值判据**",
+       _p == [], f"{_p}")
+    ok("⑯e 判据④（自陈脚本数）不被判据⑤牵连：等值下表规模判据仍原样工作",
+       verdict_scope_problems(6, True, mins={True: 6}) == []
+       and len(verdict_scope_problems(5, True, mins={True: 6})) == 1,
+       "scope 判据未动")
 
     # 行 25：回收 run 级夹具目录——**重试 + 失败即 WARN**。一次性
     # `rmtree(ignore_errors=True)` 会**静默半途而废**（实测：满套件并发跑的那一轮

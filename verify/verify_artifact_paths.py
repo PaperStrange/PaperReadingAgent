@@ -265,6 +265,10 @@ class TargetResolver:
 
     @staticmethod
     def attr_of(node: ast.AST) -> str | None:
+        """取 `Name`/`Attribute` 节点的末段名：`os.environ` → `environ`。
+
+        其它形态返回 None（调用方据此判"不是可识别的属性取用"）。
+        """
         if isinstance(node, ast.Name):
             return node.id
         if isinstance(node, ast.Attribute):
@@ -272,6 +276,7 @@ class TargetResolver:
         return None
 
     def temp_base(self, node: ast.AST) -> bool:
+        """该节点是否指向**临时目录基**（政策声明的 env 名、字面量或构造调用）。"""
         if isinstance(node, ast.Name) and node.id in self.temp_names:
             return True
         if isinstance(node, ast.Constant) and node.value in self.temp_literals:
@@ -317,6 +322,10 @@ class TargetResolver:
         return self.decompose(default, 1)
 
     def decompose(self, node: ast.AST, depth: int = 0) -> tuple[str, list[str]] | None:
+        """把路径表达式拆成 `(类别, 片段列表)`；类别为 temp/none/rel/repo/outside。
+
+        拆不动（动态表达式）返回 None —— 那种情形不猜，交下游当"未定"处理。
+        """
         if depth > 12:
             return None
         if self.temp_base(node):
