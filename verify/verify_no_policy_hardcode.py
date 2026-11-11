@@ -199,6 +199,7 @@ class Detector(ast.NodeVisitor):
 
     # R1 / R3：政策常量赋值
     def visit_Assign(self, node: ast.Assign) -> None:
+        """R1/R3/S1：赋值右侧出现角色名、路径清单或状态白名单 → 记一条写死政策。"""
         if _is_exempted_local(node.value):
             self.generic_visit(node)
             return
@@ -232,6 +233,7 @@ class Detector(ast.NodeVisitor):
 
     # R2：成员判定 / 等值判定 使用角色名字面量
     def visit_Compare(self, node: ast.Compare) -> None:
+        """R2：比较里用角色名字面量（`==` 与 `in` 两种形态都算）→ 记一条写死。"""
         # 上下文提示：`role == "code-review"` / `r["role"] in {...}` 这类明确与角色相关的比较，
         # 允许把单连字符词（code-review / doc-audit）也当角色名处理。
         ctx_role = names_role_context(node.left)

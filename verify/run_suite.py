@@ -92,6 +92,13 @@ BRANCH_EST_OVERRIDES: dict[tuple[str, bool], float] = {
 #      SKIP 与 PASS 互斥；脚本自己就写着"本档不是通过"）；
 #   ③ N 不得低于**本分支实测下限**（只增不减；删断言 ⇒ N 下降 ⇒ 红）；
 #   ④ 自陈脚本的**数量**不得低于本分支下限（靠删掉 features 里的自陈来躲开棘轮 ⇒ 红）。
+#   ⑤ **2026-11-10（BR-1 §12）新增**：N 不得**高于**本分支下限（`N > floor` ⇒ 红）。
+#     为什么：差值就是**静默配额**——`③` 只能保证"不低于下限"，于是在
+#     `floor..N` 这个差额里删断言仍判绿（BR-1 §1② 记的 `68 / 实测 75` 就是这种缺陷）。
+#     判据⑤要求**下限＝实测**：加断言的同批必须把下限抬到新值（仓规"同批抬高"由人守
+#     变成机检）。**覆盖边界（如实标注，不静默）**：只对**工作树分支**判等；absent
+#     分支（`main` 镜像）的逐脚本实测值本机无从取得，那里仍只判 `③`，并在判决区上屏
+#     『判据⑤未执行·本行不是通过等值判据』。
 # 取值口径（全部**实测**，两侧都不是猜的；present = windows 工作树，
 # absent = "windows 树减掉 `docs/iteration/**`"的**镜像**——与 `BRANCH_EST_OVERRIDES`
 # 同口径：当前 `main` ref 上这几个脚本／登记册本身缺席，故 absent 侧只能用镜像量）：
@@ -157,8 +164,8 @@ SKIP_BANNER_RE = re.compile(r"^\S+ SKIP\[(?P<cat>[^\]]+)\]")
 BRANCH_ASSERTION_FLOORS: dict[tuple[str, bool], int] = {
     ("verify_agentops.py", True): 225,
     ("verify_card_index.py", True): 17, ("verify_card_index.py", False): 15,
-    ("verify_decision_register.py", True): 32,
-    ("verify_decision_register.py", False): 32,
+    ("verify_decision_register.py", True): 35,
+    ("verify_decision_register.py", False): 35,
     ("verify_derived_numbers.py", True): 19, ("verify_derived_numbers.py", False): 19,
     ("verify_deduction_rates.py", True): 34,
     ("verify_deduction_rates.py", False): 34,
@@ -253,6 +260,17 @@ def verdict_problems(name: str, tail: list[str], code: int, branch_present: bool
         problems.append(
             f"[行34 棘轮] {name} 断言数 {n_found} < 本分支下限 {floor}"
             f"（present={branch_present}）——只增不减：删掉一批自检会让这条红")
+    if n_found > floor and branch_present:
+        # 判据⑤（BR-1 §12，2026-11-10 新增）：下限**必须等于**实测。
+        # 差值 > 0 就是**静默配额**——在一批 `ok()` 被删掉 (n-floor) 条的范围内，
+        # 闸门照旧判绿，`只增不减` 实际只增到下限为止。BR-1 §1② 记的正是这种缺陷
+        # （下限 68 而实测 75 ⇒ 删 7 条仍判绿）。
+        # **只对工作树分支判等**：absent 分支（main）的实测值本机无从取得，那里仍按
+        # 『不低于』判——这是如实标注的覆盖边界，不是静默放行（见判决区上屏）。
+        problems.append(
+            f"[行34 棘轮] {name} 断言数 {n_found} > 本分支下限 {floor}"
+            f"（present=True）——下限必须**等于**实测：差值 {n_found - floor} 条是"
+            f"**静默配额**（在这个差额里删断言仍判绿）⇒ 同批把下限抬到 {n_found}")
     return problems
 
 
@@ -670,6 +688,10 @@ def main() -> int:
         for line in verdict_readings:
             print(f"  {line}")
         print(f"  自陈『条数见末行』的脚本 {len(declared)} 个")
+        if not branch_present:
+            print("  判据⑤（下限＝实测）**未执行**：本分支是 absent 分支，逐脚本实测值"
+                  "本机无从取得 ⇒ 只判『不低于下限』。**本行不是通过等值判据**"
+                  "（覆盖边界如实标注，同 lint 的『未到期不判』一律上屏）")
         if undeclared_printers:
             print(f"  WARN（可见缺口，**本批不判红**）："
                   f"{len(undeclared_printers)} 个脚本打印了判决句但未在 "
