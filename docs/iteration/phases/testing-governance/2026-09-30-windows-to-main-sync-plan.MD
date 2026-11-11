@@ -481,3 +481,16 @@ python verify/run_suite.py --tier offline
   main 合并后 CI **success**。
 - **已知缺口（未在本轮修）**：`docs/iteration/sprint/*.png` 已于同日取消排除并入库（16 处图片链接不再断）；
   `ci_fail_log.txt` 的忽略规则形状漏网仍在 `A-EXCL` 卡上待办。
+
+---
+
+## 执行记录 4（2026-11-11；PR #57）
+
+> 用户 2026-11-11 批准"同步"并同时声明**走查通过**（记录见 `2026-10-25-main-sync-walkthrough-checklist.MD` 签收表）。
+> `1-WORKFLOW.MD:52` 的"走查通过前不得创建 PR"（2026-09-12）**已满足**。
+
+- **形态**：同步提交 **`f23f0f9`**，父 = `0255413`（1 个父）；合并提交 **`c49ade4`**（2 个父：`0255413` ＋ `f23f0f9`）⇒ 复刻单亲同步先例。
+- **同步面**：**11 文件，+961/−61**；`docs/iteration/**` 树内 **0 行**；4 个 mac 启动脚本保留；`docs/6-DECISIONS.md` 在树。
+- **带上 main 的内容**：`BR-1` 其余九条基线的分类与处置（`ledger_measurement` 到期收租、`run_suite` 判据⑤"自陈条数高于下限即 FAIL"）；`A-PTR` 落地（`path#<锚文本>` ＋ `scripts/anchor-resolve.py` ＋ 登记册闸门双形态 ＋ 53 处迁移）；`D102` **23→0**；走查签收与 A-PTR 状态收口。
+- **验证**：合并前 main 侧 CI **success**（必需检查 `Offline suite + builds (Windows)`）；合并后 main 侧 CI **success**；本地（`.venv`）`SUITE PASSED (27 scripts)`。
+- **main 树复核**：`docs/iteration` 0 条；`docs/6-DECISIONS.md` 在；mac 4/4；`scripts/anchor-resolve.py`、`verify/harness.py` 均在 main。
