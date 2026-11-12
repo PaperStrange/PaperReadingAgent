@@ -170,6 +170,7 @@ SKIP_BANNER_RE = re.compile(r"^\S+ SKIP\[(?P<cat>[^\]]+)\]")
 BRANCH_ASSERTION_FLOORS: dict[tuple[str, bool], int] = {
     ("verify_agentops.py", True): 242,
     ("verify_card_index.py", True): 17, ("verify_card_index.py", False): 15,
+    ("verify_case_index.py", True): 14, ("verify_case_index.py", False): 14,
     ("verify_decision_register.py", True): 35,
     ("verify_decision_register.py", False): 35,
     ("verify_derived_numbers.py", True): 19, ("verify_derived_numbers.py", False): 19,
@@ -180,7 +181,7 @@ BRANCH_ASSERTION_FLOORS: dict[tuple[str, bool], int] = {
     ("verify_spend_report.py", True): 19,
     ("verify_spend_report.py", False): 19,
 }
-BRANCH_VERDICT_SCOPE_MIN: dict[bool, int] = {True: 6, False: 6}
+BRANCH_VERDICT_SCOPE_MIN: dict[bool, int] = {True: 9, False: 8}
 TAIL_KEEP = 60                  # 每个脚本留最后 60 行（判决句判据只读末尾数行）
 
 

@@ -36,6 +36,7 @@
 | `verify_archive.py` | M16 调研归档完整性校验：report/context/reasoning/evidence 契约 + 证据索引表双向交叉引用（限定 §7 索引表区间、大小写不敏感；fail-closed） | offline | — | 5s | ¥0 | — |  |
 | `verify_artifact_paths.py` | TG-9 产物目录约定闸门：脚本源码的写盘目标必须落在已忽略目录或 %TEMP%（政策 artifact_paths 驱动）+ 忽略根双向差集（须真被 .gitignore 忽略、确有其行、确有代码在用）+ 动态目标棘轮（新文件必须可静态判定）+ 反向对照（注入写仓库根 → rc=1 点名；默认落点实测 git status 干净） | offline | — | 10s | ¥0 | — | git |
 | `verify_card_index.py` | TG-14④ 卡索引 lint：索引↔卡文件一一对应 / 卡号↔文件名一致 / 必备节 / Sprint 不得复制卡正文 / 表格结构 / 状态三处一致（卡↔索引↔Sprint 看板）/ 卡库存基线 totals 与 card-inventory 实测一致；反向对照条数见末行 `ALL PASS (N assertions)` | offline | — | 6s | ¥0 | — | none |
+| `verify_case_index.py` | A-CASE 形态↔主案例一致性：两份反例语料的案例标题必须带形态标签、每形态恰 1 个主案例、形名与卡片表一致、表里无死码、语料无未登记码；反向对照五组（删标签/双主案例/未登记/形名漂移/死码）＋干净副本；条数见末行 `ALL PASS (N assertions)` | offline | — | 3s | ¥0 | — | none |
 | `verify_checkpoint.py` | F-AC10 文献级 checkpoint：逐篇落盘 + 零成本复用 + 文件变更/载荷损坏/模型不匹配/切块口径/同内容去重五重边界 fail-closed（est = 近次实测 ¥0.016965 × 1.3 ≈ 0.03，2026-09-20 校准） | network | deepseek | 240s | ¥0.03 | /api/new_session, /api/run_step | keys, network, self-boots-backend |
 | `verify_checkpoint_index.py` | F-AC16 v1 checkpoint 只读索引：扫描/排序/逐篇载荷路径与存在性/坏件 fail-soft/detail 与 resolve_payload/字段白名单（离线合成 fixture） | offline | — | 5s | ¥0 | /api/checkpoints | none |
 | `verify_close_readiness.py` | TG-15 关闭前置闸门：C1 声明完备 / C2 指涉可核（含 A-M13 的"全账本 role 必有 spec"封闭世界）/ C3 覆盖闭环（锚点→域右端每提交有归属），需求全来自 fanout.json + spec frontmatter；含变异用例自 fanout 自动生成的反向对照；M-A（TG-19）：判定域必须由**被判定物**派生（Sprint 身份 + 该 Sprint 的作用域 run + 该 Sprint 的最后一条覆盖 run 作右端），域不可派生时退出码 4（domain-unavailable）且不产出结论；A-M13④：§9 在飞宽限内只提示不判（口径同 ledger_measurement.in_flight） | offline | — | 15s | ¥0 | — | none |
@@ -67,4 +68,4 @@
 | `verify_spend_report.py` | A-COST 度量仪口径闸门：派单数只来自账本且调用 agent-ops 的 _dispatch_reading（与预算闸门同源）／会话日志只做费用与本会话只报读数／累积重放日志只计价一次／账本读不到 fail-closed(rc=3)／真仓双进程同源比对；反向对照条数见末行 `ALL PASS (N assertions)` | offline | — | 25s | ¥0 | — | none |
 | `verify_usage.py` | Retro③ 成本换算 ＋ TG-20 行 20 按调用时刻选档：真入口对照/跨档/缺失/退化/可审计/真派发，改前取自钉住 revision（离线，需 git） | offline | — | 12s | ¥0 | — | git |
 
-共 61 个脚本：offline 27 / network 10 / gui 24。
+共 62 个脚本：offline 28 / network 10 / gui 24。

@@ -20,7 +20,7 @@
 | A-PTR | 规范文档指针锚点：path:line 改为稳定锚点（标题／符号） | 完成 | — | [cards/A-PTR.md](cards/A-PTR.md) |
 | A-REG | 派单登记可验证性：规则 14 现为荣誉制（账本分不清谁按的键） | 完成 | — | [cards/A-REG.md](cards/A-REG.md) |
 | A-COST | 成本归属：finish --usage-* 未用 ⇒ 损失只能从会话日志反推（2026-10-28 已修：派单数改账本同源，见 `cards/A-COST.md`） | 已修 | — | [cards/A-COST.md](cards/A-COST.md) |
-| A-CASE | 反例档语料维护：只增不减、无合并／去重／检索 | 候选 | — | [cards/A-CASE.md](cards/A-CASE.md) |
+| A-CASE | 反例档语料维护：只增不减、无合并／去重／检索 | 完成 | — | [cards/A-CASE.md](cards/A-CASE.md) |
 | A-DECL | 规则可机检性：规则可以是无实现的声明 | 候选 | — | [cards/A-DECL.md](cards/A-DECL.md) |
 | A-EXCL | 排除清单复审：被排除项反复被拉回、排除时不查消费者、清单无周期复审 | 候选 | — | [cards/A-EXCL.md](cards/A-EXCL.md) |
 

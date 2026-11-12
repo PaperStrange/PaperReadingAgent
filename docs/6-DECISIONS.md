@@ -631,7 +631,7 @@
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
 - 备注: 促成本条裁决的既成事实（派单 prompt 里手抄 8 位短 sha 致 3 个 run 的覆盖窗口静默作废；主代理两次给 CI 查询脚本传短 sha）见 docs/iteration/phases/agents-infra/2026-09-25-subagent-dispatch-failure-modes-case.MD:13；docs/iteration/phases/agents-infra/2026-09-25-subagent-dispatch-failure-modes-case.MD:18。
-- 备注: 同族后发实例（2026-09-25 验证 CI 时轮询脚本在另一个 cwd 的仓库里解析 HEAD，把别人的 run 当成自己提交的证据）见 docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:202；该形态在 §6 的归属判据是第 1 条对偶「不猜标识符」，与本条禁止的手抄、传参不同格，故未据此判违背。
+- 备注: 同族后发实例（2026-09-25 验证 CI 时轮询脚本在另一个 cwd 的仓库里解析 HEAD，把别人的 run 当成自己提交的证据）见 docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:183；该形态在 §6 的归属判据是第 1 条对偶「不猜标识符」，与本条禁止的手抄、传参不同格，故未据此判违背。
 
 ### V-032 日期口径漂移当场指出
 - 原文（逐字）: "今天网络时间是 9.23 了"
@@ -864,7 +864,7 @@
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
 - 备注: 执行面为逐条穷举 3-LEARNED 补全卡目标的独立产物（docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-learned.MD:1），其自述覆盖范围为 `1.1` 至 `1.63`（docs/iteration/phases/agents-infra/2026-09-21-a-m11-from-learned.MD:45）。
-- 备注: `1.64` 至 `1.69` 未被该盘点覆盖（docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:230）。
+- 备注: `1.64` 至 `1.69` 未被该盘点覆盖（docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:211）。
 
 ### V-052 子代理派单事故一律入 agent infra…
 - 原文（逐字）: "**和子代理派单相关的漏洞/问题/事故今后一律作为 agent infra 的反例留档**"
@@ -887,8 +887,8 @@
 - 证据: docs/1-WORKFLOW.MD#<机制缺口同样留档（用户 2026-09-25 追加定规）>；docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:3；docs/iteration/sprint/2026-09-25-governance-batch-plan-G2.MD:20
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
-- 备注: 该档建立时为 10 例，中途独立复核及其后续修复后继续追加，现例数以该文件的小节数为准，末例见 docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:227。
-- 备注: 关闭期新增的形态含读数无源、编辑边界类事故无闸门覆盖、同一系统两套评审类定义、改了数据源未跑下游义务（docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:209；docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:218）。
+- 备注: 该档建立时为 10 例，中途独立复核及其后续修复后继续追加，现例数以该文件的小节数为准，末例见 docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:208。
+- 备注: 关闭期新增的形态含读数无源、编辑边界类事故无闸门覆盖、同一系统两套评审类定义、改了数据源未跑下游义务（docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:190；docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:199）。
 
 ### V-054 A-M12 编辑边界事故族是否成卡
 - 原文（逐字）: "对于这一类事故问题的治理是否有卡，如果没有同样作为反例加入 agent infra，历史卡片也是做类似移动分类操作"
@@ -1347,7 +1347,7 @@
 - 证据: docs/iteration/phases/mental-models/cards/MM-6.md:13（来源行=用户走查 2026-09-20（UTC+8）原话）；docs/iteration/phases/mental-models/cards/MM-6.md:19（正文：不止开发的工程环境，而是**真实作业环境**（含验收、讨论、决策、汇报）…与 TG-6 联动）；docs/iteration/phases/mental-models/backlog.MD:20（瘦索引行：状态=候选、Sprint=—）
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
-- 备注: 同阶段另一条触发义务（`MM-4`：每次 `3-LEARNED` 更新时提取候选模型）曾一次未被触发，该事故行已由 §3 `D-250926-02` 记录并指向机制反例档案例 24（docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:227）；按一事一记，本条不重复判 `有`。
+- 备注: 同阶段另一条触发义务（`MM-4`：每次 `3-LEARNED` 更新时提取候选模型）曾一次未被触发，该事故行已由 §3 `D-250926-02` 记录并指向机制反例档案例 24（docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:208）；按一事一记，本条不重复判 `有`。
 
 ### V-092 MM-1 Q1 独立阶段；Q2 补全草案接受
 - 原文（逐字）: "可当成另一个工程项目"
@@ -1454,7 +1454,7 @@
 - 验证时间戳: 2026-09-26（UTC+8，本次逐条核对时点）
 - 违背事故: 无（未发现）
 - 备注: 出处是主代理的转述行：被引作原文的"按分支划分"是用户指出的做法字串（用户原话未在任何仓内文档里逐字留存），按规则 7 原文照录不改并在此点名。
-- 备注: 同族近例（非本格）：2026-09-26"同一系统里两套'评审类'定义 ⇒ 非评审 role 的空窗口两头堵"（角色分类口径在两处各自定义）见 docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:218；该形态已被 `V-053` 的备注索引，本条不据此判 `有`。
+- 备注: 同族近例（非本格）：2026-09-26"同一系统里两套'评审类'定义 ⇒ 非评审 role 的空窗口两头堵"（角色分类口径在两处各自定义）见 docs/iteration/phases/agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD:199；该形态已被 `V-053` 的备注索引，本条不据此判 `有`。
 
 ### V-101 走查追问 CK-1 与 M16-5
 - 原文（逐字）: "前端能看到载入的 checkpoint 文件吗｜｜；｜｜模型信息更新后会影响更新前的报告吗"（`｜｜` 为分段符）
