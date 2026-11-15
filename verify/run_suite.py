@@ -129,9 +129,18 @@ BRANCH_EST_OVERRIDES: dict[tuple[str, bool], float] = {
 #     不抬 ⇒ 删掉这 18 条判据仍判绿，等于本批白做）。其余各行本批复核后**无余量**。
 #     复算口径 = 在工作树跑 `verify/verify_gate_integrity.py --selftest` 读末行
 #     `ALL PASS (N assertions)`。
+#     **2026-11-12 本批（A-REG ①＋②）**：`verify_agentops.py` 新增 UC-28（写入者
+#     身份，9 条）与 UC-29（提交↔run 绑定，8 条）⇒ 实测条数以末行为准，该键同批
+#     抬到实测值（判据⑤要求下限**等于**实测）。**没有**新增独立闸门脚本：
+#     `verify_artifact_paths.py` 的「未跟踪路径为空」会把未提交的新文件判红，而本批
+#     禁止 `git add/commit` ⇒ 绑定判据落在 `scripts/agent-ops.py check-bindings`
+#     （纯函数单源），由 UC-29 真驱动。见 A-REG 卡「落地」。
 # 复算：`present` = 在工作树跑该脚本、读末行；`absent` = 在 %TEMP% 镜像（clone 后
 # `git rm -r docs/iteration` 并提交、再把工作区改动同步进去、补上 gitignore 的
 # `agents/runtime`＋`agents/runs`）里跑同一脚本。
+#   * `verify_rule_index.py` **13/13**（2026-11-12 A-DECL 批新增）：6 条真数据判据 +
+#     7 条 `%TEMP%` 反向对照。断言只依赖 `docs/1-WORKFLOW.MD`（两分支都有）⇒ 两侧同值；
+#     自陈脚本数下限同批 9→10（新增一个自陈脚本，不抬就是留一条静默配额）。
 VERDICT_LINE_RE = re.compile(r"^ALL PASS \((\d+) assertions\)$")
 VERDICT_EVIDENCE_RE = re.compile(
     r"^EVIDENCE: (?P<name>[\w.\-]+) assertions=(?P<n>\d+)\s")
@@ -162,8 +171,9 @@ SKIP_EXIT = 3    # 与 `verify_agentops.py::SKIP_EXIT` / `spend-report` 同码
 SKIP_NOT_PASS_MARK = "本档不是通过"
 SKIP_BANNER_RE = re.compile(r"^\S+ SKIP\[(?P<cat>[^\]]+)\]")
 BRANCH_ASSERTION_FLOORS: dict[tuple[str, bool], int] = {
-    ("verify_agentops.py", True): 225,
+    ("verify_agentops.py", True): 242,
     ("verify_card_index.py", True): 17, ("verify_card_index.py", False): 15,
+    ("verify_case_index.py", True): 14, ("verify_case_index.py", False): 14,
     ("verify_decision_register.py", True): 35,
     ("verify_decision_register.py", False): 35,
     ("verify_derived_numbers.py", True): 19, ("verify_derived_numbers.py", False): 19,
@@ -171,10 +181,12 @@ BRANCH_ASSERTION_FLOORS: dict[tuple[str, bool], int] = {
     ("verify_deduction_rates.py", False): 34,
     ("verify_gate_integrity.py", True): 88, ("verify_gate_integrity.py", False): 88,
     ("verify_lint.py", True): 17, ("verify_lint.py", False): 17,
+    ("verify_rule_index.py", True): 13,
+    ("verify_rule_index.py", False): 13,
     ("verify_spend_report.py", True): 19,
     ("verify_spend_report.py", False): 19,
 }
-BRANCH_VERDICT_SCOPE_MIN: dict[bool, int] = {True: 6, False: 6}
+BRANCH_VERDICT_SCOPE_MIN: dict[bool, int] = {True: 10, False: 10}
 TAIL_KEEP = 60                  # 每个脚本留最后 60 行（判决句判据只读末尾数行）
 
 
