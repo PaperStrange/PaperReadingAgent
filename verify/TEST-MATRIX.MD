@@ -63,9 +63,10 @@
 | `verify_providers.py` | F-AC8 provider 一文件：文件加载/来源标记/覆盖优先级/非法文件跳过/无密钥泄漏/调研元数据契约 | offline | — | 20s | ¥0 | — |  |
 | `verify_prune_callbacks.py` | litellm 回调裁剪：上限 env 可配 + 非法值回落 + 钳制（离线） | offline | — | 2s | ¥0 | — | none |
 | `verify_remote_e2e.py` | remote 数据源全链路（arXiv 下载+索引+6 步） | network | deepseek | 180s | ¥0.4 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session | keys, network |
+| `verify_rule_index.py` | §6 规则机检状态（A-DECL）：§6 每条编号规则在 6.1 表里恰一行、状态封闭三词、machine 行引用的脚本必须存在、declared-unverifiable/manual 必须给理由+日期、死行与占位错位判红；汇总打印三态计数；反向对照七组（假规则/坏脚本/非法词/缺理由/干净副本/死行/占位）；条数见末行 `ALL PASS (N assertions)` | offline | — | 3s | ¥0 | — | none |
 | `verify_runner.py` | TG-5 分层 runner + 定时底座：offline/gui/network 分层 + fail-closed + 三态预算闸门 + 第三态 SKIP（⑮：具名 SKIP 归 skipped 档／假 SKIP 不归入／failed 优先，均真入口驱动）+ due 判定 + 成本回填 + 状态文件 fail-closed（TG-7） | offline | — | 60s | ¥0 | — |  |
 | `verify_smoke.py` | 冒烟 8 项：paperqa 导入/后端 12 路由加载/runtime_trace 目标/PDF 解析等（离线） | offline | — | 10s | ¥0 | /api/new_session, /api/run_step, /api/stream/{session_id}/{run_id}, /api/session_records/{session_id}, /api/reset_session, /api/health, /api/providers, /api/config_schema, /api/config/validate, /api/translate_preview, /api/usage, /api/checkpoints | none |
 | `verify_spend_report.py` | A-COST 度量仪口径闸门：派单数只来自账本且调用 agent-ops 的 _dispatch_reading（与预算闸门同源）／会话日志只做费用与本会话只报读数／累积重放日志只计价一次／账本读不到 fail-closed(rc=3)／真仓双进程同源比对；反向对照条数见末行 `ALL PASS (N assertions)` | offline | — | 25s | ¥0 | — | none |
 | `verify_usage.py` | Retro③ 成本换算 ＋ TG-20 行 20 按调用时刻选档：真入口对照/跨档/缺失/退化/可审计/真派发，改前取自钉住 revision（离线，需 git） | offline | — | 12s | ¥0 | — | git |
 
-共 62 个脚本：offline 28 / network 10 / gui 24。
+共 63 个脚本：offline 29 / network 10 / gui 24。

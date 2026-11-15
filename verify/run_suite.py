@@ -138,6 +138,9 @@ BRANCH_EST_OVERRIDES: dict[tuple[str, bool], float] = {
 # 复算：`present` = 在工作树跑该脚本、读末行；`absent` = 在 %TEMP% 镜像（clone 后
 # `git rm -r docs/iteration` 并提交、再把工作区改动同步进去、补上 gitignore 的
 # `agents/runtime`＋`agents/runs`）里跑同一脚本。
+#   * `verify_rule_index.py` **13/13**（2026-11-12 A-DECL 批新增）：6 条真数据判据 +
+#     7 条 `%TEMP%` 反向对照。断言只依赖 `docs/1-WORKFLOW.MD`（两分支都有）⇒ 两侧同值；
+#     自陈脚本数下限同批 9→10（新增一个自陈脚本，不抬就是留一条静默配额）。
 VERDICT_LINE_RE = re.compile(r"^ALL PASS \((\d+) assertions\)$")
 VERDICT_EVIDENCE_RE = re.compile(
     r"^EVIDENCE: (?P<name>[\w.\-]+) assertions=(?P<n>\d+)\s")
@@ -178,10 +181,12 @@ BRANCH_ASSERTION_FLOORS: dict[tuple[str, bool], int] = {
     ("verify_deduction_rates.py", False): 34,
     ("verify_gate_integrity.py", True): 88, ("verify_gate_integrity.py", False): 88,
     ("verify_lint.py", True): 17, ("verify_lint.py", False): 17,
+    ("verify_rule_index.py", True): 13,
+    ("verify_rule_index.py", False): 13,
     ("verify_spend_report.py", True): 19,
     ("verify_spend_report.py", False): 19,
 }
-BRANCH_VERDICT_SCOPE_MIN: dict[bool, int] = {True: 9, False: 8}
+BRANCH_VERDICT_SCOPE_MIN: dict[bool, int] = {True: 10, False: 10}
 TAIL_KEEP = 60                  # 每个脚本留最后 60 行（判决句判据只读末尾数行）
 
 

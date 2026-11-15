@@ -536,3 +536,52 @@ Sprint 文档里的 `三查锚点` 只用于**关闭判定**，不再是覆盖�
 
 **规则 19 追加（2026-10-03 实测补记；因「§6 内插入会顶偏下游指针」的约束写在文件末尾——编号未改、不新增规则号，内容上仍是规则 19「(A) 派单 brief 模板必含」列表的追加项）**：
    **登记命令不得写死 `--covers-through <HEAD>`（2026-10-03 实测补记；`f763f82` 与 `-126`／`-127` 两处同形）**：`finish --covers-through <HEAD>` 在「**HEAD 无既有归属**」时会**立刻制造一个无归属提交**，`close-readiness` 因此**由 PASS 转 FAIL**；正确写法是「**锚点取上一窗口端点、端点取本次实际产出区间**」，并在收尾后**现跑 `verify_close_readiness.py --sprint` 验证窗口非空**。
+
+## 6.1 规则机检状态（机读真源）
+
+> **位置与理由**：本节按内容属 §6，**追加在文末**（§6 与 §6.0 的既有行一个字未改 ⇒
+> 指向本档的 `path:line` 指针零漂移）。**它回答的问题**：§6 的每一条**编号**规则，
+> **它失败时哪条命令会非零退出**；答不上来的，必须写明是 `declared-unverifiable`
+> （显式声明无实现）还是 `manual`（人工判据，非机器）。
+> **规则域**：§6 内**最长的从 1 起的连续编号序列**（现读 = 行 425–461，编号 1–19；
+> 其中 15 是行内自陈"本行不是规则"的**编号空缺**，故表里只给它一行 `placeholder`），
+> **外加**§6 内任何编号**大于该序列最大号**的编号条目——新规则追加在 §6 末尾也逃不掉。
+> **状态词表（封闭三词 ＋ 占位）**：`machine` = 失败时有现存闸门/仪器判红（必须给
+> **存在的**脚本路径；判据列同时写明覆盖边界）；`declared-unverifiable` 与 `manual`
+> 必须给**理由 ＋ `YYYY-MM-DD` 复核日期**。`placeholder` **只**允许落在缺号上。
+> **机检**：`verify/verify_rule_index.py`（offline，纳入套件）判六条——① 每条规则恰一行、
+> ② 状态在词表内、③ `machine` 行的脚本真实存在（缺文件即 FAIL）、④ 无实现的两种状态缺
+> 理由/日期即 FAIL、⑤ 死行与占位错位即 FAIL、⑥ 打印三态计数。**三态计数以该命令输出为准**
+> （复现：`.venv\Scripts\python.exe verify\verify_rule_index.py`），本表不手抄读数。
+> **本表的能力边界（如实记，不静默）**：① **只覆盖编号规则**——§6 内非编号的散文规则
+> （行 303 政策数据化、行 389 派生数字、行 391–403 卡片来源与时间口径、行 405–422 引用纪律
+> 与结构守卫、行 474 交互类反向对照、行 476 中断留痕）**不在编号域**，本表不为它们设行；
+> ② `machine` 只保证被点名的脚本**存在**且其判据真的会红，**不保证覆盖该条的每一半**
+> （边界逐行写在判据列）；③ `manual` 与 `declared-unverifiable` 的差别是**有没有明文自陈
+> 无实现**，不是"有没有人管"。
+> **卡片的原始缺口（A-DECL：行 403 的日期口径）**：机器比对"文档日期 vs `%cI` 差 >1 天"
+> 在 `verify/`、`scripts/` **仍零实现**（2026-09-29 就地降级、G3 第 6 条；2026-11-13 复核
+> 仍为零），且它**不在编号域**（行 403 是散文规则）⇒ 它的状态是
+> **`declared-unverifiable`**，**不是** `machine`；本批没有把它变绿。
+
+| 规则号 | 状态 | 执行点／判据 | 理由或复核日期 |
+|---|---|---|---|
+| 1 | manual | 人工：派单 brief 逐字核对标识符来源（仓库/分支/事件随 id 一起打印）；机器只兜工具侧——`scripts/agent-ops.py` 的 `_resolve_sha()` 使短/坏 sha 当场拒收 | prompt 文本无判据读得到，"手抄"本身仍无机检（2026-11-13 复核） |
+| 2 | manual | 人工：中断后翻 `agents/runs/<run_id>/` 看任务清单与进度；机器只兜"终态未写回"（`verify/verify_ledger_measurement.py` 的 `terminal_not_written_back`） | "半成品代码"与"清单是否真写"是语义判断（2026-11-13 复核） |
+| 3 | declared-unverifiable | 人工：评审时逐条追问"这条对照打的是真实入口还是副本"；同族反例留档于 `agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD` | §6.0 M11 已明文**无（仅文字）**：对照质量是语义判断（2026-11-13 复核） |
+| 4 | manual | 人工：任何"已修"结论先 `git show <sha>` 对比提交态，报告与提交信息只当主张 | 没有判据能读"复核动作"本身（2026-11-13 复核） |
+| 5 | manual | 人工：CI 等价模拟一律 `git clone`（含 `.git` 全历史），只复制文件树的模拟不算等价证据 | 无判据检查"模拟方式"（2026-11-13 复核） |
+| 6 | manual | 人工：派单前先做最小复现；做不到就在 brief 里写"先验前提、不成立立即回报" | "前提是否复现过"无判据（2026-11-13 复核） |
+| 7 | manual | 人工：反例档文件存在、案例编号连续可人核 | "当日追加"无判据（§6.0 M8 半自动；2026-11-13 复核） |
+| 8 | manual | 人工：机制缺口同样当日追加到 `agents-infra/2026-09-25-gate-mechanism-failure-modes-case.MD` | "当日追加"无判据（§6.0 M8 半自动；2026-11-13 复核） |
+| 9 | manual | 人工：提问前先查 `docs/6-DECISIONS.md` 并带 (a)(b)(c) 三件事；机器只判登记册自身合规（`verify/verify_decision_register.py`） | "是否裸提问"发生在对话里（2026-11-13 复核） |
+| 10 | machine | `verify/verify_close_tax_reading.py`：`--sprint` 档把读数行与报告派生值逐字比较，缺行且自称关闭即 FAIL；**覆盖边界**：套件默认档走自检，该判据只在 `--sprint`／CI 档生效 | 2026-11-13 复核（§6.0 M2 同口径） |
+| 11 | declared-unverifiable | 人工：用户以"是否仍需追问"验收 | 本条正文自陈"只由用户是否仍需追问来验收（无机检）"（2026-11-13 复核） |
+| 12 | machine | `verify/verify_derived_numbers.py`（文档当期数字主张按文件棘轮）＋ `verify/verify_close_tax_reading.py`（读数只从报告派生）；**覆盖边界**：判不了"报告当时是否存在" | 本条正文自陈另一半（"有没有真值"）无机检（2026-11-13 复核） |
+| 13 | manual | 人工：每轮回复把"已完成（带证据）"与"未派单（明写原因）"分开 | 将来时与台账四态无判据（2026-11-13 复核） |
+| 14 | machine | `verify/verify_close_readiness.py`（C3 未归属提交逐条点名）＋ `verify/verify_agentops.py`（绑定/窗口反向对照）＋ `scripts/agent-ops.py` 的 `writer` 留痕；**覆盖边界**：无提交的派单仍不可见 | 2026-11-13 复核（A-REG 同日落地，兜底仍是 C3） |
+| 15 | placeholder | — | 编号空缺占位（行 444 自陈"本行不是规则"） |
+| 16 | manual | 人工：不可逆证据前先做廉价确认；方向可能被否就先停手报我 | "该不该先确认"是判断（2026-11-13 复核） |
+| 17 | machine | `verify/verify_spend_report.py` ＋ `scripts/spend-report.py --check`（当日派单数／主代理 output／合计 CNY 三项超预算即非零退出）；**覆盖边界**：成本按会话日志反推，不按 run 归属 | 2026-11-13 复核 |
+| 18 | declared-unverifiable | 人工：克隆内验证一律 `git -c core.autocrlf=false clone`，并在克隆里再设一次 | §6.0 M7 已明文**无（仅文字）**（2026-11-13 复核） |
+| 19 | machine | `verify/verify_close_readiness.py`（端点/覆盖窗口）＋ `verify/verify_ledger_measurement.py`（`missing_result_files_review`、`terminal_not_written_back`）；**覆盖边界**：brief 文本与 (B) 廉价确认无机检 | 2026-11-13 复核 |
