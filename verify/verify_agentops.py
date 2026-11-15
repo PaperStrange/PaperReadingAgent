@@ -25,8 +25,9 @@ clobber（一方删掉另一方正在用的探针 → 两边都 rc=1，
 """
 
 from __future__ import annotations
-VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1 起（**编号区间与条数以末行 `ALL PASS (N assertions)` 现跑为准，勿在本串写死**；离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库，UC-19=TG-8 离线开关：三入口拒绝+反向对照+配置面+两侧一致，UC-27=成本预算阻断与**兜底阶梯**（2026-10-03 用户裁定 A：**账本读数**当日派单数>=预算即拒绝 `register`（点名读数/预算/逃生门），含空账本第一笔/别的 role/未超预算乱传/配置坏 fail-closed/未配置预算未执行 真驱动反向对照；金额轴不阻断并在文案里标注度量仪作用域缺陷。**同日追加裁定「超过时也要有兜底策略」**：逃生门收紧要**四把锁**——① 理由必须含可核引用（`D-YYMMDD-NN` 条目号或全角引号内的用户原话；**自述理由不算数**，且条目号两侧挡 [0-9A-Za-z] 与汉字，`D-251002-01之外` 不得冒充）② 同日次数上限（超限拒绝并点名已用几次/被谁用掉）③ 恰好一类具名例外类别（收口／安全）④ 理由下限；另含兜底建议上屏、被拒派单进 `dispatch-refusals.jsonl`（字段完整）、真仓缺预算文件 fail-closed vs `AGENT_OPS_DIR` 重定向档判未执行 两侧对照））', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 20, 'routes': [], 'requires': ['none']}
+VERIFY_META = {'features': 'AgentOps 账本 CLI 用例断言 UC-1 起（**编号区间与条数以末行 `ALL PASS (N assertions)` 现跑为准，勿在本串写死**；离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库，UC-19=TG-8 离线开关：三入口拒绝+反向对照+配置面+两侧一致，UC-27=成本预算阻断与**兜底阶梯**（2026-10-03 用户裁定 A：**账本读数**当日派单数>=预算即拒绝 `register`（点名读数/预算/逃生门），含空账本第一笔/别的 role/未超预算乱传/配置坏 fail-closed/未配置预算未执行 真驱动反向对照；金额轴不阻断并在文案里标注度量仪作用域缺陷。**同日追加裁定「超过时也要有兜底策略」**：逃生门收紧要**四把锁**——① 理由必须含可核引用（`D-YYMMDD-NN` 条目号或全角引号内的用户原话；**自述理由不算数**，且条目号两侧挡 [0-9A-Za-z] 与汉字，`D-251002-01之外` 不得冒充）② 同日次数上限（超限拒绝并点名已用几次/被谁用掉）③ 恰好一类具名例外类别（收口／安全）④ 理由下限；另含兜底建议上屏、被拒派单进 `dispatch-refusals.jsonl`（字段完整）、真仓缺预算文件 fail-closed vs `AGENT_OPS_DIR` 重定向档判未执行 两侧对照）, UC-28=A-REG① 写入者身份（writer env/flag/unknown 三档 + writer_trail + 回填口 + 旧行兼容 + 真账本读侧）, UC-29=A-REG② 提交↔run 绑定（`run:` 标记必须核上账本 succeeded，缺失／状态不符分开点名；不带标记不判红、只列出；账本缺失第三态 rc=3；非法区间 rc=2；%TEMP% 夹具仓库真驱动））', 'tier': 'offline', 'providers': [], 'est_cost_cny': 0, 'est_seconds': 20, 'routes': [], 'requires': ['none']}
 
+import hashlib
 import json
 import os
 import re
@@ -2631,6 +2632,231 @@ def main() -> int:
                and not _uc27_legacy_ok([_fake, _fake], _today8)
                and _uc27_legacy_ok([_fake], _today8),
                f"today={_today8} tomorrow={_tmr}")
+
+        # ---- UC-28（A-REG ①，2026-11-12）：账本每次状态变更都记「谁按的键」
+        # ---- 三档来源（env/flag/unknown）+ trail（register/finish/update）+
+        # 回填口同口径 + 旧行兼容（读侧默认）。真账本读侧另有一条（缺则 SKIP）。
+        u28 = tmp / "uc28"
+        env28 = {**base_env, "AGENT_OPS_DIR": str(u28),
+                 "DSH_AGENT_ID": "agent-145", "DSH_SESSION_ID": "sess-145"}
+        reg28 = u28 / "runtime" / "registry.json"
+
+        def _row28(rid: str) -> dict:
+            runs = json.loads(reg28.read_text(encoding="utf-8"))["runs"]
+            return next(x for x in runs if x["run_id"] == rid)
+
+        run(["register", "--role", "implementation", "--task", "uc28-env",
+             "--spec", "implementation@1.0.0", "--run-id", "run-uc28-env",
+             "--start"], env28, check=True)
+        w28 = _row28("run-uc28-env").get("writer") or {}
+        ok("UC-28 ①env 档：register 自动记 writer（how=env、by 含 agent/session、"
+           "src 与采信键一致、at 非空）",
+           w28.get("how") == "env"
+           and "dsh_agent_id=agent-145" in w28.get("by", "")
+           and (w28.get("src") or [])[:2] == ["DSH_AGENT_ID", "DSH_SESSION_ID"]
+           and bool(w28.get("at")),
+           f"writer={w28}")
+        run(["register", "--role", "implementation", "--task", "uc28-flag",
+             "--spec", "implementation@1.0.0", "--run-id", "run-uc28-flag",
+             "--start", "--by", "lead-145"], env28, check=True)
+        w28f = _row28("run-uc28-flag").get("writer") or {}
+        ok("UC-28 ②flag 档：显式 --by 覆盖 env（how=flag、src 空、by 逐字）",
+           w28f.get("how") == "flag" and w28f.get("by") == "lead-145"
+           and w28f.get("src") == [],
+           f"writer={w28f}")
+        # unknown 档：把可识别键整体摘掉（不留 USERNAME/COMPUTERNAME 兜底）
+        noid = {k: v for k, v in env28.items()
+                if k not in ("DSH_AGENT_ID", "DSH_SESSION_ID",
+                             "USERNAME", "USER", "COMPUTERNAME")}
+        r = run(["register", "--role", "implementation", "--task", "uc28-unk",
+                 "--spec", "implementation@1.0.0", "--run-id", "run-uc28-unk",
+                 "--start"], noid, check=True)
+        w28u = _row28("run-uc28-unk").get("writer") or {}
+        ok("UC-28 ③unknown 档：无 --by 且 env 无识别键 ⇒ by/how=unknown，"
+           "且回执明说（不伪造身份）",
+           w28u.get("by") == "unknown" and w28u.get("how") == "unknown"
+           and w28u.get("src") == [] and "writer=unknown" in r.stdout,
+           f"writer={w28u} receipt={'writer=unknown' in r.stdout}")
+        run(["finish", "run-uc28-flag", "--status", "succeeded",
+             "--output-chars", "77", "--by", "exec-145",
+             *DEGEN_FIXTURE_ARGS], env28, check=True)
+        rowf = _row28("run-uc28-flag")
+        t28 = rowf.get("writer_trail") or []
+        ok("UC-28 ④finish 追加第二条 trail（cmd=finish/status=succeeded），"
+           "run 的 writer 跟随最后写者",
+           len(t28) == 2 and t28[0].get("cmd") == "register"
+           and t28[-1].get("cmd") == "finish"
+           and t28[-1].get("status") == "succeeded"
+           and (rowf.get("writer") or {}).get("by") == "exec-145",
+           f"trail={[x.get('cmd') for x in t28]}")
+        run(["register", "--role", "implementation", "--task", "uc28-q",
+             "--spec", "implementation@1.0.0", "--run-id", "run-uc28-q"],
+            env28, check=True)
+        run(["update", "run-uc28-q", "--status", "running",
+             "--by", "exec-145"], env28, check=True)
+        tq = _row28("run-uc28-q").get("writer_trail") or []
+        ok("UC-28 ⑤queued→running 也留一条（每次状态变更都有写者）",
+           [x.get("cmd") for x in tq] == ["register", "update"]
+           and tq[-1].get("by") == "exec-145",
+           f"trail={[x.get('cmd') for x in tq]}")
+        prev28 = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD~1"],
+                                capture_output=True, text=True,
+                                encoding="utf-8").stdout.strip()
+        run(["set-anchor", "run-uc28-env", "--covers-through", prev28,
+             "--reason", "UC-28：回填口也要记「谁按的键」",
+             "--by", "lead-145"], env28, check=True)
+        b28 = (_row28("run-uc28-env").get("anchor_backfills") or [])[-1]
+        ok("UC-28 ⑥a 回填口：留痕同时带 `writer`（本次 flag 档）与既有 `by`",
+           (b28.get("writer") or {}).get("by") == "lead-145"
+           and (b28.get("writer") or {}).get("how") == "flag"
+           and b28.get("by") == "lead-145",
+           f"by={b28.get('by')} writer={(b28.get('writer') or {}).get('how')}")
+        run(["set-anchor", "run-uc28-env", "--anchor", prev28,
+             "--reason", "UC-28：未给 --by 时既有 by 语义不变"],
+            env28, check=True)
+        b28b = (_row28("run-uc28-env").get("anchor_backfills") or [])[-1]
+        ok("UC-28 ⑥b 未给 --by：既有 `by` 仍是 main-agent（字段语义不改），"
+           "writer 走 env 档",
+           b28b.get("by") == "main-agent"
+           and (b28b.get("writer") or {}).get("how") == "env",
+           f"by={b28b.get('by')} writer={(b28b.get('writer') or {}).get('how')}")
+        # 旧行兼容（读侧默认）：剥掉两个新键 + 按 CLI 同一口径重算 integrity。
+        legacy = tmp / "uc28-legacy"
+        (legacy / "runtime").mkdir(parents=True)
+        bare = [{k: v for k, v in x.items()
+                 if k not in ("writer", "writer_trail")}
+                for x in json.loads(reg28.read_text(encoding="utf-8"))["runs"]]
+        legacy_doc = {
+            "version": 1, "runs": bare,
+            "integrity": hashlib.sha256(
+                json.dumps(bare, ensure_ascii=False,
+                           sort_keys=True).encode("utf-8")).hexdigest(),
+        }
+        (legacy / "runtime" / "registry.json").write_text(
+            json.dumps(legacy_doc, ensure_ascii=False, indent=2),
+            encoding="utf-8")
+        r = run(["list"], {**base_env, "AGENT_OPS_DIR": str(legacy)},
+                check=True)
+        ok("UC-28 ⑦旧行兼容：剥掉 writer/writer_trail 并重算 integrity 的账本行"
+           "仍被 CLI 读出，输出不多出 by=（读侧给默认）",
+           "run-uc28-env" in r.stdout and "by=" not in r.stdout,
+           f"rc={r.returncode}")
+        _led28 = read_real_ledger(real_ledger_path())
+        if _led28 is None:
+            skip_ledger_absent("UC-28 ⑧真账本读侧兼容")
+        else:
+            real_env = {k: v for k, v in base_env.items()
+                        if k != "AGENT_OPS_DIR"}
+            r = run(["list", "--limit", "3"], real_env, raw=True)
+            n_leg28 = sum(1 for x in _led28["runs"] if not x.get("writer"))
+            ok("UC-28 ⑧真账本读侧兼容：存量行无 writer 也照常读出"
+               "（新字段不得让旧行 fail-closed）",
+               r.returncode == 0 and "--- 3 runs ---" in r.stdout,
+               f"rows={len(_led28['runs'])} 无 writer 行={n_leg28}")
+
+        # ---- UC-29（A-REG ②，2026-11-12）：提交 ↔ run 绑定，**咨询式**
+        # ---- 判据：带 `run:` 标记必须核上账本且 succeeded（缺失／状态不符分开
+        # 点名）；不带标记**不 FAIL**、但要能列出；账本缺失是第三态（rc=3）；
+        # 非法区间是调用错误（rc=2）。夹具仓库全在 %TEMP%，不碰真仓。
+        u29 = tmp / "uc29"
+        u29.mkdir()
+        led29 = u29 / "ledger.json"
+        led29.write_text(json.dumps({"runs": [
+            {"run_id": "run-2026-11-12-implementation-145",
+             "status": "succeeded"},
+            {"run_id": "run-2026-11-12-code-review-146", "status": "running"},
+        ]}, ensure_ascii=False), encoding="utf-8")
+
+        def _repo29(root: Path, msg: str) -> Path:
+            # 目录由调用方用**字面量**路径建：`verify_artifact_paths.py` 的落点分解
+            # 要求基座可静态判定（参数派生的 mkdir 会记成"动态目标"顶破棘轮）。
+            for argv in (["init", "-q"],
+                         ["-c", "user.name=fixture", "-c",
+                          "user.email=fixture@invalid", "-c",
+                          "commit.gpgsign=false", "commit", "--allow-empty",
+                          "-q", "-m", msg]):
+                subprocess.run(["git", "-C", str(root), *argv], check=True,
+                               capture_output=True, text=True, encoding="utf-8")
+            return root
+
+        def _bind29(repo: Path, ledger: Path,
+                    *extra: str) -> subprocess.CompletedProcess:
+            return run(["check-bindings", "--repo", str(repo),
+                        "--ledger", str(ledger), *extra], base_env, raw=True)
+
+        repo_missing = u29 / "repo-missing"
+        repo_missing.mkdir()
+        _repo29(repo_missing,
+                "bad: claims a run\n\nrun: run-2026-11-12-x-999")
+        r = _bind29(repo_missing, led29)
+        sha_m = subprocess.run(
+            ["git", "-C", str(repo_missing), "rev-parse", "HEAD"],
+            capture_output=True, text=True, encoding="utf-8").stdout.strip()
+        ok("UC-29 ①真驱动：带 `run:` 指向不存在的 id ⇒ rc=1，点名 sha 与"
+           "『登记缺失』",
+           r.returncode == 1 and "run-2026-11-12-x-999" in r.stdout
+           and sha_m[:10] in r.stdout and "登记缺失" in r.stdout,
+           f"rc={r.returncode}")
+        repo_ok = u29 / "repo-ok"
+        repo_ok.mkdir()
+        _repo29(repo_ok, "good: bound twice\n\n"
+                         "run: run-2026-11-12-implementation-145\n"
+                         "run: run-2026-11-12-implementation-145")
+        r = _bind29(repo_ok, led29)
+        ok("UC-29 ②真驱动：指向存在且 succeeded 的 id ⇒ rc=0；重复标记去重、"
+           "不重复计数",
+           r.returncode == 0 and "带标记 1 个" in r.stdout
+           and "BINDING-FAIL" not in r.stdout,
+           f"rc={r.returncode}")
+        repo_plain = u29 / "repo-plain"
+        repo_plain.mkdir()
+        _repo29(repo_plain, "chore: plain commit")
+        sha_p = subprocess.run(
+            ["git", "-C", str(repo_plain), "rev-parse", "HEAD"],
+            capture_output=True, text=True, encoding="utf-8").stdout.strip()
+        r = _bind29(repo_plain, led29, "--list-unbound")
+        ok("UC-29 ③真驱动：不带 `run:` ⇒ **不 FAIL**（rc=0），但该提交出现在"
+           "『无绑定提交』清单里",
+           r.returncode == 0 and "UNBOUND " + sha_p[:10] in r.stdout
+           and "BINDING-FAIL" not in r.stdout,
+           f"rc={r.returncode}")
+        repo_rerun = u29 / "repo-rerun"
+        repo_rerun.mkdir()
+        _repo29(repo_rerun, f"chore: rerun: {sha_p} only")
+        r = _bind29(repo_rerun, led29, "--list-unbound")
+        ok("UC-29 ④假命中防护：`rerun: <id>` 不算 `run:` 标记 ⇒ 不 FAIL、"
+           "按无绑定列出（词边界）",
+           r.returncode == 0 and "带标记 0 个" in r.stdout
+           and "UNBOUND " in r.stdout,
+           f"rc={r.returncode}")
+        repo_running = u29 / "repo-running"
+        repo_running.mkdir()
+        _repo29(repo_running, "wip: bound to a running run\n\n"
+                              "run: run-2026-11-12-code-review-146")
+        r = _bind29(repo_running, led29)
+        ok("UC-29 ⑤真驱动：存在但 status=running ⇒ rc=1 且点名 `status=running`"
+           "（须 succeeded）",
+           r.returncode == 1 and "status=running" in r.stdout,
+           f"rc={r.returncode}")
+        r = _bind29(repo_ok, u29 / "ledger-absent.json")
+        ok("UC-29 ⑥账本缺失但区间内有标记 ⇒ rc=3 且『本档不是通过』"
+           "（不得退 0 冒充通过）",
+           r.returncode == 3 and "本档不是通过" in r.stdout
+           and "ALL PASS" not in r.stdout,
+           f"rc={r.returncode}")
+        r = _bind29(repo_plain, led29, "--range", "no-such-ref..HEAD")
+        ok("UC-29 ⑦调用错误：非法区间 ⇒ rc=2 + `USAGE-ERROR`"
+           "（与『有违例』『无违例』都分开）",
+           r.returncode == 2 and "USAGE-ERROR" in (r.stdout + r.stderr),
+           f"rc={r.returncode}")
+        _real_env29 = {k: v for k, v in base_env.items()
+                       if k != "AGENT_OPS_DIR"}
+        r = run(["check-bindings", "--limit", "5"], _real_env29, raw=True)
+        ok("UC-29 ⑧真数据：本仓最近 5 个提交无违例（带标记者全部核上），"
+           "上屏 提交/带标记/无绑定 三个计数",
+           r.returncode == 0 and "提交 5 个" in r.stdout
+           and "无绑定" in r.stdout,
+           f"rc={r.returncode} out={r.stdout.strip()[:70]}")
 
         # UC-7：手改 registry → CLI 下一次写入拒绝
         data = json.loads(registry.read_text(encoding="utf-8"))

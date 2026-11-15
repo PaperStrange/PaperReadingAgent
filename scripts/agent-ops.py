@@ -28,6 +28,8 @@
   python scripts/agent-ops.py list [--status S] [--role R] [--limit N]
   python scripts/agent-ops.py close-sync --sprint <sprint.md> [--write]
   [--fail-on-unowned]   # TG-15⑤ 覆盖候选生成
+  python scripts/agent-ops.py check-bindings [--range A..B] [--limit N]
+  [--list-unbound]      # A-REG②：核提交里的 `run: <id>` 标记（咨询式，只读）
   python scripts/agent-ops.py set-anchor <run_id> [--anchor <sha>] [--covers-through
   <sha>] --reason <理由>
   python scripts/agent-ops.py set-scope <run_id> [--source <src>] [--deviation <理由>]
@@ -63,6 +65,11 @@
   （agents/fanout.json + agents/functions/*.md frontmatter + agents/policy.json），
   本文件不得再出现政策常量；加载器 verify/agent_policy.py，
   规则见 docs/1-WORKFLOW.MD §6（政策数据化）。
+
+写入者身份（A-REG ①，2026-11-12）：`register`/`update`/`finish` 与各回填口在每次
+状态变更时记 `writer`（`{"by","how","src","at"}`，`how` ∈ flag/env/unknown）并追加
+`writer_trail[]`；`--by` 显式覆盖，拿不到识别信息记 `unknown` 且回执说明。
+旧账本行没有该键仍可读（读侧走 `writer_of()` 给默认）。
 """
 from __future__ import annotations
 
@@ -125,8 +132,8 @@ _CHARS_PER_TOKEN = 4.0  # UC-4 兜底：无 token 上报时 tokens ≈ chars/4
 # 规则见 1-WORKFLOW.MD §6（政策数据化）。
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from verify.agent_policy import (load_policy, parse_frontmatter,  # noqa: E402
-                                path_in_head)
+from verify.agent_policy import (PolicyError, git, load_policy,  # noqa: E402
+                                 parse_frontmatter, path_in_head)
 from verify.outbound_guard import refuse_or_exit  # noqa: E402
 
 _POLICY = None
@@ -219,6 +226,71 @@ _TZ_OFFSET_HOURS = 8  # UTC+8（项目权威时区；见 docs/1-WORKFLOW.MD 的�
 def _local_date() -> str:
     """项目权威时区的日期 `YYYY-MM-DD`（自动 run-id 的日期段）。"""
     return (datetime.now(timezone.utc) + timedelta(hours=_TZ_OFFSET_HOURS)).strftime("%Y-%m-%d")
+
+
+# A-REG ①（2026-11-12）：账本**每次状态变更**都要记「谁按的键」。
+# 身份来源**现查 env 取证**（不猜、不伪造）：两路都拿不到就记 unknown。
+_WRITER_ENV_KEYS = ("DSH_AGENT_ID", "DSH_SESSION_ID", "USERNAME", "USER",
+                    "COMPUTERNAME")
+
+
+def _writer_sources() -> list[tuple[str, str]]:
+    """现查本进程里可用于识别调用者的 env（键, 值）；空值不算。"""
+    found: list[tuple[str, str]] = []
+    for key in ("DSH_AGENT_ID", "DSH_SESSION_ID"):
+        val = (os.environ.get(key) or "").strip()
+        if val:
+            found.append((key, val))
+    for key in ("USERNAME", "USER"):  # Windows / POSIX 二者取其一
+        val = (os.environ.get(key) or "").strip()
+        if val:
+            found.append((key, val))
+            break
+    host = (os.environ.get("COMPUTERNAME") or "").strip()
+    if host:
+        found.append(("COMPUTERNAME", host))
+    return found
+
+
+def _writer_of(args: argparse.Namespace | None = None) -> dict:
+    """本次写入的身份记录 `{"by", "how", "src", "at"}`（A-REG ① 的核心字段）。
+
+    `how`：`flag` = 调用者显式给 `--by`；`env` = 现查环境变量取证；
+    `unknown` = 两路都拿不到——**记录不谎称身份**，回执另行说明。
+    `src`：采信了哪些 env 键（`flag`/`unknown` 档为空）。
+    只增不改既有字段：旧账本行没有该键，读侧一律走 `writer_of()` 取默认。
+    """
+    flag = (getattr(args, "by", "") or "").strip() if args is not None else ""
+    if flag:
+        return {"by": flag, "how": "flag", "src": [], "at": _now()}
+    sources = _writer_sources()
+    if not sources:
+        return {"by": "unknown", "how": "unknown", "src": [], "at": _now()}
+    return {"by": "|".join(f"{k.lower()}={v}" for k, v in sources),
+            "how": "env", "src": [k for k, _ in sources], "at": _now()}
+
+
+def writer_of(run: dict) -> dict:
+    """读侧默认（向后兼容）：旧行没有 `writer` ⇒ `how="legacy"`、身份不声称。"""
+    got = run.get("writer")
+    if isinstance(got, dict) and got.get("by"):
+        return got
+    return {"by": "unknown", "how": "legacy", "src": [], "at": None}
+
+
+def _trail_append(run: dict, writer: dict, cmd: str, status: str) -> None:
+    """把本次写入追加进 `writer_trail`（每次状态变更一条，含哪条命令改到哪个状态）。"""
+    run.setdefault("writer_trail", []).append(
+        {**writer, "cmd": cmd, "status": status})
+
+
+def _print_writer(writer: dict, receipt: str) -> None:
+    """回执说明：`unknown` 档必须上屏（不静默），其余档报来源与识别串。"""
+    if writer["how"] == "unknown":
+        print(f"⚠ {receipt}: writer=unknown（无 --by 且 env 无识别键）"
+              "——本记录不声称身份（A-REG ①）")
+    else:
+        print(f"{receipt}: writer={writer['how']} by={writer['by']}")
 
 
 def _duration_minutes(start: str, end: str) -> float | None:
@@ -1407,6 +1479,10 @@ def cmd_register(args: argparse.Namespace) -> None:
         "tags": {},
         "error": None,
     }
+    # A-REG ①：登记方是谁——`register` 是**派单方**按的键，必须可核。
+    writer = _writer_of(args)
+    entry["writer"] = writer
+    _trail_append(entry, writer, "register", entry["status"])
     # TG-13：测量来源（此刻只有 started_at、没有 ended_at → unknown，
     # 禁止写 0.00 冒充测量值）
     _apply_measurement(entry)
@@ -1418,6 +1494,7 @@ def cmd_register(args: argparse.Namespace) -> None:
     data["runs"].append(entry)
     _save_registry(data)
     print(f"registered {run_id} (status={entry['status']})")
+    _print_writer(writer, "registered")
 
 
 def _apply_usage(r: dict, args: argparse.Namespace) -> None:
@@ -1445,6 +1522,10 @@ def cmd_update(args: argparse.Namespace) -> None:
         r["status"] = args.status
         if not r["started_at"]:
             r["started_at"] = _now()
+        # A-REG ①：queued -> running 也是状态变更，同样记「谁按的键」。
+        writer = _writer_of(args)
+        r["writer"] = writer
+        _trail_append(r, writer, "update", r["status"])
     _apply_usage(r, args)
     _apply_measurement(r)  # TG-13：时间戳变了就刷新测量来源/时长（仍是 running → unknown）
     _save_registry(data)
@@ -1479,6 +1560,7 @@ def cmd_set_anchor(args: argparse.Namespace) -> None:
     """
     data = _load_registry()
     r = _find_run(data, args.run_id)
+    w = _writer_of(args)  # A-REG ①：回填口也记「谁按的键」
     raw_anchor = (getattr(args, "anchor", "") or "").strip()
     raw_through = (getattr(args, "covers_through", "") or "").strip()
     if not raw_anchor and not raw_through:
@@ -1514,7 +1596,7 @@ def cmd_set_anchor(args: argparse.Namespace) -> None:
         r[label] = resolved
         r.setdefault("anchor_backfills", []).append(
             {"at": _now(), "field": label, "from": old, "to": resolved,
-             "reason": reason, "by": args.by})
+             "reason": reason, "by": args.by or "main-agent", "writer": w})
         changed.append(f"{label} {str(old or '')[:8] or 'none'} -> {resolved[:8]}")
     if changed:
         _save_registry(data)
@@ -1563,6 +1645,7 @@ def cmd_set_scope(args: argparse.Namespace) -> None:
     """
     data = _load_registry()
     r = _find_run(data, args.run_id)
+    w = _writer_of(args)  # A-REG ①：回填口也记「谁按的键」
     reason = (args.reason or "").strip()
     if len(reason) < 10:
         raise SystemExit(
@@ -1598,7 +1681,7 @@ def cmd_set_scope(args: argparse.Namespace) -> None:
         r[field] = new
         r.setdefault("scope_backfills", []).append(
             {"at": _now(), "field": field, "from": old, "to": new,
-             "reason": reason, "by": args.by})
+             "reason": reason, "by": args.by or "main-agent", "writer": w})
         changed.append(f"{field} {str(old)[:40]!r} -> {str(new)[:40]!r}")
     if changed:
         _save_registry(data)
@@ -1629,6 +1712,7 @@ def cmd_set_sprint(args: argparse.Namespace) -> None:
     """
     data = _load_registry()
     r = _find_run(data, args.run_id)
+    w = _writer_of(args)  # A-REG ①：回填口也记「谁按的键」
     reason = (args.reason or "").strip()
     if len(reason) < 10:
         raise SystemExit(
@@ -1645,7 +1729,7 @@ def cmd_set_sprint(args: argparse.Namespace) -> None:
     r["sprint"] = new
     r.setdefault("sprint_backfills", []).append(
         {"at": _now(), "field": "sprint", "from": old, "to": new,
-         "reason": reason, "by": args.by})
+         "reason": reason, "by": args.by or "main-agent", "writer": w})
     _save_registry(data)
     print(f"sprint updated {r['run_id']}: {old!r} -> {new!r} "
           f"(backfills={len(r['sprint_backfills'])})")
@@ -1675,6 +1759,7 @@ def cmd_set_result_files(args: argparse.Namespace) -> None:
     """
     data = _load_registry()
     r = _find_run(data, args.run_id)
+    w = _writer_of(args)  # A-REG ①：回填口也记「谁按的键」
     reason = (args.reason or "").strip()
     if len(reason) < 10:
         raise SystemExit(
@@ -1697,7 +1782,7 @@ def cmd_set_result_files(args: argparse.Namespace) -> None:
     r["result_files"] = wanted
     r.setdefault("result_files_backfills", []).append(
         {"at": _now(), "field": "result_files", "from": old, "to": wanted,
-         "reason": reason, "by": args.by or "main-agent"})
+         "reason": reason, "by": args.by or "main-agent", "writer": w})
     _save_registry(data)
     print(f"result_files updated {r['run_id']}: {len(old)} -> {len(wanted)} 条 "
           f"(backfills={len(r['result_files_backfills'])})")
@@ -1724,6 +1809,7 @@ def cmd_set_output_chars(args: argparse.Namespace) -> None:
     """
     data = _load_registry()
     r = _find_run(data, args.run_id)
+    w = _writer_of(args)  # A-REG ①：回填口也记「谁按的键」
     try:
         new = int(args.chars)
     except (TypeError, ValueError):
@@ -1740,7 +1826,7 @@ def cmd_set_output_chars(args: argparse.Namespace) -> None:
     r["output_chars"] = new
     trail = r.setdefault("output_chars_backfills", [])
     trail.append({"at": _now(), "by": args.by or "main-agent", "old": old, "new": new,
-                  "reason": reason})
+                  "reason": reason, "writer": w})
     _save_registry(data)
     print(f"output_chars updated {args.run_id}: {old} -> {new} (backfills={len(trail)})")
 
@@ -1772,6 +1858,7 @@ def cmd_set_started_at(args: argparse.Namespace) -> None:
 
     data = _load_registry()
     r = _find_run(data, args.run_id)
+    w = _writer_of(args)  # A-REG ①：回填口也记「谁按的键」
     raw = (args.at or "").strip()
     try:
         new_dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
@@ -1807,7 +1894,7 @@ def cmd_set_started_at(args: argparse.Namespace) -> None:
     r["started_at"] = new
     trail = r.setdefault("started_at_backfills", [])
     trail.append({"at": _now(), "by": args.by or "main-agent", "old": old, "new": new,
-                  "evidence": ev, "reason": reason})
+                  "evidence": ev, "reason": reason, "writer": w})
     _save_registry(data)
     print(f"started_at updated {args.run_id}: {old} -> {new} (backfills={len(trail)})")
 
@@ -1850,6 +1937,7 @@ def cmd_mark_produced(args: argparse.Namespace) -> None:
     """
     data = _load_registry()
     r = _find_run(data, args.run_id)
+    w = _writer_of(args)  # A-REG ①：回填口也记「谁按的键」
     reason = (args.reason or "").strip()
     if len(reason) < 10:
         raise SystemExit(
@@ -1863,7 +1951,8 @@ def cmd_mark_produced(args: argparse.Namespace) -> None:
         r["produced_only"] = False
         r.pop("produced_only_reason", None)
         r.setdefault("produced_only_marks", []).append(
-            {"at": _now(), "action": "unmark", "reason": reason, "by": args.by})
+            {"at": _now(), "action": "unmark", "reason": reason,
+             "by": args.by or "main-agent", "writer": w})
         _save_registry(data)
         print(f"mark-produced {r['run_id']}: 已撤回标注"
               f" (marks={len(r['produced_only_marks'])})")
@@ -1898,7 +1987,8 @@ def cmd_mark_produced(args: argparse.Namespace) -> None:
     r["produced_only"] = True
     r["produced_only_reason"] = reason
     r.setdefault("produced_only_marks", []).append(
-        {"at": _now(), "action": "mark", "reason": reason, "by": args.by,
+        {"at": _now(), "action": "mark", "reason": reason,
+         "by": args.by or "main-agent", "writer": w,
          "window": f"{anchor[:8]}..{through[:8]}"})
     _save_registry(data)
     print(f"mark-produced {r['run_id']}: produced_only=True"
@@ -2155,6 +2245,7 @@ def cmd_retract(args: argparse.Namespace) -> None:
     trail = data.setdefault("retractions", [])
     trail.append({"at": _now(), "by": args.by or "main-agent", "run_id": rid,
                   "reason": reason, "evidence": ev,
+                  "writer": _writer_of(args),
                   "evidence_sha256": ev_sha,
                   "status_at_retraction": status_before, "quarantine": quarantine})
     _save_registry(data)
@@ -2201,6 +2292,10 @@ def cmd_finish(args: argparse.Namespace) -> None:
         raise SystemExit(f"非法流转 {r['status']} -> {args.status}（finish 仅允许 running -> terminal）")
     r["status"] = args.status
     r["ended_at"] = _now()
+    # A-REG ①：收尾方是谁——`finish` 是**执行方**按的键，与登记方分属两行留痕。
+    writer = _writer_of(args)
+    r["writer"] = writer
+    _trail_append(r, writer, "finish", r["status"])
     # TG-15 ③：收尾时记录覆盖上界（= 收尾时的 HEAD）
     # ——此前"三查锚点"要人往 Sprint 文档手抄，
     # 抄漏/抄错没有任何装置能发现；改为 run 自动记录后，闸门直接读账本，
@@ -2253,6 +2348,7 @@ def cmd_finish(args: argparse.Namespace) -> None:
         print(f"⚠已具名豁免退化：{_deg_note}"
               "（该时长不是测量值；账本按 declared/null 记，"
               "理由入该行 `degenerate_reason`）")
+    _print_writer(writer, "finished")
 
 
 @_with_registry_lock
@@ -2385,13 +2481,133 @@ def cmd_list(args: argparse.Namespace) -> None:
         # 关闭报告就会"看着全绿"而无人知道有豁免在生效
         # （与 C3-T 例外表"逐条 sha 钉死 + 写理由"同源的可见性要求）。
         produced = " produced(!)" if r.get("produced_only") else ""
+        # A-REG ①：写入者身份可见（旧行没有该键 ⇒ 什么都不打印，输出逐字不变）。
+        who = writer_of(r)
+        by = f" by={who['by']}" if who["how"] != "legacy" else ""
         print(f"{r['run_id']:30s} {r['role']:20s} {r['status']:10s} "
               f"cost={r.get('cost_est', {}).get('total')} spec={r['spec_source']}"
-              f" rounds={rounds}{dur}{intr}{scope}{cov}{produced}")
+              f" rounds={rounds}{dur}{intr}{scope}{cov}{produced}{by}")
     print(f"--- {len(rows)} runs ---")
 
 
 _ANCHOR_RE = re.compile(r"\**三查锚点\**\s*[:：]\s*`?([0-9a-fA-F]{7,40})`?")
+
+# A-REG ②（2026-11-12）：提交 ↔ run 绑定，**咨询式**——不阻断提交。
+# 约定：提交信息里可带 `run: run-YYYY-MM-DD-<role>-<n>`。带标记就必须核得上；
+# 不带标记**不 FAIL**（主代理直改的提交本来就没有 run），但要能列出来供人工判。
+# 纯函数 `parse_run_markers` / `binding_report` 是判据的唯一实现（`check-bindings`
+# 与 `verify_agentops.py` 的 UC-29 共用它，不另写一套）。
+_RUN_MARKER_RE = re.compile(r"(?<![\w-])run:\s*(run-[0-9A-Za-z][0-9A-Za-z._-]*)")
+
+
+def parse_run_markers(message: str) -> list[str]:
+    """提交信息里的 `run:<id>` 标记（去重保序；`run:` 前必须是词边界）。
+
+    词边界挡 `rerun: run-x` 这类假命中；尾随的 `.`/`-` 剥掉（句读不算 id 的一部分）。
+    """
+    seen: list[str] = []
+    for m in _RUN_MARKER_RE.finditer(message or ""):
+        rid = m.group(1).rstrip(".-")
+        if rid and rid not in seen:
+            seen.append(rid)
+    return seen
+
+
+def binding_report(commits: list[dict],
+                   status_by_id: dict[str, str]) -> tuple[list[str], list[dict]]:
+    """纯函数判据：→ `(problems, unbound)`。
+
+    `problems` 非空 = 有提交**自称**绑定了 run 却核不上（点名到可修的那一条）；
+    `unbound` = 区间内**没带标记**的提交（只列出，**不判红**）。
+    两种核不上分开报：`不在账本（登记缺失）` 与 `status=…（须 succeeded）`——
+    前者要补登记，后者要么补收尾要么改标记，修法不同。
+    """
+    problems: list[str] = []
+    unbound: list[dict] = []
+    for c in commits:
+        sha = str(c.get("sha") or "")
+        ids = parse_run_markers(str(c.get("message") or ""))
+        if not ids:
+            unbound.append({"sha": sha, "subject": str(c.get("subject") or "")})
+            continue
+        for rid in ids:
+            status = status_by_id.get(rid)
+            if status is None:
+                problems.append(f"{sha[:10]} run: {rid} 不在账本（登记缺失）")
+            elif status != "succeeded":
+                problems.append(
+                    f"{sha[:10]} run: {rid} status={status}（须 succeeded）")
+    return problems, unbound
+
+
+def _parse_log(raw: str) -> list[dict]:
+    """`%H%x00%s%x00%B%x00` 的输出 → `[{sha, subject, message}]`（按 NUL 切）。
+
+    NUL 是唯一安全的分隔符：**git 提交对象不允许含 NUL**，所以三元组不会错位
+    （用换行切会被提交正文里的空行打乱）。
+    """
+    fields = raw.split("\x00")
+    out: list[dict] = []
+    for i in range(0, len(fields) - 2, 3):
+        sha = fields[i].strip()
+        if sha:
+            out.append({"sha": sha, "subject": fields[i + 1],
+                        "message": fields[i + 2]})
+    return out
+
+
+def _ledger_status(path: Path) -> dict[str, str] | None:
+    """账本 → `{run_id: status}`；**文件不存在** → `None`（唯一的 SKIP 触发条件）。
+
+    存在但结构非法 = 真缺陷 ⇒ fail-closed（两种"没有"必须分开）。
+    """
+    if not path.is_file():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or not isinstance(data.get("runs"), list):
+        raise SystemExit(
+            f"CHECK-BINDINGS-ERROR: 账本结构非法（顶层须含 runs 数组）：{path}")
+    return {str(r.get("run_id")): str(r.get("status") or "")
+            for r in data["runs"] if isinstance(r, dict)}
+
+
+def cmd_check_bindings(args: argparse.Namespace) -> None:
+    """A-REG ②：核 `run: <id>` 标记与账本的一致性（**只读**，不改账本）。
+
+    退出码：0 无违例；1 有违例（点名 sha + run_id）；3 账本缺失但区间内有标记
+    （"本档不是通过"，不冒充通过）；2 调用错误（区间非法等，与"有违例"分开）。
+    """
+    repo = Path(args.repo) if args.repo else REPO_ROOT
+    spec = ([args.range] if args.range
+            else [f"--max-count={args.limit}", "HEAD"])
+    try:
+        raw = git(repo, "log", "--no-color", "--format=%H%x00%s%x00%B%x00", *spec)
+    except PolicyError as exc:
+        print(f"USAGE-ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(2) from None
+    commits = _parse_log(raw)
+    ledger = Path(args.ledger) if args.ledger else REGISTRY_PATH
+    marked = [c for c in commits if parse_run_markers(c["message"])]
+    status = _ledger_status(ledger)
+    if status is None and marked:
+        print(f"SKIP[ledger-absent] 区间内 {len(marked)} 个提交带 `run:` 标记，"
+              f"但账本 {ledger} 不存在 ⇒ 绑定无从核验——**本档不是通过**")
+        raise SystemExit(3)
+    if status is None:
+        print(f"NOTE[ledger-absent] 账本 {ledger} 不存在，但区间内 0 个提交带"
+              f" `run:` 标记 ⇒ 无绑定可核（不是侥幸通过）")
+        problems, unbound = [], commits
+    else:
+        problems, unbound = binding_report(commits, status)
+    print(f"[{ledger}] 提交 {len(commits)} 个｜带标记 {len(marked)} 个｜"
+          f"无绑定 {len(unbound)} 个")
+    for p in problems:
+        print(f"  BINDING-FAIL {p}")
+    if args.list_unbound:
+        for c in unbound:
+            print(f"  UNBOUND {c['sha'][:10]} {c['subject'][:70]}")
+    if problems:
+        raise SystemExit(1)
 
 
 def cmd_close_sync(args: argparse.Namespace) -> None:
@@ -2726,6 +2942,23 @@ def main() -> int:
                         "spend-budget.json::over_budget_escape）；理由落账本 "
                         "budget_override_reason + budget_override。"
                         "**未超预算时传它会被拒**（假留痕比无留痕更坏）")
+    p.add_argument("--by", default="",
+                   help="A-REG ①：显式声明登记方（派单方）；省略则现查 env，"
+                        "拿不到记 unknown（不伪造身份）")
+
+    p = sub.add_parser("check-bindings",
+                       help="A-REG ②：核提交信息里的 `run: <id>` 标记与账本"
+                            "（咨询式：带标记必须核得上，不带标记只列出）")
+    p.add_argument("--range", default="",
+                   help="git 区间（如 A..B）；省略 = 最近 --limit 个提交")
+    p.add_argument("--limit", type=int, default=50,
+                   help="省略 --range 时取最近多少个提交（默认 50）")
+    p.add_argument("--ledger", default="",
+                   help="账本路径（默认 agents/runtime/registry.json）")
+    p.add_argument("--repo", default="",
+                   help="仓库路径（默认本仓；夹具/克隆时用）")
+    p.add_argument("--list-unbound", action="store_true",
+                   help="逐条列出无 run 绑定的提交（供人工判）")
 
     p = sub.add_parser("update")
     p.add_argument("run_id")
@@ -2734,6 +2967,8 @@ def main() -> int:
     p.add_argument("--usage-out", type=int)
     p.add_argument("--usage-cache-read", type=int)
     p.add_argument("--usage-cache-write", type=int)
+    p.add_argument("--by", default="",
+                   help="A-REG ①：显式声明本次写入者；省略则现查 env，拿不到记 unknown")
 
     p = sub.add_parser("finish")
     p.add_argument("run_id")
@@ -2752,6 +2987,8 @@ def main() -> int:
                    help="R-001：退化时间戳仍写终态，须配 ≥10 字符理由")
     p.add_argument("--degenerate-reason", default="",
                    help="R-001：为何这条时长不可测（≥10 字符；不具名即拒）")
+    p.add_argument("--by", default="",
+                   help="A-REG ①：显式声明收尾方；省略则现查 env，拿不到记 unknown")
 
     p = sub.add_parser("retract",
                        help="复盘行 19：受控撤回**误登记**的 run"
@@ -2761,7 +2998,7 @@ def main() -> int:
                    help="撤回理由（≥10 字符）：凭什么说这条是误登记")
     p.add_argument("--evidence", required=True,
                    help="可核凭据路径（必须存在）：探针脚本产物 / 隔离账本对照记录")
-    p.add_argument("--by", default="main-agent")
+    p.add_argument("--by", default="")
 
     p = sub.add_parser("list")
     p.add_argument("--status")
@@ -2773,7 +3010,7 @@ def main() -> int:
     p.add_argument("--note", default="", help="本轮做了什么（如 'Round 5：F-AC16/M18 v1 复核'）")
     p.add_argument("--output-chars", type=int, default=0, help="本轮产出字符数（累加到 run 总计）")
     p.add_argument("--interrupted", action="store_true", help="本轮是否被中断（同时写一条 interruption 事件）")
-    p.add_argument("--by", default="main-agent")
+    p.add_argument("--by", default="")
     p.add_argument("--impact", default="", help="中断影响范围（哪一轮评审/验证缺失、如何补做）")
     p.add_argument("--usage-in", type=int)
     p.add_argument("--usage-out", type=int)
@@ -2782,7 +3019,7 @@ def main() -> int:
     p.add_argument("run_id")
     p.add_argument("--reason", required=True)
     p.add_argument("--impact", default="")
-    p.add_argument("--by", default="main-agent")
+    p.add_argument("--by", default="")
 
     p = sub.add_parser("close-sync",
                        help="TG-15⑤：生成 C3 覆盖候选（未归属提交 + 改动文件 + doc-only 自动归类）")
@@ -2797,7 +3034,7 @@ def main() -> int:
     p.add_argument("--chars", required=True, help="该 run 的产出字符数（≥0；必须来自可复算命令）")
     p.add_argument("--reason", required=True,
                    help="回填理由（≥10 字符）：谁测的、怎么测的、依据哪条审核发现")
-    p.add_argument("--by", default="main-agent")
+    p.add_argument("--by", default="")
 
     p = sub.add_parser("set-started-at",
                        help="2026-09-26 关闭期：受控回填已收尾 run 的 started_at"
@@ -2811,7 +3048,7 @@ def main() -> int:
                         "拿不出证据就不得回填")
     p.add_argument("--reason", required=True,
                    help="回填理由（≥10 字符）：谁测的、怎么测的、依据哪条发现")
-    p.add_argument("--by", default="main-agent")
+    p.add_argument("--by", default="")
 
     p = sub.add_parser("set-anchor",
                        help="审核 N5/F1 + B2：受控回填已登记 run 的覆盖窗口端点 "
@@ -2824,7 +3061,7 @@ def main() -> int:
                         "用于修短 sha 让窗口被静默丢弃的历史记录）")
     p.add_argument("--reason", required=True,
                    help="回填理由（≥10 字符）：谁修、为什么、依据哪条审核发现")
-    p.add_argument("--by", default="main-agent")
+    p.add_argument("--by", default="")
 
     p = sub.add_parser("set-scope",
                        help="B4：受控回填已登记 run 的 scope_source / scope_deviation"
@@ -2840,7 +3077,7 @@ def main() -> int:
                    help="自选/偏离范围的理由（self-chosen 路径必填，长度下限取自政策）")
     p.add_argument("--reason", required=True,
                    help="回填理由（≥10 字符）：为什么回填、依据哪份记录/卡")
-    p.add_argument("--by", default="main-agent")
+    p.add_argument("--by", default="")
     p = sub.add_parser("set-sprint",
                        help="TG-19 M-A 收尾：受控回填 run 的 Sprint 身份"
                             "——判定域按它派生；必须给理由，同值=无操作")
@@ -2850,7 +3087,7 @@ def main() -> int:
                         "归不出编号即 fail-closed）")
     p.add_argument("--reason", required=True,
                    help="回填理由（≥10 字符）：为什么回填、依据哪份记录/卡")
-    p.add_argument("--by", default="main-agent")
+    p.add_argument("--by", default="")
     p = sub.add_parser("set-result-files",
                        help="受控回填**已收尾** run 的 result_files（产物漏归档时的"
                             "唯一合法修复路径；文件须存在+必带理由+留痕）")
@@ -2862,7 +3099,7 @@ def main() -> int:
                         "『相对仓库根』，与实现只认 agents 根的口径不符）")
     p.add_argument("--reason", required=True,
                    help="回填理由（≥10 字符）：为什么补、依据哪份产物")
-    p.add_argument("--by", default="main-agent")
+    p.add_argument("--by", default="")
     p = sub.add_parser("mark-produced",
                        help="D0-3(a)/TG-17⑤：把已登记 run **逐条**标注为「产出型 run」"
                             "（实现类工作挂评审 role，不承担内容覆盖）；必带理由+留痕")
@@ -2871,7 +3108,7 @@ def main() -> int:
                    help="标注理由（≥10 字符）：为什么它是产出型/实现类工作而非内容评审")
     p.add_argument("--undo", action="store_true",
                    help="撤回该 run 的产出型标注（同样写留痕；撤回后空窗口重新 FAIL）")
-    p.add_argument("--by", default="main-agent")
+    p.add_argument("--by", default="")
     p = sub.add_parser("validate-spec")
     p.add_argument("spec_file")
     p = sub.add_parser("fetch-spec")
@@ -2889,6 +3126,7 @@ def main() -> int:
         "list": cmd_list, "validate-spec": cmd_validate_spec, "fetch-spec": cmd_fetch_spec,
         "parse-report": cmd_parse_report, "prices-derive": _derive_prices,
         "round": cmd_round, "interrupt": cmd_interrupt, "close-sync": cmd_close_sync,
+        "check-bindings": cmd_check_bindings,
         "set-anchor": cmd_set_anchor, "set-scope": cmd_set_scope,
         "set-sprint": cmd_set_sprint,
         "set-result-files": cmd_set_result_files,
