@@ -2,7 +2,8 @@
 """MM-2: validate a model, then render an editable five-section spec draft.
 
 Usage: python scripts/mental-model-spec.py --model <id.version.json>
-Optional: --schema <schema.json>, --check, or --out <draft.md> [--force].
+Optional: --schema <schema.json>, --check. Renders to stdout only; callers
+redirect if a file is wanted, so no half-written draft can exist.
 Only the standard library is needed. Model and schema files stay read-only.
 """
 
@@ -10,12 +11,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
 import sys
-import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
 PHASE = ROOT / "docs" / "iteration" / "phases" / "mental-models"
@@ -239,50 +238,13 @@ def render(model: dict, schema: dict) -> str:
     return "\n".join(lines)
 
 
-def publish(path: Path, content: str, force: bool) -> None:
-    """Publish a complete LF draft atomically, protecting edits by default."""
-    path = path.absolute()
-    resolved = path.resolve()
-    if resolved.is_relative_to(ROOT) and not resolved.is_relative_to(PHASE):
-        raise ValueError("仓库内 --out 仅允许 docs/iteration/phases/mental-models/")
-    if path.suffix.lower() != ".md":
-        raise ValueError("--out 必须为 .md 草稿，不得覆盖 JSON 源文件")
-    if path.exists() and not force:
-        raise FileExistsError("产物已存在；保留人工修改，显式 --force 才覆盖")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", newline="\n", dir=path.parent,
-            prefix=f".{path.name}.", suffix=".tmp", delete=False,
-        ) as handle:
-            temporary = Path(handle.name)
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        if force:
-            os.replace(temporary, path)
-        elif os.name == "nt":
-            os.rename(temporary, path)  # Windows rename never replaces a file.
-        else:
-            os.link(temporary, path)  # Atomic no-clobber publication on POSIX.
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
-
-
 def main(argv: list[str] | None = None) -> int:
-    """Validate completely before producing stdout or touching an output path."""
+    """Validate completely before producing any stdout."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", required=True, type=Path)
     parser.add_argument("--schema", default=SCHEMA, type=Path)
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--out", type=Path)
-    mode.add_argument("--check", action="store_true")
-    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
-    if args.force and not args.out:
-        parser.error("--force 必须与 --out 同用")
     errors: list[str] = []
     model, model_raw = load(args.model, errors)
     schema, schema_raw = load(args.schema, errors)
@@ -312,11 +274,8 @@ def main(argv: list[str] | None = None) -> int:
                 result = "OK: model + schema validated; no spec generated\n"
             else:
                 result = render(model, schema)
-                if args.out:
-                    publish(args.out, result, args.force)
-                    result = f"OK: generated {display(args.out)}\n"
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
-        target = args.out or args.schema
+        target = args.schema
         errors.append(failure(target, "<generation>", "完整契约与可发布路径", exc))
     if errors:
         for error in errors:
