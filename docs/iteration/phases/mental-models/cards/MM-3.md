@@ -40,6 +40,8 @@
 
 本卡原派给 codex 子代理（`run-2026-11-15-implementation-149`）：它完成了草案，**之后长时间无终态**（账本 `status=running` 超过 40 分钟、`experiments/` 未建），lead 据此把它**如实收为 `failed`**（错误说明已记入账本）并以 `run-2026-11-15-implementation-151` **接管补完**。接管期间该执行者又**迟交了一份首跑记录**（14KB、含三组只读探针）——两份同题记录已合并为**唯一主记录**（保留其探针，追加 lead 的 main 形态证据，并按 MM-6 把 verdict 规范化为三态），重复的那份已删除。**既不包装失败，也不丢弃已完成的产出。**
 
+两点补充事实：① 执行者事后尝试 `finish --status succeeded` 被 CLI 拒绝（`非法流转 failed -> succeeded`）⇒ 终态保持 `failed`，其**未完成共享卡合入**的事实与账本一致；② 它那份同题记录的**完整正文与对照**已备份在 `agents/runs/run-2026-11-15-implementation-149/implementation.report.md`（账本 `result_files` 指向），合并后的主记录保留了它的全部路径与探针节，审计可回溯。
+
 ## 提审清单
 
 把草案提升为 `agents/functions/thought-experiment.md` 之前，至少逐条完成：
@@ -53,5 +55,18 @@
 | 5 | 闸门矩阵与断言下限同步（若新增 verify 或改闸门） | `python verify/verify_matrix.py derive && check`；`BRANCH_ASSERTION_FLOORS` 只增不减 |
 | 6 | 套件全绿（**提交前必须跑完整套件**，今天的两次漏都出在"只跑了局部闸门"） | `.venv\Scripts\python.exe verify\run_suite.py --tier offline` |
 | 7 | 用户裁决：生产面改动是否批准 | 卡与 `backlog` 状态由「进行中」→「完成」**只在用户确认后**执行 |
+
+### 执行者补充的更精确提审项（2026-11-15，原文要点）
+
+- 补生产 frontmatter，并按 MM-6 补齐输入／步骤／记录骨架／F1–F6；然后跑
+  `python scripts/agent-ops.py validate-spec agents/functions/thought-experiment.md`。
+- 角色枚举走 `load_policy().closure_problems()`；**当前 role 由 `policy.json::spec_dir`／`spec_glob` 枚举，
+  不需要新增 `roles` 名单键**（这一点修正了上表第 1 行的猜测）。
+- 跑 `python verify/verify_agentops.py`，重点看 **UC-1／UC-15／UC-16**。
+- 跑 `verify_close_readiness.py --sprint …` 核 **C1／C2／C3**；**不能把建议角色当成内容评审**（归属≠评审）。
+- 跑 `python scripts/structure-guard.py verify --from-git <提升前完整 HEAD>`、`verify_md_tables.py`、
+  `verify_derived_numbers.py`，并检查 LF。
+- **未改 `VERIFY_META` 时只跑 `verify_matrix.py check`；新增检查才先 `derive` 再 `check`。**
+- 提升获准后，以**生产角色真实首跑**并执行 falsifier 正反对照，再登记采纳与收尾。
 
 **为什么不本轮直接做**：`agents/**` 是 agent 的生产面（`verify_agentops` 对其做封闭世界校验），升格会影响 role↔spec 一致性、结构守卫与套件判据；且"是否把思维实验变成常驻 agent"是产品决策，属用户裁决范围。草案与首跑已证明**模型能生成可执行 spec 骨架并被真实使用一次**，这正是本卡的可验证部分。
