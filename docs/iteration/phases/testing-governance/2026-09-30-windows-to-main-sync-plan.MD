@@ -494,3 +494,16 @@ python verify/run_suite.py --tier offline
 - **带上 main 的内容**：`BR-1` 其余九条基线的分类与处置（`ledger_measurement` 到期收租、`run_suite` 判据⑤"自陈条数高于下限即 FAIL"）；`A-PTR` 落地（`path#<锚文本>` ＋ `scripts/anchor-resolve.py` ＋ 登记册闸门双形态 ＋ 53 处迁移）；`D102` **23→0**；走查签收与 A-PTR 状态收口。
 - **验证**：合并前 main 侧 CI **success**（必需检查 `Offline suite + builds (Windows)`）；合并后 main 侧 CI **success**；本地（`.venv`）离线套件全绿（**脚本数以你现跑 `run_suite.py --tier offline` 的末行为准**，此处不手抄）。
 - **main 树复核**：`docs/iteration` 0 条；`docs/6-DECISIONS.md` 在；mac 4/4；`scripts/anchor-resolve.py`、`verify/harness.py` 均在 main。
+
+---
+
+## 执行记录 5（2026-11-15；PR #58）
+
+> 用户 2026-11-15 批准同步。
+
+- **形态**：同步提交 **`3f1a226`**（1 个父＝当时的 main 顶端）；合并提交 **`945286a`**（2 个父）⇒ 复刻单亲同步先例。
+- **同步面行数**：以 `git diff --shortstat c49ade4 3f1a226` 现跑为准（此处不手抄）。
+- **排除／保留**：`docs/iteration/**` 树内 0 行；4 个 mac 启动脚本保留；`docs/6-DECISIONS.md` 在树。
+- **带上 main 的**：`A-REG`（账本写入者身份 `writer`／`writer_trail` ＋ 咨询式提交↔run 绑定）；`A-CASE`（`verify/verify_case_index.py` 形态↔主案例一致性闸门 ＋ `scripts/case-search.py` 检索 ＋ G6 合并样例＋指针按内容重定位）；`A-DECL`（`1-WORKFLOW.MD` 文末 `6.1` 机读真源 ＋ `verify/verify_rule_index.py`）。
+- **验证**：合并前 main 侧 CI success（必需检查）；合并后 main 侧 CI success；本地（`.venv`）套件通过（脚本数以现跑末行为准）。
+- **main 树复核**：`docs/iteration` 0 条；`6-DECISIONS` 在；mac 4/4；`verify/verify_rule_index.py`、`verify/verify_case_index.py`、`scripts/case-search.py`、`scripts/anchor-resolve.py`、`verify/harness.py` 均在 main。
