@@ -536,3 +536,19 @@ python verify/run_suite.py --tier offline
 - **验证**：合并前 main 侧 CI success（必需检查）；合并后 main 侧 CI success；本地（`.venv`）套件通过（脚本数以现跑末行为准）。
 - **main 树复核**：`docs/iteration` 0 条；`6-DECISIONS` 在；mac 4/4；spec 版本现读 **`version: "1.1.0"`**；`D-251117-01` 在 main。
 - **未裁决/后续项（如实）**：②「未证实机制不得写入」目前仍**只有 spec 规则、无机检**（后续可加轻量检查：TE 记录不得出现 assumption 形态）；`# Scenario strategy` 的流程图是流程记录与抽检口径，**不代表已自动派单**（`agents/fanout.json` 未登记该函数）。
+
+---
+
+## 执行记录 8（2026-11-17；PR #61）—— **blocker 修复即时同步**
+
+> 触发：同步 #7 合并后，main `5e7db22` 的合并后 CI **红**在 `verify_smoke.py`。日志证据：CI runner 上
+> `choco install graphviz` **拉取失败**（`Failed to fetch results from V2 feed … Unable to find package 'Graphviz'`）——
+> 第三方 feed 网络抖动；而原实现把"缺 dot"当**硬失败** ⇒ 一次 feed 抖动即可让 main 变红。
+> 按 `1-WORKFLOW.MD` §3 **例外①（Blocker/Critical 可即时同步，先修后补记录）** 处理：本次不走完整走查，改由本记录补。
+
+- **形态**：同步提交 **`202849b`**（1 个父＝`5e7db22`）；合并提交 **`d22cce8`**（2 个父）。
+- **同步面**：以 `git diff --shortstat 5e7db22 202849b` 现跑为准（此处不手抄）。
+- **改动**：`verify/verify_smoke.py`——缺 dot 时降级为**具名 SKIP**（`rc=3`＋末行 `SMOKE SKIP[graphviz-bin-absent] … 本档不是通过`）；`.github/workflows/ci.yml`——graphviz 安装重试 3 次＋退避、`GITHUB_PATH` 写入 bin 目录、三次失败只告警。
+- **反向对照**：本机**有** Graphviz 的正常路径 `8/8 rc=0`；用 `SMOKE_GRAPHVIZ_DIRS=""` 关发现＋PATH 过滤 graphviz ⇒ `7/8, 1 skipped`、末行具名横幅、**rc=3**。
+- **验证**：PR #61 main 侧 CI success；合并后 main 侧 CI **success**（main 恢复绿）；本地套件通过。
+- **教训（拟入 `3-LEARNED`）**：**第三方依赖的缺失必须是"环境事实"，不能写成硬失败**——否则一次上游 feed 抖动就能让受保护分支变红；正确形态是"具名 SKIP（第三态）＋CI 侧重试/告警"。
