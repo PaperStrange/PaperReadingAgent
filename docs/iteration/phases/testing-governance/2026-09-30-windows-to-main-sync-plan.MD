@@ -507,3 +507,18 @@ python verify/run_suite.py --tier offline
 - **带上 main 的**：`A-REG`（账本写入者身份 `writer`／`writer_trail` ＋ 咨询式提交↔run 绑定）；`A-CASE`（`verify/verify_case_index.py` 形态↔主案例一致性闸门 ＋ `scripts/case-search.py` 检索 ＋ G6 合并样例＋指针按内容重定位）；`A-DECL`（`1-WORKFLOW.MD` 文末 `6.1` 机读真源 ＋ `verify/verify_rule_index.py`）。
 - **验证**：合并前 main 侧 CI success（必需检查）；合并后 main 侧 CI success；本地（`.venv`）套件通过（脚本数以现跑末行为准）。
 - **main 树复核**：`docs/iteration` 0 条；`6-DECISIONS` 在；mac 4/4；`verify/verify_rule_index.py`、`verify/verify_case_index.py`、`scripts/case-search.py`、`scripts/anchor-resolve.py`、`verify/harness.py` 均在 main。
+
+---
+
+## 执行记录 6（2026-11-17；PR #59）
+
+> 用户 2026-11-17 对**增量走查清单**（`2026-11-15-sync6-delta-walkthrough.MD`）声明通过后，才创建本 PR。
+> 该清单同时如实记录了**同步 #5 的流程缺口**：用 2026-11-11 的旧走查签收直接建 PR、未对新增量重新走查。
+
+- **形态**：同步提交 **`9d37da7`**（1 个父＝当时的 main 顶端 `945286a`）；合并提交 **`0884ff3`**（2 个父）。
+- **同步面**：以 `git diff --shortstat 945286a 9d37da7` 现跑为准（此处不手抄）。
+- **排除／保留**：`docs/iteration/**` 树内 0 行；4 个 mac 启动脚本保留（`mac-sh-keep` 跳过 4 个删除）；`docs/6-DECISIONS.md` 在树。
+- **带上 main 的**：`scripts/mental-model-spec.py`（思维模型 JSON → 五段式 spec 的纯 stdout 渲染器，fail-closed、无写盘路径）；`agents/functions/thought-experiment.md`（生产 agent spec v1.0.0：双 mode `compare`／`isolate`、MM-6 记录骨架、F1–F6/I1–I2、外部参考采纳/拒绝表）；`agents/README.md` 索引一行。
+- **验证**：合并前 main 侧 CI success（必需检查）；合并后 main 侧 CI success；本地（`.venv`）套件通过（脚本数以现跑末行为准）。
+- **main 树复核**：`docs/iteration` 0 条；`6-DECISIONS` 在；mac 4/4；`agents/functions/thought-experiment.md`、`scripts/mental-model-spec.py`、`verify/verify_rule_index.py`、`scripts/anchor-resolve.py`、`verify/harness.py` 均在 main。
+- **未裁决项（如实）**：MM-3 升格时 spec 与种子模型的 **4 处差异**仍待用户逐条裁决；种子 JSON 未改，差异只登记在 MM-3 卡。
