@@ -522,3 +522,17 @@ python verify/run_suite.py --tier offline
 - **验证**：合并前 main 侧 CI success（必需检查）；合并后 main 侧 CI success；本地（`.venv`）套件通过（脚本数以现跑末行为准）。
 - **main 树复核**：`docs/iteration` 0 条；`6-DECISIONS` 在；mac 4/4；`agents/functions/thought-experiment.md`、`scripts/mental-model-spec.py`、`verify/verify_rule_index.py`、`scripts/anchor-resolve.py`、`verify/harness.py` 均在 main。
 - **未裁决项（如实）**：MM-3 升格时 spec 与种子模型的 **4 处差异**仍待用户逐条裁决；种子 JSON 未改，差异只登记在 MM-3 卡。
+
+---
+
+## 执行记录 7（2026-11-17；PR #60）
+
+> 用户 2026-11-17 对本批**增量走查清单**（`2026-11-17-sync7-delta-walkthrough.MD`）声明通过后，才创建本 PR。
+
+- **形态**：同步提交 **`8ca2f44`**（1 个父＝当时的 main 顶端 `0884ff3`）；合并提交 **`5e7db22`**（2 个父）。
+- **同步面**：以 `git diff --shortstat 0884ff3 8ca2f44` 现跑为准（此处不手抄）。
+- **排除／保留**：`docs/iteration/**` 树内 0 行；4 个 mac 启动脚本保留；`docs/6-DECISIONS.md` 在树。
+- **带上 main 的**：`agents/functions/thought-experiment.md` **v1.0.0 → v1.1.0**（② 回退到种子零假设口径，未证实机制改为 `chain_gap` 截断；新增 `# Initialization constraints`＋`# Scenario strategy` 含 mermaid 流程图与抽检口径；`estimated_chars` 修正）；`docs/6-DECISIONS.md` ＋裁决条目 **`D-251117-01`**（出处为 `会话` 形式）＋ 1 处自指指针按内容重定位。
+- **验证**：合并前 main 侧 CI success（必需检查）；合并后 main 侧 CI success；本地（`.venv`）套件通过（脚本数以现跑末行为准）。
+- **main 树复核**：`docs/iteration` 0 条；`6-DECISIONS` 在；mac 4/4；spec 版本现读 **`version: "1.1.0"`**；`D-251117-01` 在 main。
+- **未裁决/后续项（如实）**：②「未证实机制不得写入」目前仍**只有 spec 规则、无机检**（后续可加轻量检查：TE 记录不得出现 assumption 形态）；`# Scenario strategy` 的流程图是流程记录与抽检口径，**不代表已自动派单**（`agents/fanout.json` 未登记该函数）。
