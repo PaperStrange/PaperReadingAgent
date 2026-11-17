@@ -24,10 +24,26 @@ sys.path.insert(0, str(SCRIPT_DIR))
 results: list[str] = []
 
 
+class Skip(Exception):
+    """A check that cannot run in this environment: a named third state, not a failure."""
+
+    def __init__(self, reason: str, detail: str) -> None:
+        """Record the machine reason and the human detail."""
+        super().__init__(detail)
+        self.reason = reason
+        self.detail = detail
+
+
+SKIPS: list[str] = []
+
+
 def check(name: str, fn) -> None:
     try:
         detail = fn()
         results.append(f"[OK] {name}: {detail}")
+    except Skip as exc:
+        results.append(f"[SKIP:{exc.reason}] {name}: {exc.detail}")
+        SKIPS.append(exc.reason)
     except Exception as exc:  # noqa: BLE001
         results.append(f"[FAIL] {name}: {type(exc).__name__}: {exc}")
 
@@ -100,13 +116,19 @@ def t_graphviz() -> str:
 
     # dot 若不在 PATH（如 winget 安装的 Graphviz），自动补充常见安装目录
     if not shutil.which("dot"):
+        # Reverse-control hook: SMOKE_GRAPHVIZ_DIRS="" disables discovery, so the
+        # path can be driven on a machine that does have Graphviz installed.
         for _d in (
-            r"C:\Program Files\Graphviz\bin",
-            r"C:\Program Files (x86)\Graphviz\bin",
-            r"C:\ProgramData\chocolatey\bin",
-            "/opt/homebrew/bin",
-            "/usr/local/bin",
-            "/usr/bin",
+            tuple(p for p in os.environ["SMOKE_GRAPHVIZ_DIRS"].split(os.pathsep) if p)
+            if "SMOKE_GRAPHVIZ_DIRS" in os.environ
+            else (
+                r"C:\Program Files\Graphviz\bin",
+                r"C:\Program Files (x86)\Graphviz\bin",
+                r"C:\ProgramData\chocolatey\bin",
+                "/opt/homebrew/bin",
+                "/usr/local/bin",
+                "/usr/bin",
+            )
         ):
             if os.path.isdir(_d) and (
                 os.path.isfile(os.path.join(_d, "dot"))
@@ -114,6 +136,13 @@ def t_graphviz() -> str:
             ):
                 os.environ["PATH"] = _d + os.pathsep + os.environ.get("PATH", "")
                 break
+
+    if not shutil.which("dot"):
+        raise Skip(
+            "graphviz-bin-absent",
+            "dot not found in PATH or known install dirs; "
+            "install Graphviz to run this check",
+        )
 
     import graphviz as gv
 
@@ -166,5 +195,13 @@ for name, fn in [
 
 print("\n".join(results))
 failed = [r for r in results if r.startswith("[FAIL]")]
-print(f"\n=== {len(results) - len(failed)}/{len(results)} checks passed ===")
-sys.exit(1 if failed else 0)
+skipped = [r for r in results if r.startswith("[SKIP:")]
+done = len(results) - len(failed) - len(skipped)
+print(f"\n=== {done}/{len(results)} checks passed, {len(skipped)} skipped ===")
+if failed:
+    sys.exit(1)
+if skipped:
+    reasons = ",".join(sorted({r[6:].split("]")[0] for r in skipped}))
+    print(f"SMOKE SKIP[{reasons}] 判据未执行（环境缺依赖）——本档不是通过（rc=3）")
+    sys.exit(3)
+sys.exit(0)
