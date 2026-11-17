@@ -756,6 +756,7 @@ class Policy:
                     f"（合法值 {list(COVERAGE_WINDOW_VALUES)}）——取值错误会让该 run 静默退出 C3 覆盖计算")
         # 3. 悬空键：闸门读不到的键 = 死数据
         consumed = {
+            "acceptance_review",  # verify_acceptance_record.py consumes this block.
             "version", "_comment", "spec_glob", "spec_dir", "scope_min_deviation_chars",
             # A-M12 ①（2026-09-25 D4）：结构守卫署名理由的长度下限，
             # 由 scripts/structure-guard.py 消费
