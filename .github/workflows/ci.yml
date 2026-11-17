@@ -46,8 +46,22 @@ jobs:
           pip install -e ./paper-qa/packages/paper-qa-pymupdf
           pip install -r requirements-windows.txt
 
-      - name: Install Graphviz (verify_smoke renders DOT via local Graphviz; cold runner lacks dot)
-        run: choco install graphviz -y --no-progress
+      - name: Install Graphviz (retry; a missing dot degrades verify_smoke to a named SKIP)
+        shell: pwsh
+        run: |
+          $ok = $false
+          foreach ($attempt in 1..3) {
+            choco install graphviz -y --no-progress
+            if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+            Write-Warning "graphviz attempt $attempt failed (feed flake?); retrying"
+            Start-Sleep -Seconds 15
+          }
+          $bin = 'C:\Program Files\Graphviz\bin'
+          if (Test-Path (Join-Path $bin 'dot.exe')) {
+            $bin | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          } elseif (-not $ok) {
+            Write-Warning 'graphviz install failed after 3 attempts; verify_smoke will emit a named SKIP'
+          }
 
       - uses: actions/setup-node@v4
         with:
