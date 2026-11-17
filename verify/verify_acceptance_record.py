@@ -398,6 +398,9 @@ def selftest() -> int:
         )
         shutil.copytree(base, base / "copy", ignore=shutil.ignore_patterns("copy"))
         problems, readings = check(base / "copy", nrange)
+        if problems:
+            print("  COPY PROBE problems: " + "; ".join(problems)[:800])
+            print("  COPY PROBE readings: " + " | ".join(readings)[:800])
         ok("6 clean copy", not problems, f"gate_rc={int(bool(problems))}")
         snapshot = {p.relative_to(base): p.read_bytes()
                     for p in base.rglob("*") if p.is_file()}
