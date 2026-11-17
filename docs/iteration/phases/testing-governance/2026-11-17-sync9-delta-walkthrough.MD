@@ -13,7 +13,7 @@
 
 | 判据 | 命令 | 期望 |
 |---|---|---|
-| 非-iteration 增量 | `git diff --name-status da7f8d0..HEAD -- . ':!docs/iteration'` | **11 文件**（见 §2） |
+| 非-iteration 增量 | `git diff --name-status da7f8d0..HEAD -- . ':!docs/iteration'` | 文件清单见 §2（**数量以该命令现跑为准**） |
 | `docs/iteration/**` | 同步树内计数 | 0（按设计排除） |
 | 4 个 mac 启动脚本 | `git ls-tree -r --name-only origin/main -- scripts/{setup-env,start-backend,start-frontend,start-streamlit}.sh` | 4 条（保留项不变） |
 | 同步提交形态 | 构建后 | 单亲（父＝当前 main 顶端），`origin/main..HEAD = 1` |
@@ -24,28 +24,28 @@
 |---|---|---|
 | `agents/functions/acceptance-review.md` | **新增** spec v1.0.0 | 五段式；硬边界：**不改文件、不建 PR、不代替用户签、不给自己 PASS**；`# Steps` 要求逐项实测读数 |
 | `agents/policy.json` | **新增 `acceptance_review` 数据块** | 两类 globs（production 优先、未匹配默认 production）、`categories`（含 `added_only_globs`：新增脚本才算 non-production）、`record_dir`、`verdicts` 三态、`walkthrough_glob`、`ignored_deletions`（仅 4 个 mac 保留项）＋"可调整"注释 |
-| `verify/verify_acceptance_record.py` | **新增闸门** 519 行 | 五条判据（分类／记录匹配 range／逐项实测读数／verdict 一致性／fail-closed）＋**32 断言自检**＋`-O` 守卫；只读、不写仓库 |
+| `verify/verify_acceptance_record.py` | **新增闸门** 519 行 | 五条判据（分类／记录匹配 range／逐项实测读数／verdict 一致性／fail-closed）＋自检（断言数以现跑末行为准）＋`-O` 守卫；只读、不写仓库 |
 | `docs/1-WORKFLOW.MD` | §3 追加**例外** | non-production＋AC PASS ⇒ 可建 PR；**production（含阶段/Sprint 记录）仍须签**；§6.0 机制索引已同步（M12 行） |
 | `docs/6-DECISIONS.md` | **＋`D-251117-02`** | 用户 2026-11-17 裁决原文（会话出处）；插入后自指指针按内容重定位 |
 | `docs/3-LEARNED.MD` | **＋1.74** | "第三方依赖是否可用是环境事实，不是判据结果"（今天 main CI 红的教训） |
-| `verify/run_suite.py` | 接线 | 新闸门进套件（`--selftest` 档）＋断言下限 32；agentops 下限 244 |
+| `verify/run_suite.py` | 接线 | 新闸门进套件（`--selftest` 档）；断言下限随实测同步（只增不减） |
 | `verify/TEST-MATRIX.MD` / `verify/README.md` / `verify/agent_policy.py` / `agents/README.md` | 索引与装载 | 矩阵 64 脚本一致；policy 装载器暴露新块；spec 索引一行 |
 
 ## 3. 闸门（本地，`.venv` 实测；读数同 AC 记录）
 
 | 判据 | 实测 |
 |---|---|
-| 套件 | `SUITE PASSED (30 scripts)` |
-| `verify_lint` | rc=0；`E501=2492/2493` |
-| `verify_decision_register` | rc=0；`entries=126 pointers=1248 quotes_drift=10` |
-| `verify_acceptance_record --selftest` | rc=0；**32 断言**（含 6 组对照＋作用域对照＋非规范 root 对照） |
+| 套件 | `SUITE PASSED`（脚本数以现跑末行为准） |
+| `verify_lint` | rc=0（C 级读数以末行为准） |
+| `verify_decision_register` | rc=0（计数以末行为准） |
+| `verify_acceptance_record --selftest` | rc=0（断言数以末行为准；含签名/作用域/非规范 root 对照） |
 | `validate-spec acceptance-review` | `PASS`（v1.0.0） |
-| `verify_matrix check` | `CHECK OK: 64` |
-| `verify_gate_integrity` | `88 断言 guard_required=11` |
-| `verify_no_policy_hardcode` | `22 断言 scanned=86` |
-| `verify_md_tables` | `PASS（206 文件）` |
-| `verify_derived_numbers` | `19 断言` |
-| `verify_card_index` | `17 断言` |
+| `verify_matrix check` | `CHECK OK`（脚本数以现跑为准） |
+| `verify_gate_integrity` | 断言数以末行为准 |
+| `verify_no_policy_hardcode` | 断言数以末行为准 |
+| `verify_md_tables` | `PASS`（文件数以现跑为准） |
+| `verify_derived_numbers` | 断言数以末行为准 |
+| `verify_card_index` | 断言数以末行为准 |
 
 ## 4. 你这次真正在批什么（请重点看这三点）
 
