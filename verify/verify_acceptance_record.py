@@ -235,6 +235,10 @@ def record_checks(root: Path, cfg: dict, text: str, expected: str,
                 stamp = rf"(?<!\d){re.escape(delta_date)}(?!\d)"
                 if head not in signed and not re.search(stamp, signed):
                     problems.append("[2 walkthrough] missing delta SHA/date")
+                if not re.search(r"\u2611\s*通过|签收[:：]\s*\S", signed):
+                    problems.append(
+                        "[2 walkthrough] unsigned: "
+                        f"{reference} lacks the ☑通过 / 签收 marker")
             except (OSError, ValueError) as exc:
                 problems.append(f"[2 walkthrough] {reference}: {exc}")
     return problems, readings
@@ -261,7 +265,8 @@ def check(root: Path, rev_range: str,
         files = list(zip(parts[::2], parts[1::2]))
         excluded = [
             item for item in files
-            if item[0] == "D" and item[1] in cfg.get("ignored_deletions", [])
+            if (item[0] == "D" and item[1] in cfg.get("ignored_deletions", []))
+            or any(matches(item[1], g) for g in cfg.get("ignore_globs", []))
         ]
         files = [item for item in files if item not in excluded]
         category, readings = classify(cfg, files)
@@ -384,7 +389,8 @@ def selftest() -> int:
         probe("1 production + PASS", prange, body(prange, human, "PASS"),
               "requires NEEDS-HUMAN")
         (base / "signed-fixture.MD").write_text(
-            f"Synthetic human signoff: {p}\n", encoding="utf-8", newline="\n"
+            f"结论：\u2611 通过\n签收：fixture-user\nSynthetic signoff: {p}\n",
+            encoding="utf-8", newline="\n"
         )
         clean_human = body(prange, human, "NEEDS-HUMAN")
         clean_auto = body(nrange, auto, "PASS")
@@ -446,9 +452,19 @@ def selftest() -> int:
             timezone(timedelta(hours=8))
         ).date().isoformat()
         (base / "signed-fixture.MD").write_text(
-            date, encoding="utf-8", newline="\n"
+            f"结论：\u2611 通过\n签收：fixture-user\n{date}\n",
+            encoding="utf-8", newline="\n"
         )
         probe("signoff delta date", prange, clean_human)
+        (base / "signed-fixture.MD").write_text(
+            f"Synthetic signoff without a signature marker: {p}\n",
+            encoding="utf-8", newline="\n"
+        )
+        probe("unsigned walkthrough rejected", prange, clean_human, "[2 walkthrough] unsigned")
+        (base / "signed-fixture.MD").write_text(
+            f"结论：\u2611 通过\n签收：fixture-user\nSynthetic signoff: {p}\n",
+            encoding="utf-8", newline="\n"
+        )
         modified = fixture_commit(base, {prod: "old\n", added: "modified\n"}, n)
         delta = f"{n}..{modified}"
         probe("existing script modified", delta, body(delta, auto, "PASS"),
@@ -466,6 +482,12 @@ def selftest() -> int:
         d1 = f"{a}..{with_mgmt}"
         probe("management doc counts as production", d1, body(d1, auto, "PASS"),
               "requires NEEDS-HUMAN")
+        ignored_path = example(next(iter(source.get("ignore_globs") or []), ""))
+        if ignored_path:
+            with_ignored = fixture_commit(
+                base, {prod: "old\n", added: "new\n", ignored_path: "x\n"}, a)
+            d3 = f"{a}..{with_ignored}"
+            probe("acceptance artifact ignored", d3, body(d3, auto, "PASS"))
         keep = fixture_commit(base, {prod: "old\n", mac: "kept\n"}, a)
         drop = fixture_commit(base, {prod: "old\n", added: "new\n"}, keep)
         d2 = f"{keep}..{drop}"

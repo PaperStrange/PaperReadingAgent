@@ -59,6 +59,10 @@
     "scripts/start-streamlit.sh"
   ],
   "_sync_scope_comment": "只忽略保留项：4 个 mac 启动脚本在 main 存在而 windows 无，其 D 状态是分支差异而非变更（mac-sh-keep）。**不得**排除 docs/iteration/**——阶段/Sprint 等管理文档按 production 分类（2026-11-17 用户边界）；因 main 不存在该子树而显得“变更”的文件，应由验收范围取 windows 侧提交窗口来消除，不能靠排除路径。",
+  "ignore_globs": [
+    "docs/iteration/phases/testing-governance/acceptance-records/**"
+  ],
+  "_ignore_comment": "验收工件自身不参与分类：AC 记录与（经 record_dir 声明的）目录若算进 delta，任何一次自动验收都会把自己变成 production，判据自我否定。只允许放这里、且必须是验收工件；新增其它忽略项须说明为什么它不是被验收的变更。",
   "_range_comment": "范围的正确取法：main 落地能力用 origin/main..HEAD；PR 前批次验收用 windows 侧提交窗口（上次同步源..HEAD），否则 main 缺席的 iteration 文件会被误算为变更。"
   },
   "spec_dir": "agents/functions",
