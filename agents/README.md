@@ -13,6 +13,7 @@
 | 经验教训总结（Sprint 关闭前置必做） | [`functions/lessons-learned.md`](functions/lessons-learned.md) | `{sprint_doc, change_commits}` → 3-LEARNED 新条目草稿 + 分类索引更新建议（主代理审核回填） | 子代理（一查/二查后、workspace-check 前；fan-out 第 4 步） |
 | 工作区核验 | [`functions/workspace-check.md`](functions/workspace-check.md) | — | **主代理执行**（D2：起服务/杀进程不子代理化） |
 | 实现类工作（`TG-19`/`A-M13`，2026-09-25） | [`functions/implementation.md`](functions/implementation.md) | `{card, deliverable, scope_of_change, must_run, evidence_required}` → 变更 + **验证证据**（不产出评审结论）；`scope_required: false` ＋ `coverage_window: none` | 子代理（修复/实现批；**必须先登记 run**，与并行批不得共享文件） |
+| 思维实验（MM-3，2026-11-16） | [`functions/thought-experiment.md`](functions/thought-experiment.md) | `{stage, trigger, question, baseline, material, constraints, freeze, mode}` → 一份 `TE-` 记录：`compare`（≥3 互斥路径，含维持现状）／`isolate`（单变量＋对照）；事实-推断分离 ＋ 机制链 ＋ 不变量/断点 ＋ 每条 `falsifier` ＋ 三态判决 ＋ 有界建议 ＋ 一个判别性检验；`scope_required: false` ＋ `coverage_window: none` | 子代理（`adoption` 由主代理/用户写；不替代真实测试、不产评审判决、不做安全红队） |
 
 > **`implementation` role 的存在理由（`TG-19` 实测）**：**（以下为 2026-09-25 修复前的历史缺陷记录）**：账本原先没有实现类 role ⇒ 执行实现工作的子代理只能挂**评审** role 登记，而评审 role 的 spec 声明 `scope_required: true` ⇒ 关闭闸门 C1 判"评审 run 没有 scope 声明"（**结构性假红**）。**现状（2026-09-25 起）**：`implementation` spec 已存在（[`functions/implementation.md`](functions/implementation.md)），该结构性假红已消除——本 spec 让实现工作成为账本一等公民：可登记、可归因，且**不冒充内容评审**（空窗口不判问题、不计 C3 覆盖）。判据侧：C2 按**全账本**断言"出现过的 role 必有 spec"，`verify_close_readiness.py` 自检内置真政策断言。
 
