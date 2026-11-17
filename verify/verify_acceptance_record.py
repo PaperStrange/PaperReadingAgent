@@ -277,7 +277,7 @@ def check(root: Path, rev_range: str,
             directory = local_path(root, cfg["record_dir"])
             candidates, errors = [], []
             for path in sorted(directory.glob("AC-*.MD")):
-                rel = path.relative_to(root).as_posix()
+                rel = path.relative_to(Path(root).resolve()).as_posix()
                 body = local_path(root, rel).read_text(encoding="utf-8")
                 fields, _, issues = parse_record(body)
                 if fields.get("range") == expected:
@@ -402,6 +402,8 @@ def selftest() -> int:
             print("  COPY PROBE problems: " + "; ".join(problems)[:800])
             print("  COPY PROBE readings: " + " | ".join(readings)[:800])
         ok("6 clean copy", not problems, f"gate_rc={int(bool(problems))}")
+        problems, _ = check(base / "copy" / ".", nrange)
+        ok("6b non-canonical root", not problems, f"gate_rc={int(bool(problems))}")
         snapshot = {p.relative_to(base): p.read_bytes()
                     for p in base.rglob("*") if p.is_file()}
         check(base, nrange)
