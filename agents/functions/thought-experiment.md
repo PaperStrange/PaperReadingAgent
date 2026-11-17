@@ -8,7 +8,7 @@ model: ""
 tools: []
 metadata:
   tags: [thought-experiment, mental-models, non-review]
-  estimated_chars: 4900
+  estimated_chars: 25000
 ---
 
 # Role
@@ -212,6 +212,11 @@ flowchart TD
 | dev | main agent, before a bounded implementation choice | `compare` (concrete alternatives) or `isolate` (one variable) | same record, `stage: dev` | same fields; `task_id` names the card | every path has a `falsifier` with a `cheapest_action`; missing ⇒ F3 |
 | retro | main agent, during a closure review | `isolate` when explaining "why not the other way" | same record, `stage: retro` | same fields; `sprint` set for close-window attribution | verdicts are `PASS`/`FAIL`/`未验证（reason）`, evidence has system+identifier+rc; else F4 |
 | acceptance | the user or the main agent at a walkthrough/close decision point | `compare` (recommendation + adoption condition) | same record, `stage: acceptance` | same fields; `coverage_window: none` — contributes zero coverage | `adoption` empty unless a person + network date signed it |
+
+**Automation status (honest label)**: `agents/fanout.json` does **not** register this function, so nothing
+below is auto-scheduled — the flow is the dispatch / record / registration / spot-check contract, and the
+actual dispatch is by the main agent or the user. Registering it into the closing pipeline would change every
+sprint's required C1 steps and needs its own approval.
 
 **Automation record（每次运行必须留下的四件事，抽检即核）**：① `TE-` 记录文件（路径可寻址）；② 账本
 `register`/`finish` 行（`role`、`coverage_anchor`、`covers_through`、`output_chars`、`result_files`）；③ 记录里的
