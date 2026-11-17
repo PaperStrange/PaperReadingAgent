@@ -130,6 +130,7 @@ BRANCH_EST_OVERRIDES: dict[tuple[str, bool], float] = {
 #     复算口径 = 在工作树跑 `verify/verify_gate_integrity.py --selftest` 读末行
 #     `ALL PASS (N assertions)`。
 #     **2026-11-12 本批（A-REG ①＋②）**：`verify_agentops.py` 新增 UC-28（写入者
+#     **2026-11-15 本批（MM-3 升格）**：新增 spec `thought-experiment.md` 后 `verify_agentops.py` 的 spec 闭合类断言 242→243 ⇒ 该键同步抬到 **243**。
 #     身份，9 条）与 UC-29（提交↔run 绑定，8 条）⇒ 实测条数以末行为准，该键同批
 #     抬到实测值（判据⑤要求下限**等于**实测）。**没有**新增独立闸门脚本：
 #     `verify_artifact_paths.py` 的「未跟踪路径为空」会把未提交的新文件判红，而本批
@@ -171,7 +172,7 @@ SKIP_EXIT = 3    # 与 `verify_agentops.py::SKIP_EXIT` / `spend-report` 同码
 SKIP_NOT_PASS_MARK = "本档不是通过"
 SKIP_BANNER_RE = re.compile(r"^\S+ SKIP\[(?P<cat>[^\]]+)\]")
 BRANCH_ASSERTION_FLOORS: dict[tuple[str, bool], int] = {
-    ("verify_agentops.py", True): 242,
+    ("verify_agentops.py", True): 243,
     ("verify_card_index.py", True): 17, ("verify_card_index.py", False): 15,
     ("verify_case_index.py", True): 14, ("verify_case_index.py", False): 14,
     ("verify_decision_register.py", True): 35,
