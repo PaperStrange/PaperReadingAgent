@@ -31,6 +31,7 @@
 | `gui_check_s4.mjs` | 光标三断言（插入/位置/连续编辑）+ provider 联动四断言 | gui | — | 30s | ¥0 | — | playwright, servers |
 | `gui_check_s5.mjs` | 自动重跑 config / retrieve 双模式标记 / 复制报错按钮 / 计时冻结 | gui | — | 40s | ¥0 | — | playwright, servers |
 | `gui_check_s7.mjs` | 多节点并发计时显示 + 完成后冻结 | gui | — | 60s | ¥0 | — | playwright, servers |
+| `verify_acceptance_record.py` | Acceptance record: classification, exact range, measured checklist, verdict consistency, fail-closed parsing; suite runs --selftest only; ALL PASS (N assertions) | offline | — | 8s | ¥0 | — | git |
 | `verify_agent.py` | Agent 流程（fake agent）+ 翻译接口 | network | deepseek | 60s | ¥0.3 | /api/translate_preview, /api/run_step | keys, network, index |
 | `verify_agentops.py` | AgentOps 账本 CLI 用例断言 UC-1 起（**编号区间与条数以末行 `ALL PASS (N assertions)` 现跑为准，勿在本串写死**；离线；UC-11/12=M10，UC-13=M9，UC-14=TG-11 scope 来源闸门，UC-15/16 探针 spec 隔离到 %TEMP% 不污染仓库，UC-19=TG-8 离线开关：三入口拒绝+反向对照+配置面+两侧一致，UC-27=成本预算阻断与**兜底阶梯**（2026-10-03 用户裁定 A：**账本读数**当日派单数>=预算即拒绝 `register`（点名读数/预算/逃生门），含空账本第一笔/别的 role/未超预算乱传/配置坏 fail-closed/未配置预算未执行 真驱动反向对照；金额轴不阻断并在文案里标注度量仪作用域缺陷。**同日追加裁定「超过时也要有兜底策略」**：逃生门收紧要**四把锁**——① 理由必须含可核引用（`D-YYMMDD-NN` 条目号或全角引号内的用户原话；**自述理由不算数**，且条目号两侧挡 [0-9A-Za-z] 与汉字，`D-251002-01之外` 不得冒充）② 同日次数上限（超限拒绝并点名已用几次/被谁用掉）③ 恰好一类具名例外类别（收口／安全）④ 理由下限；另含兜底建议上屏、被拒派单进 `dispatch-refusals.jsonl`（字段完整）、真仓缺预算文件 fail-closed vs `AGENT_OPS_DIR` 重定向档判未执行 两侧对照）, UC-28=A-REG① 写入者身份（writer env/flag/unknown 三档 + writer_trail + 回填口 + 旧行兼容 + 真账本读侧）, UC-29=A-REG② 提交↔run 绑定（`run:` 标记必须核上账本 succeeded，缺失／状态不符分开点名；不带标记不判红、只列出；账本缺失第三态 rc=3；非法区间 rc=2；%TEMP% 夹具仓库真驱动）） | offline | — | 20s | ¥0 | — | none |
 | `verify_archive.py` | M16 调研归档完整性校验：report/context/reasoning/evidence 契约 + 证据索引表双向交叉引用（限定 §7 索引表区间、大小写不敏感；fail-closed） | offline | — | 5s | ¥0 | — |  |
@@ -69,4 +70,4 @@
 | `verify_spend_report.py` | A-COST 度量仪口径闸门：派单数只来自账本且调用 agent-ops 的 _dispatch_reading（与预算闸门同源）／会话日志只做费用与本会话只报读数／累积重放日志只计价一次／账本读不到 fail-closed(rc=3)／真仓双进程同源比对；反向对照条数见末行 `ALL PASS (N assertions)` | offline | — | 25s | ¥0 | — | none |
 | `verify_usage.py` | Retro③ 成本换算 ＋ TG-20 行 20 按调用时刻选档：真入口对照/跨档/缺失/退化/可审计/真派发，改前取自钉住 revision（离线，需 git） | offline | — | 12s | ¥0 | — | git |
 
-共 63 个脚本：offline 29 / network 10 / gui 24。
+共 64 个脚本：offline 30 / network 10 / gui 24。

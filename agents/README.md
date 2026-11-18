@@ -11,6 +11,7 @@
 | 代码审阅 | [`functions/code-review.md`](functions/code-review.md) | `{target: branch:windows\|branch:main\|pr:<n>\|working-tree, scope, focus, strictness}` | 子代理（每任务一次） |
 | 文档审计 | [`functions/doc-audit.md`](functions/doc-audit.md) | `{target, scope, focus, strictness}` | 子代理 |
 | 经验教训总结（Sprint 关闭前置必做） | [`functions/lessons-learned.md`](functions/lessons-learned.md) | `{sprint_doc, change_commits}` → 3-LEARNED 新条目草稿 + 分类索引更新建议（主代理审核回填） | 子代理（一查/二查后、workspace-check 前；fan-out 第 4 步） |
+| 验收（建 PR 前） | [`functions/acceptance-review.md`](functions/acceptance-review.md) | `{range, checklist_path, classification}` → 逐项实测 AC 记录与闸门结果；分类真源 `policy.json::acceptance_review` | 独立执行者；主代理落盘记录；non-production 可自动验收，production 仍须用户签，不许自验 PASS |
 | 工作区核验 | [`functions/workspace-check.md`](functions/workspace-check.md) | — | **主代理执行**（D2：起服务/杀进程不子代理化） |
 | 实现类工作（`TG-19`/`A-M13`，2026-09-25） | [`functions/implementation.md`](functions/implementation.md) | `{card, deliverable, scope_of_change, must_run, evidence_required}` → 变更 + **验证证据**（不产出评审结论）；`scope_required: false` ＋ `coverage_window: none` | 子代理（修复/实现批；**必须先登记 run**，与并行批不得共享文件） |
 | 思维实验（MM-3，2026-11-16） | [`functions/thought-experiment.md`](functions/thought-experiment.md) | `{stage, trigger, question, baseline, material, constraints, freeze, mode}` → 一份 `TE-` 记录：`compare`（≥3 互斥路径，含维持现状）／`isolate`（单变量＋对照）；事实-推断分离 ＋ 机制链 ＋ 不变量/断点 ＋ 每条 `falsifier` ＋ 三态判决 ＋ 有界建议 ＋ 一个判别性检验；`scope_required: false` ＋ `coverage_window: none` | 子代理（`adoption` 由主代理/用户写；不替代真实测试、不产评审判决、不做安全红队） |
