@@ -552,3 +552,21 @@ python verify/run_suite.py --tier offline
 - **反向对照**：本机**有** Graphviz 的正常路径 `8/8 rc=0`；用 `SMOKE_GRAPHVIZ_DIRS=""` 关发现＋PATH 过滤 graphviz ⇒ `7/8, 1 skipped`、末行具名横幅、**rc=3**。
 - **验证**：PR #61 main 侧 CI success；合并后 main 侧 CI **success**（main 恢复绿）；本地套件通过。
 - **教训（拟入 `3-LEARNED`）**：**第三方依赖的缺失必须是"环境事实"，不能写成硬失败**——否则一次上游 feed 抖动就能让受保护分支变红；正确形态是"具名 SKIP（第三态）＋CI 侧重试/告警"。
+
+---
+
+## 执行记录 9（2026-11-18；PR #62）—— **验收 workflow 上线**
+
+> 用户 2026-11-18 对增量走查清单声明通过 **之后** 才创建本 PR；AC 记录
+> `acceptance-records/AC-2026-11-17-acceptance-workflow.MD`（12 项 checklist，每项带实测读数＋日期锚）判定
+> `production` ⇒ verdict `NEEDS-HUMAN` ⇒ 引用人工签收档；闸门现跑 `ACCEPTANCE PASS`。
+
+- **形态**：同步提交 **`3889aee`**（1 个父＝`d22cce8`）；合并提交 **`3913c6e`**（2 个父）。
+- **同步面**：以 `git diff --shortstat d22cce8 3889aee` 现跑为准（此处不手抄）。
+- **排除／保留**：`docs/iteration/**` 树内 0 行；4 个 mac 启动脚本保留；`docs/6-DECISIONS.md` 在树。
+- **带上 main 的**：验收 workflow（`acceptance-review` spec ＋ `policy::acceptance_review` 分类数据 ＋
+  `verify_acceptance_record.py` 闸门 ＋ `1-WORKFLOW.MD` §3 例外与 §6.0 索引 ＋ `D-251117-02` ＋ 教训 1.74/1.75）。
+- **验证**：合并前 main 侧 CI success；合并后 main 侧 CI success；本地套件通过。
+- **main 树复核**：`docs/iteration` 0 条；mac 4/4；`agents/functions/acceptance-review.md`、
+  `verify/verify_acceptance_record.py` 在 main；`D-251117-02` 在；policy 含 `acceptance_review`。
+- **未证明项**：non-production 自动放行尚未被真实使用过一次；CI 侧只跑该闸门 `--selftest`。
