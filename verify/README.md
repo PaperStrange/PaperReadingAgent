@@ -15,6 +15,7 @@
 
 | 脚本 | 内容 | 运行前提（显式化，Sprint-7 M5） |
 |---|---|---|
+| `verify_acceptance_record.py` | 验收 workflow：按政策分类完整 delta（新增脚本白名单），核 AC range、逐项实测读数、verdict 与人工签收引用；缺字段/解析失败即阻断 | 零依赖、只读、本地 Git；`--range A..B`（默认 `origin/main..HEAD`），可选 `--record`；套件只跑 `--selftest`，真实 delta 建 PR 前另跑；断言数以现跑为准 |
 | `verify_deduction_rates.py` | **§2.1.1/Sprint-17**：**扣率口径闸门**——未闭环 critical/major 的扣率真源 = `agents/policy.json::deduction_rates`（比例表 / 同根因合并开关 / 封顶 / 取整步长 / 棘轮折算 / "未闭环"四判据），读取器 `Policy.deduction_rates()` + 纯函数 `deduction_for()`。**本文件不出现任何比例数值**：期望值一律由政策算出（`2.5 − 2.5×ratios[major]`），否则闸门自己就成了第二份政策。反向对照两组：**fail-closed**（缺键/比例超界·负值·字符串·布尔/全 0/步长非法/判据缺证据·id 重复·无 `requires_due_date`/折算级别越界，共 14 例）与**数据驱动**（改政策比例 → 结果随之改变；关掉合并开关 → 同根因不再合并；显式传 `rates` 时不读任何文件）。含封顶（3 条不同根因 critical → 剩余 0）与"封顶优先于取整"（0.98 点卡不倒扣） | **offline 档**；`python verify\verify_deduction_rates.py`（自检）；`--show` 打印当前生效口径；首次实际结算时才加 CLI（§2.1.1） |
 | `verify_smoke.py` | 8 项冒烟检查：paperqa 导入、后端 FastAPI 12 条路由、RuntimeTracer、streamlit、litellm、PyMuPDF 页渲染、graphviz(py)、PDF 解析器自动发现 | 无 API 调用，纯离线；无需启动服务 |
 | `verify_prune_callbacks.py` | Sprint-5/M2：litellm 回调去重裁剪单元证据（超上限 32 项 → 去重保留最近 N；`PAPERQA_LITELLM_CALLBACK_LIMIT` 可覆盖默认 20） | 无 API 调用，纯离线 |
